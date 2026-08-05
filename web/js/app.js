@@ -347,6 +347,9 @@ function connect() {
       loadFriends().catch(()=>{});
       loadRequests().catch(()=>{});
       loadModels().catch(()=>{});
+      // 右侧栏初始化
+      if (typeof loadTaskMonitor === 'function') loadTaskMonitor().catch(()=>{});
+      if (typeof loadRightGoals === 'function') loadRightGoals().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
         if (authToken) {
@@ -3483,14 +3486,11 @@ function addRightGoal() {
   const title = prompt('目标名称：');
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
-  fetch('/api/goals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project: 'default', title: title.trim(), acceptanceCriteria: desc || '' })
-  }).then(r => r.json()).then(d => {
-    if (d.ok) { toast('目标已添加'); setTimeout(() => location.reload(), 500); }
-    else toast('添加失败');
-  }).catch(e => toast('添加失败: ' + e.message));
+  fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'default', title: title.trim(), acceptanceCriteria: desc || '' }) })
+    .then(r => r.json()).then(d => {
+      if (d.ok) { toast('✅ 已添加'); loadRightGoals(); }
+      else toast('❌ 添加失败');
+    }).catch(e => toast('❌ ' + e.message));
 }
 function deleteGoal(id) {
   if (!confirm('确定删除此目标？')) return;
@@ -3499,4 +3499,83 @@ function deleteGoal(id) {
       if (d.ok) { toast('已删除'); location.reload(); }
       else toast('删除失败');
     }).catch(e => toast('删除失败: ' + e.message));
+}
+
+// ── 右侧栏 - 任务监控 ──
+async function loadTaskMonitor() {
+  const el = document.getElementById('taskMonitorList');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/cron'); const d = await r.json();
+    const jobs = d.jobs || [];
+    if (!jobs.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无定时任务</div>'; return; }
+    el.innerHTML = jobs.map(j => {
+      const name = j.name || j.id || '未命名', enabled = j.enabled !== false;
+      const pill = enabled ? '<span class="status-pill pill-on">运行中</span>' : '<span class="status-pill pill-off">已暂停</span>';
+      const expr = j.schedule?.expr || (j.schedule?.everyMs ? 'every ' + j.schedule.everyMs + 'ms' : '-');
+      const next = j.nextRunAt ? new Date(j.nextRunAt).toLocaleString() : '—';
+      const last = j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : '—';
+      return '<div class="task-card"><div class="task-name">' + esc(String(name)) + ' ' + pill + '</div>' +
+        '<div class="task-meta">表达式：<code>' + esc(String(expr)) + '</code><br>下次：' + next + '<br>上次：' + last + '</div>' +
+        '<div class="task-actions">' +
+        '<button class="run" onclick="runCronNow(\'' + esc(j.id) + '\')">▶ 运行</button>' +
+        '<button style="' + (enabled ? '' : 'color:var(--green)') + '" onclick="toggleCronJob(\'' + esc(j.id) + '\',' + !enabled + ')">' + (enabled ? '暂停' : '启用') + '</button>' +
+        '<button class="del" onclick="removeCronFromMonitor(\'' + esc(j.id) + '\')">删除</button></div></div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="color:var(--red);padding:12px">❌ ' + esc(e.message || '加载失败') + '</div>'; }
+}
+async function removeCronFromMonitor(id) {
+  if (!confirm('确定删除？')) return;
+  try { const r = await fetch('/api/cron/' + encodeURIComponent(id), { method: 'DELETE' }); const d = await r.json();
+    if (!d.ok) { toast('❌ 删除失败'); return; } toast('已删除'); loadTaskMonitor();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function toggleCronJob(id, enabled) {
+  try { const r = await fetch('/api/cron/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }); const d = await r.json();
+    if (!d.ok) { toast('❌ 操作失败'); return; } loadTaskMonitor();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function runCronNow(id) {
+  try { const r = await fetch('/api/cron/' + encodeURIComponent(id) + '/run', { method: 'POST' }); const d = await r.json();
+    if (d.ok) toast('✅ 已触发'); else toast('❌ ' + (d.error || '失败'));
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ── 右侧栏 - 目标任务 ──
+async function loadRightGoals() {
+  const el = document.getElementById('rightGoalsList');
+  if (!el) return;
+  try {
+    const r = await fetch('/api/goals'); const d = await r.json();
+    if (!d.ok) { el.innerHTML = '<div style="color:var(--red)">❌ 加载失败</div>'; return; }
+    const goals = d.goals || [];
+    if (!goals.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无目标，点击下方添加</div>'; return; }
+    el.innerHTML = goals.map(g => {
+      const emoji = GOAL_EMOJI[g.status] || '⏳';
+      const statusText = { pending: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' }[g.status] || g.status;
+      const statusColor = { pending: 'var(--text3)', in_progress: 'var(--accent)', done: 'var(--green)', cancelled: 'var(--text3)' }[g.status] || 'var(--text3)';
+      const barW = g.status === 'done' ? '100%' : (g.status === 'in_progress' ? '50%' : '0%');
+      const barC = g.status === 'done' ? 'var(--green)' : 'var(--accent)';
+      const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:4px">' + esc(g.acceptanceCriteria) + '</div>' : '';
+      return '<div class="goal-item"><div class="goal-head"><span class="g-status">' + emoji + '</span><b>' + esc(g.title) + '</b>' +
+        '<span style="margin-left:auto;font-size:11px;color:' + statusColor + '">' + statusText + '</span></div>' +
+        criteria + '<div class="goal-bar"><i style="width:' + barW + ';background:' + barC + '"></i></div>' +
+        '<div class="goal-foot"><span>' +
+        (g.status === 'pending' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'in_progress\')" style="cursor:pointer;color:var(--accent)">▶ 开始</a> ' : '') +
+        (g.status !== 'done' && g.status !== 'cancelled' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'done\')" style="cursor:pointer;color:var(--green)">✅ 完成</a> ' : '') +
+        ((g.status === 'done' || g.status === 'cancelled') ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'pending\')" style="cursor:pointer">↩ 恢复</a> ' : '') +
+        '<a onclick="deleteRightGoal(\'' + g.id + '\')" style="cursor:pointer;color:var(--red)">🗑 删除</a></span></div></div>';
+    }).join('');
+  } catch(e) { el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</div>'; }
+}
+async function setRightGoalStatus(id, status) {
+  try { const r = await fetch('/api/goals/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); const d = await r.json();
+    if (!d.ok) { toast('❌ 操作失败'); return; } loadRightGoals();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function deleteRightGoal(id) {
+  if (!confirm('确定删除？')) return;
+  try { const r = await fetch('/api/goals/' + id, { method: 'DELETE' }); const d = await r.json();
+    if (!d.ok) { toast('❌ 删除失败'); return; } toast('已删除'); loadRightGoals();
+  } catch(e) { toast('❌ ' + e.message); }
 }

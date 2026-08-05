@@ -678,44 +678,12 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks">任务监控</button>
       <button onclick="switchTab('goals',this)" id="rbTabGoals">目标任务</button>
     </div>
-    <div class="right-body" id="tab-tasks" style="display:block"><div id="taskMonitorList" style="display:none"></div>
-      <div class="task-card">
-        <div class="task-name">每日数据备份 <span class="status-pill pill-on">运行中</span></div>
-        <div class="task-meta">表达式：<code>0 3 * * *</code><br>下次执行：明天 03:00<br>上次：今天 03:00 · 成功 (12ms)</div>
-        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
-      </div>
-      <div class="task-card">
-        <div class="task-name">健康巡检 <span class="status-pill pill-on">运行中</span></div>
-        <div class="task-meta">表达式：<code>*/5 * * * *</code><br>下次执行：12:35:00<br>上次：12:30:00 · 成功 (8ms)</div>
-        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
-      </div>
-      <div class="task-card">
-        <div class="task-name">模型路由日报 <span class="status-pill pill-off">已暂停</span></div>
-        <div class="task-meta">表达式：<code>30 8 * * *</code><br>下次执行：—（已暂停）<br>上次：今天 08:30 · 成功</div>
-        <div class="task-actions"><button class="run">▶ 运行</button><button style="color:var(--green)">启用</button><button class="del">删除</button></div>
-      </div>
-      <div class="task-card">
-        <div class="task-name">工作区索引同步 <span class="status-pill pill-on">运行中</span></div>
-        <div class="task-meta">表达式：<code>0 */2 * * *</code><br>下次执行：14:00<br>上次：12:00 · 成功</div>
-        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
-      </div>
+    <div class="right-body" id="tab-tasks" style="display:block">
+      <div id="taskMonitorList"><div style="color:var(--text3);padding:12px;text-align:center">加载中...</div></div>
+      <button class="add-goal" onclick="showAddCron()">＋ 添加定时任务</button>
     </div>
-    <div class="right-body" id="tab-goals" style="display:none"><div id="rightGoalsList"></div>
-      <div class="goal-item">
-        <div class="goal-head"><span class="g-status">🎯</span><b>完成前端三栏布局改造</b><span style="margin-left:auto;font-size:11px;color:var(--accent)">进行中</span></div>
-        <div class="goal-bar"><i style="width:70%"></i></div>
-        <div class="goal-foot"><span>进度 70%</span><span>截止 08-05</span></div>
-      </div>
-      <div class="goal-item">
-        <div class="goal-head"><span class="g-status">✅</span><b>修复 LAN peer 鉴权漏洞</b><span style="margin-left:auto;font-size:11px;color:var(--green)">已完成</span></div>
-        <div class="goal-bar"><i style="width:100%;background:var(--green)"></i></div>
-        <div class="goal-foot"><span>进度 100%</span><span>完成 07-31</span></div>
-      </div>
-      <div class="goal-item">
-        <div class="goal-head"><span class="g-status">🎯</span><b>接入 qwen3.6 工具模型</b><span style="margin-left:auto;font-size:11px;color:var(--text3)">待开始</span></div>
-        <div class="goal-bar"><i style="width:0%"></i></div>
-        <div class="goal-foot"><span>进度 0%</span><span>截止 08-10</span></div>
-      </div>
+    <div class="right-body" id="tab-goals" style="display:none">
+      <div id="rightGoalsList"><div style="color:var(--text3);padding:12px;text-align:center">加载中...</div></div>
       <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()">＋ 添加目标任务</button>
     </div>
   </aside>
