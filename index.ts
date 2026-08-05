@@ -60,6 +60,8 @@ import { CustomProviderManager, INFERENCE_BACKENDS } from './src/ai/custom-provi
 import { DebugPanel } from './src/dev/debug-panel.js';
 import { VisionManager } from './src/ai/vision.js';
 import { PushNotificationManager } from './src/core/push.js';
+import { OutcomeTracker } from './src/core/outcome-tracker.js';
+import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
 
@@ -289,6 +291,12 @@ setSearchManager(searchManagerInstance);
   await aiHub.syncOllamaModels();
   const defaultModel = aiHub.getDefaultModel();
   console.log('[AI Hub] 默认模型:', defaultModel);
+
+  // ── 评分卡追踪器（需 AI 客户端）──
+  const outcomeTracker = new OutcomeTracker(
+    defaultClientResult?.client || { chat: { completions: { create: () => Promise.resolve({ choices: [{ message: { content: '[]' } }] }) } } } as any,
+    defaultClientResult?.resolvedModel || defaultModel,
+  );
 
   // ── P2-3: Provider 注册表 ──
   const providerRegistry = new ProviderRegistry();
@@ -1942,6 +1950,9 @@ setSearchManager(searchManagerInstance);
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+
+  // ── 评分卡 API（含 DELETE /api/outcomes/:id 等全部路由）──
+  app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker } as any));
 
   // ── P1-2: 会话管理 API ──
   app.get('/api/sessions', (req, res) => {
