@@ -1,1 +1,0 @@
-{"name":"竞品情报站","description":"输入竞品名，自动采集→分析→报告","mode":"route","agents":[{"name":"情报采集员","personality":"你是信息采集专家，擅长搜索和汇总网络公开信息","autonomy":"semi"},{"name":"分析师","personality":"你是商业分析师，擅长从数据中提取洞察和趋势","autonomy":"semi"},{"name":"报告撰写","personality":"你是专业报告撰写人，能把分析结果整理成结构化文档","autonomy":"semi"}],"welcomeMessage":"📊 竞品情报站就绪！输入竞品名称，团队会采集信息、分析趋势、输出报告。"}
