@@ -13,15 +13,19 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/index.ts", "src/src/**/*.ts", "web/js/app.js"],
+  "include": ["index.ts", "src/**/*.ts", "web/js/app.js"],
   "exclude": [
     "node_modules",
     "dist",
     "workspace",
-    "src/core/index.ts",
     "_hermes_bak",
     "_srv_extract",
     "lingxi-engine",
-    "pkg-verify"
+    "pkg-verify",
+    "mobile-dist",
+    "src/mobile",
+    "src/tests",
+    "src/router.ts",
+    "src/mesh-platform.ts"
   ]
 }
