@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Uploads
+uploads/
+
+# Temp files
+_*.py
+_*.txt
+_*.cjs
+_*.sql
+tsc_out.txt
+*.tar.gz
+
+# IDE
+.vscode/
+.idea/
+
+# Test artifacts
+test*.txt
+test*.html
+
+# Backup directories
+_local_bak_*/
+_hermes_bak/
+_bak_design_v14/
+web_backup_v9/
+src/web_backup_v9/
+src/_rollback-0602/
+src/web/_rollback-0602/
+*.bak
+*.bak-*
+*.func
+*.old
+
+# Misc temp files
+_cross_check*.js
+_live_index.html
+_livepage.html
+_install_*.ps1
+ssh3-stdout.txt
+_admin_dump.txt
+_align*.txt
+_align_check*.py
+_agent_list.*
+tsc_out.txt
+.smoke-test.js

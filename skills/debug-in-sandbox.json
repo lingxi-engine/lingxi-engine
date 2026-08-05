@@ -1,0 +1,13 @@
+{
+  "name": "debug-in-sandbox",
+  "displayName": "沙箱环境查找Bug",
+  "description": "在沙箱环境中通过文件浏览和命令执行定位代码错误。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "遇到需要在沙箱环境中查找Bug的任务时，首先使用 list_dir 浏览项目结构，找到相关代码文件。然后使用 read_file 仔细阅读可疑代码。如果需要运行代码或检查环境状态，使用 shell_exec 执行相关命令。根据收集到的信息分析错误原因并给出修复建议。",
+  "autoCreated": true,
+  "createdAt": 1784739410161
+}

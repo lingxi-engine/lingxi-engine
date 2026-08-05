@@ -1,0 +1,50 @@
+--- a/lingxi-engine/src/routes/provider.ts
++++ b/lingxi-engine/src/routes/provider.ts
+@@ -6,7 +6,7 @@
+ export function createProviderRoutes(ctx: ServerContext): Router {
+   const router = Router();
+-  const { aiHub, providerRegistry, customProviderManager } = ctx;
++  const { aiHub, providerRegistry, customProviderManager, manager } = ctx;
+ 
+   // ── Provider 配置 ──
+   router.get('/ai/config', (_req, res) => {
+@@ -77,10 +77,25 @@
+   // ── Provider 列表 ──
+   router.get('/providers', (_req, res) => {
+     try {
+-      res.json({ ok: true, providers: providerRegistry.list() });
++      const list = (providerRegistry.list() as any[]).map(({ client, ...rest }) => ({
++        ...rest,
++        hasKey: !!(rest.apiKey && rest.apiKey.length > 5),
++      }));
++      const models = list.flatMap((p: {models?: string[], id: string, name: string}) => (p.models||[]).map((m: string) => ({ id: m, provider: p.id, providerName: p.name })));
++      res.json({ ok: true, providers: list, models, defaultModel: process.env.DEFAULT_MODEL || '' });
+     } catch (err: any) {
+       res.status(500).json({ error: err.message });
+     }
+   });
+ 
++  // ── 设置默认模型 ──
++  router.put('/providers/default', (req, res) => {
++    try {
++      const { model } = req.body || {};
++      if (!model) return res.status(400).json({ error: 'model 必填' });
++      process.env.DEFAULT_MODEL = model;
++      aiHub.setDefaultModel(model);
++      res.json({ ok: true, defaultModel: model });
++    } catch (err: any) {
++      res.status(500).json({ error: err.message });
++    }
++  });
++
+   router.post('/providers', async (req, res) => {
+     try {
+@@ -101,6 +116,8 @@
+           models: models || [], isLocal: isLocal || false,
+         });
+       } catch (e) { /* ignore */ }
++      // 自动更新所有 Agent 的模型
++      try { manager?.syncAllModels?.(); } catch (e) { /* ignore */ }
+       res.json({ ok: true, id });
+     } catch (err: any) {
+       res.status(500).json({ error: err.message });

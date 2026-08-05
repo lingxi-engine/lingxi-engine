@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵犀引擎 - 管理后台</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0d1117; color:#c9d1d9; min-height:100vh; }
+.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.login-box { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:40px; width:360px; }
+.login-box h2 { text-align:center; margin-bottom:24px; color:#58a6ff; }
+.login-box input { width:100%; padding:10px 14px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:14px; margin-bottom:16px; }
+.login-box button { width:100%; padding:10px; background:#238636; border:none; border-radius:6px; color:#fff; font-size:14px; cursor:pointer; }
+.login-box button:hover { background:#2ea043; }
+.login-err { color:#f85149; font-size:12px; margin-bottom:12px; display:none; }
+
+.dashboard { display:none; padding:20px; max-width:1400px; margin:0 auto; }
+.top-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+.top-bar h1 { font-size:20px; color:#58a6ff; }
+.top-bar .actions { display:flex; gap:8px; }
+.top-bar button { padding:6px 14px; background:#21262d; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; cursor:pointer; font-size:13px; }
+.top-bar button:hover { background:#30363d; }
+
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+.card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; text-align:center; }
+.card .num { font-size:28px; font-weight:700; color:#58a6ff; }
+.card .label { font-size:12px; color:#8b949e; margin-top:6px; }
+
+.tabs { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid #30363d; padding-bottom:8px; }
+.tabs button { padding:8px 16px; background:transparent; border:none; color:#8b949e; cursor:pointer; font-size:14px; border-radius:6px; }
+.tabs button.active { background:#21262d; color:#58a6ff; }
+
+.panel { display:none; }
+.panel.active { display:block; }
+
+table { width:100%; border-collapse:collapse; background:#161b22; border-radius:10px; overflow:hidden; border:1px solid #30363d; }
+th, td { padding:10px 12px; text-align:left; font-size:13px; border-bottom:1px solid #21262d; }
+th { background:#21262d; color:#8b949e; font-weight:600; }
+tr:hover td { background:#1c2128; }
+.badge { padding:2px 8px; border-radius:10px; font-size:11px; }
+.badge-online { background:#0d4429; color:#3fb950; }
+.badge-offline { background:#21262d; color:#8b949e; }
+
+.usage-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:768px) { .usage-grid { grid-template-columns:1fr; } }
+.usage-box { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px; }
+.usage-box h3 { font-size:14px; color:#8b949e; margin-bottom:12px; }
+.usage-row { display:flex; justify-content:space-between; padding:6px 0; font-size:13px; border-bottom:1px solid #21262d; }
+.usage-row:last-child { border-bottom:none; }
+.usage-row .val { color:#58a6ff; font-weight:600; }
+
+.invite-form { display:flex; gap:8px; margin-bottom:16px; }
+.invite-form input { padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:13px; }
+.invite-form button { padding:8px 16px; background:#238636; border:none; border-radius:6px; color:#fff; cursor:pointer; font-size:13px; }
+
+.recent-table { max-height:400px; overflow-y:auto; }
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <h2>🔐 管理后台</h2>
+    <div class="login-err" id="loginErr">Token 错误</div>
+    <input type="password" id="tokenInput" placeholder="输入 ADMIN_TOKEN" onkeydown="if(event.key==='Enter')doLogin()">
+    <button onclick="doLogin()">进入后台</button>
+  </div>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="top-bar">
+    <h1>⚙️ 灵犀引擎管理后台</h1>
+    <div class="actions">
+      <button onclick="loadData()">🔄 刷新</button>
+      <button onclick="logout()">退出</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <div class="tabs">
+    <button class="active" onclick="switchTab('users')">👥 用户管理</button>
+    <button onclick="switchTab('usage')">📊 用量统计</button>
+    <button onclick="switchTab('invites')">🎫 邀请码</button>
+    <button onclick="switchTab('recent')">📋 最近调用</button>
+  </div>
+
+  <div class="panel active" id="panel-users"></div>
+  <div class="panel" id="panel-usage"></div>
+  <div class="panel" id="panel-invites"></div>
+  <div class="panel" id="panel-recent"></div>
+</div>
+
+<script>
+let adminToken = localStorage.getItem('adminToken') || '';
+const API = window.location.origin;
+
+function headers() { return { 'X-Admin-Token': adminToken, 'Content-Type': 'application/json' }; }
+
+async function doLogin() {
+  adminToken = document.getElementById('tokenInput').value.trim();
+  if (!adminToken) return;
+  try {
+    const r = await fetch(API + '/api/admin/dashboard', { headers: headers() });
+    const d = await r.json();
+    if (d.ok) {
+      localStorage.setItem('adminToken', adminToken);
+      showDashboard(d.data);
+    } else {
+      document.getElementById('loginErr').style.display = 'block';
+    }
+  } catch(e) {
+    document.getElementById('loginErr').textContent = '连接失败: ' + e.message;
+    document.getElementById('loginErr').style.display = 'block';
+  }
+}
+
+function logout() {
+  localStorage.removeItem('adminToken');
+  adminToken = '';
+  location.reload();
+}
+
+async function loadData() {
+  try {
+    const r = await fetch(API + '/api/admin/dashboard', { headers: headers() });
+    const d = await r.json();
+    if (d.ok) showDashboard(d.data);
+    else { alert('加载失败: ' + (d.error || '未知错误')); }
+  } catch(e) { alert('请求失败: ' + e.message); }
+}
+
+function showDashboard(data) {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  renderCards(data);
+  renderUsers(data.users);
+  renderUsage(data.usage);
+  renderInvites(data.inviteCodes);
+  loadRecent();
+}
+
+function renderCards(d) {
+  const u = d.usage?.total || {};
+  document.getElementById('cards').innerHTML = `
+    <div class="card"><div class="num">${d.users?.length || 0}</div><div class="label">注册用户</div></div>
+    <div class="card"><div class="num">${d.agentCount || 0}</div><div class="label">AI 智能体</div></div>
+    <div class="card"><div class="num">${d.chatCount || 0}</div><div class="label">会话数</div></div>
+    <div class="card"><div class="num">${d.msgCount || 0}</div><div class="label">消息总数</div></div>
+    <div class="card"><div class="num">${d.sessionCount || 0}</div><div class="label">活跃会话</div></div>
+    <div class="card"><div class="num">${fmtNum(u.totalTokens)}</div><div class="label">总 Token 消耗</div></div>
+    <div class="card"><div class="num">${u.calls || 0}</div><div class="label">AI 调用次数</div></div>
+    <div class="card"><div class="num">${fmtNum(d.usage?.recent24h?.totalTokens)}</div><div class="label">24h Token</div></div>
+  `;
+}
+
+function renderUsers(users) {
+  if (!users || !users.length) { document.getElementById('panel-users').innerHTML = '<p style="color:#8b949e">暂无注册用户</p>'; return; }
+  let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>状态</th><th>积分</th><th>累计获得</th><th>累计消耗</th><th>注册时间</th><th>最后活跃</th></tr></thead><tbody>';
+  users.forEach(u => {
+    const status = u.status === 'online' ? '<span class="badge badge-online">在线</span>' : '<span class="badge badge-offline">离线</span>';
+    html += `<tr>
+      <td>${u.numeric_id || '-'}</td>
+      <td>${esc(u.display_name || u.username || '-')}</td>
+      <td>${esc(u.email || '-')}</td>
+      <td>${status}</td>
+      <td style="color:#58a6ff;font-weight:600">${u.credits ?? 0}</td>
+      <td>${u.total_earned ?? 0}</td>
+      <td>${u.total_spent ?? 0}</td>
+      <td>${fmtTime(u.created_at)}</td>
+      <td>${u.last_active_at ? fmtTime(u.last_active_at) : '-'}</td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  document.getElementById('panel-users').innerHTML = html;
+}
+
+function renderUsage(usage) {
+  if (!usage) { document.getElementById('panel-usage').innerHTML = '<p style="color:#8b949e">暂无用量数据</p>'; return; }
+  let modelHtml = '';
+  const byModel = usage.byModel || {};
+  Object.keys(byModel).sort((a,b) => byModel[b].totalTokens - byModel[a].totalTokens).forEach(m => {
+    const s = byModel[m];
+    modelHtml += `<div class="usage-row"><span>${esc(m)}</span><span class="val">${fmtNum(s.totalTokens)} tokens / ${s.calls}次</span></div>`;
+  });
+  let typeHtml = '';
+  const byType = usage.byType || {};
+  const typeNames = { reply:'对话回复', tool:'工具调用', compaction:'压缩', summary:'摘要', reflection:'反思' };
+  Object.keys(byType).forEach(t => {
+    const s = byType[t];
+    typeHtml += `<div class="usage-row"><span>${typeNames[t] || t}</span><span class="val">${fmtNum(s.totalTokens)} tokens / ${s.calls}次</span></div>`;
+  });
+  document.getElementById('panel-usage').innerHTML = `
+    <div class="usage-grid">
+      <div class="usage-box"><h3>📦 按模型统计</h3>${modelHtml || '<p style="color:#8b949e">暂无</p>'}</div>
+      <div class="usage-box"><h3>📂 按类型统计</h3>${typeHtml || '<p style="color:#8b949e">暂无</p>'}</div>
+      <div class="usage-box"><h3>⏱️ 时间维度</h3>
+        <div class="usage-row"><span>最近 1 小时</span><span class="val">${fmtNum(usage.recent1h?.totalTokens)} tokens / ${usage.recent1h?.calls || 0}次</span></div>
+        <div class="usage-row"><span>最近 24 小时</span><span class="val">${fmtNum(usage.recent24h?.totalTokens)} tokens / ${usage.recent24h?.calls || 0}次</span></div>
+        <div class="usage-row"><span>累计总量</span><span class="val">${fmtNum(usage.total?.totalTokens)} tokens / ${usage.total?.calls || 0}次</span></div>
+      </div>
+      <div class="usage-box"><h3>🔢 Token 明细</h3>
+        <div class="usage-row"><span>Prompt Tokens</span><span class="val">${fmtNum(usage.total?.promptTokens)}</span></div>
+        <div class="usage-row"><span>Completion Tokens</span><span class="val">${fmtNum(usage.total?.completionTokens)}</span></div>
+      </div>
+    </div>
+  `;
+}
+
+function renderInvites(codes) {
+  let html = `<div class="invite-form">
+    <input id="inviteCode" placeholder="邀请码" style="width:140px">
+    <input id="inviteMax" type="number" placeholder="最大次数" value="1" style="width:90px">
+    <button onclick="createInvite()">创建邀请码</button>
+  </div>`;
+  if (codes && codes.length) {
+    html += '<table><thead><tr><th>邀请码</th><th>已用/上限</th><th>创建时间</th><th>过期时间</th></tr></thead><tbody>';
+    codes.forEach(c => {
+      html += `<tr><td style="font-family:monospace">${esc(c.code)}</td><td>${c.used_count}/${c.max_uses}</td><td>${fmtTime(c.created_at)}</td><td>${c.expires_at ? fmtTime(c.expires_at) : '永不过期'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p style="color:#8b949e;margin-top:12px">暂无邀请码</p>';
+  }
+  document.getElementById('panel-invites').innerHTML = html;
+}
+
+async function createInvite() {
+  const code = document.getElementById('inviteCode').value.trim();
+  const max = parseInt(document.getElementById('inviteMax').value) || 1;
+  if (!code) { alert('请输入邀请码'); return; }
+  try {
+    const r = await fetch(API + '/api/admin/invite-codes', { method:'POST', headers: headers(), body: JSON.stringify({ code, max_uses: max }) });
+    const d = await r.json();
+    if (d.ok || d.code) { loadData(); } else { alert('创建失败: ' + (d.error || '')); }
+  } catch(e) { alert('请求失败: ' + e.message); }
+}
+
+async function loadRecent() {
+  try {
+    const r = await fetch(API + '/api/admin/usage?limit=50', { headers: headers() });
+    const d = await r.json();
+    if (d.ok && d.recent) renderRecent(d.recent);
+  } catch(e) {}
+}
+
+function renderRecent(records) {
+  if (!records || !records.length) { document.getElementById('panel-recent').innerHTML = '<p style="color:#8b949e">暂无调用记录</p>'; return; }
+  const typeNames = { reply:'回复', tool:'工具', compaction:'压缩', summary:'摘要', reflection:'反思' };
+  let html = '<div class="recent-table"><table><thead><tr><th>时间</th><th>模型</th><th>类型</th><th>Prompt</th><th>Completion</th><th>总计</th></tr></thead><tbody>';
+  records.forEach(r => {
+    html += `<tr><td>${fmtTime(r.timestamp)}</td><td>${esc(r.model)}</td><td>${typeNames[r.type]||r.type}</td><td>${r.promptTokens}</td><td>${r.completionTokens}</td><td style="color:#58a6ff">${r.totalTokens}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  document.getElementById('panel-recent').innerHTML = html;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+function fmtNum(n) { if (n == null) return '0'; if (n >= 1000000) return (n/1000000).toFixed(1) + 'M'; if (n >= 1000) return (n/1000).toFixed(1) + 'K'; return String(n); }
+function fmtTime(ts) { if (!ts) return '-'; const d = new Date(ts); return d.toLocaleString('zh-CN', {month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}); }
+function esc(s) { if (!s) return ''; const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+// 自动登录
+if (adminToken) {
+  fetch(API + '/api/admin/dashboard', { headers: headers() })
+    .then(r => r.json())
+    .then(d => { if (d.ok) showDashboard(d.data); else { document.getElementById('loginWrap').style.display = 'flex'; } })
+    .catch(() => { document.getElementById('loginWrap').style.display = 'flex'; });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "design-preview-iteration",
+  "displayName": "设计预览页迭代修改",
+  "description": "根据用户反馈修改 web/design-preview.html 中的 UI 元素，如积分钱包拆分、Logo 重设计等。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求修改 web/design-preview.html 中的视觉或布局时：1) 先 list_dir 查看 web 目录，确认文件存在；2) read_file 读取 design-preview.html 全文，理解现有结构和 CSS 类；3) 定位用户提到的区域（如个人资料卡、顶栏 Logo），用 write_file 做精准修改，不要破坏其他部分；4) 如果用户要求重设计 Logo 或图标，优先尝试文字品牌化、几何图形或渐变质感，避免使用 emoji 或过度抽象的 SVG；5) 每次修改后告诉用户刷新 web/design-preview.html 查看，并简要说明改动；6) 如果用户说“不好看/没有质感/重新设计”，不要继续修补当前方案，直接换一种设计思路再迭代。",
+  "autoCreated": true,
+  "createdAt": 1785612715373
+}

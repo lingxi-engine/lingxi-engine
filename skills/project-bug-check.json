@@ -1,0 +1,12 @@
+{
+  "name": "project-bug-check",
+  "displayName": "项目错误排查",
+  "description": "扫描项目代码，定位并报告 bug",
+  "tools": [
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "当用户请求检查或调试项目中的bug，特别是针对特定功能时，首先使用list_dir了解项目结构，然后使用read_file阅读相关代码文件，分析代码中的逻辑错误、配置缺失、UI与后端不一致等问题，最后以结构化报告形式输出问题列表、严重程度和修复建议。",
+  "autoCreated": true,
+  "createdAt": 1785835270113
+}

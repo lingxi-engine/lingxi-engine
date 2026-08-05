@@ -1,0 +1,14 @@
+{
+  "name": "code-review-verification",
+  "displayName": "代码修复验证",
+  "description": "检查代码修复是否正确的多轮验证流程",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求检查代码修复是否正确时，使用 list_dir 定位相关文件，read_file 阅读代码，shell_exec 运行测试或搜索，逐项验证修复点，给出通过/未通过的结论，并指出遗留问题。",
+  "autoCreated": true,
+  "createdAt": 1785602003751
+}

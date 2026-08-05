@@ -1,0 +1,12 @@
+{
+  "name": "weather-query",
+  "displayName": "天气查询",
+  "description": "查询指定城市的近期天气预报",
+  "tools": [
+    "web_search",
+    "get_time"
+  ],
+  "prompt": "当用户请求某个城市的天气预报时：1. 使用 get_time 获取当前时间；2. 用 web_search 搜索该城市最近几天的天气信息（关键词格式：'{城市名} 天气预报'）；3. 整理搜索结果，以清晰的格式呈现温度、天气状况和日期。",
+  "autoCreated": true,
+  "createdAt": 1785864347981
+}

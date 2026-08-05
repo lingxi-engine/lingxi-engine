@@ -1,0 +1,12 @@
+{
+  "name": "debug-ai-model-integration",
+  "displayName": "AI 模型集成排障",
+  "description": "当用户可添加 AI 模型失败时，系统性检查配置、API Key、Base URL、模型名称与平台差异",
+  "tools": [
+    "web_search",
+    "shell_exec"
+  ],
+  "prompt": "当用户报告无法连接或添加某个 AI 模型时，遵循以下步骤：1. 确认 API Key 是否已设置且有效，检查是否有多个平台（如 Moonshot、Kimi）Key 不通用的问题。2. 检查 Base URL 是否正确，对比代码中的预设值与官方文档，注意平台可能已经迁移。3. 查阅官方 API 文档获取准确的模型名称列表，避免使用错误的别名。4. 使用 curl 或其他命令行工具进行最小化测试，直接排除应用层问题。5. 分析返回的 HTTP 状态码（404 模型未找到，401 认证失败等）以定位原因。最后以简洁、结构化的方式总结问题并给出确切的配置修正建议。",
+  "autoCreated": true,
+  "createdAt": 1784308293539
+}

@@ -1,0 +1,13 @@
+--- a/web/js/app.js
++++ b/web/js/app.js
+@@ -1935,8 +1935,8 @@
+   const type = document.getElementById('newProviderType').value;
+   const name = document.getElementById('newProviderName').value.trim();
+   const apiKey = document.getElementById('newProviderKey').value.trim();
+-  if (!name || !apiKey) {
+-    setMsg('addProviderMsg', '请填写显示名和 API Key');
++  if (!name) {
++    setMsg('addProviderMsg', '请填写显示名');
+     return;
+   }
+   const preset = providerPresets[type];

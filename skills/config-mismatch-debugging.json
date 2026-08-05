@@ -1,0 +1,14 @@
+{
+  "name": "config-mismatch-debugging",
+  "displayName": "配置不一致排查",
+  "description": "排查项目中多层配置（如系统提示词、环境变量、运行时记录）不一致的问题，并梳理关系给出修复建议。",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "web_search"
+  ],
+  "prompt": "当用户需要排查配置不一致或梳理配置关系时，首先使用 list_dir 和 read_file 找到相关的配置文件（如 .env, config.json, usage.json 等）和源代码中的默认配置。对比不同层级的配置（如声明配置、环境变量配置、实际运行配置），找出不一致的地方。使用表格清晰展示各层级配置的差异和关系。最后根据用户的最终目标（如修复配置），给出具体的修改建议。",
+  "autoCreated": true,
+  "createdAt": 1784211818401
+}

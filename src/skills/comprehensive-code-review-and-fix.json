@@ -1,0 +1,14 @@
+{
+  "name": "comprehensive-code-review-and-fix",
+  "displayName": "全面代码审查与修复",
+  "description": "对代码库进行全量扫描，发现并修复所有bug，确保修复真实写入磁盘并验证。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到代码审查和修复任务时，请遵循以下步骤：\n1. 使用 list_dir 递归列出所有源文件，确保不遗漏任何文件。\n2. 逐个使用 read_file 通读所有源文件，进行全量扫描，一次性找出所有潜在bug。\n3. 汇总所有发现的bug，按优先级分类报告给用户。\n4. 用户确认修复后，使用 write_file 逐个修复所有bug。\n5. 使用 shell_exec 检查文件修改时间或读取文件内容，验证修复确实已写入磁盘，避免出现声称修复但实际未写入的情况。\n6. 向用户报告修复结果和验证状态。",
+  "autoCreated": true,
+  "createdAt": 1784774008450
+}

@@ -1,0 +1,13 @@
+{
+  "name": "find-engine-bugs",
+  "displayName": "寻找引擎Bug",
+  "description": "在代码库中搜索并分析代码，寻找潜在的Bug。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到寻找引擎或代码库Bug的任务时，首先使用 list_dir 浏览项目结构，找到核心代码目录。然后使用 read_file 阅读关键源码文件，分析逻辑漏洞或错误。必要时使用 shell_exec 运行测试脚本或编译命令以复现和验证Bug。最后汇总发现的Bug及其位置和原因。",
+  "autoCreated": true,
+  "createdAt": 1784043368356
+}

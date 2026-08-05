@@ -1,0 +1,14 @@
+{
+  "name": "codebase-bug-hunting",
+  "displayName": "代码库系统性 Bug 排查与修复",
+  "description": "系统性通读源码，发现并修复 Bug，按优先级分类输出报告",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到代码库 Bug 排查任务时，按以下流程执行：\n1. 用 list_dir 了解项目结构，定位核心源码目录\n2. 逐个用 read_file 通读所有核心源码文件，重点关注：类型不匹配、import 不存在的符号、未使用的写入、异步错误处理缺失、JSON 解析安全性等\n3. 按 P1(高)/P2(中)/P3(低) 优先级分类列出发现的 Bug，每个 Bug 包含：文件位置、代码片段、问题描述\n4. 用户确认后，用 write_file 逐个修复，每个修复保持最小改动\n5. 修复完成后输出总结表格（文件、Bug编号、修复内容）\n6. 可多轮迭代：修复后再次通读复查，发现新 Bug 继续报告\n注意：每轮排查要覆盖全部核心源码，不要只看之前改过的文件。",
+  "autoCreated": true,
+  "createdAt": 1784769137596
+}

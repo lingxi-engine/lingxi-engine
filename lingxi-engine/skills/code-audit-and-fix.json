@@ -1,0 +1,13 @@
+{
+  "name": "code-audit-and-fix",
+  "displayName": "代码审计与修复",
+  "description": "对项目源码进行 Bug 审计、代码异味检查并尝试修复。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到代码审计或修复任务时，先使用 list_dir 了解项目整体结构，然后使用 read_file 逐个阅读核心源码文件。分析代码中的 Bug（如异步调用错误、类型缺失、逻辑漏洞、安全风险等）和代码异味（屎山代码），生成详细的分级审计报告。如果用户要求修复，则修改对应文件并记录修复内容；对于过大的文件无法一次性重写时，可生成修复说明文档（如 BUGFIX_*.md）供用户手动应用。",
+  "autoCreated": true,
+  "createdAt": 1784740616219
+}

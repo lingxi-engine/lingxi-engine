@@ -1,0 +1,23 @@
+// 灵犀引擎 Android - 项目级 build.gradle
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.0'
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        // nodejs-mobile 依赖
+        maven { url 'https://jitpack.io' }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

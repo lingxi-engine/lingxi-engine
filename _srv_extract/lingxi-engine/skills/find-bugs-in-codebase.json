@@ -1,0 +1,12 @@
+{
+  "name": "find-bugs-in-codebase",
+  "displayName": "源码 Bug 查找",
+  "description": "遍历指定目录并读取源码文件，分析并找出潜在的 Bug。",
+  "tools": [
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "当用户要求查找源码中的 bug 时，首先使用 list_dir 遍历目标目录结构，了解项目布局。然后根据文件类型和项目结构，使用 read_file 读取核心源码文件。分析代码逻辑、配置文件和依赖关系，找出潜在的 bug（如配置错误、逻辑漏洞、未处理的异常等），并输出详细的 Bug 分析报告，包括根本原因和具体代码位置。",
+  "autoCreated": true,
+  "createdAt": 1784739630065
+}

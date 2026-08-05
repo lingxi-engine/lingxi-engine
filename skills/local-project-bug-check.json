@@ -1,0 +1,13 @@
+{
+  "name": "local-project-bug-check",
+  "displayName": "本地项目Bug检查",
+  "description": "系统性检查本地项目的配置、日志和运行状态，诊断潜在的bug或错误根源",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求检查本地项目bug时，按以下步骤系统性排查：\n1. 读取项目的环境配置文件（如 .env, .env.example, config.*）检查是否缺少必要的环境变量或配置项，重点关注 API key、数据库连接、模型配置等。\n2. 使用 list_dir 浏览项目结构，定位可能的日志目录或关键入口文件。\n3. 使用 shell_exec 运行项目提供的诊断命令（如启动脚本、测试命令、状态检查）并捕获标准输出/错误，或直接查看最近日志文件内容。\n4. 汇总发现的配置缺失、服务状态异常、依赖缺失或代码错误，给出 P0/P1 严重度分类和简要修复建议。",
+  "autoCreated": true,
+  "createdAt": 1785827715323
+}

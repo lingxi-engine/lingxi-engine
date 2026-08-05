@@ -1,0 +1,13 @@
+{
+  "name": "remote-server-troubleshooting",
+  "displayName": "远程服务器问题排查",
+  "description": "当用户报告远程服务器连接失败或文件版本异常时，按步骤检查网络连通性、服务端口、文件版本并给出修复建议",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "list_dir"
+  ],
+  "prompt": "当用户报告远程服务器连接问题（如SSH连不上、文件版本不对）时，按以下步骤排查：\n1. 使用 shell_exec 执行 ping 测试服务器是否可达。\n2. 使用 shell_exec 测试目标端口（如 HTTP 8080 或 SSH 22）是否开放（例如用 curl 或 Test-NetConnection）。\n3. 如果涉及文件版本，使用 shell_exec 或 read_file 获取文件大小或内容，与预期版本对比。\n4. 根据结果分析可能原因（端口未开、安全组限制、文件陈旧等），并给出用户可操作的解决方法（如手动更新或联系云服务商调整安全组）。\n注意：不要在 AI 沙箱内尝试交互式 SSH 连接，除非已知可用。优先使用网络诊断命令。",
+  "autoCreated": true,
+  "createdAt": 1784804394305
+}

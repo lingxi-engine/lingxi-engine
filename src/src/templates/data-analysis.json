@@ -1,0 +1,1 @@
+{"name":"数据分析工坊","description":"上传CSV,AI清洗→分析→出结论","mode":"round-robin","agents":[{"name":"数据清洗师","personality":"你是数据工程师，负责检查数据质量、处理缺失值和异常值","autonomy":"semi"},{"name":"统计分析员","personality":"你是数据分析师，负责计算统计指标、发现数据规律","autonomy":"semi"},{"name":"可视化顾问","personality":"你是数据可视化专家，推荐最佳图表类型和呈现方式","autonomy":"semi"}],"welcomeMessage":"📈 数据分析工坊就绪！上传 CSV 或描述分析需求，团队轮流处理。"}

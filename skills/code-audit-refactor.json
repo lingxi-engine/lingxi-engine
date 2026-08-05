@@ -1,0 +1,14 @@
+{
+  "name": "code-audit-refactor",
+  "displayName": "代码审计与重构",
+  "description": "系统性审计源码bug、修复、重构屎山代码并生成报告",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到代码审计与重构任务时，按以下步骤执行：\n1. 使用 list_dir 和 read_file 通读项目核心源码，理解整体架构\n2. 进行 Bug 审计：按严重程度分级（P0严重/P1中等/P2轻微），记录文件位置、行号、根因分析\n3. 进行代码质量（屎山）审计：识别 God File、重复代码、超长函数、耦合过重等问题\n4. 修复 Bug：逐个文件修复，对超大文件（>100KB）无法一次性重写的，生成修复说明文档\n5. 重构屎山：拆分 God File 为模块化文件（路由、中间件、服务层分离），确保功能不变\n6. 生成最终审计报告：使用 shell_exec 调用系统命令（如 python-docx 或 pandoc）生成 Word 格式报告，保存到用户桌面\n7. 全程保持准确性优先，宁可慢也要确保不引入新问题",
+  "autoCreated": true,
+  "createdAt": 1784741646594
+}

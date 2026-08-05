@@ -1,0 +1,14 @@
+{
+  "name": "ollama-connection-troubleshoot",
+  "displayName": "Ollama本地模型连接故障排查",
+  "description": "当用户报告连接Ollama本地模型失败（404/模型未找到等错误）时，系统地检查本地Ollama服务状态、可用模型列表、环境变量配置和代码逻辑，定位根因并给出修复方案",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "run_terminal",
+    "edit_file"
+  ],
+  "prompt": "当用户遇到连接Ollama本地模型失败（如404、model not found等错误）时，请按以下步骤系统排查：\n1. 检查Ollama服务是否运行：执行`curl http://localhost:11434/api/tags`或`ollama list`，确认服务和模型列表。\n2. 如果服务正常，对比.env或配置文件中配置的模型名（如DEFAULT_MODEL, TOOL_MODEL, REPLY_MODEL）与Ollama实际可用模型名是否一致，注意版本号（如deepseek-v4-flash不存在）。\n3. 若模型名不匹配，推荐使用本地存在的模型名（如qwen3.6:27b）并提示修改配置文件。\n4. 如果用户坚持使用前端选择的模型但仍失败，检查代码中模型选择逻辑：是否`.env`中的配置优先级高于自动检测？如果是，建议修改代码让自动检测的模型可用。\n5. 若问题涉及多个项目（如灵犀引擎与AI Agent市场），确认用户实际在使用的项目是否真的连了模型。\n6. 提供具体修改方案（如修改.env、调整代码逻辑），并指导用户重启服务测试。",
+  "autoCreated": true,
+  "createdAt": 1784996757633
+}

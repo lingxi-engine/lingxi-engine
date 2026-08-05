@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI 员工市场 — 灵犀引擎</title>
+<link rel="stylesheet" href="market.css">
+<style>
+.tabs { display:flex; gap:0; margin-bottom:16px; border-bottom:2px solid #e0e0e0; }
+.tab { padding:10px 20px; cursor:pointer; border:none; background:none; font-size:14px; font-weight:500; color:#666; border-bottom:2px solid transparent; margin-bottom:-2px; transition:all .2s; }
+.tab:hover { color:#333; }
+.tab.active { color:#2196F3; border-bottom-color:#2196F3; }
+.credits-badge { display:inline-block; background:#4CAF50; color:#fff; padding:3px 10px; border-radius:12px; font-size:12px; margin-left:12px; }
+.hire-btn { background:#2196F3; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+.hire-btn:hover { background:#1976D2; }
+.fire-btn { background:#f44336; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+.fire-btn:hover { background:#d32f2f; }
+.chat-btn { background:#4CAF50; color:#fff; border:none; padding:6px 14px; border-radius:6px; cursor:pointer; font-size:13px; text-decoration:none; display:inline-block; }
+.employee-card { border:1px solid #e0e0e0; border-radius:8px; padding:14px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; }
+.employee-info h4 { margin:0 0 4px; font-size:15px; }
+.employee-info p { margin:0; color:#888; font-size:12px; }
+.employee-actions { display:flex; gap:8px; align-items:center; }
+.empty-state { text-align:center; color:#999; padding:30px; font-size:14px; }
+.status-badge { display:inline-block; border-radius:10px; padding:2px 8px; font-size:11px; font-weight:500; }
+.status-active { background:#e8f5e9; color:#2e7d32; }
+.status-terminated { background:#fbe9e7; color:#c62828; }
+.modal-overlay { position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,.4); display:flex; justify-content:center; align-items:center; z-index:1000; }
+.modal { background:#fff; border-radius:12px; padding:24px; min-width:340px; max-width:420px; box-shadow:0 8px 24px rgba(0,0,0,.15); }
+.modal h3 { margin:0 0 12px; }
+.modal p { margin:0 0 16px; color:#555; font-size:14px; line-height:1.6; }
+.modal-btns { display:flex; gap:8px; justify-content:flex-end; }
+.btn-cancel { background:#e0e0e0; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; }
+.btn-confirm { background:#2196F3; color:#fff; border:none; padding:8px 16px; border-radius:6px; cursor:pointer; }
+.btn-confirm:hover { background:#1976D2; }
+.publish-section { background:#f5f5f5; border-radius:8px; padding:16px; margin-bottom:16px; }
+.publish-section h3 { margin:0 0 12px; font-size:15px; }
+.form-row { display:flex; gap:8px; margin-bottom:8px; flex-wrap:wrap; }
+.form-row input,.form-row select,.form-row textarea { flex:1; min-width:120px; padding:8px; border:1px solid #ddd; border-radius:6px; font-size:13px; }
+.form-row textarea { min-height:60px; }
+.btn-primary { background:#2196F3; color:#fff; border:none; padding:8px 20px; border-radius:6px; cursor:pointer; font-size:13px; }
+.btn-primary:hover { background:#1976D2; }
+.listing-card { border:1px solid #e0e0e0; border-radius:8px; padding:14px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:flex-start; }
+.listing-card h4 { margin:0 0 4px; }
+.listing-card p { margin:0 0 4px; color:#666; font-size:12px; }
+.listing-price { font-weight:600; color:#f57c00; }
+</style>
+</head>
+<body>
+<header>
+  <a href="/" class="home">← 回首页</a>
+  <h1>🏪 AI 员工市场</h1>
+  <span id="connStatus" style="font-size:12px">🔴 未连接</span>
+  <span id="creditsDisplay" class="credits-badge" style="display:none">🪙 0</span>
+</header>
+
+<main>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('market')">📋 市场</button>
+    <button class="tab" onclick="switchTab('mylistings')">📦 我的发布</button>
+    <button class="tab" onclick="switchTab('employees')">👥 我的员工</button>
+  </div>
+
+  <!-- 市场 Tab -->
+  <div id="tab-market">
+    <div class="publish-section">
+      <h3>📤 发布 AI 员工到市场</h3>
+      <div class="form-row">
+        <input id="pubAgentId" placeholder="Agent ID">
+        <input id="pubTitle" placeholder="员工名称">
+        <input id="pubPrice" type="number" placeholder="价格(积分)" value="10">
+        <select id="pubCategory">
+          <option>编程</option><option>写作</option><option>翻译</option><option>数据分析</option><option>设计</option><option>通用</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <textarea id="pubDesc" placeholder="描述能力..." rows="2"></textarea>
+        <input id="pubTags" placeholder="标签(逗号分隔)">
+      </div>
+      <button class="btn-primary" onclick="publishAgent()">🚀 发布</button>
+    </div>
+    <div id="listingGrid"></div>
+  </div>
+
+  <!-- 我的发布 Tab -->
+  <div id="tab-mylistings" style="display:none">
+    <div id="myListingsGrid"></div>
+  </div>
+
+  <!-- 员工 Tab -->
+  <div id="tab-employees" style="display:none">
+    <h3 style="margin:0 0 8px">👥 我雇佣的员工</h3>
+    <div id="myEmployees"></div>
+    <hr style="margin:16px 0">
+    <h3 style="margin:0 0 8px">🔌 我被雇佣</h3>
+    <div id="hiredMe"></div>
+  </div>
+</main>
+
+<div id="hireModal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <h3>⚠️ 确认雇佣</h3>
+    <p id="hireModalText">确认要雇佣该 AI 员工吗？</p>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeHireModal()">取消</button>
+      <button class="btn-confirm" onclick="confirmHire()">✅ 确认雇佣</button>
+    </div>
+  </div>
+</div>
+
+<script src="market.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "troubleshoot-model-routing",
+  "displayName": "排查模型路由与配置问题",
+  "description": "当用户反馈因路由未开启或配置错误导致模型无法使用时，系统地检查设置、日志与文档并定位原因。",
+  "tools": [
+    "web_search",
+    "list_dir",
+    "read_file",
+    "execute_command"
+  ],
+  "prompt": "当用户报告某个模型/功能因路由未开启或配置问题无法使用时：1) 先确认具体现象（错误信息、截图、设置项名称）；2) 使用 list_dir/read_file 检查相关配置文件、路由表、模型列表与日志；3) 使用 web_search 检索官方文档或常见错误；4) 分析配置是否缺少路由映射、API Key、权限或模型可用性；5) 给出可操作的修复步骤，必要时让用户补充信息。",
+  "autoCreated": true,
+  "createdAt": 1784733571516
+}

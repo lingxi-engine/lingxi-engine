@@ -1,0 +1,13 @@
+{
+  "name": "code-bug-scan",
+  "displayName": "代码Bug扫描",
+  "description": "全面扫描项目代码，检测配置错误、运行异常和潜在bug，输出结构化诊断报告",
+  "tools": [
+    "read_file",
+    "list_files",
+    "web_search"
+  ],
+  "prompt": "当用户要求检查项目bug时：1. 先确认项目根目录和关键文件结构（使用 list_files）；2. 读取配置文件（如 .env、package.json、config 等）和核心代码文件；3. 解析错误日志或用户描述的症状，定位根因；4. 如需外部知识，调用 web_search 查询技术栈相关信息；5. 输出带严重度、根因分析和建议的 bug 报告。报告格式建议包含问题编号、现象、根因、严重度、修复建议。",
+  "autoCreated": true,
+  "createdAt": 1785835721584
+}

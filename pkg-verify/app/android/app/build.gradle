@@ -1,0 +1,56 @@
+// 灵犀引擎 Android - App 级 build.gradle
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.lingxi.engine'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.lingxi.engine"
+        minSdk 24          // Android 7.0+
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+
+        // nodejs-mobile 需要 ARM 架构
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            debuggable true
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // 允许大 assets 文件（引擎 JS ~9MB）
+    aaptOptions {
+        noCompress 'js', 'json', 'wasm'
+    }
+}
+
+dependencies {
+    // Capacitor
+    implementation project(':capacitor-android')
+    implementation 'com.getcapacitor:capacitor-android:6.0.0'
+
+    // nodejs-mobile
+    implementation 'com.github.nodejs-mobile:nodejs-mobile-android:18.20.4'
+
+    // AndroidX
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core:1.12.0'
+
+    // 前台服务支持
+    implementation 'androidx.work:work-runtime:2.9.0'
+}

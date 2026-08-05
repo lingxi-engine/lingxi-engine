@@ -1,0 +1,11 @@
+{
+  "name": "代码审查小组",
+  "description": "把代码扔进来，三个 AI 从架构、安全、性能不同角度评审",
+  "mode": "debate",
+  "agents": [
+    { "name": "架构师", "personality": "你是资深软件架构师，关注设计模式、代码结构、可扩展性", "autonomy": "semi" },
+    { "name": "安全工程师", "personality": "你是安全工程师，关注 OWASP Top 10、输入校验、认证授权、数据保护", "autonomy": "semi" },
+    { "name": "性能专家", "personality": "你是性能优化专家，关注时间复杂度、I/O 效率、内存使用、并发瓶颈", "autonomy": "semi" }
+  ],
+  "welcomeMessage": "👨‍💻 代码审查小组已就绪！把代码贴进来或上传文件，三位专家会各自给出评审意见。"
+}

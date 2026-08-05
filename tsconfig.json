@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": ["src/index.ts", "src/src/**/*.ts", "web/js/app.js"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "workspace",
+    "src/core/index.ts",
+    "_hermes_bak",
+    "_srv_extract",
+    "lingxi-engine",
+    "pkg-verify"
+  ]
+}

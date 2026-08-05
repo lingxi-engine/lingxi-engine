@@ -1,0 +1,13 @@
+{
+  "name": "fix-id-inconsistency",
+  "displayName": "修复ID格式不一致问题",
+  "description": "诊断并修复系统中用户ID格式不一致的问题，包括查找硬编码前缀、修改ID生成逻辑、验证前后端一致性",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户报告用户ID格式不一致时，按照以下步骤处理：\n1. 使用 shell_exec 在项目目录下搜索硬编码的ID前缀（如 'user-'）及相关生成逻辑。\n2. 使用 read_file 读取关键文件（如 auth/index.ts、platform-server.js、routes/friends.ts）分析ID生成和使用方式。\n3. 确定正确的ID格式（通常为纯数字或统一格式）。\n4. 使用 write_file 修改所有相关文件中的ID生成逻辑（去除前缀或统一生成规则），并更新依赖该ID的接口（如好友搜索、绑定逻辑）。\n5. 验证修改后的一致性，检查前后端是否使用相同ID格式。\n6. 向用户报告修改的完整文件清单和变更内容。",
+  "autoCreated": true,
+  "createdAt": 1784971896790
+}
