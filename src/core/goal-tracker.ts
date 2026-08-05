@@ -63,10 +63,11 @@ export class GoalTracker {
     if (!goal) return false;
     db.run(`UPDATE project_goals SET status = 'done', done_at = ? WHERE id = ?`, [Date.now(), id]);
     
-    // 检查是否全部完成 → 触发 outcome（v1.7.3 修复：真正调用回调而不是只打日志）
+    // 检查是否全部完成 → 触发 outcome（排除已取消的目标）
     const all = GoalTracker.list(goal.projectId);
-    const done = all.filter(g => g.status === 'done').length;
-    if (done === all.length && all.length > 0) {
+    const active = all.filter(g => g.status !== 'cancelled');
+    const done = active.filter(g => g.status === 'done').length;
+    if (done === active.length && active.length > 0) {
       console.log(`[GoalTracker] 🎉 项目 ${goal.projectId} 全部完成 (${done}/${all.length})`);
       try {
         GoalTracker.onProjectCompleted?.(goal.projectId);

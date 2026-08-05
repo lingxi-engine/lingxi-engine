@@ -14,7 +14,7 @@
  */
 
 import { getZonedParts } from './timezone.js';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, writeFileSync, renameSync } from 'fs';
 import { join } from 'path';
 
 export type ScheduleKind = 'at' | 'every' | 'cron';
@@ -249,7 +249,9 @@ export class CronScheduler {
         )) : j.payload,
         lastRunAt: j.lastRunAt, nextRunAt: j.nextRunAt, runCount: j.runCount, createdAt: j.createdAt,
       }));
-      writeFileSync(this.persistPath, JSON.stringify(data, (key, val) => typeof val === 'undefined' ? null : val, 2), 'utf8');
+      const tmpPath = this.persistPath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(data, (key, val) => typeof val === 'undefined' ? null : val, 2), 'utf8');
+      renameSync(tmpPath, this.persistPath); // 原子替换
     } catch (err: any) {
       console.error('[Cron] 持久化失败:', err.message);
     }

@@ -9,7 +9,7 @@
  */
 
 import { logger } from './logger.js';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
 import { dirname, join } from 'path';
 
 // ─── 类型 ───
@@ -74,8 +74,12 @@ export class OutcomeTracker {
       // 先尝试从 markdown 代码块提取
       let jsonStr = raw.match(/```(?:json)?\s*\[([\s\S]*?)\]```/);
       let jsonMatch = jsonStr ? ['[' + jsonStr[1] + ']'] : null;
-      // 非贪婪匹配
-      if (!jsonMatch) jsonMatch = raw.match(/\[([\s\S]*?)\]/);
+      // 贪婪匹配：从第一个 [ 到最后一个 ]
+      if (!jsonMatch) {
+        const start = raw.indexOf('[');
+        const end = raw.lastIndexOf(']');
+        if (start !== -1 && end > start) jsonMatch = [raw.slice(start, end + 1)];
+      }
       const items: OutcomeItem[] = jsonMatch
         ? JSON.parse(jsonMatch[0]).map((item: any, i: number) => ({
             id: `oc-${Date.now()}-${i}`,
@@ -222,7 +226,9 @@ ${conversationSummary.slice(0, 2000)}
     try {
       // 确保目录存在（正常由 index.ts 创建 data 目录，这里兜底）
       mkdirSync(dirname(this.persistPath), { recursive: true });
-      writeFileSync(this.persistPath, JSON.stringify(Array.from(this.cards.values()), null, 2), 'utf8');
+      const tmpPath = this.persistPath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(Array.from(this.cards.values()), null, 2), 'utf8');
+      renameSync(tmpPath, this.persistPath); // 原子替换，避免写一半崩溃丢数据
     } catch (err: any) {
       logger.error('Outcome', `评分卡持久化失败: ${err?.message || err}`);
     }
