@@ -508,18 +508,19 @@ export class AIHub {
       }
     }
 
-    // 4. 最后兜底：遍历所有 provider，找到第一个有模型的就用，resolvedModel 用原始请求的模型名
+    // 4. 最后兜底：遍历所有 provider，找到第一个有模型的就用，resolvedModel 从该 provider 的 models 取
     for (const [pid, entry] of this.providers) {
       if (entry.config.models.length > 0) {
-        console.log(`[AI Hub] 模型 "${model}" 无精确匹配，使用 provider ${pid} 的 client，模型名透传: ${model}`);
-        return { client: entry.client, resolvedModel: model };
+        const fallbackModel = entry.config.models[0];
+        console.log(`[AI Hub] 模型 "${model}" 无精确匹配，fallback 到 provider ${pid}: ${fallbackModel}`);
+        return { client: entry.client, resolvedModel: fallbackModel };
       }
     }
-    // 5. 实在没有，用第一个 provider 的 client + 原始模型名
+    // 5. 实在没有，用第一个 provider 的 client + 其首个模型
     const first = this.providers.values().next().value;
-    if (first) {
-      console.log(`[AI Hub] 模型 "${model}" 无匹配，使用第一个 provider ${first.config.id} 透传模型名`);
-      return { client: first.client, resolvedModel: model };
+    if (first && first.config.models.length > 0) {
+      console.log(`[AI Hub] 模型 "${model}" 无匹配，使用第一个 provider ${first.config.id}: ${first.config.models[0]}`);
+      return { client: first.client, resolvedModel: first.config.models[0] };
     }
     return null;
   }

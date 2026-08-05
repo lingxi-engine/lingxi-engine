@@ -503,9 +503,21 @@ export class AIHub {
       }
     }
 
-    // 4. 最后兜底
+    // 4. 最后兜底：遍历所有 provider，找到第一个有模型的就用，resolvedModel 从该 provider 的 models 取
+    for (const [pid, entry] of this.providers) {
+      if (entry.config.models.length > 0) {
+        const fallbackModel = entry.config.models[0];
+        console.log(`[AI Hub] 模型 "${model}" 无精确匹配，fallback 到 provider ${pid}: ${fallbackModel}`);
+        return { client: entry.client, resolvedModel: fallbackModel };
+      }
+    }
+    // 5. 实在没有，用第一个 provider 的 client + 其首个模型
     const first = this.providers.values().next().value;
-    return first ? { client: first.client, resolvedModel: first.config.models[0] || model } : null;
+    if (first && first.config.models.length > 0) {
+      console.log(`[AI Hub] 模型 "${model}" 无匹配，使用第一个 provider ${first.config.id}: ${first.config.models[0]}`);
+      return { client: first.client, resolvedModel: first.config.models[0] };
+    }
+    return null;
   }
 
   /**
