@@ -13,7 +13,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["index.ts", "src/**/*.ts", "web/js/app.js"],
+  "include": ["src/**/*.ts", "web/js/app.js"],
   "exclude": [
     "node_modules",
     "dist",
@@ -26,6 +26,12 @@
     "src/mobile",
     "src/tests",
     "src/router.ts",
-    "src/mesh-platform.ts"
+    "src/mesh-platform.ts",
+    "src/net/lan-social.ts",
+    "src/routes/auth.ts",
+    "src/routes/chat.ts",
+    "src/routes/friends.ts",
+    "src/routes/market.ts",
+    "src/routes/misc.ts"
   ]
 }
