@@ -29,6 +29,12 @@ export interface ProjectGoal {
 
 export class GoalTracker {
   /**
+   * 项目全部完成回调（由 index.ts 注册，用于触发 outcome 评分卡）
+   * v1.7.3 修复: 之前 markDone 里只打日志没有真正调用 OutcomeTracker
+   */
+  static onProjectCompleted: ((projectId: string) => void) | null = null;
+
+  /**
    * 创建目标
    */
   static create(projectId: string, title: string, acceptanceCriteria?: string, parentId?: string): ProjectGoal {
@@ -57,11 +63,16 @@ export class GoalTracker {
     if (!goal) return false;
     db.run(`UPDATE project_goals SET status = 'done', done_at = ? WHERE id = ?`, [Date.now(), id]);
     
-    // 检查是否全部完成 → 触发 outcome
+    // 检查是否全部完成 → 触发 outcome（v1.7.3 修复：真正调用回调而不是只打日志）
     const all = GoalTracker.list(goal.projectId);
     const done = all.filter(g => g.status === 'done').length;
     if (done === all.length && all.length > 0) {
       console.log(`[GoalTracker] 🎉 项目 ${goal.projectId} 全部完成 (${done}/${all.length})`);
+      try {
+        GoalTracker.onProjectCompleted?.(goal.projectId);
+      } catch (err: any) {
+        console.error(`[GoalTracker] 触发完成回调失败:`, err?.message || err);
+      }
     }
     return true;
   }
@@ -81,17 +92,35 @@ export class GoalTracker {
 
   /**
    * 取消目标
+   * v1.7.3 修复: 校验目标存在，不存在返回 false（之前无脑返回 true）
    */
   static cancel(id: string): boolean {
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
     const db = getDB();
     db.run(`UPDATE project_goals SET status = 'cancelled' WHERE id = ?`, [id]);
     return true;
   }
 
   /**
+   * 恢复目标为待处理（前端「恢复 ↩️」按钮调用）
+   * v1.7.4 新增: 之前前端 setGoalStatus(id,'pending') 调 PATCH 但后端没有对应能力
+   */
+  static markPending(id: string): boolean {
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
+    const db = getDB();
+    db.run(`UPDATE project_goals SET status = 'pending', done_at = NULL WHERE id = ?`, [id]);
+    return true;
+  }
+
+  /**
    * 彻底删除目标（含以该目标为父目标的子目标）
+   * v1.7.4 修复: 校验目标存在，不存在返回 false（之前无脑返回 true，且 DELETE /goals/:id 路由缺失导致前端删除 404）
    */
   static remove(id: string): boolean {
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
     const db = getDB();
     db.run(`DELETE FROM project_goals WHERE id = ? OR parent_id = ?`, [id, id]);
     return true;

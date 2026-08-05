@@ -19,6 +19,9 @@ let onPeerMessage: ((msg: PeerMessage) => void) | null = null;
 let onPeerTask: ((msg: PeerMessage) => void) | null = null;
 let meshVersion: string = '0.0.0';
 let meshPlatformUrl: string = '';
+let reconnectAttempt = 0;                 // 连续失败次数（指数退避用）
+let reconnectTimer: NodeJS.Timeout | null = null; // 重连定时器（防止叠加）
+const MAX_RECONNECT_DELAY = 5 * 60 * 1000;  // 退避上限 5 分钟
 
 export interface PeerMessage {
   type: 'peer.message' | 'peer.task' | 'peer.response' | 'peer.broadcast';
@@ -97,8 +100,8 @@ async function sendHeartbeat(
  * 连接到平台的 WebSocket mesh
  */
 function connectMesh(platformWsUrl: string, token: string, port: number, agents: string[]) {
-  if (wsSocket && wsSocket.readyState === WebSocket.OPEN) {
-    console.log('[Mesh] 已经连接，跳过');
+  if (wsSocket && (wsSocket.readyState === WebSocket.OPEN || wsSocket.readyState === WebSocket.CONNECTING)) {
+    console.log('[Mesh] 已经连接/连接中，跳过');
     return;
   }
 
@@ -107,6 +110,7 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
 
   wsSocket.on('open', () => {
     console.log('[Mesh] WebSocket 连接成功');
+    reconnectAttempt = 0; // 连接成功，重置退避计数
     // 发送握手
     wsSocket!.send(JSON.stringify({
       type: 'mesh.handshake',
@@ -143,9 +147,17 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
   });
 
   wsSocket.on('close', (code, reason) => {
-    console.log(`[Mesh] WebSocket 断开 (${code}), 5秒后重连...`);
+    console.log(`[Mesh] WebSocket 断开 (${code})`);
     wsSocket = null;
-    setTimeout(() => connectMesh(platformWsUrl, token, port, agents), 5000);
+    // 指数退避：5s → 10s → 20s → 40s → ... → 上限 5 分钟，避免平台不可达时重连风暴
+    const delay = Math.min(5000 * Math.pow(2, reconnectAttempt), MAX_RECONNECT_DELAY);
+    reconnectAttempt++;
+    console.log(`[Mesh] ${(delay / 1000).toFixed(0)} 秒后重连 (第 ${reconnectAttempt} 次)`);
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectMesh(platformWsUrl, token, port, agents);
+    }, delay);
   });
 
   wsSocket.on('error', (err) => {
@@ -195,6 +207,13 @@ export function getInstanceId(): string {
  * @param port 本实例端口
  * @param agents 本实例的 AI agent ID 列表
  */
+// Agent 列表获取回调（由 index.ts 注入）
+let _getAgentsForHeartbeat: (() => string[]) | null = null;
+
+export function setAgentsProvider(fn: () => string[]) {
+  _getAgentsForHeartbeat = fn;
+}
+
 // 用户列表获取回调（由 misc.ts 注入）
 let _getUsersForHeartbeat: (() => { numericId: number; displayName: string; email?: string; userId: string }[]) | null = null;
 
@@ -253,6 +272,10 @@ export function getMeshInfo() {
  * 停止实例网格
  */
 export function stopInstanceMesh() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;

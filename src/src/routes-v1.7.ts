@@ -25,9 +25,7 @@ function getAIHubClient(deps: any) {
   return null;
 }
 
-export function registerV17Routes(app: Express, _deps: any, auth?: any) {
-  // v2.0.6 修复：auth 参数为 requireAuth 中间件，保护 V17 路由不被未认证访问
-  const guard = auth || ((_req: any, _res: any, next: any) => next());
+export function registerV17Routes(app: Express, _deps: any, _auth?: any) {
   let _dreamer: any = null;
   let _entityExtractor: any = null;
 
@@ -47,19 +45,25 @@ export function registerV17Routes(app: Express, _deps: any, auth?: any) {
     return _entityExtractor;
   }
 
-  app.post('/api/dream', guard, (req, res) => {
+  app.post('/api/dream', (req, res) => {
     const d = getDreamer();
     if (!d) return res.json({ok:false,error:'Dreamer未就绪：请配置可用模型与API Key'});
     const { chatId, agentId } = req.body;
     d.dream(chatId, agentId).then((r: any) => res.json({ok:true,report:r})).catch((e: any) => res.json({ok:false,error:e.message}));
   });
 
-  app.get('/api/entities', guard, (req, res) => {
+  app.get('/api/entities', (req, res) => {
     const e = getEntityExtractor();
     res.json({ok:true, entities: e?.getEntities((req.query.chatId as string)||'', (req.query.agentId as string)||'')||[]});
   });
 
-  // v2.0.6: /api/outcomes 已由 routes/goals-outcomes.ts 提供；/api/logs 已由 index.ts 以 adminAuth 注册（更严格）
+  // NOTE:
+  // 1. /api/outcomes 系列路由已由 routes/goals-outcomes.ts 统一提供（ctx.outcomeTracker 单实例）。
+  //    旧实现在此注册会先于 goals-outcomes.ts 命中，导致「创建/列表」与「查询/删除」操作两个不同的
+  //    OutcomeTracker 实例（共享同一 data/outcome-cards.json 但内存互不感知）→ 创建的卡片在 DELETE 里永远 404。
+  //    修复：移除本文件的重复注册，统一走 createGoalOutcomeRoutes。
+  // 2. /api/logs 已由 index.ts 注册（带 requireAuth）。本文件不注册，避免无鉴权版本先命中绕过鉴权。
+  // 保留: /api/dream, /api/entities
 
-  console.log('[v1.7] 路由已注册: /api/dream, /api/entities');
+  console.log('[v1.7] 路由已注册: /api/dream, /api/entities (outcomes/logs 已移交 index.ts 路由)');
 }

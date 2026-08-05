@@ -1,5 +1,20 @@
 [
   {
+    "id": "deepseek",
+    "type": "deepseek",
+    "name": "DeepSeek",
+    "apiKey": "sk-65d529832f8c4cdb86fa198df004dcab",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "models": [
+      "deepseek-chat",
+      "deepseek-reasoner",
+      "deepseek-v4-flash",
+      "deepseek-v4-pro"
+    ],
+    "isLocal": false,
+    "enabled": true
+  },
+  {
     "id": "local-ollama",
     "type": "ollama",
     "name": "Ollama(本地)",
@@ -8,6 +23,7 @@
     "models": [
       "ornith:latest",
       "qwen3.6:27b",
+      "qwen3.5:9b",
       "glm-5.2:cloud",
       "kimi-k2.7-code:cloud",
       "kimi-k2.6:cloud",
@@ -18,7 +34,7 @@
     "enabled": true
   },
   {
-    "id": "deepseek-1785818030837",
+    "id": "deepseek-1785918851779",
     "type": "deepseek",
     "name": "DeepSeek",
     "apiKey": "sk-65d529832f8c4cdb86fa198df004dcab",
@@ -28,6 +44,21 @@
       "deepseek-v4-flash",
       "deepseek-chat",
       "deepseek-reasoner"
+    ],
+    "isLocal": false,
+    "enabled": true
+  },
+  {
+    "id": "qwen-1785929429761",
+    "type": "qwen",
+    "name": "通义千问",
+    "apiKey": "sk-ws-H.EHMYMME.yW57.MEQCIBqyHsK4-LOsXUIETliyfXxi8tAJl3_4n-nw889dXRimAiAOnkAytsexinuEpqucTnGNX2AN2yNInmfjmiRnyHjZ0Q",
+    "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "models": [
+      "qwen3.7-max",
+      "qwen3.7-plus",
+      "qwen3.6-flash",
+      "qwen-max"
     ],
     "isLocal": false,
     "enabled": true

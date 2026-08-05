@@ -4,6 +4,13 @@
  * v2 修复：
  *  - 时区支持：getNextCronRun 现在用 getZonedParts 正确计算指定时区的触发时间
  *  - 持久化：任务列表保存到 data/cron-jobs.json，重启恢复
+ *
+ * v2.1 修复：
+ *  - BUG-3: cron 表达式中 day-of-month 与 day-of-week 同时受限时改为 OR 语义（标准 cron）；
+ *           同时修复内层分钟搜索起点——必须从命中小时的整点开始（分钟/秒/毫秒归零），否则整点触发会被算错
+ *  - BUG-4: "at" 一次性任务过期后补执行一次并标记完成，不再静默卡死
+ *  - BUG-7: persistToDisk 保存 nextRunAt；且 addJob/setEnabled 改为先调度再持久化；
+ *           nextRunAt 在 getDelayMs 内用同一时间基准计算，避免两次 Date.now() 引入毫秒漂移
  */
 
 import { getZonedParts } from './timezone.js';
@@ -83,6 +90,8 @@ function parseCronExpr(expr: string): { minute: number[]; hour: number[]; day: n
 
 /**
  * v2 修复：计算下一次 cron 触发时间，尊重 tz 时区
+ * v2.1 修复：day-of-month 与 day-of-week 同时受限时用 OR 语义（标准 cron）
+ *           + 内层分钟搜索从命中小时的整点开始（分钟/秒/毫秒归零）
  */
 function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Shanghai'): Date | null {
   const parsed = parseCronExpr(expr);
@@ -90,15 +99,32 @@ function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Shanghai')
   const limit = new Date(after.getTime() + 365 * 86400000);
   let d = new Date(start);
 
+  // 是否受限：字段值个数 < 全范围 → 被显式限制
+  const dayRestricted = parsed.day.length < 31;
+  const weekdayRestricted = parsed.weekday.length < 7;
+
   // 优化：先按小时步进找到匹配的 月/日/星期/小时，再按分钟精确匹配
   while (d < limit) {
     const z = getZonedParts(d, tz);
     const monthOk = parsed.month.includes(z.month);
-    const dayOk = parsed.day.includes(z.day);
-    const weekdayOk = parsed.weekday.includes(z.weekday);
 
-    if (!monthOk || !dayOk || !weekdayOk) {
-      // 月/日/星期不匹配 → 跳到明天 0 点（省掉全天逐分钟扫描）
+    // 标准 cron 语义：
+    //  - DOM 和 DOW 都受限时 → 二者是 OR（任一匹配即触发）
+    //  - 只有一方受限 → 用受限的那一方
+    //  - 都未受限 → 每天
+    let dayOk: boolean;
+    if (dayRestricted && weekdayRestricted) {
+      dayOk = parsed.day.includes(z.day) || parsed.weekday.includes(z.weekday);
+    } else if (dayRestricted) {
+      dayOk = parsed.day.includes(z.day);
+    } else if (weekdayRestricted) {
+      dayOk = parsed.weekday.includes(z.weekday);
+    } else {
+      dayOk = true;
+    }
+
+    if (!monthOk || !dayOk) {
+      // 月/日不匹配 → 跳到下一小时（省掉全天逐分钟扫描）
       d = new Date(d.getTime() + 3600000); // 跳 1 小时
       continue;
     }
@@ -109,8 +135,11 @@ function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Shanghai')
       continue;
     }
 
-    // 月/日/小时都匹配了 → 在当前小时内按分钟搜索（最多 60 次）
-    const hourStart = new Date(d);
+    // 月/日/小时都匹配了 → 从当前小时的整点开始按分钟搜索（最多 60 次）
+    // v2.1 修复：必须回退到小时起点（分钟/秒/毫秒归零），否则从 d 的当前分钟（如 09:41）
+    // 开始找 0 分钟，会错误地命中下一小时的 00 分（把 09:00 的 cron 算成 10:00）。
+    const hourStartMs = d.getTime() - z.minute * 60_000 - z.second * 1000 - (d.getTime() % 1000);
+    d = new Date(hourStartMs);
     for (let m = 0; m < 60; m++) {
       const mz = getZonedParts(d, tz);
       if (parsed.minute.includes(mz.minute)) {
@@ -118,7 +147,7 @@ function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Shanghai')
       }
       d = new Date(d.getTime() + 60_000);
     }
-    // 当前小时没匹配 → 继续外层循环
+    // 当前小时没匹配 → 继续外层循环（d 已到下一小时整点，hour 匹配会重新从整点搜，不匹配则跳小时）
   }
   console.warn(`[Cron] 表达式 "${expr}" 在 365 天内无匹配，可能不可达`);
   return null;
@@ -154,10 +183,11 @@ export class CronScheduler {
 
   addJob(job: CronJob): void {
     this.jobs.set(job.id, job);
-    this.persistToDisk();
+    // v2.1: 先调度（会计算 nextRunAt），再持久化，确保 nextRunAt 落盘
     if (this.running && job.enabled) {
       this.scheduleJob(job);
     }
+    this.persistToDisk();
   }
 
   removeJob(id: string): boolean {
@@ -173,14 +203,16 @@ export class CronScheduler {
     const job = this.jobs.get(id);
     if (!job) return;
     job.enabled = enabled;
-    this.persistToDisk();
+    // v2.1: 先调度/取消调度（更新 nextRunAt），再持久化
     if (enabled && this.running) {
       this.scheduleJob(job);
     } else {
       const timer = this.timers.get(id);
       if (timer) clearTimeout(timer);
       this.timers.delete(id);
+      job.nextRunAt = undefined;
     }
+    this.persistToDisk();
   }
 
   getJob(id: string): CronJob | undefined {
@@ -215,7 +247,7 @@ export class CronScheduler {
         payload: j.payload ? JSON.parse(JSON.stringify(j.payload, (key, val) =>
           typeof val === 'undefined' ? null : val
         )) : j.payload,
-        lastRunAt: j.lastRunAt, runCount: j.runCount, createdAt: j.createdAt,
+        lastRunAt: j.lastRunAt, nextRunAt: j.nextRunAt, runCount: j.runCount, createdAt: j.createdAt,
       }));
       writeFileSync(this.persistPath, JSON.stringify(data, (key, val) => typeof val === 'undefined' ? null : val, 2), 'utf8');
     } catch (err: any) {
@@ -233,7 +265,7 @@ export class CronScheduler {
         const job: CronJob = {
           id: j.id, name: j.name, enabled: j.enabled ?? true,
           schedule: j.schedule, payload: j.payload,
-          lastRunAt: j.lastRunAt, runCount: j.runCount, createdAt: j.createdAt,
+          lastRunAt: j.lastRunAt, nextRunAt: j.nextRunAt, runCount: j.runCount, createdAt: j.createdAt,
         };
         this.jobs.set(job.id, job);
       }
@@ -255,10 +287,8 @@ export class CronScheduler {
     const oldTimer = this.timers.get(job.id);
     if (oldTimer) clearTimeout(oldTimer);
 
-    const delay = this.getDelayMs(job);
-    if (delay < 0) return;
-
-    job.nextRunAt = Date.now() + delay;
+    const delay = this.getDelayMs(job); // 内部会同步更新 job.nextRunAt
+    if (delay < 0) return; // 仅 cron 不可达日期返回 -1
 
     const timer = setTimeout(async () => {
       if (!this.running || !job.enabled) return;
@@ -272,6 +302,7 @@ export class CronScheduler {
 
       if (job.schedule.kind === 'at') {
         job.enabled = false;
+        job.nextRunAt = undefined;
         this.timers.delete(job.id);
         this.persistToDisk();
         return;
@@ -291,17 +322,23 @@ export class CronScheduler {
     switch (job.schedule.kind) {
       case 'at': {
         const target = new Date(job.schedule.at!).getTime();
-        return target - now;
+        // v2.1 修复: 已过期的一次性任务延迟 0 立即补执行一次（执行后会被标记禁用并持久化），
+        // 避免之前 delay < 0 → scheduleJob 直接 return 导致任务永久卡死
+        job.nextRunAt = Math.max(target, now);
+        return Math.max(target - now, 0);
       }
       case 'every': {
         const every = job.schedule.everyMs || 60000;
         const last = job.lastRunAt || job.createdAt;
         const next = last + every;
+        job.nextRunAt = next;
         return Math.max(next - now, 1000);
       }
       case 'cron': {
         const next = getNextCronRun(job.schedule.expr!, new Date(now + 1000), job.schedule.tz);
         if (!next) return -1; // 不可达日期
+        // v2.1: nextRunAt 直接用 next 精确值，避免 scheduleJob 里再取一次 Date.now() 产生毫秒漂移
+        job.nextRunAt = next.getTime();
         return next.getTime() - now;
       }
       default:

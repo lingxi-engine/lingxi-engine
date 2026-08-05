@@ -1,12 +1,9 @@
 import type { Express } from 'express';
 import { Dreamer } from './core/dreamer.js';
 import { EntityExtractor } from './core/entity-extractor.js';
-import { OutcomeTracker } from './core/outcome-tracker.js';
-import { logger } from './core/logger.js';
 
 function getAIHubClient(deps: any) {
   const aiHub = deps?.aiHub;
-  if (!aiHub) return null;
   if (!aiHub) return null;
 
   // 优先用 AIHub.listProviders（比全局变量 __aiHub_providers 可靠）
@@ -28,10 +25,9 @@ function getAIHubClient(deps: any) {
   return null;
 }
 
-export function registerV17Routes(app: Express, _deps: any) {
+export function registerV17Routes(app: Express, _deps: any, _auth?: any) {
   let _dreamer: any = null;
   let _entityExtractor: any = null;
-  let _outcomeTracker: any = null;
 
   function getDreamer() {
     if (!_dreamer) {
@@ -49,14 +45,6 @@ export function registerV17Routes(app: Express, _deps: any) {
     return _entityExtractor;
   }
 
-  function getOutcomeTracker() {
-    if (!_outcomeTracker) {
-      const c = getAIHubClient(_deps);
-      if (c) _outcomeTracker = new OutcomeTracker(c.client, c.resolvedModel);
-    }
-    return _outcomeTracker;
-  }
-
   app.post('/api/dream', (req, res) => {
     const d = getDreamer();
     if (!d) return res.json({ok:false,error:'Dreamer未就绪：请配置可用模型与API Key'});
@@ -69,27 +57,13 @@ export function registerV17Routes(app: Express, _deps: any) {
     res.json({ok:true, entities: e?.getEntities((req.query.chatId as string)||'', (req.query.agentId as string)||'')||[]});
   });
 
-  app.post('/api/outcomes', async (req, res) => {
-    const o = getOutcomeTracker();
-    if (!o) return res.json({ok:false,error:'OutcomeTracker未就绪：请配置可用模型与API Key'});
-    try {
-      const c = await o.createCard(req.body.goal, req.body.chatId, req.body.agentId);
-      res.json({ok:true, card:c});
-    } catch(e: any) { res.json({ok:false,error:e.message}); }
-  });
+  // NOTE:
+  // 1. /api/outcomes 系列路由已由 routes/goals-outcomes.ts 统一提供（ctx.outcomeTracker 单实例）。
+  //    旧实现在此注册会先于 goals-outcomes.ts 命中，导致「创建/列表」与「查询/删除」操作两个不同的
+  //    OutcomeTracker 实例（共享同一 data/outcome-cards.json 但内存互不感知）→ 创建的卡片在 DELETE 里永远 404。
+  //    修复：移除本文件的重复注册，统一走 createGoalOutcomeRoutes。
+  // 2. /api/logs 已由 index.ts 注册（带 requireAuth）。本文件不注册，避免无鉴权版本先命中绕过鉴权。
+  // 保留: /api/dream, /api/entities
 
-  app.get('/api/outcomes', (req, res) => {
-    const o = getOutcomeTracker();
-    res.json({ok:true, cards: o?.list(req.query.chatId as string)||[]});
-  });
-
-  app.get('/api/logs', (_req, res) => {
-    try {
-      const today = logger.getTodayLog();
-      const lines = today.split('\n').filter(Boolean);
-      res.json({ok:true, lines:lines.slice(-200), total:lines.length});
-    } catch(e: any) { res.json({ok:false,error:e.message}); }
-  });
-
-  console.log('[v1.7] 路由已注册: /api/dream, /api/entities, /api/outcomes, /api/logs');
+  console.log('[v1.7] 路由已注册: /api/dream, /api/entities (outcomes/logs 已移交 index.ts 路由)');
 }

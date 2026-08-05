@@ -461,6 +461,25 @@ export class AIHub {
    * 匹配顺序：精确 → 模糊 → fallback
    */
   getClient(model: string): { client: OpenAI; resolvedModel: string } | null {
+    // BUG-D 修复: 空模型名直接走 fallback（否则 model.split("-")[0] 为空串，pid.includes('') 恒真 → 错误命中 provider，resolvedModel 变空串）
+    if (!model) {
+      for (const [, entry] of this.providers) {
+        if (entry.config.type === "nvidia" && entry.config.models.length > 0) {
+          return { client: entry.client, resolvedModel: entry.config.models[0] };
+        }
+      }
+      for (const [, entry] of this.providers) {
+        if (entry.config.isLocal && entry.config.models.length > 0) {
+          return { client: entry.client, resolvedModel: entry.config.models[0] };
+        }
+      }
+      for (const [, entry] of this.providers) {
+        if (entry.config.models.length > 0) {
+          return { client: entry.client, resolvedModel: entry.config.models[0] };
+        }
+      }
+      return null;
+    }
     // 1. 精确匹配
     for (const [, entry] of this.providers) {
       if (entry.config.models.some(m => model === m)) {

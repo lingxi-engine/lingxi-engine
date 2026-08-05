@@ -21,8 +21,7 @@ W-Info "Checking Node.js..."
 $needNode = $true
 try {
     $nv = [int]((node -v) -replace 'v','' -replace '\..*','')
-    if ($nv -ge 18 -and $nv -le 22) { W-OK "Node.js $(node -v) found"; $needNode = $false }
-    elseif ($nv -gt 22) { W-Warn "Node.js $(node -v) too new (need 18-22), will install v22 LTS" }
+    if ($nv -ge 18) { W-OK "Node.js $(node -v) found"; $needNode = $false }
     else { W-Warn "Node.js too old ($(node -v)), need 18+" }
 } catch { W-Info "Node.js not found" }
 
