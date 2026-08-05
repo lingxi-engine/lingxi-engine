@@ -293,6 +293,8 @@ setSearchManager(searchManagerInstance);
   router.setToolRegistry(toolRegistry);
   console.log('[Tools] 注册', toolRegistry.listTools().length, '个工具,', toolRegistry.listSkills().length, '个技能');
 
+  await aiHub.syncNvidiaModels();
+  await aiHub.syncOllamaModels();
   // ── 注入 AI 客户端给记忆反思 ──
   const defaultModelForReflection = aiHub.getDefaultModel();
   const defaultClientResult = aiHub.getClient(defaultModelForReflection);
@@ -300,12 +302,7 @@ setSearchManager(searchManagerInstance);
     router.setAIClient(defaultClientResult.client, defaultClientResult.resolvedModel);
   }
 
-  // ── 重建记忆搜索索引 ──
-  router.rebuildSearchIndex();
-
-  // ── 动态拉取模型列表 ──
-  await aiHub.syncNvidiaModels();
-  await aiHub.syncOllamaModels();
+  // ── 动态拉取模型列表（已在上方 sync 完成，此处不再重复） ──
   const defaultModel = aiHub.getDefaultModel();
   console.log('[AI Hub] 默认模型:', defaultModel);
 
@@ -629,6 +626,7 @@ setSearchManager(searchManagerInstance);
     }
     if (!clientId) {
       const devAnonId = params.get('id');
+      
       if (devAnonId) {
         clientId = devAnonId;
       } else {
