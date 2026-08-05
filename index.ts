@@ -539,7 +539,9 @@ setSearchManager(searchManagerInstance);
           }
           res.json({ ok: true, user: result.user, agent, ...tokens });
         } catch (ae: any) {
-          res.json({ ok: true, user: result.user, agentError: ae.message, ...tokens });
+          // 回滚：Agent 创建失败时删除已注册的用户
+          try { getDB().run('DELETE FROM users WHERE id = ?', [result.user.id]); saveToDisk(); } catch (_) {}
+          res.status(500).json({ error: 'AI 助手创建失败，注册已回滚: ' + ae.message });
         }
       } else {
         res.json({ ok: true, user: result.user, ...tokens });
