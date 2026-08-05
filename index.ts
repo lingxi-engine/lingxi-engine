@@ -499,6 +499,10 @@ setSearchManager(searchManagerInstance);
   });
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
+  if (isNaN(port) || port < 1 || port > 65535) {
+    console.warn(`[Config] 无效的 PORT="${process.env.PORT}", 使用默认值 3456`);
+    port = 3456;
+  }
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
   port = await resolveAvailablePort(port, autoPort);
 
@@ -585,7 +589,7 @@ setSearchManager(searchManagerInstance);
   app.post('/api/auth/forgot-password', (req, res) => {
     try {
       const { email } = req.body;
-      if (!email || !email.includes('@')) return res.status(400).json({ error: '请输入有效的邮箱' });
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: '请输入有效的邮箱' });
       auth.forgotPassword(email);
       res.json({ ok: true, message: '如果该邮箱已注册，重置链接已发送' });
     } catch (err: any) {
@@ -746,7 +750,7 @@ setSearchManager(searchManagerInstance);
   // ── 旧版兼容：验证码发送（保留 demo 模式） ──
   app.post('/api/auth/send-code', (req, res) => {
     const { email } = req.body;
-    if (!email || !email.includes('@')) {
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ error: '请输入有效的邮箱地址' });
     }
     const code = String(randomInt(100000, 1000000));
@@ -774,7 +778,14 @@ setSearchManager(searchManagerInstance);
       const numericId = nextNumericId(); const userId = String(numericId);
       const displayName = username || stored.username || localPart;
       const user: User = db.createUser(userId, displayName);
-      const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
+      let agent: any;
+      try {
+        agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
+      } catch (agentErr: any) {
+        // 回滚：Agent 注册失败时删除刚创建的用户，避免孤儿记录
+        try { getDB().run('DELETE FROM users WHERE id = ?', [userId]); saveToDisk(); } catch (_) {}
+        throw agentErr;
+      }
       if (defaultModel) {
         try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
       }
