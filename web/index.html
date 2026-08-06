@@ -698,6 +698,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <div class="tb-spacer"></div>
   <button onclick="document.getElementById('rightbar').classList.toggle('show')">任务</button>
   <button onclick="toggleAdmin()" id="tbAdminBtn">管理</button>
+  <button onclick="document.getElementById('memoryBtn').click()" id="tbMemoBtn">🧠 记忆</button>
   <div class="tb-status">
     <span>API <span id="apiHealth" class="ok">✓</span></span>
     <span id="currentModelDisplay" style="color:var(--accent)">模型 deepseek-v4-flash</span>
@@ -988,8 +989,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
 
 <!-- [修复] 补齐 JS 依赖的隐藏元素 -->
-<button id="membersBtn" style="display:none" onclick="showMembersPanel()"></button>
-<button id="memoryBtn" style="display:none" onclick="showMemoryPanel()"></button>
+<button id="membersBtn" class="hidden" onclick="showMembersPanel()">👥 成员</button>
+<button id="memoryBtn" class="hidden" onclick="showMemoryPanel()">🧠 记忆</button>
 <div id="sidebarOverlay" style="display:none" onclick="hideSidebar()"></div>
 
 <!-- [修复] 补齐JS依赖的缺失DOM元素 -->

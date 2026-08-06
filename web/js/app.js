@@ -3708,3 +3708,24 @@ function applyGoalRefine(btn, action) {
     } else toast("❌ " + (d.error || "操作失败"));
   }).catch(function(e) { toast("❌ " + e.message); });
 }
+
+
+// ── 日志自动刷新 ──
+let _logAutoTimer = null;
+function toggleAutoLog() {
+  var btn = event && event.target;
+  if (_logAutoTimer) {
+    clearInterval(_logAutoTimer);
+    _logAutoTimer = null;
+    if (btn) btn.style.color = '';
+    toast('自动刷新已关闭');
+  } else {
+    loadLogs();
+    _logAutoTimer = setInterval(function() {
+      if (document.getElementById('logsOut')) loadLogs();
+      else { clearInterval(_logAutoTimer); _logAutoTimer = null; }
+    }, 3000);
+    if (btn) btn.style.color = 'var(--green)';
+    toast('自动刷新已开启 (3秒)');
+  }
+}
