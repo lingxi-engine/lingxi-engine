@@ -2625,9 +2625,38 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); wfRedo(); }
 });
 
+// ── 工作流执行 ──
+async function wfRun() {
+  if (!wfLastSavedId) { toast('⚠️ 请先保存工作流'); return; }
+  const resEl = document.getElementById('wfResult') || _createWFResult();
+  resEl.innerHTML = '<div style="padding:12px;color:var(--accent)">⏳ 执行中...</div>';
+  resEl.scrollIntoView({ behavior: 'smooth' });
+  try {
+    const r = await fetch('/api/workflows/' + encodeURIComponent(wfLastSavedId) + '/run', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '') }
+    });
+    const d = await r.json();
+    if (!d.ok) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(d.error || '执行失败') + '</div>'; return; }
+    resEl.innerHTML = '<div style="padding:12px;font-weight:bold;color:var(--green)">✅ 执行完成</div>' +
+      (d.results || []).map(function(r) {
+        return '<div class="task-card"><div class="task-name">' + esc(r.label) + '</div>' +
+        '<div style="font-size:11px;color:var(--text3);max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(r.output || '') + '</div></div>';
+      }).join('');
+  } catch(e) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(e.message) + '</div>'; }
+}
+function _createWFResult() {
+  var el = document.createElement('div');
+  el.id = 'wfResult';
+  el.style.cssText = 'margin-top:12px;max-height:50vh;overflow:auto';
+  var canvas = document.getElementById('wfCanvas');
+  if (canvas && canvas.parentElement) canvas.parentElement.appendChild(el);
+  return el;
+}
+
 async function wfSaveToCloud() {
   const name = document.getElementById('wfName').value || '未命名工作流';
   const id = 'wf-' + Date.now();
+  wfLastSavedId = id;  // 供运行按钮使用
   const data = { nodes: wfNodes, connections: wfConnections };
   try {
     await api('/api/workflows', 'POST', { id, name, data });
@@ -2648,6 +2677,7 @@ async function wfLoadFromCloud() {
       wfNodes = dd.nodes || [];
       wfConnections = dd.connections || [];
       document.getElementById('wfName').value = detail.workflow.name;
+      wfLastSavedId = detail.workflow.id;
       renderWF();
       toast('✅ 已加载: ' + detail.workflow.name);
     }

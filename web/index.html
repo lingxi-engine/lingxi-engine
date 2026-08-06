@@ -901,6 +901,7 @@ function switchTheme(name,btn){
     <input type="file" id="wfImportFile" accept=".json,application/json" onchange="wfImportJSON(this)" style="display:none">
     <button onclick="wfUndo()" class="btn-sm" data-i18n-title="wf.undoTitle" title="撤销 (Ctrl+Z)">↩️</button>
     <button onclick="wfRedo()" class="btn-sm" data-i18n-title="wf.redoTitle" title="重做 (Ctrl+Y)">↪️</button>
+    <button onclick="wfRun()" class="btn-sm" style="border-color:var(--green);color:var(--green)" title="运行工作流">▶ 运行</button>
     <button onclick="wfSaveToCloud()" class="btn-sm" data-i18n="wf.save" style="border-color:var(--yellow);color:var(--yellow)">💾 保存</button>
     <button onclick="closeWorkflowEditor()" class="btn-sm" data-i18n="wf.close" style="background:var(--red);color:#fff;border-color:var(--red);margin-left:auto">× 关闭</button>
   </div>

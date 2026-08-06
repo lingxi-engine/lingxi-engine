@@ -1084,6 +1084,76 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── 工作流执行 ──
+  app.post('/api/workflows/:id/run', requireAuth, async (req, res) => {
+    try {
+      const stmt = getDB().prepare('SELECT data FROM workflows WHERE id = ?');
+      stmt.bind([req.params.id]);
+      if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '工作流不存在' }); }
+      const row = stmt.getAsObject(); stmt.free();
+      const wf = JSON.parse(row.data as string);
+      const nodes: any[] = wf.nodes || [];
+      const edges: {from: string, to: string}[] = wf.connections || [];
+
+      // 找开始节点
+      const startNode = nodes.find((n: any) => n.type === 'start');
+      if (!startNode) return res.status(400).json({ error: '工作流缺少开始节点' });
+
+      // 构建邻接表
+      const nextMap = new Map<string, string[]>();
+      for (const e of edges) {
+        if (!nextMap.has(e.from)) nextMap.set(e.from, []);
+        nextMap.get(e.from)!.push(e.to);
+      }
+      const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
+
+      // BFS 从 start 遍历执行
+      const queue: string[] = [startNode.id];
+      const visited = new Set<string>();
+      const results: {nodeId: string, label: string, output: string}[] = [];
+      let previousOutput = '';
+
+      while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        if (visited.has(nodeId)) continue;
+        visited.add(nodeId);
+        const node = nodeMap.get(nodeId);
+        if (!node || node.type === 'start') {
+          // 将后续节点加入队列
+          for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
+          continue;
+        }
+
+        // 执行 Agent 节点
+        const prompt = (node.config?.prompt || '回答用户问题') + (previousOutput ? '\n\n上一环节的产出：' + previousOutput : '');
+        const model = node.config?.model || process.env.DEFAULT_MODEL || 'deepseek-chat';
+        const clientResult = aiHub.getClient?.(model);
+        if (!clientResult) {
+          results.push({ nodeId, label: node.label, output: `[跳过] 模型 ${model} 不可用` });
+          for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
+          continue;
+        }
+
+        try {
+          const resp = await (clientResult.client as any).chat.completions.create({
+            model: clientResult.resolvedModel,
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.5, max_tokens: 4096,
+          });
+          const output = resp.choices[0]?.message?.content || '(无输出)';
+          previousOutput = output;
+          results.push({ nodeId, label: node.label, output });
+        } catch (e: any) {
+          results.push({ nodeId, label: node.label, output: `[执行失败] ${e.message}` });
+        }
+
+        for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
+      }
+
+      res.json({ ok: true, results });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // 清理协作模式缓存
   app.delete('/api/collab-cache/:chatId', (req, res) => {
     (globalThis as any).__chatModes?.delete(req.params.chatId);
