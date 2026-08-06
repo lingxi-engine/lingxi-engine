@@ -1061,14 +1061,15 @@ setSearchManager(searchManagerInstance);
     try {
       const { name, data } = req.body || {};
       const now = Date.now();
-      if (name) {
-        const stmt = getDB().prepare('UPDATE workflows SET name = ?, data = ?, updated_at = ? WHERE id = ?');
-        stmt.bind([name, data ? JSON.stringify(data) : null, now, req.params.id]);
-        stmt.step(); stmt.free();
-      }
-      if (data) {
-        const stmt = getDB().prepare('UPDATE workflows SET data = ?, updated_at = ? WHERE id = ?');
-        stmt.bind([JSON.stringify(data), now, req.params.id]);
+      if (name || data) {
+        const sets: string[] = [];
+        const vals: any[] = [];
+        if (name) { sets.push('name = ?'); vals.push(name); }
+        if (data) { sets.push('data = ?'); vals.push(JSON.stringify(data)); }
+        sets.push('updated_at = ?'); vals.push(now);
+        vals.push(req.params.id);
+        const stmt = getDB().prepare(`UPDATE workflows SET ${sets.join(', ')} WHERE id = ?`);
+        stmt.bind(vals);
         stmt.step(); stmt.free();
       }
       res.json({ ok: true });
@@ -1169,7 +1170,16 @@ setSearchManager(searchManagerInstance);
         for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
       }
 
-      res.json({ ok: true, results });
+      const runId = 'run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      const hasErrors = results.some(r => r.output.startsWith('[执行失败]'));
+      const runStatus = hasErrors ? 'completed_with_errors' : 'completed';
+      try {
+        const stmt = getDB().prepare('INSERT INTO workflow_runs (id, workflow_id, status, results, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)');
+        stmt.bind([runId, req.params.id, runStatus, JSON.stringify(results), Date.now(), Date.now()]);
+        stmt.step(); stmt.free();
+      } catch (_) {}
+
+      res.json({ ok: true, runId, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 

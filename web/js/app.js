@@ -2667,19 +2667,40 @@ async function wfLoadFromCloud() {
   try {
     const d = await api('/api/workflows');
     if (!d.ok || !d.workflows.length) { toast('没有已保存的工作流'); return; }
-    const name = prompt('选择工作流（输入编号）：\n' + d.workflows.map((w,i) => (i+1)+'. '+w.name+' ('+new Date(w.updated_at).toLocaleDateString()+')').join('\n'));
-    if (!name) return;
-    const idx = parseInt(name) - 1;
-    if (idx < 0 || idx >= d.workflows.length) return;
-    const detail = await api('/api/workflows/' + d.workflows[idx].id);
+    _wfShowLoadOverlay(d.workflows);
+  } catch(e) { toast('❌ 加载失败: ' + e.message); }
+}
+
+function _wfShowLoadOverlay(workflows) {
+  var overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10002;display:flex;align-items:center;justify-content:center';
+  var html = '<div style="background:var(--bg);border-radius:12px;max-width:500px;width:90%;max-height:70vh;overflow:auto;padding:16px">';
+  html += '<h3 style="margin:0 0 12px">📂 选择工作流</h3>';
+  workflows.forEach(function(w, i) {
+    html += '<div class="task-card" style="cursor:pointer;padding:10px;margin-bottom:6px" onclick="(function(){ document.getElementById(\'wfName\').value=\'' + esc(w.name) + '\'; _wfLoadById(\'' + w.id + '\',\'' + esc(w.name) + '\'); var o=document.querySelector(\'[data-wf-overlay]\'); if(o) o.remove(); })()">';
+    html += '<b>' + (i+1) + '. ' + esc(w.name) + '</b>';
+    html += '<div style="font-size:11px;color:var(--text3)">' + new Date(w.updated_at).toLocaleString() + '</div>';
+    html += '</div>';
+  });
+  html += '<button class="btn" style="margin-top:8px" onclick="this.closest(\'[data-wf-overlay]\').remove()">取消</button>';
+  html += '</div>';
+  overlay.innerHTML = html;
+  overlay.setAttribute('data-wf-overlay', '1');
+  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
+  document.body.appendChild(overlay);
+}
+
+async function _wfLoadById(id, name) {
+  try {
+    const detail = await api('/api/workflows/' + id);
     if (detail.ok && detail.workflow) {
-      const dd = detail.workflow.data;
+      var dd = detail.workflow.data;
+      if (typeof dd === 'string') dd = JSON.parse(dd);
       wfNodes = dd.nodes || [];
       wfConnections = dd.connections || [];
-      document.getElementById('wfName').value = detail.workflow.name;
       wfLastSavedId = detail.workflow.id;
       renderWF();
-      toast('✅ 已加载: ' + detail.workflow.name);
+      toast('✅ 已加载: ' + (name || detail.workflow.name));
     }
   } catch(e) { toast('❌ 加载失败: ' + e.message); }
 }
