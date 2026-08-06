@@ -1,0 +1,14 @@
+{
+  "name": "code-review-and-troubleshoot",
+  "displayName": "代码审查与问题排查",
+  "description": "对项目进行多维度系统性代码审查，并根据用户反馈追踪和修复功能Bug。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求进行代码审查或排查项目Bug时：1. 使用 list_dir 和 read_file 梳理项目架构和核心模块代码。2. 从边界条件、安全漏洞、并发竞态、异常处理、性能瓶颈等维度进行系统性审查，输出包含风险等级和具体代码行号的结构化报告。3. 当用户反馈具体功能Bug（如数据不显示、按钮失效）时，追踪前后端数据流、API路由及状态管理，定位根因并使用 write_file 进行修复。",
+  "autoCreated": true,
+  "createdAt": 1785947977146
+}

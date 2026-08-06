@@ -421,7 +421,6 @@ setSearchManager(searchManagerInstance);
   const skillsDir = join(process.cwd(), 'skills');
   const skillManager = new SkillManager(skillsDir, dataDir);
   skillManager.scanLocal();
-  (globalThis as any).__skillManager = skillManager;
   console.log('[Skills] 技能管理器已初始化, 已安装', skillManager.list().length, '个技能');
 
   // ── V5 P5: 渠道管理器 ──
@@ -2453,11 +2452,6 @@ setSearchManager(searchManagerInstance);
   app.get('/api/channels', (_req, res) => {
     try { res.json({ ok: true, definitions: channelManager.getDefinitions(), channels: channelManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // 渠道实时状态
-  app.get('/api/channels/status', (_req, res) => {
-    res.json({ ok: true, telegram: !!telegramAdapter, channels: channelManager.list() });
   });
 
   app.post('/api/channels', (req, res) => {

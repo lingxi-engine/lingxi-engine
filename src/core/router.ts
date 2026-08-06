@@ -70,6 +70,7 @@ function getProjectContext(workDir?: string): string {
 }
 
 
+
 export class MessageRouter {
   private toolRegistry?: ToolRegistry;
   private reflector?: MemoryReflector;
@@ -513,19 +514,6 @@ export class MessageRouter {
     if (this.toolRegistry) {
       const tools = this.toolRegistry.listToolsForAgent(agent.id);
       if (tools.length > 0) {
-
-    // ── 注入可用的技能列表 ──
-    try {
-      const sm = (globalThis as any).__skillManager;
-      if (sm) {
-        const enabled = sm.list().filter((s: any) => s.enabled !== false);
-        if (enabled.length > 0) {
-          const skillList = enabled.map((s: any) => '- **' + s.name + '**: ' + (s.description || '')).join('\n');
-          lines.push('## 可用技能', '你可以通过描述需求来调用以下技能：', skillList, '');
-        }
-      }
-    } catch (_) {}
-
         lines.push('## 可用工具');
         for (const t of tools) {
           const params = Object.entries(t.parameters.properties || {})
