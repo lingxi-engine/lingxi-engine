@@ -1107,28 +1107,45 @@ setSearchManager(searchManagerInstance);
       }
       const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
 
-      // BFS 从 start 遍历执行
+      // 构建入边表（反向邻接）
+      const inEdges = new Map<string, string[]>();
+      for (const e of edges) {
+        if (!inEdges.has(e.to)) inEdges.set(e.to, []);
+        inEdges.get(e.to)!.push(e.from);
+      }
+
+      // 存储每个节点的输出
+      const outputs = new Map<string, string>();
+
+      // BFS 从 start 遍历执行，每个节点收集其入边来源的输出
       const queue: string[] = [startNode.id];
       const visited = new Set<string>();
       const results: {nodeId: string, label: string, output: string}[] = [];
-      let previousOutput = '';
 
       while (queue.length > 0) {
         const nodeId = queue.shift()!;
         if (visited.has(nodeId)) continue;
-        visited.add(nodeId);
         const node = nodeMap.get(nodeId);
-        if (!node || node.type === 'start') {
-          // 将后续节点加入队列
+        if (!node) continue;
+        visited.add(nodeId);
+
+        if (node.type === 'start') {
           for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
           continue;
         }
 
-        // 执行 Agent 节点
-        const prompt = (node.config?.prompt || '回答用户问题') + (previousOutput ? '\n\n上一环节的产出：' + previousOutput : '');
+        // 收集该节点所有上游的输出（支持汇聚节点）
+        const upstreams = inEdges.get(nodeId) || [];
+        const upstreamOutputs = upstreams.map(uid => outputs.get(uid)).filter(Boolean);
+        const upstreamContext = upstreamOutputs.length > 0
+          ? '\n\n上游产出：\n' + upstreamOutputs.map((o, i) => `${i + 1}. ${o}`).join('\n')
+          : '';
+
+        const prompt = (node.config?.prompt || '回答用户问题') + upstreamContext;
         const model = node.config?.model || process.env.DEFAULT_MODEL || 'deepseek-chat';
         const clientResult = aiHub.getClient?.(model);
         if (!clientResult) {
+          outputs.set(nodeId, `[跳过] 模型 ${model} 不可用`);
           results.push({ nodeId, label: node.label, output: `[跳过] 模型 ${model} 不可用` });
           for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
           continue;
@@ -1141,10 +1158,12 @@ setSearchManager(searchManagerInstance);
             temperature: 0.5, max_tokens: 4096,
           });
           const output = resp.choices[0]?.message?.content || '(无输出)';
-          previousOutput = output;
+          outputs.set(nodeId, output);
           results.push({ nodeId, label: node.label, output });
         } catch (e: any) {
-          results.push({ nodeId, label: node.label, output: `[执行失败] ${e.message}` });
+          const errOutput = `[执行失败] ${e.message}`;
+          outputs.set(nodeId, errOutput);
+          results.push({ nodeId, label: node.label, output: errOutput });
         }
 
         for (const next of (nextMap.get(nodeId) || [])) queue.push(next);

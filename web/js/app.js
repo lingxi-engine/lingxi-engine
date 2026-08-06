@@ -2655,8 +2655,8 @@ function _createWFResult() {
 
 async function wfSaveToCloud() {
   const name = document.getElementById('wfName').value || '未命名工作流';
-  const id = 'wf-' + Date.now();
-  wfLastSavedId = id;  // 供运行按钮使用
+  const id = wfLastSavedId || ('wf-' + Date.now());
+  wfLastSavedId = id;
   const data = { nodes: wfNodes, connections: wfConnections };
   try {
     await api('/api/workflows', 'POST', { id, name, data });
