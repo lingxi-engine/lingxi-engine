@@ -421,6 +421,7 @@ setSearchManager(searchManagerInstance);
   const skillsDir = join(process.cwd(), 'skills');
   const skillManager = new SkillManager(skillsDir, dataDir);
   skillManager.scanLocal();
+  (globalThis as any).__skillManager = skillManager;
   console.log('[Skills] 技能管理器已初始化, 已安装', skillManager.list().length, '个技能');
 
   // ── V5 P5: 渠道管理器 ──
@@ -1325,59 +1326,6 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 记忆反思 ──
-  app.post('/api/agents/:id/reflect', requireAuth, async (req, res) => {
-    try {
-      const aid = String(req.params.id);
-      const agent = manager.get(aid);
-      if (!agent) return res.status(404).json({ error: 'Agent 不存在' });
-
-      // 读取当前记忆
-      const currentMemory = agent.memory_summary || '';
-      const personality = agent.personality || '你是一个有用的AI助手';
-
-      // 获取最近的消息作为反思素材
-      let recentContext = '';
-      try {
-        const chats = db.listChats?.() || [];
-        const myChats = chats.filter((c: {participants?:string}) => (c.participants||'').includes(aid));
-        if (myChats.length > 0) {
-          const msgs = db.listMessages(myChats[myChats.length-1].id, 20) || [];
-          recentContext = msgs.map((m: {content:string, sender_type:string}) =>
-            `[${m.sender_type==='user'?'用户':'AI'}]: ${m.content.slice(0,300)}`
-          ).join('\n');
-        }
-      } catch (_) {}
-
-      // 用 AI 进行反思
-      const systemPrompt = `你是「记忆反思官」。基于对话历史和当前记忆，提取关键洞察。
-
-当前角色设定：${personality}
-当前记忆摘要：${currentMemory || '(空)'}
-
-反思要求：
-1. 提取 3-5 条最重要的用户偏好、习惯、或事实
-2. 如果和现有记忆冲突，优先信任新信息
-3. 只输出新的记忆摘要，不要解释`;
-
-      const clientResult = aiHub.getClient?.(process.env.DEFAULT_MODEL || 'deepseek-chat');
-      if (!clientResult) return res.status(500).json({ error: 'AI 服务不可用' });
-
-      const resp = await (clientResult.client as any).chat.completions.create({
-        model: clientResult.resolvedModel,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: '请对以下对话进行记忆反思：\n\n' + (recentContext || '(无最近对话)') }
-        ],
-        temperature: 0.3, max_tokens: 2048,
-      });
-
-      const newMemory = resp.choices[0]?.message?.content || currentMemory;
-      db.updateAgent(aid, { memory_summary: newMemory });
-      res.json({ ok: true, memory: newMemory });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
   app.get('/api/agents', (_req, res) => {
     try { res.json({ ok: true, agents: manager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1507,34 +1455,6 @@ setSearchManager(searchManagerInstance);
       const result = await router.ragGenerate(query, { topK, systemPrompt });
       res.json({ ok: true, ...result });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── RAG 工作区扫描 ──
-  app.post('/api/rag/scan-workspace', async (_req, res) => {
-    try {
-      const fs = await import('fs'); const path = await import('path');
-      const wsDir = path.join(process.cwd(), 'workspace');
-      if (!fs.existsSync(wsDir)) return res.json({ ok: true, imported: 0, skipped: 0 });
-      const supported = ['.md', '.txt', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml'];
-      let imported = 0, skipped = 0;
-      for (const file of fs.readdirSync(wsDir)) {
-        const ext = path.extname(file).toLowerCase();
-        if (!supported.includes(ext)) { skipped++; continue; }
-        try {
-          const content = fs.readFileSync(path.join(wsDir, file), 'utf-8');
-          if (content.trim().length < 10) { skipped++; continue; }
-          const doc = { id: 'rag-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6), title: file, source: file, mimeType: ext === '.md' ? 'text/markdown' : 'text/plain', content, createdAt: Date.now(), metadata: { scanned: true } };
-          await router.addRagDocument(doc); imported++;
-        } catch (_) { skipped++; }
-      }
-      res.json({ ok: true, imported, skipped });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── 系统升级 ──
-  app.post('/api/update', requireAuth, async (_req, res) => {
-    try { res.json({ ok: true, message: '升级请手动执行: git pull && pm2 restart lingxi' }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── Agent 更新 API ──
@@ -2533,6 +2453,11 @@ setSearchManager(searchManagerInstance);
   app.get('/api/channels', (_req, res) => {
     try { res.json({ ok: true, definitions: channelManager.getDefinitions(), channels: channelManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // 渠道实时状态
+  app.get('/api/channels/status', (_req, res) => {
+    res.json({ ok: true, telegram: !!telegramAdapter, channels: channelManager.list() });
   });
 
   app.post('/api/channels', (req, res) => {
