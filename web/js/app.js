@@ -3729,3 +3729,18 @@ function toggleAutoLog() {
     toast('自动刷新已开启 (3秒)');
   }
 }
+
+
+// ── 补缺函数 ──
+function loadLogBody() { loadLogs(); }
+function clearLogBody() {
+  var out = document.getElementById('logsOut');
+  if (out) out.textContent = '(已清空)';
+  toast('日志已清空');
+}
+function hideSidebar() {
+  var sb = document.getElementById('sidebar');
+  var ov = document.getElementById('sidebarOverlay');
+  if (sb) sb.classList.remove('show');
+  if (ov) ov.style.display = 'none';
+}
