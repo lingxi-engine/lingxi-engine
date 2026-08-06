@@ -288,7 +288,19 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
       const { chatId } = req.body || {};
       if (!chatId) return res.status(400).json({ error: '需要 chatId' });
       const msgId = 'goal-ask-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      const content = '请针对目标任务「' + goal.title + '」进行反向提问：分析这个目标是否定义清晰、范围合理、是否有遗漏的验收条件，提出3-5个关键问题帮助完善目标定义。直接以提问列表形式回复。';
+      const content = `请针对目标任务「${goal.title}」进行结构化分析。
+
+要求输出格式（严格遵循）：
+Q: 问题1？
+A: 选项A描述
+B: 选项B描述
+C: 选项C描述（可选）
+
+Q: 问题2？
+A: 选项A描述
+B: 选项B描述
+
+（输出2-3个最关键的问题，每个问题2-3个选项。问题要帮助明确目标范围、验收标准、优先级、资源需求等。）`;
       ctx.db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
       ctx.broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
       // 触发 AI 审查目标
@@ -297,6 +309,30 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+
+  // ── 目标完善：根据用户勾选的选项更新/创建目标 ──
+  router.post('/goals/:id/refine', (req, res) => {
+    try {
+      const goal = GoalTracker.get(req.params.id);
+      if (!goal) return res.status(404).json({ error: '目标不存在' });
+      const { selections, action } = req.body || {};
+      if (!selections || !selections.length) return res.status(400).json({ error: '需要 selections' });
+      const selectedText = selections.join("；");
+      if (action === 'create') {
+        const newTitle = goal.title + "（" + selectedText.slice(0, 30) + "）";
+        const newGoal = GoalTracker.create(goal.projectId, newTitle, selectedText);
+        res.json({ ok: true, goal: newGoal, action: 'create' });
+      } else if (action === 'criteria') {
+        const updated = (goal.acceptanceCriteria ? goal.acceptanceCriteria + '\n' : '') + selectedText;
+        GoalTracker.update(goal.id, { acceptanceCriteria: updated });
+        res.json({ ok: true, goal: GoalTracker.get(goal.id), action: 'criteria' });
+      } else {
+        GoalTracker.update(goal.id, { acceptanceCriteria: selectedText });
+        res.json({ ok: true, goal: GoalTracker.get(goal.id), action: 'refine' });
+      }
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   });
 
   // ══════ 项目完成 → 自动评分卡（v1.7.3 BUG-6 修复）══════

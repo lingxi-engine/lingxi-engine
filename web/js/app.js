@@ -911,6 +911,12 @@ function appendMessage(msg) {
     '<div class="msg-meta">' + esc(time) + '</div></div>';
   
   container.appendChild(el);
+
+  // 检测结构化问答格式 → 渲染选项表单
+  if (isAgent && content.includes("Q:") && content.includes("A:")) {
+    setTimeout(function() { renderGoalQAForm(content, el, chatId); }, 200);
+  }
+
   container.scrollTop = container.scrollHeight;
 }
 
@@ -3643,4 +3649,62 @@ async function askAIAboutGoal(goalId, title) {
     if (d.ok) { toast('✅ 已向AI提问'); }
     else toast('❌ ' + (d.error || '发送失败'));
   } catch(e) { toast('❌ ' + e.message); }
+}
+
+
+// ── 目标反向提问 -> 选项表单 ──
+function renderGoalQAForm(content, msgEl, chatId) {
+  var questions = [];
+  var currentQ = null;
+  var clines = content.split("\n");
+  for (var i = 0; i < clines.length; i++) {
+    var line = clines[i].trim();
+    var qm = line.match(/^Q:?\s*(.+)/);
+    var am = line.match(/^([A-C]):?\s*(.+)/);
+    if (qm) { currentQ = { q: qm[1], opts: [] }; questions.push(currentQ); }
+    else if (am && currentQ) { currentQ.opts.push({ key: am[1], text: am[2] }); }
+  }
+  if (questions.length === 0) return;
+
+  var html = '<div style="margin:8px 0 8px 48px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">';
+  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">📋 请选择以完善目标</div>';
+  for (var qi = 0; qi < questions.length; qi++) {
+    var q = questions[qi];
+    html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + esc(q.q) + '</div>';
+    for (var oi = 0; oi < q.opts.length; oi++) {
+      var o = q.opts[oi];
+      var cbId = 'ga-' + qi + '-' + oi + '-' + Date.now();
+      html += '<label style="display:block;font-size:12px;cursor:pointer;padding:2px 0"><input type="checkbox" id="' + cbId + '" style="margin-right:4px">' + esc(o.text) + '</label>';
+    }
+    html += '</div>';
+  }
+  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
+  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,' + "'refine'" + ')">✅ 完善目标</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
+  html += '</div></div>';
+
+  var wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+  msgEl.parentNode.insertBefore(wrapper, msgEl.nextSibling);
+}
+
+function applyGoalRefine(btn, action) {
+  var form = btn.closest("div");
+  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
+  if (!form) return;
+  var checks = form.querySelectorAll("input[type=checkbox]:checked");
+  if (!checks.length) { toast("请至少勾选一个选项"); return; }
+  var selections = [];
+  checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
+  
+  var goalId = prompt("目标ID（可在右侧栏找到）:");
+  if (!goalId) return;
+  
+  api("/api/goals/" + goalId + "/refine", "POST", { selections: selections, action: action }).then(function(d) {
+    if (d.ok) { 
+      toast("✅ " + (action === "create" ? "已生成新目标" : action === "criteria" ? "已加入验收标准" : "目标已完善"));
+      if (typeof loadRightGoals === "function") loadRightGoals();
+    } else toast("❌ " + (d.error || "操作失败"));
+  }).catch(function(e) { toast("❌ " + e.message); });
 }

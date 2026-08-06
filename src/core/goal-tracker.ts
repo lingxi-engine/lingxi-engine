@@ -131,6 +131,18 @@ export class GoalTracker {
    * 彻底删除目标（含以该目标为父目标的子目标）
    * v1.7.4 修复: 校验目标存在，不存在返回 false（之前无脑返回 true，且 DELETE /goals/:id 路由缺失导致前端删除 404）
    */
+
+  /** 更新目标字段（标题、验收标准等） */
+  static update(id: string, fields: Record<string, string>): boolean {
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
+    const db = getDB();
+    if (fields.title !== undefined)
+      db.run('UPDATE project_goals SET title = ? WHERE id = ?', [fields.title, id]);
+    if (fields.acceptanceCriteria !== undefined)
+      db.run('UPDATE project_goals SET acceptance_criteria = ? WHERE id = ?', [fields.acceptanceCriteria, id]);
+    return true;
+  }
   static remove(id: string): boolean {
     const goal = GoalTracker.get(id);
     if (!goal) return false;
