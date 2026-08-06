@@ -3558,15 +3558,44 @@ setSearchManager(searchManagerInstance);
       return;
     }
     const msgId = 'goal-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-    const content = `请开始执行目标任务：「${goal.title}」` + (goal.acceptanceCriteria ? `\n验收标准：${goal.acceptanceCriteria}` : '');
+    // 自主执行指令：AI 必须持续工作直到验收标准全部满足
+    const taskPrompt = goal.acceptanceCriteria
+      ? `请开始执行目标任务：「${goal.title}」\n\n验收标准：${goal.acceptanceCriteria}\n\n要求：\n1. 将目标拆解为子步骤，逐步执行\n2. 每个子步骤都需要实际完成（调用工具、生成结果），不只是写计划\n3. 全部验收标准满足后再总结报告\n4. 如果一次性无法完成，告知进度并继续`
+      : `请开始执行目标任务：「${goal.title}」\n\n要求：\n1. 拆解为子步骤，逐步执行\n2. 每个子步骤实际完成\n3. 全部完成后总结`;
+    const content = taskPrompt;
     try {
       db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
       broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
-      // 触发 AI 实际执行目标
+      // 触发 AI 执行目标 — 这里传递 taskGoal 让 router 知道这是目标任务
       try { processUserMessage(chatId, 'goal-tracker', content, undefined, router, broadcast); } catch (e: any) {
         console.error(`[GoalTracker] 触发AI执行失败:`, e?.message || e);
       }
       console.log(`[GoalTracker] 已向 ${chatId} 注入目标 "${goal.title}"`);
+
+      // ── 自主执行循环：AI回复后自动继续，直到完成或超限 ──
+      const MAX_ROUNDS = 8;
+      let round = 0;
+      const checkAndContinue = () => {
+        round++;
+        if (round > MAX_ROUNDS) { console.log(`[GoalTracker] 目标 "${goal.title}" 达到最大轮次`); return; }
+        // 检查目标是否已完成
+        const current = GoalTracker.get(goal.id);
+        if (!current || current.status === 'done' || current.status === 'cancelled') return;
+        
+        setTimeout(() => {
+          const continueMsg = `继续执行目标任务「${goal.title}」。已完成子步骤后继续下一个，全部验收标准满足后告知完成。`;
+          try {
+            const mid = 'goal-cont-' + Date.now();
+            db.addMessage({ id: mid, chatId, senderType: 'user', senderId: 'goal-tracker', content: continueMsg, type: 'text', timestamp: Date.now() });
+            broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content: continueMsg, timestamp: Date.now() });
+            try { processUserMessage(chatId, 'goal-tracker', continueMsg, undefined, router, broadcast); } catch (_) {}
+            // 递归调度下一轮（给AI足够时间回复）
+            setTimeout(checkAndContinue, 30000);
+          } catch (_) {}
+        }, 60000); // 等60秒让AI完成当前回复
+      };
+      // 启动检查循环（第一轮等待 AI 完成初始回复）
+      setTimeout(checkAndContinue, 90000);
     } catch (e: any) {
       console.error(`[GoalTracker] 注入目标消息失败:`, e?.message || e);
     }
