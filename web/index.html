@@ -1033,8 +1033,10 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-<div id="queueBar" style="display:none"></div>
-<div id="queueCount" style="display:none"></div>
+<div id="queueBar" style="display:none;padding:4px 10px;background:var(--bg2);border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);display:none">
+  <span id="queueCount"></span>
+  <a onclick="clearQueue()" style="cursor:pointer;color:var(--red);margin-left:8px">清空</a>
+</div>
 <div id="recordBtn" style="display:none"></div>
 <div id="routeModeTag" style="display:none"></div>
 <div id="stopBtn" style="display:none"></div>

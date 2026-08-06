@@ -1124,10 +1124,10 @@ function updateGenUI() {
   const busy = !!(currentChat && isChatGenerating(currentChat));
   if (stopBtn) stopBtn.style.display = busy ? '' : 'none';
   if (queueBar) {
+    const qc = document.getElementById('queueCount');
     if (sendQueue.length) {
       queueBar.style.display = '';
-      const qc = document.getElementById('queueCount');
-      if (qc) qc.textContent = t('chat.queuedInfo', { n: sendQueue.length });
+      if (qc) qc.textContent = '⏳ 排队中: ' + sendQueue.length + ' 条消息';
     } else {
       queueBar.style.display = 'none';
     }
@@ -3613,6 +3613,7 @@ async function loadRightGoals() {
         '<div class="goal-foot"><span>' +
         (g.status === 'pending' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'in_progress\')" style="cursor:pointer;color:var(--accent)">▶ 开始</a> ' : '') +
         (g.status !== 'done' && g.status !== 'cancelled' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'done\')" style="cursor:pointer;color:var(--green)">✅ 完成</a> ' : '') +
+        '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'cancelled\')" style="cursor:pointer;color:var(--red)">❌ 停止</a> ' +
         ((g.status === 'done' || g.status === 'cancelled') ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'pending\')" style="cursor:pointer">↩ 恢复</a> ' : '') +
         '<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--text2)">🤔 反向提问</a> ' +
         '<a onclick="deleteRightGoal(\'' + g.id + '\')" style="cursor:pointer;color:var(--red)">🗑 删除</a></span></div></div>';
