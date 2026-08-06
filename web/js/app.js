@@ -3519,17 +3519,22 @@ async function loadTaskMonitor() {
 }
 async function removeCronFromMonitor(id) {
   if (!confirm('确定删除？')) return;
-  try { const r = await fetch('/api/cron/' + encodeURIComponent(id), { method: 'DELETE' }); const d = await r.json();
-    if (!d.ok) { toast('❌ 删除失败'); return; } toast('已删除'); loadTaskMonitor();
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
+    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
+    toast('已删除'); loadTaskMonitor();
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function toggleCronJob(id, enabled) {
-  try { const r = await fetch('/api/cron/' + encodeURIComponent(id), { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled }) }); const d = await r.json();
-    if (!d.ok) { toast('❌ 操作失败'); return; } loadTaskMonitor();
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id), 'PATCH', { enabled });
+    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
+    loadTaskMonitor();
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function runCronNow(id) {
-  try { const r = await fetch('/api/cron/' + encodeURIComponent(id) + '/run', { method: 'POST' }); const d = await r.json();
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id) + '/run', 'POST');
     if (d.ok) toast('✅ 已触发'); else toast('❌ ' + (d.error || '失败'));
   } catch(e) { toast('❌ ' + e.message); }
 }
