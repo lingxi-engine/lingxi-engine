@@ -1325,6 +1325,59 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── 记忆反思 ──
+  app.post('/api/agents/:id/reflect', requireAuth, async (req, res) => {
+    try {
+      const aid = String(req.params.id);
+      const agent = manager.get(aid);
+      if (!agent) return res.status(404).json({ error: 'Agent 不存在' });
+
+      // 读取当前记忆
+      const currentMemory = agent.memory_summary || '';
+      const personality = agent.personality || '你是一个有用的AI助手';
+
+      // 获取最近的消息作为反思素材
+      let recentContext = '';
+      try {
+        const chats = db.listChats?.() || [];
+        const myChats = chats.filter((c: {participants?:string}) => (c.participants||'').includes(aid));
+        if (myChats.length > 0) {
+          const msgs = db.listMessages(myChats[myChats.length-1].id, 20) || [];
+          recentContext = msgs.map((m: {content:string, sender_type:string}) =>
+            `[${m.sender_type==='user'?'用户':'AI'}]: ${m.content.slice(0,300)}`
+          ).join('\n');
+        }
+      } catch (_) {}
+
+      // 用 AI 进行反思
+      const systemPrompt = `你是「记忆反思官」。基于对话历史和当前记忆，提取关键洞察。
+
+当前角色设定：${personality}
+当前记忆摘要：${currentMemory || '(空)'}
+
+反思要求：
+1. 提取 3-5 条最重要的用户偏好、习惯、或事实
+2. 如果和现有记忆冲突，优先信任新信息
+3. 只输出新的记忆摘要，不要解释`;
+
+      const clientResult = aiHub.getClient?.(process.env.DEFAULT_MODEL || 'deepseek-chat');
+      if (!clientResult) return res.status(500).json({ error: 'AI 服务不可用' });
+
+      const resp = await (clientResult.client as any).chat.completions.create({
+        model: clientResult.resolvedModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: '请对以下对话进行记忆反思：\n\n' + (recentContext || '(无最近对话)') }
+        ],
+        temperature: 0.3, max_tokens: 2048,
+      });
+
+      const newMemory = resp.choices[0]?.message?.content || currentMemory;
+      db.updateAgent(aid, { memory_summary: newMemory });
+      res.json({ ok: true, memory: newMemory });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   app.get('/api/agents', (_req, res) => {
     try { res.json({ ok: true, agents: manager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
