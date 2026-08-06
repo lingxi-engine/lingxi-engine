@@ -3539,7 +3539,8 @@ async function loadRightGoals() {
   const el = document.getElementById('rightGoalsList');
   if (!el) return;
   try {
-    const r = await fetch('/api/goals'); const d = await r.json();
+    const projectId = currentChat ? 'project-' + currentChat : 'default';
+    const r = await fetch('/api/goals?project=' + encodeURIComponent(projectId)); const d = await r.json();
     if (!d.ok) { el.innerHTML = '<div style="color:var(--red)">❌ 加载失败</div>'; return; }
     const goals = d.goals || [];
     if (!goals.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无目标，点击下方添加</div>'; return; }

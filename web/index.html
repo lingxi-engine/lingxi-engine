@@ -721,6 +721,8 @@ function switchTab(name,btn){
   btn.classList.add('active');
   document.getElementById('tab-tasks').style.display = name==='tasks'?'block':'none';
   document.getElementById('tab-goals').style.display = name==='goals'?'block':'none';
+  if(name==='tasks' && typeof loadTaskMonitor==='function') loadTaskMonitor();
+  if(name==='goals' && typeof loadRightGoals==='function') loadRightGoals();
 }
 function switchTheme(name,btn){
   document.body.className = 'theme-' + name;
