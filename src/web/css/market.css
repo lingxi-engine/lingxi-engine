@@ -1,0 +1,159 @@
+/* market.css - AI员工市场样式 */
+
+.market-main {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.market-header h1 {
+  color: #2563eb;
+  margin-bottom: 0.5rem;
+  font-size: 2.2rem;
+}
+
+.market-header p {
+  color: #6b7280;
+  font-size: 1.1rem;
+  margin-bottom: 2rem;
+}
+
+.market-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  align-items: center;
+}
+
+.market-filters select,
+.market-filters input {
+  padding: 0.6rem 1rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.95rem;
+}
+
+.market-filters button {
+  padding: 0.6rem 1.2rem;
+  background: #2563eb;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.2s;
+}
+
+.market-filters button:hover {
+  background: #1d4ed8;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.market-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid #e5e7eb;
+}
+
+.market-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.market-card h3 {
+  color: #1f2937;
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.market-card .category {
+  display: inline-block;
+  background: #f3f4f6;
+  color: #4b5563;
+  padding: 0.3rem 0.8rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.market-card .price {
+  font-weight: bold;
+  color: #2563eb;
+  margin: 0.5rem 0;
+}
+
+.market-card button {
+  width: 100%;
+  padding: 0.7rem;
+  background: #10b981;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  margin-top: 1rem;
+  transition: background 0.2s;
+}
+
+.market-card button:hover {
+  background: #059669;
+}
+
+.skeleton-card {
+  background: #f9fafb;
+  border-radius: 8px;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .market-main {
+    padding: 1rem;
+  }
+  
+  .market-header h1 {
+    font-size: 1.8rem;
+  }
+  
+  .market-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .market-filters select,
+  .market-filters input,
+  .market-filters button {
+    width: 100%;
+  }
+}
+
+/* 滚动条美化 */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
