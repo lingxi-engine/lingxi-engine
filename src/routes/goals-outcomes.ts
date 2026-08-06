@@ -279,6 +279,23 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
     }
   });
 
+  // ══════ 反向提问：AI 针对目标提澄清问题 ══════
+  router.post('/goals/:id/ask', (req, res) => {
+    try {
+      const goal = GoalTracker.get(req.params.id);
+      if (!goal) return res.status(404).json({ error: '目标不存在' });
+      const { chatId } = req.body || {};
+      if (!chatId) return res.status(400).json({ error: '需要 chatId' });
+      const msgId = 'goal-ask-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+      const content = '请针对目标任务「' + goal.title + '」进行反向提问：分析这个目标是否定义清晰、范围合理、是否有遗漏的验收条件，提出3-5个关键问题帮助完善目标定义。直接以提问列表形式回复。';
+      ctx.db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
+      ctx.broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ══════ 项目完成 → 自动评分卡（v1.7.3 BUG-6 修复）══════
   // GoalTracker.markDone 里项目全部完成时会调用此回调。
   // 静态回调只注册一次（判空防重复），异步创建评分卡，不阻塞主流程。

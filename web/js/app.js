@@ -3565,6 +3565,7 @@ async function loadRightGoals() {
         (g.status === 'pending' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'in_progress\')" style="cursor:pointer;color:var(--accent)">▶ 开始</a> ' : '') +
         (g.status !== 'done' && g.status !== 'cancelled' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'done\')" style="cursor:pointer;color:var(--green)">✅ 完成</a> ' : '') +
         ((g.status === 'done' || g.status === 'cancelled') ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'pending\')" style="cursor:pointer">↩ 恢复</a> ' : '') +
+        '<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--text2)">🤔 反向提问</a> ' +
         '<a onclick="deleteRightGoal(\'' + g.id + '\')" style="cursor:pointer;color:var(--red)">🗑 删除</a></span></div></div>';
     }).join('');
   } catch(e) { el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</div>'; }
@@ -3578,5 +3579,15 @@ async function deleteRightGoal(id) {
   if (!confirm('确定删除？')) return;
   try { const r = await fetch('/api/goals/' + id, { method: 'DELETE' }); const d = await r.json();
     if (!d.ok) { toast('❌ 删除失败'); return; } toast('已删除'); loadRightGoals();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function askAIAboutGoal(goalId, title) {
+  if (!currentChat) { toast('请先打开一个会话'); return; }
+  try {
+    const r = await fetch('/api/goals/' + encodeURIComponent(goalId) + '/ask', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId: currentChat }) });
+    if (r.ok) { toast('✅ 已向AI提问'); }
+    else { const d = await r.json(); toast('❌ ' + (d.error || '发送失败')); }
   } catch(e) { toast('❌ ' + e.message); }
 }
