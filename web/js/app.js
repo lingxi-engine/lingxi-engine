@@ -3487,19 +3487,11 @@ function addRightGoal() {
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
   const projectId = currentChat ? 'project-' + currentChat : 'default';
-  fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: projectId, title: title.trim(), acceptanceCriteria: desc || '' }) })
-    .then(r => r.json()).then(d => {
+  api('/api/goals', 'POST', { project: projectId, title: title.trim(), acceptanceCriteria: desc || '' })
+    .then(d => {
       if (d.ok) { toast('✅ 已添加'); loadRightGoals(); }
-      else toast('❌ 添加失败');
+      else toast('❌ ' + (d.error || '添加失败'));
     }).catch(e => toast('❌ ' + e.message));
-}
-function deleteGoal(id) {
-  if (!confirm('确定删除此目标？')) return;
-  fetch('/api/goals/' + encodeURIComponent(id), { method: 'DELETE' })
-    .then(r => r.json()).then(d => {
-      if (d.ok) { toast('已删除'); location.reload(); }
-      else toast('删除失败');
-    }).catch(e => toast('删除失败: ' + e.message));
 }
 
 // ── 右侧栏 - 任务监控 ──
@@ -3571,23 +3563,26 @@ async function loadRightGoals() {
   } catch(e) { el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</div>'; }
 }
 async function setRightGoalStatus(id, status) {
-  try { const r = await fetch('/api/goals/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }); const d = await r.json();
-    if (!d.ok) { toast('❌ 操作失败'); return; } loadRightGoals();
+  try {
+    const d = await api('/api/goals/' + id, 'PATCH', { status });
+    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
+    loadRightGoals();
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function deleteRightGoal(id) {
   if (!confirm('确定删除？')) return;
-  try { const r = await fetch('/api/goals/' + id, { method: 'DELETE' }); const d = await r.json();
-    if (!d.ok) { toast('❌ 删除失败'); return; } toast('已删除'); loadRightGoals();
+  try {
+    const d = await api('/api/goals/' + id, 'DELETE');
+    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
+    toast('已删除'); loadRightGoals();
   } catch(e) { toast('❌ ' + e.message); }
 }
 
 async function askAIAboutGoal(goalId, title) {
   if (!currentChat) { toast('请先打开一个会话'); return; }
   try {
-    const r = await fetch('/api/goals/' + encodeURIComponent(goalId) + '/ask', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId: currentChat }) });
-    if (r.ok) { toast('✅ 已向AI提问'); }
-    else { const d = await r.json(); toast('❌ ' + (d.error || '发送失败')); }
+    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat });
+    if (d.ok) { toast('✅ 已向AI提问'); }
+    else toast('❌ ' + (d.error || '发送失败'));
   } catch(e) { toast('❌ ' + e.message); }
 }
