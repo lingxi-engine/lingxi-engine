@@ -1509,6 +1509,34 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── RAG 工作区扫描 ──
+  app.post('/api/rag/scan-workspace', async (_req, res) => {
+    try {
+      const fs = await import('fs'); const path = await import('path');
+      const wsDir = path.join(process.cwd(), 'workspace');
+      if (!fs.existsSync(wsDir)) return res.json({ ok: true, imported: 0, skipped: 0 });
+      const supported = ['.md', '.txt', '.json', '.html', '.htm', '.csv', '.xml', '.yaml', '.yml'];
+      let imported = 0, skipped = 0;
+      for (const file of fs.readdirSync(wsDir)) {
+        const ext = path.extname(file).toLowerCase();
+        if (!supported.includes(ext)) { skipped++; continue; }
+        try {
+          const content = fs.readFileSync(path.join(wsDir, file), 'utf-8');
+          if (content.trim().length < 10) { skipped++; continue; }
+          const doc = { id: 'rag-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6), title: file, source: file, mimeType: ext === '.md' ? 'text/markdown' : 'text/plain', content, createdAt: Date.now(), metadata: { scanned: true } };
+          await router.addRagDocument(doc); imported++;
+        } catch (_) { skipped++; }
+      }
+      res.json({ ok: true, imported, skipped });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── 系统升级 ──
+  app.post('/api/update', requireAuth, async (_req, res) => {
+    try { res.json({ ok: true, message: '升级请手动执行: git pull && pm2 restart lingxi' }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ── Agent 更新 API ──
   app.patch('/api/agents/:id', (req, res) => {
     try {
