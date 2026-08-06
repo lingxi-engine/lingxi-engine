@@ -1965,7 +1965,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 评分卡 API（含 DELETE /api/outcomes/:id 等全部路由）──
-  app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker } as any));
+  app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
 
   // ── P1-2: 会话管理 API ──
   app.get('/api/sessions', (req, res) => {
@@ -3463,6 +3463,9 @@ setSearchManager(searchManagerInstance);
     try {
       db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
       broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
+      // 触发 AI 实际执行目标
+      processUserMessage(chatId, 'goal-tracker', content, undefined, router, broadcast).catch(e =>
+        console.error(`[GoalTracker] 触发AI执行失败:`, e?.message || e));
       console.log(`[GoalTracker] 已向 ${chatId} 注入目标 "${goal.title}"`);
     } catch (e: any) {
       console.error(`[GoalTracker] 注入目标消息失败:`, e?.message || e);

@@ -14,6 +14,7 @@
  */
 import { Router } from 'express';
 import { GoalTracker } from '../core/goal-tracker.js';
+import { processUserMessage } from '../core/ws-handler.js';
 import type { ServerContext } from '../server/context.js';
 
 /** 前端 admin 面板不传 projectId 时的默认项目 */
@@ -290,6 +291,8 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
       const content = '请针对目标任务「' + goal.title + '」进行反向提问：分析这个目标是否定义清晰、范围合理、是否有遗漏的验收条件，提出3-5个关键问题帮助完善目标定义。直接以提问列表形式回复。';
       ctx.db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
       ctx.broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
+      // 触发 AI 审查目标
+      try { processUserMessage(chatId, 'goal-tracker', content, undefined, ctx.router, ctx.broadcast); } catch (_) {}
       res.json({ ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
