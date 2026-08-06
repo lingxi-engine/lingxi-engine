@@ -1915,7 +1915,7 @@ setSearchManager(searchManagerInstance);
 
   // ── v1.8.4: 目标系统 (GoalTracker) ──
   // project 参数缺省为 'default'（单项目场景），支持 ?project= 查询多项目
-  app.get('/api/goals', (_req, res) => {
+  app.get('/api/goals', requireAuth, (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       const goals = GoalTracker.list(project);
@@ -1924,7 +1924,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/goals/summary', (_req, res) => {
+  app.get('/api/goals/summary', requireAuth, (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       res.json({ ok: true, summary: GoalTracker.getProgressSummary(project) });
