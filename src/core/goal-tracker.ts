@@ -35,6 +35,12 @@ export class GoalTracker {
   static onProjectCompleted: ((projectId: string) => void) | null = null;
 
   /**
+   * 目标开始执行回调（由 index.ts 注册，用于触发 AI 执行）
+   * 在 markInProgress 成功后调用，传入完整的目标对象
+   */
+  static onGoalStarted: ((goal: ProjectGoal) => void) | null = null;
+
+  /**
    * 创建目标
    */
   static create(projectId: string, title: string, acceptanceCriteria?: string, parentId?: string): ProjectGoal {
@@ -88,6 +94,12 @@ export class GoalTracker {
     // 先将该项目其他进行中的目标恢复为 pending
     db.run(`UPDATE project_goals SET status = 'pending' WHERE project_id = ? AND status = 'in_progress'`, [goal.projectId]);
     db.run(`UPDATE project_goals SET status = 'in_progress' WHERE id = ?`, [id]);
+    // 触发开始回调
+    try {
+      GoalTracker.onGoalStarted?.(GoalTracker.get(id)!);
+    } catch (e: any) {
+      console.error(`[GoalTracker] 触发开始回调失败:`, e?.message || e);
+    }
     return true;
   }
 

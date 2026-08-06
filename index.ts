@@ -3450,6 +3450,25 @@ setSearchManager(searchManagerInstance);
     throw err;
   });
 
+  // ── 目标任务 "开始" → AI 执行 钩子 ──
+  GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
+    // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
+    const chatId = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
+    if (!chatId) {
+      console.log(`[GoalTracker] 目标 "${goal.title}" 已开始，但未绑定会话 (projectId=${goal.projectId})`);
+      return;
+    }
+    const msgId = 'goal-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    const content = `请开始执行目标任务：「${goal.title}」` + (goal.acceptanceCriteria ? `\n验收标准：${goal.acceptanceCriteria}` : '');
+    try {
+      db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
+      broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
+      console.log(`[GoalTracker] 已向 ${chatId} 注入目标 "${goal.title}"`);
+    } catch (e: any) {
+      console.error(`[GoalTracker] 注入目标消息失败:`, e?.message || e);
+    }
+  };
+
   server.listen(port, '0.0.0.0', () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');

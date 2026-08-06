@@ -497,6 +497,19 @@ export class MessageRouter {
       );
     }
 
+    // ── 注入当前会话的项目目标（如果有）──
+    if (chatId) {
+      const projectId = 'project-' + chatId;
+      try {
+        const goals = GoalTracker.list(projectId);
+        const activeGoals = goals.filter(g => g.status === 'in_progress' || g.status === 'pending');
+        if (activeGoals.length > 0) {
+          const summary = GoalTracker.getProgressSummary(projectId);
+          lines.push('## 当前会话的目标任务', summary, '');
+        }
+      } catch (_) { /* GoalTracker 不可用时静默跳过 */ }
+    }
+
     // 工具列表
     if (this.toolRegistry) {
       const tools = this.toolRegistry.listToolsForAgent(agent.id);

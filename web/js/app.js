@@ -3486,7 +3486,8 @@ function addRightGoal() {
   const title = prompt('目标名称：');
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
-  fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: 'default', title: title.trim(), acceptanceCriteria: desc || '' }) })
+  const projectId = currentChat ? 'project-' + currentChat : 'default';
+  fetch('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project: projectId, title: title.trim(), acceptanceCriteria: desc || '' }) })
     .then(r => r.json()).then(d => {
       if (d.ok) { toast('✅ 已添加'); loadRightGoals(); }
       else toast('❌ 添加失败');
