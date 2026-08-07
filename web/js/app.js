@@ -16,6 +16,7 @@ let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionLis
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重复
 const _optimisticSent = new Set();
 let streamingMsgs = {};
+let genTimers = {};         // chatId -> timeoutId, 生成超时保底
 let connectIntended = false;
 let sendQueue = [];
 let _currentAskGoalId = null;        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
@@ -619,6 +620,13 @@ function handleMessage(msg) {
     case 'agent.streaming.start':
       // 总是注册流式状态（即使不在当前聊天），防止切走后丢失
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
+      if (genTimers[msg.chatId]) clearTimeout(genTimers[msg.chatId]);
+      genTimers[msg.chatId] = setTimeout(function() {
+        var gc = generatingChats[msg.chatId] || 0;
+        if (gc > 0) { generatingChats[msg.chatId] = 0; updateGenUI(); }
+        delete genTimers[msg.chatId];
+        if (msg.chatId === currentChat) toast("⏰ 生成超时，htoken已消耗但未产生完整回复，可重试或缩短提问");
+      }, 180000); // 3分钟超时保底
       updateGenUI();
       appendStreamingMsg(msg);
       break;
@@ -649,6 +657,7 @@ function handleMessage(msg) {
       }
       break;
     case 'agent.streaming.end':
+      if (genTimers[msg.chatId]) { clearTimeout(genTimers[msg.chatId]); delete genTimers[msg.chatId]; }
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
