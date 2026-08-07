@@ -3647,7 +3647,7 @@ async function askAIAboutGoal(goalId, title) {
   _currentAskGoalId = goalId;
   if (!currentChat) { toast('请先打开一个会话'); return; }
   try {
-    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat });
+    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat, extra: (typeof title === 'string' && (title.includes(';') || title.includes('自定义'))) ? title : '' });
     if (d.ok) { toast('✅ 已向AI提问'); }
     else toast('❌ ' + (d.error || '发送失败'));
   } catch(e) { toast('❌ ' + e.message); }
@@ -3685,6 +3685,7 @@ function renderGoalQAForm(content, msgEl, chatId) {
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
   html += '</div></div>';
+  html += '<button class="btn" style="font-size:11px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
 
   var wrapper = document.createElement("div");
   wrapper.innerHTML = html;
@@ -3746,4 +3747,19 @@ function hideSidebar() {
   var ov = document.getElementById('sidebarOverlay');
   if (sb) sb.classList.remove('show');
   if (ov) ov.style.display = 'none';
+}
+
+
+function continueReverseAsk(btn) {
+  var form = btn.closest("div");
+  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
+  if (!form) return;
+  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
+  if (!goalId) { toast("未找到对应的目标"); return; }
+  var context = [];
+  form.querySelectorAll("input[type=checkbox]:checked").forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
+  form.querySelectorAll("input[type=text]").forEach(function(t) { if (t.value.trim()) context.push("自定义: " + t.value.trim()); });
+  var extra = context.length ? context.join("; ") : "";
+  toast("💬 继续提问中...");
+  askAIAboutGoal(goalId, extra);
 }
