@@ -3583,12 +3583,23 @@ setSearchManager(searchManagerInstance);
         if (!current || current.status === 'done' || current.status === 'cancelled') return;
         
         setTimeout(() => {
-          const continueMsg = `继续执行目标任务「${goal.title}」。已完成子步骤后继续下一个，全部验收标准满足后告知完成。`;
+          const continueMsg = `请报告目标任务「${goal.title}」的进度：\n1. 已完成了哪些子步骤？\n2. 还有哪些未完成？\n3. 如果验收标准全部满足，请回复「全部完成」；否则继续执行未完成的部分。`;
           try {
             const mid = 'goal-cont-' + Date.now();
             db.addMessage({ id: mid, chatId, senderType: 'user', senderId: 'goal-tracker', content: continueMsg, type: 'text', timestamp: Date.now() });
             broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content: continueMsg, timestamp: Date.now() });
             try { processUserMessage(chatId, 'goal-tracker', continueMsg, undefined, router, broadcast); } catch (_) {}
+            // 检查AI是否汇报完成（检测最近消息中是否包含完成关键词）
+            setTimeout(() => {
+              try {
+                const msgs = db.listMessages(chatId, 5) || [];
+                const lastMsg = msgs[msgs.length - 1];
+                if (lastMsg && lastMsg.sender_type === 'agent' && /全部完成|所有任务.*完成|所有验收标准.*满足|DONE/i.test(lastMsg.content)) {
+                  GoalTracker.markDone(goal.id);
+                  console.log(`[GoalTracker] 目标 "${goal.title}" AI自评完成，已自动标记为done`);
+                }
+              } catch (_) {}
+            }, 120000); // 等2分钟让AI完成回复后再检查
             // 递归调度下一轮（给AI足够时间回复）
             setTimeout(checkAndContinue, 30000);
           } catch (_) {}
