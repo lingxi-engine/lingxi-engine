@@ -1,0 +1,41 @@
+# ============================================
+# 歌曲制作 - Python 依赖清单
+# 适配: RTX 3060 12GB / Python 3.10+ / CUDA 12.x
+# ============================================
+
+# --- 核心框架 ---
+torch>=2.1.0
+torchaudio>=2.1.0
+torchvision>=0.16.0
+
+# --- DiffRhythm 核心依赖 ---
+# DiffRhythm 基于 diffusers 架构
+diffusers>=0.27.0
+transformers>=4.38.0
+accelerate>=0.27.0
+safetensors>=0.4.0
+
+# --- 音频处理 ---
+soundfile>=0.12.1
+librosa>=0.10.1
+scipy>=1.11.0
+pydub>=0.25.1
+
+# --- 分词器 (中文歌词处理) ---
+jieba>=0.42.1
+pypinyin>=0.51.0
+
+# --- MCP Server ---
+fastapi>=0.109.0
+uvicorn>=0.27.0
+httpx>=0.27.0
+pydantic>=2.5.0
+
+# --- 工具 ---
+tqdm>=4.66.0
+numpy>=1.24.0
+Pillow>=10.0.0
+
+# --- 备选: YuE 模型量化 (可选) ---
+# bitsandbytes>=0.42.0
+# 注意: bitsandbytes 在 Windows 上安装较复杂，建议 Linux 环境使用

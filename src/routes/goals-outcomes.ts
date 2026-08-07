@@ -285,11 +285,10 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
     try {
       const goal = GoalTracker.get(req.params.id);
       if (!goal) return res.status(404).json({ error: '目标不存在' });
-      const { chatId, extra } = req.body || {};
+      const { chatId } = req.body || {};
       if (!chatId) return res.status(400).json({ error: '需要 chatId' });
       const msgId = 'goal-ask-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      const extraHint = extra ? `\n\n用户之前的选择：${extra}\n请基于这些选择继续深入提问，不要再重复已确认的点。` : '';
-      const content = `请针对目标任务「${goal.title}」进行结构化分析。${extraHint}
+      const content = `请针对目标任务「${goal.title}」进行结构化分析。
 
 要求输出格式（严格遵循）：
 Q: 问题1？

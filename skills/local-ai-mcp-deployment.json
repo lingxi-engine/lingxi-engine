@@ -1,0 +1,15 @@
+{
+  "name": "local-ai-mcp-deployment",
+  "displayName": "本地AI工作流部署与MCP封装",
+  "description": "在本地环境部署开源AI模型或工作流，并将其封装为MCP Server供外部调用。",
+  "tools": [
+    "web_search",
+    "shell_exec",
+    "write_file",
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "当用户要求在本地部署AI模型/工作流并封装为MCP工具时：\n1. 需求分析：首先对任务进行结构化分析，明确MVP验收标准、硬件限制、效果要求和耗时容忍度。\n2. 环境准备：使用 shell_exec 检查本地环境（如GPU、Python版本），安装必要的依赖和软件。\n3. 模型选型与部署：使用 web_search 调研最适合用户硬件和需求的开源模型，下载模型并使用 shell_exec 进行基础测试，确保端到端流程跑通。\n4. MCP封装：使用 write_file 编写 MCP Server 代码，将AI工作流的各个步骤封装为标准工具，确保输入输出格式规范。\n5. 进度管理：将任务拆分为明确的子步骤，在执行过程中维护状态，并在用户询问进度时清晰汇报已完成、未完成及下一步计划。",
+  "autoCreated": true,
+  "createdAt": 1786110898131
+}

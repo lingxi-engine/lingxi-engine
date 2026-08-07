@@ -1,0 +1,13 @@
+{
+  "name": "music-generation",
+  "displayName": "音乐生成",
+  "description": "使用AI模型（如MusicGen、DiffRhythm）生成或制作歌曲/音乐",
+  "tools": [
+    "shell_exec",
+    "write_file",
+    "read_file"
+  ],
+  "prompt": "当用户要求生成音乐/歌曲时，按以下步骤执行：\n1. 检查运行环境：确认CUDA是否可用、关键依赖（torch、transformers等）是否安装，如缺失则通过shell_exec安装。\n2. 下载或加载所需的生成模型（如MusicGen、DiffRhythm），确保模型权重和分词器就绪。\n3. 编写Python推理脚本，生成指定时长的音频并保存为wav文件，注意处理GPU显存参数（如total_memory）和超时限制。\n4. 运行脚本，若报错则分析日志修复bug（如属性名拼写、路径问题），然后重试。\n5. 生成成功后，向用户报告输出文件路径、时长和大小等信息；如果用户要求成品，确保文件保存在可访问位置并明确告知完成。",
+  "autoCreated": true,
+  "createdAt": 1786122453044
+}
