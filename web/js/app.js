@@ -17,7 +17,8 @@ let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionLis
 const _optimisticSent = new Set();
 let streamingMsgs = {};
 let connectIntended = false;
-let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
+let sendQueue = [];
+let _currentAskGoalId = null;        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是否"生成中"）
 
 // ═══ Panel Switching ═══
@@ -3643,7 +3644,7 @@ async function deleteRightGoal(id) {
 }
 
 async function askAIAboutGoal(goalId, title) {
-  _lastAskGoalId = goalId;
+  _currentAskGoalId = goalId;
   if (!currentChat) { toast('请先打开一个会话'); return; }
   try {
     const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat });
@@ -3699,7 +3700,7 @@ function applyGoalRefine(btn, action) {
   var selections = [];
   checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
   
-  var goalId = form.getAttribute("data-goal-id");
+  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
   if (!goalId) { var ri = document.querySelector("#rightGoalsList .goal-item"); if (ri) goalId = ri.getAttribute("data-goal-id"); }
   if (!goalId) { toast("未找到对应的目标"); return; }
   
