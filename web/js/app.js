@@ -3677,15 +3677,13 @@ function renderGoalQAForm(content, msgEl, chatId) {
       var cbId = 'ga-' + qi + '-' + oi + '-' + Date.now();
       html += '<label style="display:block;font-size:12px;cursor:pointer;padding:2px 0"><input type="checkbox" id="' + cbId + '" style="margin-right:4px">' + esc(o.text) + '</label>';
     }
-      html += '<input type="text" placeholder="其他（自定义）" style="width:100%;margin-top:2px;padding:2px 6px;font-size:11px;background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:3px" oninput="this.parentElement.querySelector(\'input[type=checkbox]\').checked=true">';
     html += '</div>';
   }
-  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap" data-goal-id="' + (_lastAskGoalId || '') + '">';
+  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
   html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,' + "'refine'" + ')">✅ 完善目标</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
   html += '</div></div>';
-  html += '<button class="btn" style="font-size:11px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
 
   var wrapper = document.createElement("div");
   wrapper.innerHTML = html;
@@ -3747,23 +3745,4 @@ function hideSidebar() {
   var ov = document.getElementById('sidebarOverlay');
   if (sb) sb.classList.remove('show');
   if (ov) ov.style.display = 'none';
-}
-
-
-function continueReverseAsk(btn) {
-  var form = btn.closest("div");
-  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
-  if (!form) return;
-  var goalId = form.getAttribute("data-goal-id");
-  if (!goalId) { var ri = document.querySelector("#rightGoalsList .goal-item"); if (ri) goalId = ri.getAttribute("data-goal-id"); }
-  if (!goalId) { toast("未找到对应的目标"); return; }
-  // 收集用户勾选的选项+自定义输入作为上下文
-  var context = [];
-  form.querySelectorAll("input[type=checkbox]:checked").forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
-  form.querySelectorAll("input[type=text]").forEach(function(t) { if (t.value.trim()) context.push("自定义: " + t.value.trim()); });
-  var extraContext = context.length ? "\n\n用户已选择: " + context.join("; ") : "";
-  api("/api/goals/" + goalId + "/ask", "POST", { chatId: currentChat, extra: extraContext }).then(function(d) {
-    if (d.ok) toast("✅ 已继续提问");
-    else toast("❌ " + (d.error || "发送失败"));
-  }).catch(function(e) { toast("❌ " + e.message); });
 }
