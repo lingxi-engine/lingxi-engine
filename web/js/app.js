@@ -3643,6 +3643,7 @@ async function deleteRightGoal(id) {
 }
 
 async function askAIAboutGoal(goalId, title) {
+  _lastAskGoalId = goalId;
   if (!currentChat) { toast('请先打开一个会话'); return; }
   try {
     const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat });
@@ -3678,7 +3679,7 @@ function renderGoalQAForm(content, msgEl, chatId) {
     }
     html += '</div>';
   }
-  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
+  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap" data-goal-id="' + (_lastAskGoalId || '') + '">';
   html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,' + "'refine'" + ')">✅ 完善目标</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
@@ -3698,8 +3699,9 @@ function applyGoalRefine(btn, action) {
   var selections = [];
   checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
   
-  var goalId = prompt("目标ID（可在右侧栏找到）:");
-  if (!goalId) return;
+  var goalId = form.getAttribute("data-goal-id");
+  if (!goalId) { var ri = document.querySelector("#rightGoalsList .goal-item"); if (ri) goalId = ri.getAttribute("data-goal-id"); }
+  if (!goalId) { toast("未找到对应的目标"); return; }
   
   api("/api/goals/" + goalId + "/refine", "POST", { selections: selections, action: action }).then(function(d) {
     if (d.ok) { 
