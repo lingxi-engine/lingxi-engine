@@ -696,6 +696,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <button onclick="switchPanel('tools')" id="tbToolsBtn">工具</button>
   <button onclick="switchPanel('social')" id="tbSocialBtn">局域网</button>
   <div class="tb-spacer"></div>
+  <button id="membersBtn" class="hidden" onclick="showMembersPanel()">👥 成员</button>
+  <button id="memoryBtn" class="hidden" onclick="showMemoryPanel()">🧠 记忆</button>
   <button onclick="document.getElementById('rightbar').classList.toggle('show')">任务</button>
   <button onclick="toggleAdmin()" id="tbAdminBtn">管理</button>
   <div class="tb-status">
@@ -987,9 +989,6 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 </script>
 
 
-<!-- [修复] 补齐 JS 依赖的隐藏元素 -->
-<button id="membersBtn" class="hidden" onclick="showMembersPanel()">👥 成员</button>
-<button id="memoryBtn" class="hidden" onclick="showMemoryPanel()">🧠 记忆</button>
 <div id="sidebarOverlay" style="display:none" onclick="hideSidebar()"></div>
 
 <!-- [修复] 补齐JS依赖的缺失DOM元素 -->
