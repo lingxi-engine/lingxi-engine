@@ -2734,6 +2734,14 @@ setSearchManager(searchManagerInstance);
     }
   }
 
+  // 根据用户 ID 查询 numeric_id（用于在线状态广播）
+  function getNumericId(userId: string): number | null {
+    try {
+      const u = db.getUser(userId);
+      return u?.numeric_id || null;
+    } catch { return null; }
+  }
+
   wss.on('connection', (ws, req) => {
     const urlStr = req.url || '';
     const queryIndex = urlStr.indexOf('?');
@@ -2770,7 +2778,7 @@ setSearchManager(searchManagerInstance);
     console.log('[WS] connect:', clientId, token ? '(认证)' : '(开发模式匿名)');
     if (!clients.has(clientId)) clients.set(clientId, new Set());
     clients.get(clientId)!.add(ws);
-    broadcast({ type: 'user.online', userId: clientId, message: clientId + ' 上线了' });
+    broadcast({ type: 'user.online', userId: clientId, numericId: getNumericId(clientId), message: clientId + ' 上线了' });
     // 自动为访客创建用户 + 聊天 + Agent（如果还没有）
     ensureUserSetup(clientId, db, manager, toolRegistry);
     ws.on('message', (raw) => {
@@ -2789,7 +2797,7 @@ setSearchManager(searchManagerInstance);
         if (set.size === 0) clients.delete(clientId);
       }
       console.log('[WS] close:', clientId);
-      broadcast({ type: 'user.offline', userId: clientId });
+      broadcast({ type: 'user.offline', userId: clientId, numericId: getNumericId(clientId) });
       try { getDB().run('UPDATE users SET status = ? WHERE id = ?', ['offline', clientId]); } catch {}
     });
     ws.on('error', (err) => {

@@ -12,6 +12,7 @@ window.addEventListener('unhandledrejection', function(e) {
 let ws = null, clientId = null, currentChat = null;
 let myChats = [], unreadCounts = {}, reconnectAttempts = 0, reconnectTimer = null;
 let myFriends = [], incomingRequests = [], searchResults = [], currentFriendTab = 'friends';
+let onlineUsers = {};  // numericId -> { userId, numericId, lastSeen }
 let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionList = [], mentionIndex = -1;
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重复
 const _optimisticSent = new Set();
@@ -694,7 +695,15 @@ function handleMessage(msg) {
     case 'friend.accepted':
       toast(t('friends.requestAccepted')); loadFriends(); loadRequests();
       break;
-    case 'welcome': case 'user.online': case 'user.offline': break;
+    case 'user.online':
+      if (msg.userId) onlineUsers[msg.userId] = { userId: msg.userId, numericId: msg.numericId, lastSeen: Date.now() };
+      renderFriends();
+      break;
+    case 'user.offline':
+      delete onlineUsers[msg.userId];
+      renderFriends();
+      break;
+    case 'welcome': break;
     case 'error':
       console.error('[WS error]', msg.message, msg.detail);
       // 在聊天区域显示完整错误信息
@@ -869,6 +878,7 @@ function appendMessage(msg) {
   
   const el = document.createElement('div');
   el.className = 'msg-row ' + (isMe ? 'me' : (isAgent ? 'ai' : 'other'));
+  el.dataset.msgid = msg.id || msg.msgId || ('msg-'+Date.now()+'-'+Math.random().toString(36).slice(2,6));
   
   // 头像（首字母）
   const displayName = senderId.replace(/^agent-|^user-/, '').charAt(0).toUpperCase() || '?';
@@ -913,8 +923,8 @@ function appendMessage(msg) {
     }
   }
   
-  // 消息操作菜单
-  const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
+  // 消息操作菜单（含表情反应）
+  const actions = '<div class="msg-actions"><button onclick="showReactionPanel(event,\''+el.dataset.msgid+'\')" title="表情反应">😀</button><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
   
   el.innerHTML = '<div class="msg-avatar ' + esc(avatarClass) + '">' + esc(avatarIcon) + '</div>' +
     '<div style="max-width:70%"><div class="msg-bubble">' + bubbleContent + actions + '</div>' +
@@ -1219,7 +1229,10 @@ document.getElementById('input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   checkMention();
 });
-document.getElementById('input').addEventListener('input', checkMention);
+document.getElementById('input').addEventListener('input', function() {
+  checkMention();
+  if (currentChat) sendTyping(currentChat);
+});
 
 // ── 粘贴截图 ──
 document.addEventListener('paste', function(e) {
@@ -1444,8 +1457,10 @@ function renderFriends() {
     const fid = String(f.friendId);
     const fname = f.friendName || f.displayName || ('用户'+fid);
     const femail = f.friendEmail || '';
+    const isOnline = Object.values(onlineUsers).some(u => String(u.numericId) === fid || u.userId === fid);
+    const statusDot = '<span class="status-dot ' + (isOnline ? 'online' : 'offline') + '" title="' + (isOnline ? '在线' : '离线') + '"></span>';
     const initial = (fname||'?')[0].toUpperCase();
-    const avatar = '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;font-weight:600">'+esc(initial)+'</div>';
+    const avatar = '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;font-weight:600;position:relative">'+esc(initial)+statusDot+'</div>';
     return '<div class="friend-item" style="display:flex;align-items:center;gap:10px;padding:10px">' +
       avatar +
       '<div style="flex:1;min-width:0;cursor:pointer" onclick="openChatFriend(\''+fid+'\',\''+esc(fname)+'\')">' +
@@ -3776,6 +3791,233 @@ function hideSidebar() {
   if (sb) sb.classList.remove('show');
   if (ov) ov.style.display = 'none';
 }
+
+// ═══════════════════════════════════════════
+// 编辑个人资料
+// ═══════════════════════════════════════════
+function showEditProfile() {
+  var modal = document.getElementById('editProfileModal');
+  if (!modal) return;
+  modal.classList.add('show');
+  // 预填当前值
+  var pcName = document.getElementById('pcName');
+  var epName = document.getElementById('epName');
+  if (pcName && epName) epName.value = pcName.textContent.replace('未登录','');
+  var pdBio = document.getElementById('pdBio');
+  var epBio = document.getElementById('epBio');
+  if (pdBio && epBio) epBio.value = pdBio.textContent === '--' ? '' : pdBio.textContent;
+  // 头像预览
+  var pcAvatar = document.getElementById('pcAvatar');
+  var epAvatar = document.getElementById('epAvatar');
+  if (pcAvatar && epAvatar) epAvatar.textContent = pcAvatar.textContent;
+}
+function closeEditProfile() {
+  var modal = document.getElementById('editProfileModal');
+  if (modal) modal.classList.remove('show');
+}
+async function saveProfile() {
+  var token = localStorage.getItem('authToken');
+  if (!token) { toast('请先登录'); return; }
+  var name = document.getElementById('epName').value.trim();
+  var bio = document.getElementById('epBio').value.trim();
+  var status = document.getElementById('epStatus').value.trim();
+  if (!name) { toast('名称不能为空'); return; }
+  try {
+    var me = await fetch('/api/auth/me', {headers:{'Authorization':'Bearer '+token}}).then(r=>r.json());
+    if (!me.ok || !me.user) { toast('请重新登录'); return; }
+    var userId = me.user.id || me.user.sub;
+    var r = await fetch('/api/profile', {
+      method:'PUT', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
+      body: JSON.stringify({userId: userId, displayName: name, bio: bio})
+    });
+    var d = await r.json();
+    if (d.ok) {
+      document.getElementById('pcName').textContent = name;
+      document.getElementById('pdBio').textContent = bio || '--';
+      if (status) {
+        localStorage.setItem('lingxi-custom-status', status);
+        try { document.getElementById('pcCredits').textContent = '💬 '+status; } catch(_){}
+      }
+      closeEditProfile();
+      toast('✅ 资料已更新');
+    } else {
+      toast('❌ '+ (d.error || '保存失败'));
+    }
+  } catch(e) { toast('❌ 保存失败: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+// 头像上传
+// ═══════════════════════════════════════════
+async function uploadAvatar() {
+  var fileInput = document.getElementById('avatarFile');
+  var file = fileInput.files[0];
+  if (!file) return;
+  var token = localStorage.getItem('authToken');
+  if (!token) { toast('请先登录'); return; }
+  try {
+    var me = await fetch('/api/auth/me', {headers:{'Authorization':'Bearer '+token}}).then(r=>r.json());
+    if (!me.ok || !me.user) { toast('请重新登录'); return; }
+    var userId = me.user.id || me.user.sub;
+    var form = new FormData();
+    form.append('file', file);
+    form.append('userId', userId);
+    var r = await fetch('/api/profile/avatar', {method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
+    var d = await r.json();
+    if (d.ok) {
+      document.getElementById('epAvatar').textContent = '';
+      document.getElementById('epAvatar').style.backgroundImage = 'url('+d.avatarUrl+')';
+      document.getElementById('epAvatar').style.backgroundSize = 'cover';
+      document.getElementById('pcAvatar').textContent = '';
+      document.getElementById('pcAvatar').style.backgroundImage = 'url('+d.avatarUrl+')';
+      document.getElementById('pcAvatar').style.backgroundSize = 'cover';
+      toast('✅ 头像已更新');
+    } else {
+      toast('❌ '+ (d.error || '上传失败'));
+    }
+  } catch(e) { toast('❌ 上传失败: '+e.message); }
+}
+
+// ═══════════════════════════════════════════
+// 正在输入提示
+// ═══════════════════════════════════════════
+var typingTimer = null;
+var typingChatId = null;
+function sendTyping(chatId) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  if (typingChatId === chatId) {
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(function(){ ws.send(JSON.stringify({type:'typing.stop',chatId:chatId})); typingChatId=null; }, 2000);
+    return;
+  }
+  typingChatId = chatId;
+  ws.send(JSON.stringify({type:'typing.start',chatId:chatId}));
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(function(){ ws.send(JSON.stringify({type:'typing.stop',chatId:chatId})); typingChatId=null; }, 2000);
+}
+// 在 handleMessage 中添加 typing 处理（额外注册）
+(function patchHandleMessage() {
+  var orig = handleMessage;
+  handleMessage = function(msg) {
+    orig(msg);
+    if (!msg || !msg.type) return;
+    if (msg.type === 'typing.start' && msg.chatId === currentChat && msg.userId !== clientId) {
+      var el = document.getElementById('typingIndicator');
+      if (el) { el.classList.add('show'); el.textContent = (msg.userName || '对方') + ' 正在输入...'; }
+    }
+    if (msg.type === 'typing.stop' && msg.chatId === currentChat) {
+      var el = document.getElementById('typingIndicator');
+      if (el) el.classList.remove('show');
+    }
+    if (msg.type === 'reaction') {
+      if (!msgReactions[msg.msgId]) msgReactions[msg.msgId] = {};
+      if (!msgReactions[msg.msgId][msg.emoji]) msgReactions[msg.msgId][msg.emoji] = [];
+      var idx = msgReactions[msg.msgId][msg.emoji].indexOf(msg.userId);
+      if (idx >= 0) msgReactions[msg.msgId][msg.emoji].splice(idx, 1);
+      else msgReactions[msg.msgId][msg.emoji].push(msg.userId);
+      if (msgReactions[msg.msgId][msg.emoji].length === 0) delete msgReactions[msg.msgId][msg.emoji];
+      renderReactions(msg.msgId);
+    }
+  };
+})();
+
+// ═══════════════════════════════════════════
+// 拉黑用户
+// ═══════════════════════════════════════════
+var blockedUsers = JSON.parse(localStorage.getItem('lingxi-blocked') || '[]');
+function blockUser(uid) {
+  if (blockedUsers.indexOf(uid) >= 0) return;
+  blockedUsers.push(uid);
+  localStorage.setItem('lingxi-blocked', JSON.stringify(blockedUsers));
+  renderFriends();
+  toast('已拉黑用户 ' + uid);
+}
+function unblockUser(uid) {
+  blockedUsers = blockedUsers.filter(function(id){ return id !== uid; });
+  localStorage.setItem('lingxi-blocked', JSON.stringify(blockedUsers));
+  renderFriends();
+  toast('已解除拉黑');
+}
+function isBlocked(uid) { return blockedUsers.indexOf(String(uid)) >= 0; }
+
+// ═══════════════════════════════════════════
+// 表情反应
+// ═══════════════════════════════════════════
+var msgReactions = {};  // msgId -> { emoji: [userId, ...] }
+function showReactionPanel(e, msgId) {
+  e.stopPropagation();
+  var panel = document.getElementById('reactionPanel');
+  if (!panel) return;
+  panel.dataset.msgId = msgId;
+  panel.style.display = 'flex';
+  panel.style.left = e.clientX + 'px';
+  panel.style.top = (e.clientY - 40) + 'px';
+  document.addEventListener('click', hideReactionPanel, {once:true});
+}
+function hideReactionPanel() {
+  var panel = document.getElementById('reactionPanel');
+  if (panel) panel.style.display = 'none';
+}
+function addReaction(e, emoji) {
+  e.stopPropagation();
+  var panel = document.getElementById('reactionPanel');
+  var msgId = panel.dataset.msgId;
+  if (!msgReactions[msgId]) msgReactions[msgId] = {};
+  if (!msgReactions[msgId][emoji]) msgReactions[msgId][emoji] = [];
+  var idx = msgReactions[msgId][emoji].indexOf(clientId);
+  if (idx >= 0) msgReactions[msgId][emoji].splice(idx, 1);
+  else msgReactions[msgId][emoji].push(clientId);
+  if (msgReactions[msgId][emoji].length === 0) delete msgReactions[msgId][emoji];
+  renderReactions(msgId);
+  // 广播给其他用户
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({type:'reaction',msgId:msgId,emoji:emoji,userId:clientId}));
+  }
+  hideReactionPanel();
+}
+function renderReactions(msgId) {
+  var el = document.querySelector('.msg-row[data-msgid="'+msgId+'"] .msg-reactions');
+  if (!el) {
+    var row = document.querySelector('.msg-row[data-msgid="'+msgId+'"]');
+    if (!row) return;
+    var bubble = row.querySelector('.msg-bubble') || row.querySelector('.msg-content');
+    if (!bubble) return;
+    el = document.createElement('div');
+    el.className = 'msg-reactions';
+    (bubble.parentNode || bubble).appendChild(el);
+  }
+  var rs = msgReactions[msgId] || {};
+  el.innerHTML = Object.keys(rs).map(function(emoji){
+    var cnt = rs[emoji].length;
+    var active = rs[emoji].indexOf(clientId) >= 0 ? ' active' : '';
+    return '<span class="msg-reaction'+active+'" onclick="document.getElementById(\'reactionPanel\').dataset.msgId=\''+msgId+'\';addReaction(event,\''+emoji+'\')">'+emoji+' '+cnt+'</span>';
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// 免打扰
+// ═══════════════════════════════════════════
+var mutedChats = JSON.parse(localStorage.getItem('lingxi-muted') || '[]');
+function toggleMute(chatId) {
+  var idx = mutedChats.indexOf(chatId);
+  if (idx >= 0) mutedChats.splice(idx, 1);
+  else mutedChats.push(chatId);
+  localStorage.setItem('lingxi-muted', JSON.stringify(mutedChats));
+  toast(idx >= 0 ? '🔔 已开启通知' : '🔕 已免打扰');
+}
+function isMuted(chatId) { return mutedChats.indexOf(chatId) >= 0; }
+
+// ═══════════════════════════════════════════
+// 好友备注 & 请求附言
+// ═══════════════════════════════════════════
+var friendNotes = JSON.parse(localStorage.getItem('lingxi-notes') || '{}');
+function setFriendNote(fid, note) {
+  friendNotes[fid] = note;
+  localStorage.setItem('lingxi-notes', JSON.stringify(friendNotes));
+  renderFriends();
+  toast('备注已保存');
+}
+function getFriendNote(fid) { return friendNotes[fid] || ''; }
 
 
 function continueReverseAsk(btn) {
