@@ -2231,6 +2231,7 @@ async function submitAuth() {
       localStorage.setItem('authToken', authToken);
       const user = r.user || {};
       document.getElementById('userInfo').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
+      updateProfileCard(user);
       document.getElementById('loginArea').style.display = '';
       document.getElementById('loginButtons').style.display = 'none';
       closeAuthModal();
@@ -2250,8 +2251,25 @@ async function logout() {
   localStorage.removeItem('authToken');
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
+  resetProfileCard();
   if (ws) try { ws.close(); } catch {}
   toast('已退出');
+}
+function updateProfileCard(user) {
+  if (!user) return;
+  const name = user.username || user.display_name || user.displayName || '用户';
+  const id = user.numeric_id || user.id || user.sub || '';
+  const avatar = (name[0] || 'U').toUpperCase();
+  try { document.getElementById('pcAvatar').textContent = avatar; } catch(_) {}
+  try { document.getElementById('pcName').innerHTML = esc(name); } catch(_) {}
+  try { document.getElementById('pcId').textContent = 'ID ' + id; } catch(_) {}
+  try { document.getElementById('pcCredits').textContent = '⚡ 积分 --'; } catch(_) {}
+}
+function resetProfileCard() {
+  try { document.getElementById('pcAvatar').textContent = '?'; } catch(_) {}
+  try { document.getElementById('pcName').textContent = '未登录'; } catch(_) {}
+  try { document.getElementById('pcId').textContent = ''; } catch(_) {}
+  try { document.getElementById('pcCredits').textContent = ''; } catch(_) {}
 }
 function checkAuthStatus() {
   const saved = localStorage.getItem('authToken');
@@ -2262,6 +2280,7 @@ function checkAuthStatus() {
       .then(d => {
         if (d.ok && d.user) {
           document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || '用户');
+          updateProfileCard(d.user);
           document.getElementById('loginArea').style.display = '';
           document.getElementById('loginButtons').style.display = 'none';
           connect();

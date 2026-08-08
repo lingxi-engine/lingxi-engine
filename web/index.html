@@ -431,25 +431,25 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
     <!-- 个人信息卡片（点击展开完整资料） -->
     <div class="profile-card" onclick="toggleProfile()">
-      <div class="profile-avatar" id="pcAvatar">申</div>
+      <div class="profile-avatar" id="pcAvatar">?</div>
       <div class="profile-main">
-        <div class="profile-name" id="pcName">申总 <span class="lv">Lv.8</span></div>
-        <div class="profile-id" id="pcId">ID 10086 · 管理员</div>
-        <div class="profile-credits" id="pcCredits">⚡ 积分 12,480</div>
+        <div class="profile-name" id="pcName">未登录</div>
+        <div class="profile-id" id="pcId"></div>
+        <div class="profile-credits" id="pcCredits"></div>
       </div>
       <span class="profile-arrow" id="profileArrow">▲</span>
     </div>
 
     <!-- 个人资料详情（积分/钱包/介绍/ID/用户名/头像/邮箱/评分/用量） -->
     <div class="profile-detail" id="profileDetail">
-      <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">申总</span></div>
-      <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">10086</span></div>
-      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val">shen@lingxi.local <span class="green">✓已认证</span></span></div>
-      <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">⚡ 12,480</span><span class="pd-note green">可用于雇佣等消费</span></div>
-      <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">¥ --</span><span class="pd-note">功能暂未开放，敬请期待</span></div>
-      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val"><span class="pd-stars">★★★★★</span> 4.9 (24评)</span></div>
-      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val">128.4K tokens · 356 次调用</span></div>
-      <div class="pd-bio" id="pdBio">个人介绍：灵犀引擎运维负责人，专注架构稳定性与安全审查，喜欢把复杂问题拆成可验证的小步。</div>
+      <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">--</span></div>
+      <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">--</span></div>
+      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val" id="pdEmail">--</span></div>
+      <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">--</span><span class="pd-note green">可用于雇佣等消费</span></div>
+      <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">--</span><span class="pd-note">功能暂未开放</span></div>
+      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val" id="pdRating">--</span></div>
+      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val" id="pdUsage">--</span></div>
+      <div class="pd-bio" id="pdBio">--</div>
       <div class="pd-actions">
         <button class="primary">编辑资料</button>
         <button>上传头像</button>
@@ -482,12 +482,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       </div>
       <div class="log-body" id="logBody">
         <div class="log-line"><span class="t">[12:30:01]</span> <span class="ok">✔</span> <span class="info">API 健康检查通过 (ok:true)</span></div>
-        <div class="log-line"><span class="t">[12:30:00]</span> <span class="info">WebSocket 已连接 · 心跳正常</span></div>
-        <div class="log-line"><span class="t">[12:29:58]</span> <span class="ok">✔</span> <span class="info">cron 任务「每日数据备份」执行完成 (12ms)</span></div>
-        <div class="log-line"><span class="t">[12:29:55]</span> <span class="warn">⚠</span> <span class="info">模型路由: deepseek-v4-flash 响应延迟 1200ms</span></div>
-        <div class="log-line"><span class="t">[12:29:52]</span> <span class="info">会话「前端 UI 改造讨论」已保存</span></div>
-        <div class="log-line"><span class="t">[12:29:50]</span> <span class="info">用户 申总 登录成功</span></div>
-        <div class="log-line"><span class="t">[12:29:48]</span> <span class="err">✘</span> <span class="info">GET /api/goals 400 缺少 projectId 参数</span></div>
+        <div class="log-line"><span class="t">[--:--:--]</span> <span class="info">引擎已就绪，等待连接...</span></div>
+
         <div class="log-line"><span class="t">[12:29:45]</span> <span class="warn">⚠</span> <span class="info">LAN_SECRET 未配置，peer 接口返回 503 (安全策略)</span></div>
       </div>
       <div class="log-toolbar">
