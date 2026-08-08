@@ -62,6 +62,10 @@ import { VisionManager } from './src/ai/vision.js';
 import { PushNotificationManager } from './src/core/push.js';
 import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
+import { createAuthRoutes } from './src/routes/auth.js';
+import { createProfileRoutes } from './src/routes/profile.js';
+import { createMiscRoutes } from './src/routes/misc.js';
+import { createUploadRoutes } from './src/routes/upload.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
 
@@ -726,6 +730,9 @@ setSearchManager(searchManagerInstance);
         user.email = dbUser.email;
         user.username = dbUser.username;
         user.status = dbUser.status;
+        user.avatar_url = dbUser.avatar_url || '';
+        user.bio = dbUser.bio || '';
+        user.email_verified = !!dbUser.email_verified;
       }
     } catch(_e) {}
     // 兜底: 从 sub 取 id
@@ -2065,6 +2072,15 @@ setSearchManager(searchManagerInstance);
 
   // ── 评分卡 API（含 DELETE /api/outcomes/:id 等全部路由）──
   app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
+
+  // ── 个人资料 API（GET/PUT /api/profile、头像上传）──
+  app.use('/api', requireAuth, createProfileRoutes({ db, dataDir } as any));
+
+  // ── 杂项 API（时间/标签/联邦通信/Mesh/工作区模式）──
+  app.use('/api', createMiscRoutes({ db, manager, router, broadcast, dataDir } as any));
+
+  // ── 文件上传 API ──
+  app.use('/api', requireAuth, createUploadRoutes({ dataDir } as any));
 
   // ── P1-2: 会话管理 API ──
   app.get('/api/sessions', (req, res) => {
