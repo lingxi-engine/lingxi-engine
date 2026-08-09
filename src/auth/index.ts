@@ -101,7 +101,7 @@ export function register(input: RegisterInput): { user: any; agent?: any; verifi
   const { email, password, displayName, inviteCode, agentBinding } = input;
 
   // 1. 校验
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('请输入有效的邮箱地址');
+  if (!email || !email.includes('@')) throw new Error('请输入有效的邮箱地址');
   if (!password || password.length < 6) throw new Error('密码至少6位');
   if (!displayName || displayName.trim().length === 0) throw new Error('用户名不能为空');
 
@@ -189,14 +189,7 @@ export async function loginWithEmail(email: string, password: string): Promise<L
       console.log('[Auth] DEV_AUTO_VERIFY: 自动验证邮箱', user.email, '(status 保持 online)');
     } catch (e) { console.warn('[Auth] 自动验证失败:', (e as Error).message); }
   }
-  let pwdMatch = false;
-  try {
-    pwdMatch = bcrypt.compareSync(password, user.password_hash);
-  } catch (e: any) {
-    console.error('[Auth] bcrypt 比较失败:', e.message);
-    throw new Error('邮箱或密码错误');
-  }
-  if (!pwdMatch) throw new Error('邮箱或密码错误');
+  if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('邮箱或密码错误');
   if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
 
   return _createSession(user);
@@ -208,14 +201,7 @@ export function loginWithNumericId(numericId: number, password: string): LoginRe
   const user = db.getUserByNumericId(numericId);
   if (!user) throw new Error('ID或密码错误');
   if (!user.password_hash) throw new Error('该账号未设置密码');
-  let pwdMatch2 = false;
-  try {
-    pwdMatch2 = bcrypt.compareSync(password, user.password_hash);
-  } catch (e: any) {
-    console.error('[Auth] bcrypt 比较失败:', e.message);
-    throw new Error('ID或密码错误');
-  }
-  if (!pwdMatch2) throw new Error('ID或密码错误');
+  if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('ID或密码错误');
   if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
 
   return _createSession(user);

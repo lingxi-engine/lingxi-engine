@@ -183,33 +183,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 .topnav .spacer{flex:1}
 .btn-sm{padding:3px 10px;font-size:11px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;transition:all .2s}
 .btn-sm:hover{background:var(--bg4)}
-.status-dot{width:10px;height:10px;border-radius:50%;position:absolute;bottom:-1px;right:-1px;border:2px solid var(--bg);transition:background .3s}
-.status-dot.online{background:#3fb950}
-.status-dot.offline{background:#555}
+.status-dot{font-size:11px;color:var(--text3)}
 .green{color:var(--green)}
-/* 正在输入 */
-.typing-indicator{font-size:11px;color:var(--text3);padding:4px 12px;display:none;font-style:italic}
-.typing-indicator.show{display:block}
-/* 通知红点 */
-.notify-badge{position:absolute;top:-4px;right:-4px;background:#ef4444;color:#fff;border-radius:10px;font-size:10px;min-width:16px;height:16px;display:flex;align-items:center;justify-content:center;display:none}
-.notify-badge.show{display:flex}
-/* 表情反应 */
-.msg-reactions{display:flex;gap:4px;margin-top:4px;flex-wrap:wrap}
-.msg-reaction{font-size:13px;padding:2px 6px;border-radius:10px;background:var(--bg3);border:1px solid var(--border);cursor:pointer;transition:.15s}
-.msg-reaction:hover{background:var(--bg4);border-color:var(--accent)}
-.msg-reaction.active{background:var(--accent2);border-color:var(--accent);color:#fff}
-/* 编辑资料弹窗 */
-.edit-profile-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center}
-.edit-profile-modal.show{display:flex}
-.edit-profile-box{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;width:400px;max-width:90vw}
-.edit-profile-box h3{margin-bottom:16px;font-size:16px}
-.edit-profile-box label{display:block;font-size:12px;color:var(--text2);margin-bottom:4px;margin-top:12px}
-.edit-profile-box input,.edit-profile-box textarea{width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-family:var(--font)}
-.edit-profile-box textarea{resize:vertical;min-height:60px}
-.edit-profile-box .ep-actions{display:flex;gap:8px;margin-top:16px;justify-content:flex-end}
-/* 免打扰开关 */
-.mute-toggle{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer}
-.mute-toggle.active{color:var(--yellow)}
 
 /* 主题切换器（顶栏，文字按钮） */
 .theme-switch{display:flex;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px}
@@ -299,13 +274,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 .msg .who{font-size:11px;color:var(--text3);margin-bottom:2px}
 .input-area{display:flex;align-items:center;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:var(--bg2);height:56px}
 .input-area textarea{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--input-radius);font-size:13px;resize:none;font-family:var(--font);transition:all .3s}
-.input-area button{padding:6px 14px;border-radius:var(--btn-radius);border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;white-space:nowrap;cursor:pointer}
+.input-area button{padding:6px 14px;border-radius:var(--btn-radius);border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;white-space:nowrap}
 .input-area button.primary{background:var(--accent);color:#fff}
-.input-area .stop-btn{border-color:#e74c3c;color:#e74c3c;background:rgba(231,76,60,.08)}
-.input-area .stop-btn:hover{background:#e74c3c;color:#fff}
-.queue-bar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--bg3);border-top:1px solid var(--border);font-size:12px;color:var(--text2)}
-.queue-bar .queue-cancel-btn{padding:3px 10px;border-radius:var(--btn-radius);border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer}
-.queue-bar .queue-cancel-btn:hover{border-color:#e74c3c;color:#e74c3c}
 
 /* ══════════════ 右侧栏 ══════════════ */
 .rightbar{width:300px;min-width:300px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:background .4s,border-color .4s}
@@ -461,9 +431,9 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
     <!-- 个人信息卡片（点击展开完整资料） -->
     <div class="profile-card" onclick="toggleProfile()">
-      <div class="profile-avatar" id="pcAvatar">?</div>
+      <div class="profile-avatar" id="pcAvatar"></div>
       <div class="profile-main">
-        <div class="profile-name" id="pcName">未登录</div>
+        <div class="profile-name" id="pcName">加载中...</div>
         <div class="profile-id" id="pcId"></div>
         <div class="profile-credits" id="pcCredits"></div>
       </div>
@@ -472,18 +442,18 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
     <!-- 个人资料详情（积分/钱包/介绍/ID/用户名/头像/邮箱/评分/用量） -->
     <div class="profile-detail" id="profileDetail">
-      <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">--</span></div>
-      <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">--</span></div>
-      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val" id="pdEmail">--</span></div>
-      <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">--</span><span class="pd-note green">可用于雇佣等消费</span></div>
-      <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">--</span><span class="pd-note">功能暂未开放</span></div>
-      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val" id="pdRating">--</span></div>
-      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val" id="pdUsage">--</span></div>
-      <div class="pd-bio" id="pdBio">--</div>
+      <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">加载中...</span><span class="pd-note green">可用于雇佣等消费</span></div>
+      <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">¥ --</span><span class="pd-note">功能暂未开放，敬请期待</span></div>
+      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val">加载中...</span></div>
+      <div class="pd-bio" id="pdBio">加载中...</div>
       <div class="pd-actions">
-        <button class="primary" onclick="showEditProfile()">编辑资料</button>
-        <button onclick="document.getElementById('avatarFile').click()">上传头像</button>
-        <button onclick="loadProfile()">积分明细</button>
+        <button class="primary">编辑资料</button>
+        <button>上传头像</button>
+        <button>积分明细</button>
       </div>
     </div>
 
@@ -511,10 +481,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <span id="logArrow" style="font-size:10px">▲</span>
       </div>
       <div class="log-body" id="logBody">
-        <div class="log-line"><span class="t">[12:30:01]</span> <span class="ok">✔</span> <span class="info">API 健康检查通过 (ok:true)</span></div>
-        <div class="log-line"><span class="t">[--:--:--]</span> <span class="info">引擎已就绪，等待连接...</span></div>
-
-        <div class="log-line"><span class="t">[12:29:45]</span> <span class="warn">⚠</span> <span class="info">LAN_SECRET 未配置，peer 接口返回 503 (安全策略)</span></div>
+        <div class="log-line"><span class="info">加载中...</span></div>
       </div>
       <div class="log-toolbar">
         <button onclick="loadLogBody()">刷新</button>
@@ -534,16 +501,9 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <div class="messages" id="messages">
         <div class="empty">选择或创建一个会话</div>
       </div>
-      <div id="queueBar" class="queue-bar" style="display:none">
-        <span id="queueCount"></span>
-        <button class="queue-cancel-btn" onclick="clearQueue()">取消排队</button>
-      </div>
       <div class="input-area">
-        <button id="attachBtn" onclick="document.getElementById('fileInput').click()" style="border:none;background:none;font-size:16px;cursor:pointer;padding:4px;color:var(--text2)" title="发送文件/图片">📎</button>
-        <button id="recordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" onmouseleave="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()" style="border:1px solid var(--border);background:transparent;color:var(--text2);font-size:14px;cursor:pointer;padding:4px 8px;line-height:1;border-radius:var(--btn-radius)" title="按住说话，松开发送">🎙️</button>
         <textarea id="input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
         <button class="primary" id="sendBtn" onclick="send()">发送</button>
-        <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display:none">⏹ 停止</button>
       </div>
     </div>
 
@@ -711,12 +671,44 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks">任务监控</button>
       <button onclick="switchTab('goals',this)" id="rbTabGoals">目标任务</button>
     </div>
-    <div class="right-body" id="tab-tasks" style="display:block">
-      <div id="taskMonitorList"><div style="color:var(--text3);padding:12px;text-align:center">加载中...</div></div>
-      <button class="add-goal" onclick="showAddCron()">＋ 添加定时任务</button>
+    <div class="right-body" id="tab-tasks" style="display:block"><div id="taskMonitorList" style="display:none"></div>
+      <div class="task-card">
+        <div class="task-name">每日数据备份 <span class="status-pill pill-on">运行中</span></div>
+        <div class="task-meta">表达式：<code>0 3 * * *</code><br>下次执行：明天 03:00<br>上次：今天 03:00 · 成功 (12ms)</div>
+        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
+      </div>
+      <div class="task-card">
+        <div class="task-name">健康巡检 <span class="status-pill pill-on">运行中</span></div>
+        <div class="task-meta">表达式：<code>*/5 * * * *</code><br>下次执行：12:35:00<br>上次：12:30:00 · 成功 (8ms)</div>
+        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
+      </div>
+      <div class="task-card">
+        <div class="task-name">模型路由日报 <span class="status-pill pill-off">已暂停</span></div>
+        <div class="task-meta">表达式：<code>30 8 * * *</code><br>下次执行：—（已暂停）<br>上次：今天 08:30 · 成功</div>
+        <div class="task-actions"><button class="run">▶ 运行</button><button style="color:var(--green)">启用</button><button class="del">删除</button></div>
+      </div>
+      <div class="task-card">
+        <div class="task-name">工作区索引同步 <span class="status-pill pill-on">运行中</span></div>
+        <div class="task-meta">表达式：<code>0 */2 * * *</code><br>下次执行：14:00<br>上次：12:00 · 成功</div>
+        <div class="task-actions"><button class="run">▶ 运行</button><button>暂停</button><button class="del">删除</button></div>
+      </div>
     </div>
-    <div class="right-body" id="tab-goals" style="display:none">
-      <div id="rightGoalsList"><div style="color:var(--text3);padding:12px;text-align:center">加载中...</div></div>
+    <div class="right-body" id="tab-goals" style="display:none"><div id="rightGoalsList"></div>
+      <div class="goal-item">
+        <div class="goal-head"><span class="g-status">🎯</span><b>完成前端三栏布局改造</b><span style="margin-left:auto;font-size:11px;color:var(--accent)">进行中</span></div>
+        <div class="goal-bar"><i style="width:70%"></i></div>
+        <div class="goal-foot"><span>进度 70%</span><span>截止 08-05</span></div>
+      </div>
+      <div class="goal-item">
+        <div class="goal-head"><span class="g-status">✅</span><b>修复 LAN peer 鉴权漏洞</b><span style="margin-left:auto;font-size:11px;color:var(--green)">已完成</span></div>
+        <div class="goal-bar"><i style="width:100%;background:var(--green)"></i></div>
+        <div class="goal-foot"><span>进度 100%</span><span>完成 07-31</span></div>
+      </div>
+      <div class="goal-item">
+        <div class="goal-head"><span class="g-status">🎯</span><b>接入 qwen3.6 工具模型</b><span style="margin-left:auto;font-size:11px;color:var(--text3)">待开始</span></div>
+        <div class="goal-bar"><i style="width:0%"></i></div>
+        <div class="goal-foot"><span>进度 0%</span><span>截止 08-10</span></div>
+      </div>
       <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()">＋ 添加目标任务</button>
     </div>
   </aside>
@@ -729,8 +721,6 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <button onclick="switchPanel('tools')" id="tbToolsBtn">工具</button>
   <button onclick="switchPanel('social')" id="tbSocialBtn">局域网</button>
   <div class="tb-spacer"></div>
-  <button id="membersBtn" class="hidden" onclick="showMembersPanel()">👥 成员</button>
-  <button id="memoryBtn" class="hidden" onclick="showMemoryPanel()">🧠 记忆</button>
   <button onclick="document.getElementById('rightbar').classList.toggle('show')">任务</button>
   <button onclick="toggleAdmin()" id="tbAdminBtn">管理</button>
   <div class="tb-status">
@@ -756,8 +746,6 @@ function switchTab(name,btn){
   btn.classList.add('active');
   document.getElementById('tab-tasks').style.display = name==='tasks'?'block':'none';
   document.getElementById('tab-goals').style.display = name==='goals'?'block':'none';
-  if(name==='tasks' && typeof loadTaskMonitor==='function') loadTaskMonitor();
-  if(name==='goals' && typeof loadRightGoals==='function') loadRightGoals();
 }
 function switchTheme(name,btn){
   document.body.className = 'theme-' + name;
@@ -936,7 +924,6 @@ function switchTheme(name,btn){
     <input type="file" id="wfImportFile" accept=".json,application/json" onchange="wfImportJSON(this)" style="display:none">
     <button onclick="wfUndo()" class="btn-sm" data-i18n-title="wf.undoTitle" title="撤销 (Ctrl+Z)">↩️</button>
     <button onclick="wfRedo()" class="btn-sm" data-i18n-title="wf.redoTitle" title="重做 (Ctrl+Y)">↪️</button>
-    <button onclick="wfRun()" class="btn-sm" style="border-color:var(--green);color:var(--green)" title="运行工作流">▶ 运行</button>
     <button onclick="wfSaveToCloud()" class="btn-sm" data-i18n="wf.save" style="border-color:var(--yellow);color:var(--yellow)">💾 保存</button>
     <button onclick="closeWorkflowEditor()" class="btn-sm" data-i18n="wf.close" style="background:var(--red);color:#fff;border-color:var(--red);margin-left:auto">× 关闭</button>
   </div>
@@ -1022,6 +1009,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 </script>
 
 
+<!-- [修复] 补齐 JS 依赖的隐藏元素 -->
+<button id="membersBtn" style="display:none" onclick="showMembersPanel()"></button>
+<button id="memoryBtn" style="display:none" onclick="showMemoryPanel()"></button>
 <div id="sidebarOverlay" style="display:none" onclick="hideSidebar()"></div>
 
 <!-- [修复] 补齐JS依赖的缺失DOM元素 -->
@@ -1030,8 +1020,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="chatSearchBar" style="display:none"></div>
 <div id="chatSearchInput" style="display:none"></div>
 <div id="chatSearchResults" style="display:none"></div>
-<input type="file" id="fileInput" style="display:none" onchange="previewFile()" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx,.csv,.zip">
-<div id="filePreview" style="display:none;padding:6px 16px;background:var(--bg3);border-top:1px solid var(--border);font-size:12px;color:var(--text2)">📎 <span id="filePreviewName"></span><button onclick="clearFile()" style="background:none;border:none;color:var(--red);cursor:pointer;margin-left:8px;font-size:14px" title="移除文件">×</button></div>
+<div id="fileInput" style="display:none"></div>
+<div id="filePreview" style="display:none"></div>
+<div id="filePreviewName" style="display:none"></div>
 <div id="friendPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
   <!-- 搜索栏 -->
   <div style="padding:10px;border-bottom:1px solid var(--border)">
@@ -1064,47 +1055,12 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-
-<style>#recordBtn.recording{border-color:var(--red) !important;color:var(--red) !important;background:rgba(231,76,60,.1) !important}</style>
+<div id="queueBar" style="display:none"></div>
+<div id="queueCount" style="display:none"></div>
+<div id="recordBtn" style="display:none"></div>
 <div id="routeModeTag" style="display:none"></div>
+<div id="stopBtn" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>
-
-<!-- 编辑资料弹窗 -->
-<div class="edit-profile-modal" id="editProfileModal">
-  <div class="edit-profile-box">
-    <h3>编辑个人资料</h3>
-    <label>头像</label>
-    <div style="display:flex;align-items:center;gap:10px">
-      <div id="epAvatar" style="width:48px;height:48px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:20px">?</div>
-      <input type="file" id="avatarFile" accept="image/*" style="display:none" onchange="uploadAvatar()">
-      <button class="btn-sm" onclick="document.getElementById('avatarFile').click()">选择图片</button>
-    </div>
-    <label>显示名称</label>
-    <input id="epName" placeholder="输入昵称">
-    <label>个性签名</label>
-    <textarea id="epBio" placeholder="介绍一下自己..."></textarea>
-    <label>自定义状态</label>
-    <input id="epStatus" placeholder="例如：正在写代码..." maxlength="60">
-    <div class="ep-actions">
-      <button class="btn-sm" onclick="closeEditProfile()">取消</button>
-      <button class="btn-sm" style="background:var(--accent);color:#fff" onclick="saveProfile()">保存</button>
-    </div>
-  </div>
-</div>
-
-<!-- 表情反应面板 -->
-<div id="reactionPanel" style="display:none;position:fixed;z-index:999;background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:6px;gap:4px;display:none;box-shadow:0 4px 16px rgba(0,0,0,.4)">
-  <span class="msg-reaction" onclick="addReaction(event,'👍')">👍</span>
-  <span class="msg-reaction" onclick="addReaction(event,'❤️')">❤️</span>
-  <span class="msg-reaction" onclick="addReaction(event,'😂')">😂</span>
-  <span class="msg-reaction" onclick="addReaction(event,'🎉')">🎉</span>
-  <span class="msg-reaction" onclick="addReaction(event,'🔥')">🔥</span>
-  <span class="msg-reaction" onclick="addReaction(event,'💯')">💯</span>
-</div>
-
-<!-- 正在输入提示 -->
-<div class="typing-indicator" id="typingIndicator">对方正在输入...</div>
-
 </body>
 </html>

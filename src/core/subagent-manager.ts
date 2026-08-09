@@ -202,25 +202,13 @@ export class SubAgentManager {
       task.status = 'completed';
       task.completedAt = Date.now();
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        // 超时已在定时器中处理，不重复通知
-        if ((task.status as string) === 'timeout') {
-          clearTimeout(timeoutTimer);
-          this.running.delete(task.id);
-          return; // skip finally's notifyResult
-        }
-        task.status = 'failed';
-        task.error = '被取消';
-        task.completedAt = Date.now();
-      } else {
-        task.status = 'failed';
-        task.error = err.message;
-        task.completedAt = Date.now();
-      }
+      if (err.name === 'AbortError') return; // 已处理
+      task.status = 'failed';
+      task.error = err.message;
+      task.completedAt = Date.now();
     } finally {
       clearTimeout(timeoutTimer);
       this.running.delete(task.id);
-      // 超时场景已在 catch 中提前 return，不会走到这里
       this.notifyResult(task);
     }
   }

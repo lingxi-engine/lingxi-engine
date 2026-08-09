@@ -205,23 +205,8 @@ export class MessageRouter {
     const { client, resolvedModel } = clientResult;
 
     // ── 多模型协作：工具用轻量模型，回复用强模型 ──
-    // 优先用用户选的模型（clientResult），仅在路由模式显式开启且设了独立 reply/tool 模型时才覆盖
-    let toolClient = clientResult;
-    let replyClient = clientResult;
-    const routeEnabled = process.env.ROUTE_ENABLED !== 'false';
-    if (routeEnabled) {
-      const envToolModel = process.env.TOOL_MODEL;
-      const envReplyModel = process.env.REPLY_MODEL;
-      if (envToolModel && envToolModel !== requestedModel) {
-        const tc = this.aiHub.getClient(envToolModel);
-        if (tc) toolClient = tc;
-      }
-      if (envReplyModel && envReplyModel !== requestedModel) {
-        const rc = this.aiHub.getClient(envReplyModel);
-        if (rc) replyClient = rc;
-      }
-    }
-    console.log(`[Router] 模型路由: requested=${requestedModel}, resolved=${resolvedModel}, tool=${toolClient.resolvedModel}, reply=${replyClient.resolvedModel}`);
+    const toolClient = this.aiHub.getRoleClient('tool') || clientResult;
+    const replyClient = this.aiHub.getRoleClient('reply') || clientResult;
 
     // ── 上下文压缩：超限时用工具模型摘要旧消息 ──
     const compactResult = await compactMessages(messages, {
@@ -453,13 +438,10 @@ export class MessageRouter {
       agent.personality || '你是一个智能、务实、有主见的 AI 助手。',
       '',
       '## 你的运行环境',
-      '- 你运行在用户的本地 Windows 机器上，不是云端服务器。项目目录是 ' + (process.cwd()),
       '- 工具调用模型: ' + toolModel,
       '- 回复模型: ' + replyModel,
       '- 可用模型列表: ' + allModels,
       '- 当用户问你用什么模型时，直接告诉对方：工具调用用 ' + toolModel + '，最终回复用 ' + replyModel + '。',
-      '- 不要假设自己运行在服务器或云端环境。你是本地引擎，可以访问用户本地文件和目录。',
-      '- 网络完全开放：可以通过 shell_exec 执行 curl、wget、pip install、npm install 等任意联网命令。不存在沙箱网络限制。不要脑补"沙箱没有网络"。',
       '',
       '## 核心原则',
       '- 先思考再回答。复杂问题分步推理，不要急着给结论。',
@@ -471,9 +453,7 @@ export class MessageRouter {
       '## 工具使用规则',
       '- 当用户要求查询时间、计算、搜索网络、读写文件、列目录、执行命令时，必须调用对应工具，不要自己写代码模拟。',
       '- 工具调用失败时，分析失败原因，换一种方式重试，或者如实告诉用户失败原因。',
-      '- shell_exec 执行命令前需确认：git clone/push、npm/pip install、rm 删除等操作会触发审批，需要用户同意。先用明确的语言告知用户你要做什么，等拿到输出后再继续。',
       '- 文件操作可以访问任意路径（C盘、D盘等）。',
-      '- 不要擅自执行耗时长的操作或大规模文件操作，先问用户是否同意。',
       '- shell_exec 只执行无害查询类命令，不要执行破坏性操作。',
       '',
     ];
@@ -500,19 +480,6 @@ export class MessageRouter {
         '- 需要工具时直接调用，不用问用户"要不要我帮你查"。',
         '',
       );
-    }
-
-    // ── 注入当前会话的项目目标（如果有）──
-    if (chatId) {
-      const projectId = 'project-' + chatId;
-      try {
-        const goals = GoalTracker.list(projectId);
-        const activeGoals = goals.filter(g => g.status === 'in_progress' || g.status === 'pending');
-        if (activeGoals.length > 0) {
-          const summary = GoalTracker.getProgressSummary(projectId);
-          lines.push('## 当前会话的目标任务', summary, '');
-        }
-      } catch (_) { /* GoalTracker 不可用时静默跳过 */ }
     }
 
     // 工具列表

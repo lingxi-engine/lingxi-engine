@@ -12,15 +12,12 @@ window.addEventListener('unhandledrejection', function(e) {
 let ws = null, clientId = null, currentChat = null;
 let myChats = [], unreadCounts = {}, reconnectAttempts = 0, reconnectTimer = null;
 let myFriends = [], incomingRequests = [], searchResults = [], currentFriendTab = 'friends';
-let onlineUsers = {};  // numericId -> { userId, numericId, lastSeen }
 let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionList = [], mentionIndex = -1;
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重复
 const _optimisticSent = new Set();
 let streamingMsgs = {};
-let genTimers = {};         // chatId -> timeoutId, 生成超时保底
 let connectIntended = false;
-let sendQueue = [];
-let _currentAskGoalId = null;        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
+let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是否"生成中"）
 
 // ═══ Panel Switching ═══
@@ -350,9 +347,6 @@ function connect() {
       loadFriends().catch(()=>{});
       loadRequests().catch(()=>{});
       loadModels().catch(()=>{});
-      // 右侧栏初始化
-      if (typeof loadTaskMonitor === 'function') loadTaskMonitor().catch(()=>{});
-      if (typeof loadRightGoals === 'function') loadRightGoals().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
         if (authToken) {
@@ -621,7 +615,6 @@ function handleMessage(msg) {
     case 'agent.streaming.start':
       // 总是注册流式状态（即使不在当前聊天），防止切走后丢失
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
-      armGenTimer(msg.chatId);
       updateGenUI();
       appendStreamingMsg(msg);
       break;
@@ -629,11 +622,9 @@ function handleMessage(msg) {
       if (msg.chatId === currentChat) {
         appendToolCallRow(msg);
       }
-      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 工具执行中 → 续期
       break;
     case 'tool.result':
       updateToolCallRow(msg);
-      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 仍有活动 → 续期
       break;
     case 'agent.streaming.chunk':
       if (streamingMsgs[msg.msgId]) {
@@ -642,7 +633,6 @@ function handleMessage(msg) {
         s.el.querySelector('.msg-content').textContent = s.content;
         document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
       }
-      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 有输出 → 续期
       break;
     case 'agent.streaming.think':
       if (streamingMsgs[msg.msgId]) {
@@ -653,15 +643,9 @@ function handleMessage(msg) {
           document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
         }
       }
-      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId);
       break;
     case 'agent.streaming.end':
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
-      if ((generatingChats[msg.chatId] || 0) > 0) {
-        armGenTimer(msg.chatId); // 还有其他 Agent 在生成，重置保底计时
-      } else if (genTimers[msg.chatId]) {
-        clearTimeout(genTimers[msg.chatId]); delete genTimers[msg.chatId];
-      }
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
         const dot = s.el.querySelector('.typing-dot');
@@ -697,15 +681,7 @@ function handleMessage(msg) {
     case 'friend.accepted':
       toast(t('friends.requestAccepted')); loadFriends(); loadRequests();
       break;
-    case 'user.online':
-      if (msg.userId) onlineUsers[msg.userId] = { userId: msg.userId, numericId: msg.numericId, lastSeen: Date.now() };
-      renderFriends();
-      break;
-    case 'user.offline':
-      delete onlineUsers[msg.userId];
-      renderFriends();
-      break;
-    case 'welcome': break;
+    case 'welcome': case 'user.online': case 'user.offline': break;
     case 'error':
       console.error('[WS error]', msg.message, msg.detail);
       // 在聊天区域显示完整错误信息
@@ -880,7 +856,6 @@ function appendMessage(msg) {
   
   const el = document.createElement('div');
   el.className = 'msg-row ' + (isMe ? 'me' : (isAgent ? 'ai' : 'other'));
-  el.dataset.msgid = msg.id || msg.msgId || ('msg-'+Date.now()+'-'+Math.random().toString(36).slice(2,6));
   
   // 头像（首字母）
   const displayName = senderId.replace(/^agent-|^user-/, '').charAt(0).toUpperCase() || '?';
@@ -925,20 +900,14 @@ function appendMessage(msg) {
     }
   }
   
-  // 消息操作菜单（含表情反应）
-  const actions = '<div class="msg-actions"><button onclick="showReactionPanel(event,\''+el.dataset.msgid+'\')" title="表情反应">😀</button><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
+  // 消息操作菜单
+  const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
   
   el.innerHTML = '<div class="msg-avatar ' + esc(avatarClass) + '">' + esc(avatarIcon) + '</div>' +
     '<div style="max-width:70%"><div class="msg-bubble">' + bubbleContent + actions + '</div>' +
     '<div class="msg-meta">' + esc(time) + '</div></div>';
   
   container.appendChild(el);
-
-  // 检测结构化问答格式 → 渲染选项表单
-  if (isAgent && content.includes("Q:") && content.includes("A:")) {
-    setTimeout(function() { renderGoalQAForm(content, el, chatId); }, 200);
-  }
-
   container.scrollTop = container.scrollHeight;
 }
 
@@ -1145,19 +1114,6 @@ function updateCtxInfo() {
 function isChatGenerating(chatId) {
   return (generatingChats[chatId] || 0) > 0;
 }
-// 生成保底计时器：必须大于后端总超时（router.ts TOTAL_TIMEOUT=10分钟），
-// 否则前端会提前误判"生成结束"→ 停止按钮消失、新消息不进队列。
-// 只要有输出/工具活动就会续期，真正卡死时才会触发。
-const GEN_TIMER_MS = 660000; // 11 分钟
-function armGenTimer(chatId) {
-  if (genTimers[chatId]) clearTimeout(genTimers[chatId]);
-  genTimers[chatId] = setTimeout(function() {
-    var gc = generatingChats[chatId] || 0;
-    if (gc > 0) { generatingChats[chatId] = 0; updateGenUI(); }
-    delete genTimers[chatId];
-    if (chatId === currentChat) toast("⏰ 生成超时，token 已消耗但未产生完整回复，可重试或缩短提问");
-  }, GEN_TIMER_MS);
-}
 // 根据"当前聊天是否生成中 / 队列是否有消息"刷新停止按钮和排队提示
 function updateGenUI() {
   const stopBtn = document.getElementById('stopBtn');
@@ -1165,10 +1121,10 @@ function updateGenUI() {
   const busy = !!(currentChat && isChatGenerating(currentChat));
   if (stopBtn) stopBtn.style.display = busy ? '' : 'none';
   if (queueBar) {
-    const qc = document.getElementById('queueCount');
     if (sendQueue.length) {
       queueBar.style.display = '';
-      if (qc) qc.textContent = '⏳ 排队中: ' + sendQueue.length + ' 条消息';
+      const qc = document.getElementById('queueCount');
+      if (qc) qc.textContent = t('chat.queuedInfo', { n: sendQueue.length });
     } else {
       queueBar.style.display = 'none';
     }
@@ -1244,10 +1200,7 @@ document.getElementById('input').addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
   checkMention();
 });
-document.getElementById('input').addEventListener('input', function() {
-  checkMention();
-  if (currentChat) sendTyping(currentChat);
-});
+document.getElementById('input').addEventListener('input', checkMention);
 
 // ── 粘贴截图 ──
 document.addEventListener('paste', function(e) {
@@ -1472,10 +1425,8 @@ function renderFriends() {
     const fid = String(f.friendId);
     const fname = f.friendName || f.displayName || ('用户'+fid);
     const femail = f.friendEmail || '';
-    const isOnline = Object.values(onlineUsers).some(u => String(u.numericId) === fid || u.userId === fid);
-    const statusDot = '<span class="status-dot ' + (isOnline ? 'online' : 'offline') + '" title="' + (isOnline ? '在线' : '离线') + '"></span>';
     const initial = (fname||'?')[0].toUpperCase();
-    const avatar = '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;font-weight:600;position:relative">'+esc(initial)+statusDot+'</div>';
+    const avatar = '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;font-weight:600">'+esc(initial)+'</div>';
     return '<div class="friend-item" style="display:flex;align-items:center;gap:10px;padding:10px">' +
       avatar +
       '<div style="flex:1;min-width:0;cursor:pointer" onclick="openChatFriend(\''+fid+'\',\''+esc(fname)+'\')">' +
@@ -2261,7 +2212,6 @@ async function submitAuth() {
       localStorage.setItem('authToken', authToken);
       const user = r.user || {};
       document.getElementById('userInfo').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
-      updateProfileCard(user);
       document.getElementById('loginArea').style.display = '';
       document.getElementById('loginButtons').style.display = 'none';
       closeAuthModal();
@@ -2281,25 +2231,8 @@ async function logout() {
   localStorage.removeItem('authToken');
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
-  resetProfileCard();
   if (ws) try { ws.close(); } catch {}
   toast('已退出');
-}
-function updateProfileCard(user) {
-  if (!user) return;
-  const name = user.username || user.display_name || user.displayName || '用户';
-  const id = user.numeric_id || user.id || user.sub || '';
-  const avatar = (name[0] || 'U').toUpperCase();
-  try { document.getElementById('pcAvatar').textContent = avatar; } catch(_) {}
-  try { document.getElementById('pcName').innerHTML = esc(name); } catch(_) {}
-  try { document.getElementById('pcId').textContent = 'ID ' + id; } catch(_) {}
-  try { document.getElementById('pcCredits').textContent = '⚡ 积分 --'; } catch(_) {}
-}
-function resetProfileCard() {
-  try { document.getElementById('pcAvatar').textContent = '?'; } catch(_) {}
-  try { document.getElementById('pcName').textContent = '未登录'; } catch(_) {}
-  try { document.getElementById('pcId').textContent = ''; } catch(_) {}
-  try { document.getElementById('pcCredits').textContent = ''; } catch(_) {}
 }
 function checkAuthStatus() {
   const saved = localStorage.getItem('authToken');
@@ -2310,7 +2243,6 @@ function checkAuthStatus() {
       .then(d => {
         if (d.ok && d.user) {
           document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || '用户');
-          updateProfileCard(d.user);
           document.getElementById('loginArea').style.display = '';
           document.getElementById('loginButtons').style.display = 'none';
           connect();
@@ -2690,38 +2622,9 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); wfRedo(); }
 });
 
-// ── 工作流执行 ──
-async function wfRun() {
-  if (!wfLastSavedId) { toast('⚠️ 请先保存工作流'); return; }
-  const resEl = document.getElementById('wfResult') || _createWFResult();
-  resEl.innerHTML = '<div style="padding:12px;color:var(--accent)">⏳ 执行中...</div>';
-  resEl.scrollIntoView({ behavior: 'smooth' });
-  try {
-    const r = await fetch('/api/workflows/' + encodeURIComponent(wfLastSavedId) + '/run', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '') }
-    });
-    const d = await r.json();
-    if (!d.ok) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(d.error || '执行失败') + '</div>'; return; }
-    resEl.innerHTML = '<div style="padding:12px;font-weight:bold;color:var(--green)">✅ 执行完成</div>' +
-      (d.results || []).map(function(r) {
-        return '<div class="task-card"><div class="task-name">' + esc(r.label) + '</div>' +
-        '<div style="font-size:11px;color:var(--text3);max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(r.output || '') + '</div></div>';
-      }).join('');
-  } catch(e) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(e.message) + '</div>'; }
-}
-function _createWFResult() {
-  var el = document.createElement('div');
-  el.id = 'wfResult';
-  el.style.cssText = 'margin-top:12px;max-height:50vh;overflow:auto';
-  var canvas = document.getElementById('wfCanvas');
-  if (canvas && canvas.parentElement) canvas.parentElement.appendChild(el);
-  return el;
-}
-
 async function wfSaveToCloud() {
   const name = document.getElementById('wfName').value || '未命名工作流';
-  const id = wfLastSavedId || ('wf-' + Date.now());
-  wfLastSavedId = id;
+  const id = 'wf-' + Date.now();
   const data = { nodes: wfNodes, connections: wfConnections };
   try {
     await api('/api/workflows', 'POST', { id, name, data });
@@ -2732,40 +2635,18 @@ async function wfLoadFromCloud() {
   try {
     const d = await api('/api/workflows');
     if (!d.ok || !d.workflows.length) { toast('没有已保存的工作流'); return; }
-    _wfShowLoadOverlay(d.workflows);
-  } catch(e) { toast('❌ 加载失败: ' + e.message); }
-}
-
-function _wfShowLoadOverlay(workflows) {
-  var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10002;display:flex;align-items:center;justify-content:center';
-  var html = '<div style="background:var(--bg);border-radius:12px;max-width:500px;width:90%;max-height:70vh;overflow:auto;padding:16px">';
-  html += '<h3 style="margin:0 0 12px">📂 选择工作流</h3>';
-  workflows.forEach(function(w, i) {
-    html += '<div class="task-card" style="cursor:pointer;padding:10px;margin-bottom:6px" onclick="(function(){ document.getElementById(\'wfName\').value=\'' + esc(w.name) + '\'; _wfLoadById(\'' + w.id + '\',\'' + esc(w.name) + '\'); var o=document.querySelector(\'[data-wf-overlay]\'); if(o) o.remove(); })()">';
-    html += '<b>' + (i+1) + '. ' + esc(w.name) + '</b>';
-    html += '<div style="font-size:11px;color:var(--text3)">' + new Date(w.updated_at).toLocaleString() + '</div>';
-    html += '</div>';
-  });
-  html += '<button class="btn" style="margin-top:8px" onclick="this.closest(\'[data-wf-overlay]\').remove()">取消</button>';
-  html += '</div>';
-  overlay.innerHTML = html;
-  overlay.setAttribute('data-wf-overlay', '1');
-  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-  document.body.appendChild(overlay);
-}
-
-async function _wfLoadById(id, name) {
-  try {
-    const detail = await api('/api/workflows/' + id);
+    const name = prompt('选择工作流（输入编号）：\n' + d.workflows.map((w,i) => (i+1)+'. '+w.name+' ('+new Date(w.updated_at).toLocaleDateString()+')').join('\n'));
+    if (!name) return;
+    const idx = parseInt(name) - 1;
+    if (idx < 0 || idx >= d.workflows.length) return;
+    const detail = await api('/api/workflows/' + d.workflows[idx].id);
     if (detail.ok && detail.workflow) {
-      var dd = detail.workflow.data;
-      if (typeof dd === 'string') dd = JSON.parse(dd);
+      const dd = detail.workflow.data;
       wfNodes = dd.nodes || [];
       wfConnections = dd.connections || [];
-      wfLastSavedId = detail.workflow.id;
+      document.getElementById('wfName').value = detail.workflow.name;
       renderWF();
-      toast('✅ 已加载: ' + (name || detail.workflow.name));
+      toast('✅ 已加载: ' + detail.workflow.name);
     }
   } catch(e) { toast('❌ 加载失败: ' + e.message); }
 }
@@ -3602,449 +3483,20 @@ function addRightGoal() {
   const title = prompt('目标名称：');
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
-  const projectId = currentChat ? 'project-' + currentChat : 'default';
-  api('/api/goals', 'POST', { project: projectId, title: title.trim(), acceptanceCriteria: desc || '' })
-    .then(d => {
-      if (d.ok) { toast('✅ 已添加'); loadRightGoals(); }
-      else toast('❌ ' + (d.error || '添加失败'));
-    }).catch(e => toast('❌ ' + e.message));
+  fetch('/api/goals', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'default', title: title.trim(), acceptanceCriteria: desc || '' })
+  }).then(r => r.json()).then(d => {
+    if (d.ok) { toast('目标已添加'); setTimeout(() => location.reload(), 500); }
+    else toast('添加失败');
+  }).catch(e => toast('添加失败: ' + e.message));
 }
-
-// ── 右侧栏 - 任务监控 ──
-async function loadTaskMonitor() {
-  const el = document.getElementById('taskMonitorList');
-  if (!el) return;
-  try {
-    const r = await fetch('/api/cron'); const d = await r.json();
-    const jobs = d.jobs || [];
-    if (!jobs.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无定时任务</div>'; return; }
-    el.innerHTML = jobs.map(j => {
-      const name = j.name || j.id || '未命名', enabled = j.enabled !== false;
-      const pill = enabled ? '<span class="status-pill pill-on">运行中</span>' : '<span class="status-pill pill-off">已暂停</span>';
-      const expr = j.schedule?.expr || (j.schedule?.everyMs ? 'every ' + j.schedule.everyMs + 'ms' : '-');
-      const next = j.nextRunAt ? new Date(j.nextRunAt).toLocaleString() : '—';
-      const last = j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : '—';
-      return '<div class="task-card"><div class="task-name">' + esc(String(name)) + ' ' + pill + '</div>' +
-        '<div class="task-meta">表达式：<code>' + esc(String(expr)) + '</code><br>下次：' + next + '<br>上次：' + last + '</div>' +
-        '<div class="task-actions">' +
-        '<button class="run" onclick="runCronNow(\'' + esc(j.id) + '\')">▶ 运行</button>' +
-        '<button style="' + (enabled ? '' : 'color:var(--green)') + '" onclick="toggleCronJob(\'' + esc(j.id) + '\',' + !enabled + ')">' + (enabled ? '暂停' : '启用') + '</button>' +
-        '<button class="del" onclick="removeCronFromMonitor(\'' + esc(j.id) + '\')">删除</button></div></div>';
-    }).join('');
-  } catch(e) { el.innerHTML = '<div style="color:var(--red);padding:12px">❌ ' + esc(e.message || '加载失败') + '</div>'; }
-}
-async function removeCronFromMonitor(id) {
-  if (!confirm('确定删除？')) return;
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
-    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
-    toast('已删除'); loadTaskMonitor();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function toggleCronJob(id, enabled) {
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id), 'PATCH', { enabled });
-    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
-    loadTaskMonitor();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function runCronNow(id) {
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id) + '/run', 'POST');
-    if (d.ok) toast('✅ 已触发'); else toast('❌ ' + (d.error || '失败'));
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-// ── 右侧栏 - 目标任务 ──
-async function loadRightGoals() {
-  const el = document.getElementById('rightGoalsList');
-  if (!el) return;
-  try {
-    const projectId = currentChat ? 'project-' + currentChat : 'default';
-    const r = await fetch('/api/goals?project=' + encodeURIComponent(projectId)); const d = await r.json();
-    if (!d.ok) { el.innerHTML = '<div style="color:var(--red)">❌ 加载失败</div>'; return; }
-    const goals = d.goals || [];
-    if (!goals.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无目标，点击下方添加</div>'; return; }
-    el.innerHTML = goals.map(g => {
-      const emoji = GOAL_EMOJI[g.status] || '⏳';
-      const statusText = { pending: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' }[g.status] || g.status;
-      const statusColor = { pending: 'var(--text3)', in_progress: 'var(--accent)', done: 'var(--green)', cancelled: 'var(--text3)' }[g.status] || 'var(--text3)';
-      const barW = g.status === 'done' ? '100%' : (g.status === 'in_progress' ? '50%' : '0%');
-      const barC = g.status === 'done' ? 'var(--green)' : 'var(--accent)';
-      const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:4px">' + esc(g.acceptanceCriteria) + '</div>' : '';
-      return '<div class="goal-item"><div class="goal-head"><span class="g-status">' + emoji + '</span><b>' + esc(g.title) + '</b>' +
-        '<span style="margin-left:auto;font-size:11px;color:' + statusColor + '">' + statusText + '</span></div>' +
-        criteria + '<div class="goal-bar"><i style="width:' + barW + ';background:' + barC + '"></i></div>' +
-        '<div class="goal-foot"><span>' +
-        (g.status === 'pending' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'in_progress\')" style="cursor:pointer;color:var(--accent)">▶ 开始</a> ' : '') +
-        (g.status !== 'done' && g.status !== 'cancelled' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'done\')" style="cursor:pointer;color:var(--green)">✅ 完成</a> ' : '') +
-        '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'cancelled\')" style="cursor:pointer;color:var(--red)">❌ 停止</a> ' +
-        ((g.status === 'done' || g.status === 'cancelled') ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'pending\')" style="cursor:pointer">↩ 恢复</a> ' : '') +
-        '<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--text2)">🤔 反向提问</a> ' +
-        '<a onclick="deleteRightGoal(\'' + g.id + '\')" style="cursor:pointer;color:var(--red)">🗑 删除</a></span></div></div>';
-    }).join('');
-  } catch(e) { el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</div>'; }
-}
-async function setRightGoalStatus(id, status) {
-  try {
-    const d = await api('/api/goals/' + id, 'PATCH', { status });
-    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
-    loadRightGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function deleteRightGoal(id) {
-  if (!confirm('确定删除？')) return;
-  try {
-    const d = await api('/api/goals/' + id, 'DELETE');
-    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
-    toast('已删除'); loadRightGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-async function askAIAboutGoal(goalId, title) {
-  _currentAskGoalId = goalId;
-  if (!currentChat) { toast('请先打开一个会话'); return; }
-  try {
-    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat, extra: (typeof title === 'string' && (title.includes(';') || title.includes('自定义'))) ? title : '' });
-    if (d.ok) { toast('✅ 已向AI提问'); }
-    else toast('❌ ' + (d.error || '发送失败'));
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-
-// ── 目标反向提问 -> 选项表单 ──
-function renderGoalQAForm(content, msgEl, chatId) {
-  var questions = [];
-  var currentQ = null;
-  var clines = content.split("\n");
-  for (var i = 0; i < clines.length; i++) {
-    var line = clines[i].trim();
-    var qm = line.match(/^Q:?\s*(.+)/);
-    var am = line.match(/^([A-C]):?\s*(.+)/);
-    if (qm) { currentQ = { q: qm[1], opts: [] }; questions.push(currentQ); }
-    else if (am && currentQ) { currentQ.opts.push({ key: am[1], text: am[2] }); }
-  }
-  if (questions.length === 0) return;
-
-  var html = '<div style="margin:8px 0 8px 48px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">';
-  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">📋 请选择以完善目标</div>';
-  for (var qi = 0; qi < questions.length; qi++) {
-    var q = questions[qi];
-    html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + esc(q.q) + '</div>';
-    for (var oi = 0; oi < q.opts.length; oi++) {
-      var o = q.opts[oi];
-      var cbId = 'ga-' + qi + '-' + oi + '-' + Date.now();
-      html += '<label style="display:block;font-size:12px;cursor:pointer;padding:2px 0"><input type="checkbox" id="' + cbId + '" style="margin-right:4px">' + esc(o.text) + '</label>';
-    }
-    html += '</div>';
-  }
-  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
-  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,' + "'refine'" + ')">✅ 完善目标</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
-  html += '</div></div>';
-  html += '<button class="btn" style="font-size:11px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
-
-  var wrapper = document.createElement("div");
-  wrapper.innerHTML = html;
-  msgEl.parentNode.insertBefore(wrapper, msgEl.nextSibling);
-}
-
-function applyGoalRefine(btn, action) {
-  var form = btn.closest("div");
-  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
-  if (!form) return;
-  var checks = form.querySelectorAll("input[type=checkbox]:checked");
-  if (!checks.length) { toast("请至少勾选一个选项"); return; }
-  var selections = [];
-  checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
-  
-  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
-  if (!goalId) { var ri = document.querySelector("#rightGoalsList .goal-item"); if (ri) goalId = ri.getAttribute("data-goal-id"); }
-  if (!goalId) { toast("未找到对应的目标"); return; }
-  
-  api("/api/goals/" + goalId + "/refine", "POST", { selections: selections, action: action }).then(function(d) {
-    if (d.ok) { 
-      toast("✅ " + (action === "create" ? "已生成新目标" : action === "criteria" ? "已加入验收标准" : "目标已完善"));
-      if (typeof loadRightGoals === "function") loadRightGoals();
-    } else toast("❌ " + (d.error || "操作失败"));
-  }).catch(function(e) { toast("❌ " + e.message); });
-}
-
-
-// ── 日志自动刷新 ──
-let _logAutoTimer = null;
-function toggleAutoLog() {
-  var btn = event && event.target;
-  if (_logAutoTimer) {
-    clearInterval(_logAutoTimer);
-    _logAutoTimer = null;
-    if (btn) btn.style.color = '';
-    toast('自动刷新已关闭');
-  } else {
-    loadLogs();
-    _logAutoTimer = setInterval(function() {
-      if (document.getElementById('logsOut')) loadLogs();
-      else { clearInterval(_logAutoTimer); _logAutoTimer = null; }
-    }, 3000);
-    if (btn) btn.style.color = 'var(--green)';
-    toast('自动刷新已开启 (3秒)');
-  }
-}
-
-
-// ── 补缺函数 ──
-function loadLogBody() { loadLogs(); }
-function clearLogBody() {
-  var out = document.getElementById('logsOut');
-  if (out) out.textContent = '(已清空)';
-  toast('日志已清空');
-}
-function hideSidebar() {
-  var sb = document.getElementById('sidebar');
-  var ov = document.getElementById('sidebarOverlay');
-  if (sb) sb.classList.remove('show');
-  if (ov) ov.style.display = 'none';
-}
-
-// ═══════════════════════════════════════════
-// 编辑个人资料
-// ═══════════════════════════════════════════
-function showEditProfile() {
-  var modal = document.getElementById('editProfileModal');
-  if (!modal) return;
-  modal.classList.add('show');
-  // 预填当前值
-  var pcName = document.getElementById('pcName');
-  var epName = document.getElementById('epName');
-  if (pcName && epName) epName.value = pcName.textContent.replace('未登录','');
-  var pdBio = document.getElementById('pdBio');
-  var epBio = document.getElementById('epBio');
-  if (pdBio && epBio) epBio.value = pdBio.textContent === '--' ? '' : pdBio.textContent;
-  // 头像预览
-  var pcAvatar = document.getElementById('pcAvatar');
-  var epAvatar = document.getElementById('epAvatar');
-  if (pcAvatar && epAvatar) epAvatar.textContent = pcAvatar.textContent;
-}
-function closeEditProfile() {
-  var modal = document.getElementById('editProfileModal');
-  if (modal) modal.classList.remove('show');
-}
-async function saveProfile() {
-  var token = localStorage.getItem('authToken');
-  if (!token) { toast('请先登录'); return; }
-  var name = document.getElementById('epName').value.trim();
-  var bio = document.getElementById('epBio').value.trim();
-  var status = document.getElementById('epStatus').value.trim();
-  if (!name) { toast('名称不能为空'); return; }
-  try {
-    var me = await fetch('/api/auth/me', {headers:{'Authorization':'Bearer '+token}}).then(r=>r.json());
-    if (!me.ok || !me.user) { toast('请重新登录'); return; }
-    var userId = me.user.id || me.user.sub;
-    var r = await fetch('/api/profile', {
-      method:'PUT', headers:{'Content-Type':'application/json','Authorization':'Bearer '+token},
-      body: JSON.stringify({userId: userId, displayName: name, bio: bio})
-    });
-    var d = await r.json();
-    if (d.ok) {
-      document.getElementById('pcName').textContent = name;
-      document.getElementById('pdBio').textContent = bio || '--';
-      if (status) {
-        localStorage.setItem('lingxi-custom-status', status);
-        try { document.getElementById('pcCredits').textContent = '💬 '+status; } catch(_){}
-      }
-      closeEditProfile();
-      toast('✅ 资料已更新');
-    } else {
-      toast('❌ '+ (d.error || '保存失败'));
-    }
-  } catch(e) { toast('❌ 保存失败: '+e.message); }
-}
-
-// ═══════════════════════════════════════════
-// 头像上传
-// ═══════════════════════════════════════════
-async function uploadAvatar() {
-  var fileInput = document.getElementById('avatarFile');
-  var file = fileInput.files[0];
-  if (!file) return;
-  var token = localStorage.getItem('authToken');
-  if (!token) { toast('请先登录'); return; }
-  try {
-    var me = await fetch('/api/auth/me', {headers:{'Authorization':'Bearer '+token}}).then(r=>r.json());
-    if (!me.ok || !me.user) { toast('请重新登录'); return; }
-    var userId = me.user.id || me.user.sub;
-    var form = new FormData();
-    form.append('file', file);
-    form.append('userId', userId);
-    var r = await fetch('/api/profile/avatar', {method:'POST',headers:{'Authorization':'Bearer '+token},body:form});
-    var d = await r.json();
-    if (d.ok) {
-      document.getElementById('epAvatar').textContent = '';
-      document.getElementById('epAvatar').style.backgroundImage = 'url('+d.avatarUrl+')';
-      document.getElementById('epAvatar').style.backgroundSize = 'cover';
-      document.getElementById('pcAvatar').textContent = '';
-      document.getElementById('pcAvatar').style.backgroundImage = 'url('+d.avatarUrl+')';
-      document.getElementById('pcAvatar').style.backgroundSize = 'cover';
-      toast('✅ 头像已更新');
-    } else {
-      toast('❌ '+ (d.error || '上传失败'));
-    }
-  } catch(e) { toast('❌ 上传失败: '+e.message); }
-}
-
-// ═══════════════════════════════════════════
-// 正在输入提示
-// ═══════════════════════════════════════════
-var typingTimer = null;
-var typingChatId = null;
-function sendTyping(chatId) {
-  if (!ws || ws.readyState !== WebSocket.OPEN) return;
-  if (typingChatId === chatId) {
-    clearTimeout(typingTimer);
-    typingTimer = setTimeout(function(){ ws.send(JSON.stringify({type:'typing.stop',chatId:chatId})); typingChatId=null; }, 2000);
-    return;
-  }
-  typingChatId = chatId;
-  ws.send(JSON.stringify({type:'typing.start',chatId:chatId}));
-  clearTimeout(typingTimer);
-  typingTimer = setTimeout(function(){ ws.send(JSON.stringify({type:'typing.stop',chatId:chatId})); typingChatId=null; }, 2000);
-}
-// 在 handleMessage 中添加 typing 处理（额外注册）
-(function patchHandleMessage() {
-  var orig = handleMessage;
-  handleMessage = function(msg) {
-    orig(msg);
-    if (!msg || !msg.type) return;
-    if (msg.type === 'typing.start' && msg.chatId === currentChat && msg.userId !== clientId) {
-      var el = document.getElementById('typingIndicator');
-      if (el) { el.classList.add('show'); el.textContent = (msg.userName || '对方') + ' 正在输入...'; }
-    }
-    if (msg.type === 'typing.stop' && msg.chatId === currentChat) {
-      var el = document.getElementById('typingIndicator');
-      if (el) el.classList.remove('show');
-    }
-    if (msg.type === 'reaction') {
-      if (!msgReactions[msg.msgId]) msgReactions[msg.msgId] = {};
-      if (!msgReactions[msg.msgId][msg.emoji]) msgReactions[msg.msgId][msg.emoji] = [];
-      var idx = msgReactions[msg.msgId][msg.emoji].indexOf(msg.userId);
-      if (idx >= 0) msgReactions[msg.msgId][msg.emoji].splice(idx, 1);
-      else msgReactions[msg.msgId][msg.emoji].push(msg.userId);
-      if (msgReactions[msg.msgId][msg.emoji].length === 0) delete msgReactions[msg.msgId][msg.emoji];
-      renderReactions(msg.msgId);
-    }
-  };
-})();
-
-// ═══════════════════════════════════════════
-// 拉黑用户
-// ═══════════════════════════════════════════
-var blockedUsers = JSON.parse(localStorage.getItem('lingxi-blocked') || '[]');
-function blockUser(uid) {
-  if (blockedUsers.indexOf(uid) >= 0) return;
-  blockedUsers.push(uid);
-  localStorage.setItem('lingxi-blocked', JSON.stringify(blockedUsers));
-  renderFriends();
-  toast('已拉黑用户 ' + uid);
-}
-function unblockUser(uid) {
-  blockedUsers = blockedUsers.filter(function(id){ return id !== uid; });
-  localStorage.setItem('lingxi-blocked', JSON.stringify(blockedUsers));
-  renderFriends();
-  toast('已解除拉黑');
-}
-function isBlocked(uid) { return blockedUsers.indexOf(String(uid)) >= 0; }
-
-// ═══════════════════════════════════════════
-// 表情反应
-// ═══════════════════════════════════════════
-var msgReactions = {};  // msgId -> { emoji: [userId, ...] }
-function showReactionPanel(e, msgId) {
-  e.stopPropagation();
-  var panel = document.getElementById('reactionPanel');
-  if (!panel) return;
-  panel.dataset.msgId = msgId;
-  panel.style.display = 'flex';
-  panel.style.left = e.clientX + 'px';
-  panel.style.top = (e.clientY - 40) + 'px';
-  document.addEventListener('click', hideReactionPanel, {once:true});
-}
-function hideReactionPanel() {
-  var panel = document.getElementById('reactionPanel');
-  if (panel) panel.style.display = 'none';
-}
-function addReaction(e, emoji) {
-  e.stopPropagation();
-  var panel = document.getElementById('reactionPanel');
-  var msgId = panel.dataset.msgId;
-  if (!msgReactions[msgId]) msgReactions[msgId] = {};
-  if (!msgReactions[msgId][emoji]) msgReactions[msgId][emoji] = [];
-  var idx = msgReactions[msgId][emoji].indexOf(clientId);
-  if (idx >= 0) msgReactions[msgId][emoji].splice(idx, 1);
-  else msgReactions[msgId][emoji].push(clientId);
-  if (msgReactions[msgId][emoji].length === 0) delete msgReactions[msgId][emoji];
-  renderReactions(msgId);
-  // 广播给其他用户
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({type:'reaction',msgId:msgId,emoji:emoji,userId:clientId}));
-  }
-  hideReactionPanel();
-}
-function renderReactions(msgId) {
-  var el = document.querySelector('.msg-row[data-msgid="'+msgId+'"] .msg-reactions');
-  if (!el) {
-    var row = document.querySelector('.msg-row[data-msgid="'+msgId+'"]');
-    if (!row) return;
-    var bubble = row.querySelector('.msg-bubble') || row.querySelector('.msg-content');
-    if (!bubble) return;
-    el = document.createElement('div');
-    el.className = 'msg-reactions';
-    (bubble.parentNode || bubble).appendChild(el);
-  }
-  var rs = msgReactions[msgId] || {};
-  el.innerHTML = Object.keys(rs).map(function(emoji){
-    var cnt = rs[emoji].length;
-    var active = rs[emoji].indexOf(clientId) >= 0 ? ' active' : '';
-    return '<span class="msg-reaction'+active+'" onclick="document.getElementById(\'reactionPanel\').dataset.msgId=\''+msgId+'\';addReaction(event,\''+emoji+'\')">'+emoji+' '+cnt+'</span>';
-  }).join('');
-}
-
-// ═══════════════════════════════════════════
-// 免打扰
-// ═══════════════════════════════════════════
-var mutedChats = JSON.parse(localStorage.getItem('lingxi-muted') || '[]');
-function toggleMute(chatId) {
-  var idx = mutedChats.indexOf(chatId);
-  if (idx >= 0) mutedChats.splice(idx, 1);
-  else mutedChats.push(chatId);
-  localStorage.setItem('lingxi-muted', JSON.stringify(mutedChats));
-  toast(idx >= 0 ? '🔔 已开启通知' : '🔕 已免打扰');
-}
-function isMuted(chatId) { return mutedChats.indexOf(chatId) >= 0; }
-
-// ═══════════════════════════════════════════
-// 好友备注 & 请求附言
-// ═══════════════════════════════════════════
-var friendNotes = JSON.parse(localStorage.getItem('lingxi-notes') || '{}');
-function setFriendNote(fid, note) {
-  friendNotes[fid] = note;
-  localStorage.setItem('lingxi-notes', JSON.stringify(friendNotes));
-  renderFriends();
-  toast('备注已保存');
-}
-function getFriendNote(fid) { return friendNotes[fid] || ''; }
-
-
-function continueReverseAsk(btn) {
-  var form = btn.closest("div");
-  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
-  if (!form) return;
-  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
-  if (!goalId) { toast("未找到对应的目标"); return; }
-  var context = [];
-  form.querySelectorAll("input[type=checkbox]:checked").forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
-  form.querySelectorAll("input[type=text]").forEach(function(t) { if (t.value.trim()) context.push("自定义: " + t.value.trim()); });
-  var extra = context.length ? context.join("; ") : "";
-  toast("💬 继续提问中...");
-  askAIAboutGoal(goalId, extra);
+function deleteGoal(id) {
+  if (!confirm('确定删除此目标？')) return;
+  fetch('/api/goals/' + encodeURIComponent(id), { method: 'DELETE' })
+    .then(r => r.json()).then(d => {
+      if (d.ok) { toast('已删除'); location.reload(); }
+      else toast('删除失败');
+    }).catch(e => toast('删除失败: ' + e.message));
 }

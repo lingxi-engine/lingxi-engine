@@ -1,16 +1,10 @@
 /**
- * 评分卡 Outcome Tracker v1.7.3
+ * 评分卡 Outcome Tracker v1.7.0
  *
  * AI 任务完成度自评追踪。对标 Anthropic 的 rubric-driven "Outcomes"。
- *
- * v1.7.3 修复:
- *  - BUG-1: 补充 deleteCard 方法（routes/goals-outcomes.ts 调用了它但类里没有实现 → 删除评分卡必崩）
- *  - BUG-5: 评分卡持久化到 data/outcome-cards.json，重启不再丢失
  */
 
 import { logger } from './logger.js';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs';
-import { dirname, join } from 'path';
 
 // ─── 类型 ───
 
@@ -39,14 +33,10 @@ export class OutcomeTracker {
   private cards: Map<string, OutcomeCard> = new Map(); // cardId → card
   private aiClient: any;
   private aiModel: string;
-  private persistPath: string | null = null;
 
-  constructor(aiClient: any, aiModel: string, dataDir?: string) {
+  constructor(aiClient: any, aiModel: string) {
     this.aiClient = aiClient;
     this.aiModel = aiModel;
-    // v1.7.3: 未显式传入 dataDir 时默认使用进程工作目录下的 data（与 cron-jobs.json 同目录）
-    this.persistPath = join(dataDir || join(process.cwd(), 'data'), 'outcome-cards.json');
-    this._load();
   }
 
   /**
@@ -74,12 +64,8 @@ export class OutcomeTracker {
       // 先尝试从 markdown 代码块提取
       let jsonStr = raw.match(/```(?:json)?\s*\[([\s\S]*?)\]```/);
       let jsonMatch = jsonStr ? ['[' + jsonStr[1] + ']'] : null;
-      // 贪婪匹配：从第一个 [ 到最后一个 ]
-      if (!jsonMatch) {
-        const start = raw.indexOf('[');
-        const end = raw.lastIndexOf(']');
-        if (start !== -1 && end > start) jsonMatch = [raw.slice(start, end + 1)];
-      }
+      // 非贪婪匹配
+      if (!jsonMatch) jsonMatch = raw.match(/\[([\s\S]*?)\]/);
       const items: OutcomeItem[] = jsonMatch
         ? JSON.parse(jsonMatch[0]).map((item: any, i: number) => ({
             id: `oc-${Date.now()}-${i}`,
@@ -99,7 +85,6 @@ export class OutcomeTracker {
       };
 
       this.cards.set(card.id, card);
-      this._persist();
       return card;
     } catch {
       const card: OutcomeCard = {
@@ -111,7 +96,6 @@ export class OutcomeTracker {
         updatedAt: Date.now(),
       };
       this.cards.set(card.id, card);
-      this._persist();
       return card;
     }
   }
@@ -169,7 +153,6 @@ ${conversationSummary.slice(0, 2000)}
         card.items.reduce((s, i) => s + i.score, 0) / Math.max(card.items.length, 1)
       );
       card.updatedAt = Date.now();
-      this._persist();
 
       logger.info('Outcome', `评分完成: ${card.overallScore}%`);
       return card;
@@ -188,49 +171,5 @@ ${conversationSummary.slice(0, 2000)}
   list(chatId?: string): OutcomeCard[] {
     const all = Array.from(this.cards.values());
     return chatId ? all.filter(c => c.chatId === chatId) : all;
-  }
-
-  /**
-   * 删除评分卡
-   * v1.7.3 修复: 补上这个方法（DELETE /api/outcomes/:id 路由依赖它，之前缺失导致 500）
-   */
-  deleteCard(cardId: string): boolean {
-    const existed = this.cards.delete(cardId);
-    if (existed) this._persist();
-    logger.info('Outcome', `删除评分卡: ${cardId} (${existed ? 'ok' : 'not found'})`);
-    return existed;
-  }
-
-  // ── 持久化（v1.7.3 新增） ──
-
-  private _load(): void {
-    if (!this.persistPath) return;
-    try {
-      if (!existsSync(this.persistPath)) return;
-      const raw = readFileSync(this.persistPath, 'utf8');
-      const data = JSON.parse(raw);
-      if (!Array.isArray(data)) { logger.warn('Outcome', '评分卡持久化文件格式异常，跳过'); return; }
-      for (const c of data) {
-        if (c && c.id && c.goal) {
-          this.cards.set(c.id, c as OutcomeCard);
-        }
-      }
-      if (this.cards.size > 0) logger.info('Outcome', `从磁盘恢复 ${this.cards.size} 张评分卡`);
-    } catch (err: any) {
-      logger.error('Outcome', `加载评分卡持久化数据失败: ${err?.message || err}`);
-    }
-  }
-
-  private _persist(): void {
-    if (!this.persistPath) return;
-    try {
-      // 确保目录存在（正常由 index.ts 创建 data 目录，这里兜底）
-      mkdirSync(dirname(this.persistPath), { recursive: true });
-      const tmpPath = this.persistPath + '.tmp';
-      writeFileSync(tmpPath, JSON.stringify(Array.from(this.cards.values()), null, 2), 'utf8');
-      renameSync(tmpPath, this.persistPath); // 原子替换，避免写一半崩溃丢数据
-    } catch (err: any) {
-      logger.error('Outcome', `评分卡持久化失败: ${err?.message || err}`);
-    }
   }
 }

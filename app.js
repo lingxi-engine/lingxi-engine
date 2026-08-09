@@ -1,4 +1,4 @@
-﻿// ── Error Guard ──
+// ── Error Guard ──
 window.onerror = function(msg, url, line) {
   console.error('[GlobalError]', msg, 'at', url + ':' + line);
   toast(t('err.jsError', { msg: String(msg).slice(0, 60) }));
@@ -16,10 +16,8 @@ let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionLis
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重复
 const _optimisticSent = new Set();
 let streamingMsgs = {};
-let genTimers = {};         // chatId -> timeoutId, 生成超时保底
 let connectIntended = false;
-let sendQueue = [];
-let _currentAskGoalId = null;        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
+let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是否"生成中"）
 
 // ═══ Panel Switching ═══
@@ -144,102 +142,6 @@ async function loadTools() {
       <div class="card"><h3>🔧 ${esc(tool.name||'?')}</h3><p style="font-size:12px;color:var(--text2)">${esc(tool.description||'')}</p></div>
     `).join('') || '<div class="empty">'+t('tools.none')+'</div>';
   } catch(e) { document.getElementById('toolsGrid').innerHTML = '<div class="empty">'+t('err.loadFail')+'</div>'; }
-  loadRagDocs();
-  loadWorkspace();
-}
-
-// ═══ 知识库 (v2.0.6) ═══
-async function loadRagDocs() {
-  const el = document.getElementById('ragDocsList');
-  if (!el) return;
-  el.textContent = '加载中...';
-  try {
-    const d = await api('/api/rag/documents', 'GET');
-    if (!d.ok) { el.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
-    const docs = d.documents || [];
-    if (!docs.length) { el.innerHTML = '<div style="color:var(--text3)">暂无文档，添加或扫描工作区</div>'; return; }
-    el.innerHTML = docs.map(doc => `<div style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid var(--border)">
-      <span style="flex:1">📄 ${esc(doc.title)}${doc.chunkCount ? ' <span style="color:var(--text3);font-size:11px">('+doc.chunkCount+'块)</span>' : ''}</span>
-      <button onclick="deleteRagDoc('${esc(doc.id)}')" style="background:none;border:none;color:var(--red);cursor:pointer">🗑</button>
-    </div>`).join('');
-  } catch(e) { el.textContent = '❌ ' + (e.message || '网络错误'); }
-}
-
-async function addRagDoc() {
-  const title = (document.getElementById('ragTitle')||{}).value?.trim();
-  const source = (document.getElementById('ragSource')||{}).value?.trim();
-  const content = (document.getElementById('ragContent')||{}).value?.trim();
-  if (!title || !content) { toast('请填写标题和内容'); return; }
-  try {
-    const d = await api('/api/rag/documents', 'POST', { title, source, content, mimeType: 'text/plain' });
-    if (d.ok) { toast('✅ 已添加 ' + (d.chunkCount||0) + ' 块'); loadRagDocs(); document.getElementById('ragContent').value=''; }
-    else toast('❌ ' + _errMsg(d, '添加失败'));
-  } catch(e) { toast('❌ 添加失败: ' + e.message); }
-}
-
-async function deleteRagDoc(id) {
-  if (!confirm('删除该文档？')) return;
-  try {
-    const d = await api('/api/rag/documents/' + encodeURIComponent(id), 'DELETE');
-    if (d.ok) { toast('已删除'); loadRagDocs(); }
-    else toast('❌ ' + _errMsg(d, '删除失败'));
-  } catch(e) { toast('❌ 删除失败'); }
-}
-
-async function searchRag() {
-  const q = (document.getElementById('ragQuery')||{}).value?.trim();
-  const out = document.getElementById('ragSearchOut');
-  if (!q) { toast('请输入检索词'); return; }
-  out.textContent = '检索中...';
-  try {
-    const d = await api('/api/rag/search?q=' + encodeURIComponent(q), 'GET');
-    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '检索失败'); return; }
-    const hits = d.hits || [];
-    if (!hits.length) { out.innerHTML = '<div style="color:var(--text3)">无结果</div>'; return; }
-    out.innerHTML = hits.map((h,i) => `<div style="padding:6px;border-left:3px solid var(--accent);margin-bottom:6px;background:var(--bg2)">
-      <div style="font-weight:600">[${i+1}] ${esc(h.docTitle||'')} <span style="color:var(--text3);font-size:11px">相关度 ${h.score.toFixed ? h.score.toFixed(2) : h.score}</span></div>
-      <div style="color:var(--text2);font-size:11px">${esc((h.content||'').slice(0,200))}...</div>
-    </div>`).join('');
-  } catch(e) { out.textContent = '❌ 检索失败'; }
-}
-
-async function scanWorkspaceDocs() {
-  if (!confirm('扫描当前工作区，自动导入支持的文档到知识库？')) return;
-  try {
-    const d = await api('/api/rag/scan-workspace', 'POST');
-    if (d.ok) {
-      toast('✅ 工作区扫描完成: 导入 ' + (d.imported||0) + ' 个, 跳过 ' + (d.skipped||0) + ' 个');
-      loadRagDocs();
-    } else toast('❌ ' + _errMsg(d, '扫描失败'));
-  } catch(e) { toast('❌ 扫描失败: ' + e.message); }
-}
-
-// ═══ 工作区 (v2.0.6) ═══
-async function loadWorkspace() {
-  try {
-    const d = await api('/api/workspace-mode', 'GET');
-    if (!d) { return; }
-    const modeSel = document.getElementById('wsModeSelect');
-    if (modeSel) modeSel.value = d.mode || 'personal';
-    const root = document.getElementById('wsRootInput');
-    if (root) root.value = d.workspaceRoot || '';
-    const info = document.getElementById('wsInfo');
-    if (info) info.innerHTML = `当前工作区: <b style="color:var(--accent)">${esc(d.workspaceRoot||'')}</b> (模式: ${d.mode==='collab'?'👥 协作':'👤 个人'})`;
-  } catch(e) {}
-}
-
-async function setWorkspaceMode() {
-  const mode = document.getElementById('wsModeSelect').value;
-  const root = (document.getElementById('wsRootInput').value || '').trim();
-  try {
-    const d = await api('/api/workspace-mode', 'POST', { mode, workspaceRoot: root || undefined });
-    if (d && d.ok !== false) { toast('✅ 已切换为 ' + mode); loadWorkspace(); }
-    else toast('❌ ' + (d?.error || '设置失败'));
-  } catch(e) { toast('❌ 设置失败: ' + e.message); }
-}
-
-async function saveWorkspace() {
-  setWorkspaceMode();
 }
 
 function toast(msg) {
@@ -341,17 +243,9 @@ function connect() {
       setStatus(t('status.online'), 'ok');
       enableInput(true);
       loadChatList().catch(()=>{});
-      // ⭐ v2.0.5: 重连后恢复上次打开的聊天
-      var _lastSavedChat = localStorage.getItem('lingxi-last-chat');
-      if (_lastSavedChat && myChats.some(function(c3){ return c3.id === _lastSavedChat; })) {
-        switchChat(_lastSavedChat);
-      }
       loadFriends().catch(()=>{});
       loadRequests().catch(()=>{});
       loadModels().catch(()=>{});
-      // 右侧栏初始化
-      if (typeof loadTaskMonitor === 'function') loadTaskMonitor().catch(()=>{});
-      if (typeof loadRightGoals === 'function') loadRightGoals().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
         if (authToken) {
@@ -620,13 +514,6 @@ function handleMessage(msg) {
     case 'agent.streaming.start':
       // 总是注册流式状态（即使不在当前聊天），防止切走后丢失
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
-      if (genTimers[msg.chatId]) clearTimeout(genTimers[msg.chatId]);
-      genTimers[msg.chatId] = setTimeout(function() {
-        var gc = generatingChats[msg.chatId] || 0;
-        if (gc > 0) { generatingChats[msg.chatId] = 0; updateGenUI(); }
-        delete genTimers[msg.chatId];
-        if (msg.chatId === currentChat) toast("⏰ 生成超时，htoken已消耗但未产生完整回复，可重试或缩短提问");
-      }, 180000); // 3分钟超时保底
       updateGenUI();
       appendStreamingMsg(msg);
       break;
@@ -657,7 +544,6 @@ function handleMessage(msg) {
       }
       break;
     case 'agent.streaming.end':
-      if (genTimers[msg.chatId]) { clearTimeout(genTimers[msg.chatId]); delete genTimers[msg.chatId]; }
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
@@ -714,29 +600,14 @@ function handleMessage(msg) {
       }
       toast(t('err.error', { msg: (msg.message||'').slice(0,80) }));
       break;
-
-    case 'session.restore':
-      // v2.0.6: 服务端重启后恢复会话上下文
-      console.log('[Session] 收到恢复信息, lastChatId:', msg.lastChatId, '会话数:', (msg.sessions||[]).length);
-      if (msg.lastChatId && typeof switchChat === 'function') {
-        // 延迟一小段时间等聊天列表加载完成再切换
-        setTimeout(function() {
-          if (currentChat !== msg.lastChatId) {
-            switchChat(msg.lastChatId);
-          }
-        }, 500);
-      }
-      break;
-
     default: break;
   }
 }
 
 function updateBadge() {
   const b = document.getElementById('reqBadge');
-  if (!b) return;
-  if (requestNotifyCount > 0) { b.style.display = ''; b.textContent = requestNotifyCount; }
-  else { b.style.display = 'none'; }
+  if (requestNotifyCount > 0) { b.classList.remove('hidden'); b.textContent = requestNotifyCount; }
+  else { b.classList.add('hidden'); }
 }
 
 // ── Chat List ──
@@ -783,8 +654,6 @@ async function deleteChat(chatId) {
 }
 
 async function switchChat(chatId) {
-  // ⭐ v2.0.5: 保存上次打开的聊天到 localStorage（重启后可恢复）
-  if (chatId) localStorage.setItem('lingxi-last-chat', chatId);
   currentChat = chatId;
   delete unreadCounts[chatId];
   updateGenUI();
@@ -916,17 +785,11 @@ function appendMessage(msg) {
   // 消息操作菜单
   const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
   
-  el.innerHTML = '<div class="msg-avatar ' + esc(avatarClass) + '">' + esc(avatarIcon) + '</div>' +
+  el.innerHTML = '<div class="msg-avatar ' + avatarClass + '">' + avatarIcon + '</div>' +
     '<div style="max-width:70%"><div class="msg-bubble">' + bubbleContent + actions + '</div>' +
-    '<div class="msg-meta">' + esc(time) + '</div></div>';
+    '<div class="msg-meta">' + time + '</div></div>';
   
   container.appendChild(el);
-
-  // 检测结构化问答格式 → 渲染选项表单
-  if (isAgent && content.includes("Q:") && content.includes("A:")) {
-    setTimeout(function() { renderGoalQAForm(content, el, chatId); }, 200);
-  }
-
   container.scrollTop = container.scrollHeight;
 }
 
@@ -1140,10 +1003,10 @@ function updateGenUI() {
   const busy = !!(currentChat && isChatGenerating(currentChat));
   if (stopBtn) stopBtn.style.display = busy ? '' : 'none';
   if (queueBar) {
-    const qc = document.getElementById('queueCount');
     if (sendQueue.length) {
       queueBar.style.display = '';
-      if (qc) qc.textContent = '⏳ 排队中: ' + sendQueue.length + ' 条消息';
+      const qc = document.getElementById('queueCount');
+      if (qc) qc.textContent = t('chat.queuedInfo', { n: sendQueue.length });
     } else {
       queueBar.style.display = 'none';
     }
@@ -1205,7 +1068,8 @@ async function send() {
     toast(t('chat.queuedAuto', { n: sendQueue.length }));
     return;
   }
-  ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: content }));
+  try { ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: content })); }
+  catch(e) { toast('发送失败，请检查连接'); console.error('[send] ws.send error:', e); return; }
   input.value = '';
   // 乐观渲染：立即在本地显示用户消息，不等服务端回传
   const _dedupKey = chatId + '|' + content + '|' + (clientId || '');
@@ -1460,9 +1324,21 @@ function renderFriends() {
 }
 async function openChatFriend(fid, fname) {
   const myNumericId = lanMeId || clientId;
-  const chatId = 'chat-platform-' + [String(myNumericId), String(fid)].sort().join('-');
   try {
-    const d = await api('/api/chats'); const exists = (d.chats||[]).some(c=>c.id===chatId);
+    const d = await api('/api/chats');
+    const allChats = (d.chats || []);
+    // 优先复用后端 respondFriendRequest 已创建的 chat（格式: chat-{fromUserId}-{toUserId}）
+    const legacyA = 'chat-' + String(myNumericId) + '-' + String(fid);
+    const legacyB = 'chat-' + String(fid) + '-' + String(myNumericId);
+    const legacy = allChats.find(c => c.id === legacyA || c.id === legacyB);
+    if (legacy) {
+      // 同一实例好友：后端已自动建 chat，直接使用 → 走 WebSocket 消息通道
+      hideFriendPanel(); await loadChatList(); switchChat(legacy.id);
+      return;
+    }
+    // 跨平台好友：创建 chat-platform 格式 → 走 Mesh 中继通道
+    const chatId = 'chat-platform-' + [String(myNumericId), String(fid)].sort().join('-');
+    const exists = allChats.some(c => c.id === chatId);
     if (!exists) {
       await api('/api/chats', 'POST', { id: chatId, type: 'private', name: fname });
       await api('/api/participants', 'POST', { id: 'p-'+chatId+'-1', chatId, userId: String(myNumericId) });
@@ -1743,15 +1619,7 @@ async function loadModels() {
   try {
     const d = await api('/api/providers');
     const hSel = document.getElementById('headerModelSelect');
-    // 修复: /api/providers 返回 providers 不是 models, 从 providers 展平 models
-    let models = d.models || [];
-    if (models.length === 0 && d.providers) {
-      models = d.providers.flatMap(p => (p.models||[]).map(m => ({id:m.id||m.name||m, provider:p.id, providerName:p.name})));
-    }
-    // 也尝试 /api/models 作为补充
-    if (models.length === 0) {
-      try { const md = await api('/api/models'); if (md.models) models = md.models; } catch(e) {}
-    }
+    const models = d.models || [];
     const opts = models.map(m => '<option value="'+esc(m.id)+'">' + esc(m.providerName||m.provider||'') + ' / ' + esc(m.id) + '</option>').join('');
     if (hSel) {
       hSel.innerHTML = opts || '<option value="">'+t('settings.noModel')+'</option>';
@@ -1955,8 +1823,7 @@ async function addProvider() {
   const modelsStr = document.getElementById('newProviderModels').value.trim();
   const _msgEl = document.getElementById('addProviderMsg');
   const setMsg = (txt, color) => { if (_msgEl) { _msgEl.textContent = txt; _msgEl.style.color = color; } else toast(txt); };
-  const isLocalType = ['ollama','custom','llama-cpp','vllm','lm-studio','tgi'].includes(type);
-  if (!apiKey && !isLocalType) { setMsg(t('settings.errKeyRequired'), '#ef4444'); return; }
+  if (!apiKey) { setMsg(t('settings.errKeyRequired'), '#ef4444'); return; }
   if (!modelsStr) { setMsg(t('settings.errModelRequired'), '#ef4444'); return; }
   const id = type + '-' + Date.now();
   const models = modelsStr.split(',').map(s=>s.trim()).filter(Boolean);
@@ -2022,8 +1889,7 @@ async function connectOllama() {
     if (!models.length) { sEl.textContent=t('status.connectedNoModel'); sEl.style.color='#faad14'; return; }
     sEl.textContent=t('settings.modelCount', { n: models.length }); sEl.style.color='#4ade80';
     mEl.innerHTML = models.map(m => '<span class="tag" onclick="document.getElementById(\'headerModelSelect\').value=\''+esc(m)+'\';switchHeaderModel(\''+esc(m)+'\')">' + esc(m) + '</span>').join(' ');
-    api('/api/providers','POST',{id:'local-ollama',type:'ollama',name:t('settings.ollamaLocal'),apiKey:'ollama',baseUrl:baseUrl+'/v1',models:models,isLocal:true,enabled:true});
-    loadModels();
+    api('/api/providers','POST',{id:'local-ollama',type:'ollama',name:t('settings.ollamaLocal'),apiKey:'ollama',baseUrl:url,models:models,isLocal:true}).then(()=>{loadModels();loadModelRoute();});
   } catch(e) { sEl.textContent='❌ ' + e.message; sEl.style.color='#ef4444'; }
 }
 
@@ -2148,15 +2014,12 @@ async function testTTS() {
 
 // ── 注册/登录 ──
 let authToken = null;
-const PLATFORM_URL = '';  // v2.0.6: 本地部署时不走云平台，直接用本地 API。如需云平台功能，改为 'http://47.93.157.83:8080'
+const PLATFORM_URL = 'http://47.93.157.83:8080';  // 云平台地址
 
 // 通用 API：本地（不要带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  // 自动携带 JWT token（如果已登录）
-  const token = localStorage.getItem('authToken');
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   const r = await fetch(url, opts); return r.json();
 }
 // 云平台 API：注册/登录/市场
@@ -2231,7 +2094,6 @@ async function submitAuth() {
       localStorage.setItem('authToken', authToken);
       const user = r.user || {};
       document.getElementById('userInfo').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
-      updateProfileCard(user);
       document.getElementById('loginArea').style.display = '';
       document.getElementById('loginButtons').style.display = 'none';
       closeAuthModal();
@@ -2251,25 +2113,8 @@ async function logout() {
   localStorage.removeItem('authToken');
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
-  resetProfileCard();
   if (ws) try { ws.close(); } catch {}
   toast('已退出');
-}
-function updateProfileCard(user) {
-  if (!user) return;
-  const name = user.username || user.display_name || user.displayName || '用户';
-  const id = user.numeric_id || user.id || user.sub || '';
-  const avatar = (name[0] || 'U').toUpperCase();
-  try { document.getElementById('pcAvatar').textContent = avatar; } catch(_) {}
-  try { document.getElementById('pcName').innerHTML = esc(name); } catch(_) {}
-  try { document.getElementById('pcId').textContent = 'ID ' + id; } catch(_) {}
-  try { document.getElementById('pcCredits').textContent = '⚡ 积分 --'; } catch(_) {}
-}
-function resetProfileCard() {
-  try { document.getElementById('pcAvatar').textContent = '?'; } catch(_) {}
-  try { document.getElementById('pcName').textContent = '未登录'; } catch(_) {}
-  try { document.getElementById('pcId').textContent = ''; } catch(_) {}
-  try { document.getElementById('pcCredits').textContent = ''; } catch(_) {}
 }
 function checkAuthStatus() {
   const saved = localStorage.getItem('authToken');
@@ -2280,7 +2125,6 @@ function checkAuthStatus() {
       .then(d => {
         if (d.ok && d.user) {
           document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || '用户');
-          updateProfileCard(d.user);
           document.getElementById('loginArea').style.display = '';
           document.getElementById('loginButtons').style.display = 'none';
           connect();
@@ -2660,38 +2504,9 @@ document.addEventListener('keydown', e => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); wfRedo(); }
 });
 
-// ── 工作流执行 ──
-async function wfRun() {
-  if (!wfLastSavedId) { toast('⚠️ 请先保存工作流'); return; }
-  const resEl = document.getElementById('wfResult') || _createWFResult();
-  resEl.innerHTML = '<div style="padding:12px;color:var(--accent)">⏳ 执行中...</div>';
-  resEl.scrollIntoView({ behavior: 'smooth' });
-  try {
-    const r = await fetch('/api/workflows/' + encodeURIComponent(wfLastSavedId) + '/run', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('authToken') || '') }
-    });
-    const d = await r.json();
-    if (!d.ok) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(d.error || '执行失败') + '</div>'; return; }
-    resEl.innerHTML = '<div style="padding:12px;font-weight:bold;color:var(--green)">✅ 执行完成</div>' +
-      (d.results || []).map(function(r) {
-        return '<div class="task-card"><div class="task-name">' + esc(r.label) + '</div>' +
-        '<div style="font-size:11px;color:var(--text3);max-height:200px;overflow:auto;white-space:pre-wrap">' + esc(r.output || '') + '</div></div>';
-      }).join('');
-  } catch(e) { resEl.innerHTML = '<div style="padding:12px;color:var(--red)">❌ ' + esc(e.message) + '</div>'; }
-}
-function _createWFResult() {
-  var el = document.createElement('div');
-  el.id = 'wfResult';
-  el.style.cssText = 'margin-top:12px;max-height:50vh;overflow:auto';
-  var canvas = document.getElementById('wfCanvas');
-  if (canvas && canvas.parentElement) canvas.parentElement.appendChild(el);
-  return el;
-}
-
 async function wfSaveToCloud() {
   const name = document.getElementById('wfName').value || '未命名工作流';
-  const id = wfLastSavedId || ('wf-' + Date.now());
-  wfLastSavedId = id;
+  const id = 'wf-' + Date.now();
   const data = { nodes: wfNodes, connections: wfConnections };
   try {
     await api('/api/workflows', 'POST', { id, name, data });
@@ -2702,40 +2517,18 @@ async function wfLoadFromCloud() {
   try {
     const d = await api('/api/workflows');
     if (!d.ok || !d.workflows.length) { toast('没有已保存的工作流'); return; }
-    _wfShowLoadOverlay(d.workflows);
-  } catch(e) { toast('❌ 加载失败: ' + e.message); }
-}
-
-function _wfShowLoadOverlay(workflows) {
-  var overlay = document.createElement('div');
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:10002;display:flex;align-items:center;justify-content:center';
-  var html = '<div style="background:var(--bg);border-radius:12px;max-width:500px;width:90%;max-height:70vh;overflow:auto;padding:16px">';
-  html += '<h3 style="margin:0 0 12px">📂 选择工作流</h3>';
-  workflows.forEach(function(w, i) {
-    html += '<div class="task-card" style="cursor:pointer;padding:10px;margin-bottom:6px" onclick="(function(){ document.getElementById(\'wfName\').value=\'' + esc(w.name) + '\'; _wfLoadById(\'' + w.id + '\',\'' + esc(w.name) + '\'); var o=document.querySelector(\'[data-wf-overlay]\'); if(o) o.remove(); })()">';
-    html += '<b>' + (i+1) + '. ' + esc(w.name) + '</b>';
-    html += '<div style="font-size:11px;color:var(--text3)">' + new Date(w.updated_at).toLocaleString() + '</div>';
-    html += '</div>';
-  });
-  html += '<button class="btn" style="margin-top:8px" onclick="this.closest(\'[data-wf-overlay]\').remove()">取消</button>';
-  html += '</div>';
-  overlay.innerHTML = html;
-  overlay.setAttribute('data-wf-overlay', '1');
-  overlay.onclick = function(e) { if (e.target === overlay) overlay.remove(); };
-  document.body.appendChild(overlay);
-}
-
-async function _wfLoadById(id, name) {
-  try {
-    const detail = await api('/api/workflows/' + id);
+    const name = prompt('选择工作流（输入编号）：\n' + d.workflows.map((w,i) => (i+1)+'. '+w.name+' ('+new Date(w.updated_at).toLocaleDateString()+')').join('\n'));
+    if (!name) return;
+    const idx = parseInt(name) - 1;
+    if (idx < 0 || idx >= d.workflows.length) return;
+    const detail = await api('/api/workflows/' + d.workflows[idx].id);
     if (detail.ok && detail.workflow) {
-      var dd = detail.workflow.data;
-      if (typeof dd === 'string') dd = JSON.parse(dd);
+      const dd = detail.workflow.data;
       wfNodes = dd.nodes || [];
       wfConnections = dd.connections || [];
-      wfLastSavedId = detail.workflow.id;
+      document.getElementById('wfName').value = detail.workflow.name;
       renderWF();
-      toast('✅ 已加载: ' + (name || detail.workflow.name));
+      toast('✅ 已加载: ' + detail.workflow.name);
     }
   } catch(e) { toast('❌ 加载失败: ' + e.message); }
 }
@@ -2800,7 +2593,7 @@ function toggleAdmin(force) {
 }
 async function refreshAllAdmin() {
   adminHealth(); adminAgents(); adminSessions(); adminSubAgents(); adminCron(); adminMCP(); adminPlugins(); loadApprovals(); loadVoiceStatus(); loadPromptAgentSelect(); loadGoals();
-  refreshStatusBar(); refreshAdminVersion();
+  refreshStatusBar();
 }
 async function refreshStatusBar() {
   try {
@@ -2848,34 +2641,6 @@ async function loadLogs() {
     out.textContent = lines.length ? lines.join('\n') : '(暂无日志)';
     out.scrollTop = out.scrollHeight;
   } catch(e) { out.textContent = '❌ ' + (e.message || '网络错误'); }
-}
-
-// ── 一键升级 ──
-async function doUpdate() {
-  const stat = document.getElementById('updateStatus');
-  if (!confirm('确认升级到最新版？服务器将自动下载并重启（约 10 秒）。')) return;
-  if (stat) stat.textContent = '⏳ 正在升级...';
-  try {
-    const d = await api('/api/update', 'POST');
-    if (d.ok) {
-      if (stat) stat.textContent = '✅ 升级已触发！服务器重启中...';
-      toast('升级已开始，服务器即将重启');
-      // 10 秒后刷新页面
-      setTimeout(function(){ location.reload(); }, 10000);
-    } else {
-      if (stat) stat.textContent = '❌ ' + _errMsg(d, '升级失败');
-      toast('升级失败: ' + _errMsg(d, '未知错误'));
-    }
-  } catch(e) {
-    if (stat) stat.textContent = '❌ ' + (e.message || '网络错误');
-  }
-}
-
-// 管理面板打开时刷新版本号
-function refreshAdminVersion() {
-  var v = document.getElementById('adminVerTag');
-  var vt = document.getElementById('verTag');
-  if (v && vt) v.textContent = vt.textContent;
 }
 
 // ── 实例组网 (Instance Mesh) ──
@@ -2950,7 +2715,7 @@ async function loadUsage() {
       }
     }
     document.getElementById('usageStats').innerHTML = html || '<暂无数据>';
-  } catch(e) { document.getElementById('usageStats').innerHTML = '<span style="color:#f44">Error: ' + esc(e.message) + '</span>'; }
+  } catch(e) { document.getElementById('usageStats').innerHTML = 'Error: ' + e.message; }
 }
 
 async function resetUsage() {
@@ -3038,33 +2803,10 @@ function spawnSubAgent() {
 async function adminCron() {
   try {
     const d = await api('/api/cron');
-    const jobs = d.jobs || [];
-    const el = document.getElementById('adminCronOut');
-    if (!jobs.length) { el.innerHTML = '<span style="color:var(--text3);font-size:12px">暂无定时任务</span>'; return; }
-    el.innerHTML = jobs.map(j => {
-      const name = j.name || j.id || '未命名';
-      const expr = j.schedule?.expr || j.schedule || '-';
-      const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : '-';
-      return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
-        '⏰ <b>' + esc(name) + '</b>' +
-        ' <span style="color:var(--text3)">' + esc(String(expr)) + '</span>' +
-        ' <span style="color:var(--text3);font-size:10px">下次: ' + next + '</span>' +
-        '<span style="float:right">' +
-          '<button class="btn-sm" onclick="removeCron(\'' + esc(j.id) + '\')" style="color:var(--red);border-color:var(--red);padding:1px 6px;font-size:10px">🗑 删除</button>' +
-        '</span></div>';
-    }).join('');
+    document.getElementById('adminCronOut').textContent = JSON.stringify(d.jobs || d, null, 2).slice(0, 600);
   } catch(e) { document.getElementById('adminCronOut').textContent = '❌ ' + e.message; }
 }
 function showAddCron() { document.getElementById('addCronForm').classList.toggle('hidden'); }
-async function removeCron(id) {
-  if (!confirm('确定删除该定时任务？')) return;
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
-    toast('已删除');
-    adminCron();
-  } catch(e) { toast('❌ ' + e.message); }
-}
 async function addCron() {
   const name = document.getElementById('cronName').value.trim();
   const expr = document.getElementById('cronExpr').value.trim();
@@ -3565,229 +3307,4 @@ function handleLanMessage(msg) {
       if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--red);margin:4px 0">❌ ' + esc(msg.message || '编排失败') + '</div>'); c.scrollTop = c.scrollHeight; }
     }
   }
-}
-
-// ── 目标系统 (GoalTracker) 前端函数 ──
-function addRightGoal() {
-  const title = prompt('目标名称：');
-  if (!title) return;
-  const desc = prompt('目标描述（可选）：');
-  const projectId = currentChat ? 'project-' + currentChat : 'default';
-  api('/api/goals', 'POST', { project: projectId, title: title.trim(), acceptanceCriteria: desc || '' })
-    .then(d => {
-      if (d.ok) { toast('✅ 已添加'); loadRightGoals(); }
-      else toast('❌ ' + (d.error || '添加失败'));
-    }).catch(e => toast('❌ ' + e.message));
-}
-
-// ── 右侧栏 - 任务监控 ──
-async function loadTaskMonitor() {
-  const el = document.getElementById('taskMonitorList');
-  if (!el) return;
-  try {
-    const r = await fetch('/api/cron'); const d = await r.json();
-    const jobs = d.jobs || [];
-    if (!jobs.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无定时任务</div>'; return; }
-    el.innerHTML = jobs.map(j => {
-      const name = j.name || j.id || '未命名', enabled = j.enabled !== false;
-      const pill = enabled ? '<span class="status-pill pill-on">运行中</span>' : '<span class="status-pill pill-off">已暂停</span>';
-      const expr = j.schedule?.expr || (j.schedule?.everyMs ? 'every ' + j.schedule.everyMs + 'ms' : '-');
-      const next = j.nextRunAt ? new Date(j.nextRunAt).toLocaleString() : '—';
-      const last = j.lastRunAt ? new Date(j.lastRunAt).toLocaleString() : '—';
-      return '<div class="task-card"><div class="task-name">' + esc(String(name)) + ' ' + pill + '</div>' +
-        '<div class="task-meta">表达式：<code>' + esc(String(expr)) + '</code><br>下次：' + next + '<br>上次：' + last + '</div>' +
-        '<div class="task-actions">' +
-        '<button class="run" onclick="runCronNow(\'' + esc(j.id) + '\')">▶ 运行</button>' +
-        '<button style="' + (enabled ? '' : 'color:var(--green)') + '" onclick="toggleCronJob(\'' + esc(j.id) + '\',' + !enabled + ')">' + (enabled ? '暂停' : '启用') + '</button>' +
-        '<button class="del" onclick="removeCronFromMonitor(\'' + esc(j.id) + '\')">删除</button></div></div>';
-    }).join('');
-  } catch(e) { el.innerHTML = '<div style="color:var(--red);padding:12px">❌ ' + esc(e.message || '加载失败') + '</div>'; }
-}
-async function removeCronFromMonitor(id) {
-  if (!confirm('确定删除？')) return;
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
-    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
-    toast('已删除'); loadTaskMonitor();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function toggleCronJob(id, enabled) {
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id), 'PATCH', { enabled });
-    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
-    loadTaskMonitor();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function runCronNow(id) {
-  try {
-    const d = await api('/api/cron/' + encodeURIComponent(id) + '/run', 'POST');
-    if (d.ok) toast('✅ 已触发'); else toast('❌ ' + (d.error || '失败'));
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-// ── 右侧栏 - 目标任务 ──
-async function loadRightGoals() {
-  const el = document.getElementById('rightGoalsList');
-  if (!el) return;
-  try {
-    const projectId = currentChat ? 'project-' + currentChat : 'default';
-    const r = await fetch('/api/goals?project=' + encodeURIComponent(projectId)); const d = await r.json();
-    if (!d.ok) { el.innerHTML = '<div style="color:var(--red)">❌ 加载失败</div>'; return; }
-    const goals = d.goals || [];
-    if (!goals.length) { el.innerHTML = '<div style="color:var(--text3);padding:12px;text-align:center">暂无目标，点击下方添加</div>'; return; }
-    el.innerHTML = goals.map(g => {
-      const emoji = GOAL_EMOJI[g.status] || '⏳';
-      const statusText = { pending: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' }[g.status] || g.status;
-      const statusColor = { pending: 'var(--text3)', in_progress: 'var(--accent)', done: 'var(--green)', cancelled: 'var(--text3)' }[g.status] || 'var(--text3)';
-      const barW = g.status === 'done' ? '100%' : (g.status === 'in_progress' ? '50%' : '0%');
-      const barC = g.status === 'done' ? 'var(--green)' : 'var(--accent)';
-      const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:4px">' + esc(g.acceptanceCriteria) + '</div>' : '';
-      return '<div class="goal-item"><div class="goal-head"><span class="g-status">' + emoji + '</span><b>' + esc(g.title) + '</b>' +
-        '<span style="margin-left:auto;font-size:11px;color:' + statusColor + '">' + statusText + '</span></div>' +
-        criteria + '<div class="goal-bar"><i style="width:' + barW + ';background:' + barC + '"></i></div>' +
-        '<div class="goal-foot"><span>' +
-        (g.status === 'pending' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'in_progress\')" style="cursor:pointer;color:var(--accent)">▶ 开始</a> ' : '') +
-        (g.status !== 'done' && g.status !== 'cancelled' ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'done\')" style="cursor:pointer;color:var(--green)">✅ 完成</a> ' : '') +
-        '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'cancelled\')" style="cursor:pointer;color:var(--red)">❌ 停止</a> ' +
-        ((g.status === 'done' || g.status === 'cancelled') ? '<a onclick="setRightGoalStatus(\'' + g.id + '\',\'pending\')" style="cursor:pointer">↩ 恢复</a> ' : '') +
-        '<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" style="cursor:pointer;color:var(--text2)">🤔 反向提问</a> ' +
-        '<a onclick="deleteRightGoal(\'' + g.id + '\')" style="cursor:pointer;color:var(--red)">🗑 删除</a></span></div></div>';
-    }).join('');
-  } catch(e) { el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</div>'; }
-}
-async function setRightGoalStatus(id, status) {
-  try {
-    const d = await api('/api/goals/' + id, 'PATCH', { status });
-    if (!d.ok) { toast('❌ ' + (d.error || '操作失败')); return; }
-    loadRightGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function deleteRightGoal(id) {
-  if (!confirm('确定删除？')) return;
-  try {
-    const d = await api('/api/goals/' + id, 'DELETE');
-    if (!d.ok) { toast('❌ ' + (d.error || '删除失败')); return; }
-    toast('已删除'); loadRightGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-async function askAIAboutGoal(goalId, title) {
-  _currentAskGoalId = goalId;
-  if (!currentChat) { toast('请先打开一个会话'); return; }
-  try {
-    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat, extra: (typeof title === 'string' && (title.includes(';') || title.includes('自定义'))) ? title : '' });
-    if (d.ok) { toast('✅ 已向AI提问'); }
-    else toast('❌ ' + (d.error || '发送失败'));
-  } catch(e) { toast('❌ ' + e.message); }
-}
-
-
-// ── 目标反向提问 -> 选项表单 ──
-function renderGoalQAForm(content, msgEl, chatId) {
-  var questions = [];
-  var currentQ = null;
-  var clines = content.split("\n");
-  for (var i = 0; i < clines.length; i++) {
-    var line = clines[i].trim();
-    var qm = line.match(/^Q:?\s*(.+)/);
-    var am = line.match(/^([A-C]):?\s*(.+)/);
-    if (qm) { currentQ = { q: qm[1], opts: [] }; questions.push(currentQ); }
-    else if (am && currentQ) { currentQ.opts.push({ key: am[1], text: am[2] }); }
-  }
-  if (questions.length === 0) return;
-
-  var html = '<div style="margin:8px 0 8px 48px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)">';
-  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">📋 请选择以完善目标</div>';
-  for (var qi = 0; qi < questions.length; qi++) {
-    var q = questions[qi];
-    html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + esc(q.q) + '</div>';
-    for (var oi = 0; oi < q.opts.length; oi++) {
-      var o = q.opts[oi];
-      var cbId = 'ga-' + qi + '-' + oi + '-' + Date.now();
-      html += '<label style="display:block;font-size:12px;cursor:pointer;padding:2px 0"><input type="checkbox" id="' + cbId + '" style="margin-right:4px">' + esc(o.text) + '</label>';
-    }
-    html += '</div>';
-  }
-  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
-  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,' + "'refine'" + ')">✅ 完善目标</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'criteria'" + ')">📎 加入验收标准</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,' + "'create'" + ')">🆕 生成新目标</button>';
-  html += '</div></div>';
-  html += '<button class="btn" style="font-size:11px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
-
-  var wrapper = document.createElement("div");
-  wrapper.innerHTML = html;
-  msgEl.parentNode.insertBefore(wrapper, msgEl.nextSibling);
-}
-
-function applyGoalRefine(btn, action) {
-  var form = btn.closest("div");
-  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
-  if (!form) return;
-  var checks = form.querySelectorAll("input[type=checkbox]:checked");
-  if (!checks.length) { toast("请至少勾选一个选项"); return; }
-  var selections = [];
-  checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
-  
-  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
-  if (!goalId) { var ri = document.querySelector("#rightGoalsList .goal-item"); if (ri) goalId = ri.getAttribute("data-goal-id"); }
-  if (!goalId) { toast("未找到对应的目标"); return; }
-  
-  api("/api/goals/" + goalId + "/refine", "POST", { selections: selections, action: action }).then(function(d) {
-    if (d.ok) { 
-      toast("✅ " + (action === "create" ? "已生成新目标" : action === "criteria" ? "已加入验收标准" : "目标已完善"));
-      if (typeof loadRightGoals === "function") loadRightGoals();
-    } else toast("❌ " + (d.error || "操作失败"));
-  }).catch(function(e) { toast("❌ " + e.message); });
-}
-
-
-// ── 日志自动刷新 ──
-let _logAutoTimer = null;
-function toggleAutoLog() {
-  var btn = event && event.target;
-  if (_logAutoTimer) {
-    clearInterval(_logAutoTimer);
-    _logAutoTimer = null;
-    if (btn) btn.style.color = '';
-    toast('自动刷新已关闭');
-  } else {
-    loadLogs();
-    _logAutoTimer = setInterval(function() {
-      if (document.getElementById('logsOut')) loadLogs();
-      else { clearInterval(_logAutoTimer); _logAutoTimer = null; }
-    }, 3000);
-    if (btn) btn.style.color = 'var(--green)';
-    toast('自动刷新已开启 (3秒)');
-  }
-}
-
-
-// ── 补缺函数 ──
-function loadLogBody() { loadLogs(); }
-function clearLogBody() {
-  var out = document.getElementById('logsOut');
-  if (out) out.textContent = '(已清空)';
-  toast('日志已清空');
-}
-function hideSidebar() {
-  var sb = document.getElementById('sidebar');
-  var ov = document.getElementById('sidebarOverlay');
-  if (sb) sb.classList.remove('show');
-  if (ov) ov.style.display = 'none';
-}
-
-
-function continueReverseAsk(btn) {
-  var form = btn.closest("div");
-  while (form && !form.querySelector("input[type=checkbox]")) form = form.parentElement;
-  if (!form) return;
-  var goalId = form.getAttribute("data-goal-id") || _currentAskGoalId;
-  if (!goalId) { toast("未找到对应的目标"); return; }
-  var context = [];
-  form.querySelectorAll("input[type=checkbox]:checked").forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
-  form.querySelectorAll("input[type=text]").forEach(function(t) { if (t.value.trim()) context.push("自定义: " + t.value.trim()); });
-  var extra = context.length ? context.join("; ") : "";
-  toast("💬 继续提问中...");
-  askAIAboutGoal(goalId, extra);
 }

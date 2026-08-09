@@ -91,11 +91,9 @@ export class Orchestrator {
           const depsFailed = task.dependsOn.some(dep => failed.has(dep));
 
           if (depsFailed) {
-            // 依赖失败 → 跳过此任务，并标记为失败让下游级联跳过
+            // 依赖失败 → 跳过此任务
             result.status = 'skipped';
             result.error = '依赖任务失败';
-            failed.add(id);
-            checkComplete();
             continue;
           }
 

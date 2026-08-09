@@ -309,6 +309,7 @@ B: 选项B描述
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
 
   // ── 目标完善：根据用户勾选的选项更新/创建目标 ──
   router.post('/goals/:id/refine', (req, res) => {
@@ -331,8 +332,6 @@ B: 选项B描述
         res.json({ ok: true, goal: GoalTracker.get(goal.id), action: 'refine' });
       }
     } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
   });
 
   // ══════ 项目完成 → 自动评分卡（v1.7.3 BUG-6 修复）══════

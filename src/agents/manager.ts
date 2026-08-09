@@ -83,24 +83,8 @@ export class AgentManager {
     const agentId = 'agent-' + userId + '-' + uuid().slice(0, 6);
     const defaultModel = this.aiHub?.getDefaultModel?.() || '';
     const agent = this.db.createAgent(agentId, userId, displayName, personality, autonomy, defaultModel);
-    console.log('[AgentManager] register:', agentId, 'model=' + (defaultModel || '(none)'));
+    console.log('[AgentManager] register:', agentId, 'model=' + defaultModel);
     return rowToDTO(agent);
-  }
-
-  /** 用默认模型批量更新所有 Agent 的 model */
-  syncAllModels(): number {
-    const defaultModel = this.aiHub?.getDefaultModel?.() || '';
-    if (!defaultModel) return 0;
-    let count = 0;
-    const agents = this.list();
-    for (const a of agents) {
-      if (!a.model || a.model === '') {
-        this.update(a.id, { model: defaultModel, modelSource: 'auto' as any });
-        count++;
-      }
-    }
-    if (count > 0) console.log('[AgentManager] syncAllModels: 批量更新 ' + count + ' 个 Agent model→' + defaultModel);
-    return count;
   }
 
   get(id: string): AgentDTO | undefined {

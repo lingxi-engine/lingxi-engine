@@ -115,30 +115,12 @@ export function handleWSMessage(
     }
 
     case "typing": {
-      const { chatId: tcid, isTyping } = event;
+      const { chatId, isTyping } = event;
       broadcast({
         type: "typing",
-        chatId: tcid,
+        chatId,
         from: clientId,
         isTyping,
-      });
-      break;
-    }
-    case "typing.start":
-    case "typing.stop": {
-      broadcast({
-        type: event.type,
-        chatId: event.chatId,
-        userId: clientId,
-      });
-      break;
-    }
-    case "reaction": {
-      broadcast({
-        type: "reaction",
-        msgId: event.msgId,
-        emoji: event.emoji,
-        userId: clientId,
       });
       break;
     }

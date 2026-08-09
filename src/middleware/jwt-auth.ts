@@ -27,25 +27,6 @@ export interface AuthedRequest extends Request {
   user: JwtPayload;
 }
 
-/**
- * v2.0.7 安全加固：判断请求是否来自本地/内网（loopback 或 RFC1918 私有地址）。
- * admin-auto 无 token 放行仅限内网来源；公网来源必须携带有效凭证。
- */
-let lastPublicWarn = 0; // 公网无凭证拒绝日志限频：每 60s 最多一条，防日志洪水
-export function isTrustedLocalSource(req: Request): boolean {
-  // 显式开启公网免登录（不推荐，仅向后兼容）
-  if (process.env.ALLOW_PUBLIC_ADMIN_AUTO === '1' || process.env.ALLOW_PUBLIC_ADMIN_AUTO === 'true') return true;
-  const raw = req.socket?.remoteAddress || '';
-  const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-  if (!ip) return false; // 无法确定来源时一律不可信（fail-closed）
-  if (ip === '::1' || ip === 'localhost') return true;
-  if (ip.startsWith('127.')) return true;
-  if (ip.startsWith('192.168.')) return true;
-  if (ip.startsWith('10.')) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
-  return false;
-}
-
 export function jwtAuth(options: AuthOptions = {}) {
   return (req: Request, res: any, next: any) => {
     const authHeader = (req.headers['authorization']) as string | undefined;
@@ -63,37 +44,25 @@ export function jwtAuth(options: AuthOptions = {}) {
     }
 
     // v2.0.5: 个人本地引擎兜底——未携带任何认证头时自动放行
-    // 本地部署无需登录即可使用；v2.0.7 收紧：仅限本地/内网来源，公网来源不放行
+    // 无论 ADMIN_TOKEN 是否配置，本地部署无需登录即可使用
     if (!authHeader && !adminTokenHeader) {
-      if (isTrustedLocalSource(req)) {
-        const platformAdmin = (globalThis as any).__platformAdminUser;
-        if (platformAdmin) {
-          // 平台模式：使用平台 admin 用户信息
-          (req as any).user = {
-            sub: String(platformAdmin.id),
-            numeric_id: platformAdmin.id,
-            sid: 'platform-admin',
-            iat: 0, exp: 0,
-            roles: ['admin'],
-            username: platformAdmin.username,
-            email: platformAdmin.email || '',
-            points: platformAdmin.points,
-            status: platformAdmin.status || 'active',
-          };
-        } else {
-          // 本地回退模式
-          (req as any).user = { sub: 'admin', numeric_id: 0, sid: 'admin-auto', iat: 0, exp: 0, roles: ['admin'] };
-        }
-        return next();
-      }
-      // 公网来源且无任何凭证：按是否必需处理（不再静默以 admin 放行）
-      if (options.required) {
-        const now = Date.now();
-        if (now - lastPublicWarn > 60000) {
-          lastPublicWarn = now;
-          console.warn(`[Auth] 公网来源无凭证请求已拒绝: ${req.method} ${req.path} 来源=${req.socket?.remoteAddress || '未知'}（内网免登录仅限本机/内网；如需公网免登录请设 ALLOW_PUBLIC_ADMIN_AUTO=1，不推荐）`);
-        }
-        return res.status(401).json({ ok: false, error: { code: 'unauthorized', message: '未登录' } });
+      const platformAdmin = (globalThis as any).__platformAdminUser;
+      if (platformAdmin) {
+        // 平台模式：使用平台 admin 用户信息
+        (req as any).user = {
+          sub: String(platformAdmin.id),
+          numeric_id: platformAdmin.id,
+          sid: 'platform-admin',
+          iat: 0, exp: 0,
+          roles: ['admin'],
+          username: platformAdmin.username,
+          email: platformAdmin.email || '',
+          points: platformAdmin.points,
+          status: platformAdmin.status || 'active',
+        };
+      } else {
+        // 本地回退模式
+        (req as any).user = { sub: 'admin', numeric_id: 0, sid: 'admin-auto', iat: 0, exp: 0, roles: ['admin'] };
       }
       return next();
     }

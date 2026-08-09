@@ -21,7 +21,8 @@ W-Info "Checking Node.js..."
 $needNode = $true
 try {
     $nv = [int]((node -v) -replace 'v','' -replace '\..*','')
-    if ($nv -ge 18) { W-OK "Node.js $(node -v) found"; $needNode = $false }
+    if ($nv -ge 18 -and $nv -le 22) { W-OK "Node.js $(node -v) found"; $needNode = $false }
+    elseif ($nv -gt 22) { W-Warn "Node.js $(node -v) too new (need 18-22), will install v22 LTS" }
     else { W-Warn "Node.js too old ($(node -v)), need 18+" }
 } catch { W-Info "Node.js not found" }
 
@@ -140,27 +141,22 @@ W-Info "Installing dependencies..."
 Push-Location $InstallDir
 $prevEAP = $ErrorActionPreference
 $ErrorActionPreference = "Continue"
-# 抑制 npm 的 allow-scripts 警告（npm v10+ 新增的无害警告，会通过 stderr 触发 PowerShell NativeCommandError）
-$env:npm_config_loglevel = "error"
-$env:npm_config_audit = "false"
-$env:npm_config_fund = "false"
 try {
-    # 不用 2>&1，避免 stderr 被 PowerShell 当作错误流
-    & npm install --omit=optional 2>$null
+    $npmResult = & npm install --omit=optional 2>&1
     if ($LASTEXITCODE -ne 0) {
         W-Warn "First attempt had issues, retrying..."
-        & npm install --omit=optional 2>$null
+        & npm install --omit=optional 2>&1 | Out-Null
     }
     W-OK "Dependencies installed"
 } catch {
     W-Warn "npm install error, retrying..."
-    & npm install --omit=optional 2>$null
+    & npm install --omit=optional 2>&1 | Out-Null
     W-OK "Dependencies installed (retry)"
 } finally {
     $ErrorActionPreference = $prevEAP
 }
 # esbuild 需要平台二进制包，--omit=optional 会跳过它，这里补装
-& npm install @esbuild/win32-x64 --no-save 2>$null
+& npm install @esbuild/win32-x64 --no-save 2>&1 | Out-Null
 W-OK "Dependencies installed"
 Pop-Location
 
@@ -298,25 +294,11 @@ if ($startNow -eq 'y' -or $startNow -eq 'Y') {
         Start-Sleep -Seconds 1
     } catch {}
     W-Info "Starting engine..."
-    # 用独立 PowerShell 进程轮询引擎健康检查，就绪后开浏览器
-    # 比 Start-Job 更可靠：不受 irm|iex 管道回收影响，且轮询到引擎真正就绪才开浏览器
-    $launcherScript = @'
-$url = "http://127.0.0.1:3456/api/health"
-$maxWait = 120
-$elapsed = 0
-while ($elapsed -lt $maxWait) {
-    try {
-        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 3
-        if ($resp.StatusCode -eq 200) { break }
-    } catch {}
-    Start-Sleep -Seconds 2
-    $elapsed += 2
-}
-Start-Process "http://127.0.0.1:3456"
-'@
-    $launcherPath = Join-Path $env:TEMP "lingxi-launch-$(Get-Random).ps1"
-    [System.IO.File]::WriteAllText($launcherPath, $launcherScript, [System.Text.Encoding]::UTF8)
-    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile","-ExecutionPolicy","Bypass","-WindowStyle","Hidden","-File","`"$launcherPath`"" -WindowStyle Hidden
+    Start-Job {
+        Start-Sleep 5
+        try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 15 | Out-Null } catch {}
+        Start-Process "http://127.0.0.1:3456"
+    } | Out-Null
     Push-Location $InstallDir
     npx tsx index.ts
     Pop-Location

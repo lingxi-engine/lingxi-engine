@@ -17,7 +17,7 @@ import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
-import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
+import { jwtAuth } from './src/middleware/jwt-auth.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
@@ -62,7 +62,6 @@ import { VisionManager } from './src/ai/vision.js';
 import { PushNotificationManager } from './src/core/push.js';
 import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
-import { createAuthRoutes } from './src/routes/auth.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
@@ -503,35 +502,8 @@ setSearchManager(searchManagerInstance);
   });
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
-  if (isNaN(port) || port < 1 || port > 65535) {
-    console.warn(`[Config] 无效的 PORT="${process.env.PORT}", 使用默认值 3456`);
-    port = 3456;
-  }
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
   port = await resolveAvailablePort(port, autoPort);
-
-  // ── v2.0.7: 健康检查端点（置于鉴权/限流之前，供探针与部署脚本使用）──
-  // 同时保留旧响应字段 status/agents/time，兼容前端状态栏与冒烟测试
-  app.get('/api/health', (_req, res) => {
-    try {
-      let dbOk = false;
-      try { dbOk = !!db && typeof (db as any).getUser === 'function'; } catch { dbOk = false; }
-      res.json({
-        ok: true,
-        status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.7',
-        agents: manager.list().length,
-        time: Date.now(),
-        uptime: Math.floor(process.uptime()),
-        memory: process.memoryUsage().rss,
-        wsConnections: clients.size,
-        db: dbOk,
-        timestamp: Date.now(),
-      });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
 
   // ── 全局鉴权兜底：所有 /api 路由至少走一次 JWT 检查 ──
   app.use('/api', jwtAuth({ required: false }));
@@ -566,9 +538,7 @@ setSearchManager(searchManagerInstance);
           }
           res.json({ ok: true, user: result.user, agent, ...tokens });
         } catch (ae: any) {
-          // 回滚：Agent 创建失败时删除已注册的用户
-          try { getDB().run('DELETE FROM users WHERE id = ?', [result.user.id]); saveToDisk(); } catch (_) {}
-          res.status(500).json({ error: 'AI 助手创建失败，注册已回滚: ' + ae.message });
+          res.json({ ok: true, user: result.user, agentError: ae.message, ...tokens });
         }
       } else {
         res.json({ ok: true, user: result.user, ...tokens });
@@ -618,7 +588,7 @@ setSearchManager(searchManagerInstance);
   app.post('/api/auth/forgot-password', (req, res) => {
     try {
       const { email } = req.body;
-      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: '请输入有效的邮箱' });
+      if (!email || !email.includes('@')) return res.status(400).json({ error: '请输入有效的邮箱' });
       auth.forgotPassword(email);
       res.json({ ok: true, message: '如果该邮箱已注册，重置链接已发送' });
     } catch (err: any) {
@@ -782,7 +752,7 @@ setSearchManager(searchManagerInstance);
   // ── 旧版兼容：验证码发送（保留 demo 模式） ──
   app.post('/api/auth/send-code', (req, res) => {
     const { email } = req.body;
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!email || !email.includes('@')) {
       return res.status(400).json({ error: '请输入有效的邮箱地址' });
     }
     const code = String(randomInt(100000, 1000000));
@@ -810,14 +780,7 @@ setSearchManager(searchManagerInstance);
       const numericId = nextNumericId(); const userId = String(numericId);
       const displayName = username || stored.username || localPart;
       const user: User = db.createUser(userId, displayName);
-      let agent: any;
-      try {
-        agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
-      } catch (agentErr: any) {
-        // 回滚：Agent 注册失败时删除刚创建的用户，避免孤儿记录
-        try { getDB().run('DELETE FROM users WHERE id = ?', [userId]); saveToDisk(); } catch (_) {}
-        throw agentErr;
-      }
+      const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
       if (defaultModel) {
         try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
       }
@@ -1091,15 +1054,14 @@ setSearchManager(searchManagerInstance);
     try {
       const { name, data } = req.body || {};
       const now = Date.now();
-      if (name || data) {
-        const sets: string[] = [];
-        const vals: any[] = [];
-        if (name) { sets.push('name = ?'); vals.push(name); }
-        if (data) { sets.push('data = ?'); vals.push(JSON.stringify(data)); }
-        sets.push('updated_at = ?'); vals.push(now);
-        vals.push(req.params.id);
-        const stmt = getDB().prepare(`UPDATE workflows SET ${sets.join(', ')} WHERE id = ?`);
-        stmt.bind(vals);
+      if (name) {
+        const stmt = getDB().prepare('UPDATE workflows SET name = ?, data = ?, updated_at = ? WHERE id = ?');
+        stmt.bind([name, data ? JSON.stringify(data) : null, now, req.params.id]);
+        stmt.step(); stmt.free();
+      }
+      if (data) {
+        const stmt = getDB().prepare('UPDATE workflows SET data = ?, updated_at = ? WHERE id = ?');
+        stmt.bind([JSON.stringify(data), now, req.params.id]);
         stmt.step(); stmt.free();
       }
       res.json({ ok: true });
@@ -1112,104 +1074,6 @@ setSearchManager(searchManagerInstance);
       stmt.bind([req.params.id]);
       stmt.step(); stmt.free();
       res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── 工作流执行 ──
-  app.post('/api/workflows/:id/run', requireAuth, async (req, res) => {
-    try {
-      const stmt = getDB().prepare('SELECT data FROM workflows WHERE id = ?');
-      stmt.bind([req.params.id]);
-      if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '工作流不存在' }); }
-      const row = stmt.getAsObject(); stmt.free();
-      const wf = JSON.parse(row.data as string);
-      const nodes: any[] = wf.nodes || [];
-      const edges: {from: string, to: string}[] = wf.connections || [];
-
-      // 找开始节点
-      const startNode = nodes.find((n: any) => n.type === 'start');
-      if (!startNode) return res.status(400).json({ error: '工作流缺少开始节点' });
-
-      // 构建邻接表
-      const nextMap = new Map<string, string[]>();
-      for (const e of edges) {
-        if (!nextMap.has(e.from)) nextMap.set(e.from, []);
-        nextMap.get(e.from)!.push(e.to);
-      }
-      const nodeMap = new Map<string, any>(nodes.map((n: any) => [n.id, n]));
-
-      // 构建入边表（反向邻接）
-      const inEdges = new Map<string, string[]>();
-      for (const e of edges) {
-        if (!inEdges.has(e.to)) inEdges.set(e.to, []);
-        inEdges.get(e.to)!.push(e.from);
-      }
-
-      // 存储每个节点的输出
-      const outputs = new Map<string, string>();
-
-      // BFS 从 start 遍历执行，每个节点收集其入边来源的输出
-      const queue: string[] = [startNode.id];
-      const visited = new Set<string>();
-      const results: {nodeId: string, label: string, output: string}[] = [];
-
-      while (queue.length > 0) {
-        const nodeId = queue.shift()!;
-        if (visited.has(nodeId)) continue;
-        const node = nodeMap.get(nodeId);
-        if (!node) continue;
-        visited.add(nodeId);
-
-        if (node.type === 'start') {
-          for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
-          continue;
-        }
-
-        // 收集该节点所有上游的输出（支持汇聚节点）
-        const upstreams = inEdges.get(nodeId) || [];
-        const upstreamOutputs = upstreams.map(uid => outputs.get(uid)).filter(Boolean);
-        const upstreamContext = upstreamOutputs.length > 0
-          ? '\n\n上游产出：\n' + upstreamOutputs.map((o, i) => `${i + 1}. ${o}`).join('\n')
-          : '';
-
-        const prompt = (node.config?.prompt || '回答用户问题') + upstreamContext;
-        const model = node.config?.model || process.env.DEFAULT_MODEL || 'deepseek-chat';
-        const clientResult = aiHub.getClient?.(model);
-        if (!clientResult) {
-          outputs.set(nodeId, `[跳过] 模型 ${model} 不可用`);
-          results.push({ nodeId, label: node.label, output: `[跳过] 模型 ${model} 不可用` });
-          for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
-          continue;
-        }
-
-        try {
-          const resp = await (clientResult.client as any).chat.completions.create({
-            model: clientResult.resolvedModel,
-            messages: [{ role: 'user', content: prompt }],
-            temperature: 0.5, max_tokens: 4096,
-          });
-          const output = resp.choices[0]?.message?.content || '(无输出)';
-          outputs.set(nodeId, output);
-          results.push({ nodeId, label: node.label, output });
-        } catch (e: any) {
-          const errOutput = `[执行失败] ${e.message}`;
-          outputs.set(nodeId, errOutput);
-          results.push({ nodeId, label: node.label, output: errOutput });
-        }
-
-        for (const next of (nextMap.get(nodeId) || [])) queue.push(next);
-      }
-
-      const runId = 'run-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      const hasErrors = results.some(r => r.output.startsWith('[执行失败]'));
-      const runStatus = hasErrors ? 'completed_with_errors' : 'completed';
-      try {
-        const stmt = getDB().prepare('INSERT INTO workflow_runs (id, workflow_id, status, results, started_at, finished_at) VALUES (?, ?, ?, ?, ?, ?)');
-        stmt.bind([runId, req.params.id, runStatus, JSON.stringify(results), Date.now(), Date.now()]);
-        stmt.step(); stmt.free();
-      } catch (_) {}
-
-      res.json({ ok: true, runId, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -1282,7 +1146,10 @@ setSearchManager(searchManagerInstance);
   const mm = now.getMinutes();
   const APP_VERSION = `v${Y}.${M}.${D}-${HH}.${mm}`;
 
-  // v2.0.7: /api/health 已前移至鉴权之前注册（见上方），此处旧注册已移除
+  app.get('/api/health', (_req, res) => {
+    try { res.json({ status: 'ok', agents: manager.list().length, time: Date.now(), version: APP_VERSION }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
 
   app.get('/api/version', (_req, res) => {
     res.json({ version: APP_VERSION });
@@ -1687,11 +1554,8 @@ setSearchManager(searchManagerInstance);
       const { defaultModel, providers } = req.body || {};
       if (defaultModel) {
         process.env.DEFAULT_MODEL = defaultModel;
-        // 同步更新 TOOL_MODEL/REPLY_MODEL，避免路由模式用旧模型覆盖用户选择
-        process.env.TOOL_MODEL = defaultModel;
-        process.env.REPLY_MODEL = defaultModel;
         aiHub.setDefaultModel(defaultModel);
-        console.log('[Providers] 默认模型已切换为:', defaultModel, '(TOOL_MODEL/REPLY_MODEL 已同步)');
+        console.log('[Providers] 默认模型已切换为:', defaultModel);
       }
       if (providers && Array.isArray(providers)) {
         for (const p of providers) {
@@ -1840,27 +1704,10 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // PUT: set default model（必须在 /:id 路由之前，否则 "default" 会被当作 id 参数）
-  app.put('/api/providers/default', requireAuth, (req, res) => {
-    try {
-      const { model } = req.body;
-      if (!model) return res.status(400).json({ error: 'model 必填' });
-      process.env.DEFAULT_MODEL = model;
-      // 同步更新 TOOL_MODEL 和 REPLY_MODEL，避免路由模式用旧模型覆盖用户选择
-      process.env.TOOL_MODEL = model;
-      process.env.REPLY_MODEL = model;
-      aiHub.setDefaultModel(model);
-      console.log('[Providers] 默认模型已切换为:', model, '(TOOL_MODEL/REPLY_MODEL 已同步)');
-      res.json({ ok: true, defaultModel: model });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
   // PUT: 更新 Provider（主要用于前端修改 API Key）
   app.put('/api/providers/:id', requireAuth, (req, res) => {
     try {
       const id = String(req.params.id);
-      // 排除 "default" 关键字
-      if (id === 'default') return res.status(400).json({ error: '请使用 /api/providers/default 设置默认模型' });
       const existing = providerRegistry.get(id);
       if (!existing) return res.status(404).json({ error: 'Provider 不存在' });
       const { apiKey, name, baseUrl, models } = req.body || {};
@@ -1869,7 +1716,7 @@ setSearchManager(searchManagerInstance);
         id: existing.id,
         type: existing.type,
         name: name || existing.name,
-        apiKey: existing.apiKey !== undefined ? apiKey : existing.apiKey,
+        apiKey: apiKey !== undefined ? apiKey : existing.apiKey,
         baseUrl: baseUrl || existing.baseUrl,
         models: models || existing.models,
         isLocal: existing.isLocal,
@@ -1888,6 +1735,18 @@ setSearchManager(searchManagerInstance);
       } catch(e) { console.warn('[Providers] AIHub 同步失败:', (e as Error).message); }
       console.log(`[Providers] 已更新: ${id}`);
       res.json({ ok: true, id });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // PUT: set default model
+  app.put('/api/providers/default', requireAuth, (req, res) => {
+    try {
+      const { model } = req.body;
+      if (!model) return res.status(400).json({ error: 'model 必填' });
+      process.env.DEFAULT_MODEL = model;
+      aiHub.setDefaultModel(model);
+      console.log('[Providers] 默认模型已切换为:', model);
+      res.json({ ok: true, defaultModel: model });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -2041,7 +1900,7 @@ setSearchManager(searchManagerInstance);
 
   // ── v1.8.4: 目标系统 (GoalTracker) ──
   // project 参数缺省为 'default'（单项目场景），支持 ?project= 查询多项目
-  app.get('/api/goals', requireAuth, (_req, res) => {
+  app.get('/api/goals', (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       const goals = GoalTracker.list(project);
@@ -2050,7 +1909,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/goals/summary', requireAuth, (_req, res) => {
+  app.get('/api/goals/summary', (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       res.json({ ok: true, summary: GoalTracker.getProgressSummary(project) });
@@ -2090,17 +1949,44 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 评分卡 API（含 DELETE /api/outcomes/:id 等全部路由）──
+  // ── 模块化路由挂载（目标追踪/评分卡、个人资料、杂项）──
   app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
-
+  
   // ── 个人资料 API（GET/PUT /api/profile、头像上传）──
   app.use('/api', requireAuth, createProfileRoutes({ db, dataDir } as any));
-
+  
   // ── 杂项 API（时间/标签/联邦通信/Mesh/工作区模式）──
   app.use('/api', createMiscRoutes({ db, manager, router, broadcast, dataDir } as any));
+  
+  // ── 上传管理 API ──
+  app.use('/api', requireAuth, createUploadRoutes({ db, dataDir } as any));
 
-  // ── 文件上传 API ──
-  app.use('/api', requireAuth, createUploadRoutes({ dataDir } as any));
+  // ── GoalTracker.onGoalStarted: 任务监控/AI自动执行 ──
+  GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
+    // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
+    const chatId = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
+    if (!chatId) {
+      console.log(`[GoalTracker] 目标 "${goal.title}" 已开始，但未绑定会话 (projectId=${goal.projectId})`);
+      return;
+    }
+    const msgId = 'goal-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+    // 自主执行指令：AI 必须持续工作直到验收标准全部满足
+    const taskPrompt = goal.acceptanceCriteria
+      ? `请开始执行目标任务：「${goal.title}」\n\n验收标准：${goal.acceptanceCriteria}\n\n要求：\n1. 将目标拆解为子步骤，逐步执行\n2. 每个子步骤都需要实际完成（调用工具、生成结果），不只是写计划\n3. 全部验收标准满足后再总结报告\n4. 如果一次性无法完成，告知进度并继续`
+      : `请开始执行目标任务：「${goal.title}」\n\n要求：\n1. 拆解为子步骤，逐步执行\n2. 每个子步骤实际完成\n3. 全部完成后总结`;
+    const content = taskPrompt;
+    try {
+      db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
+      broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
+      // 触发 AI 执行目标 — 这里传递 taskGoal 让 router 知道这是目标任务
+      try { processUserMessage(chatId, 'goal-tracker', content, undefined, router, broadcast); } catch (e: any) {
+        console.error(`[GoalTracker] 触发AI执行失败:`, e?.message || e);
+      }
+      console.log(`[GoalTracker] 已向 ${chatId} 注入目标 "${goal.title}"`);
+    } catch (e: any) {
+      console.error(`[GoalTracker] 注入目标消息失败:`, e?.message || e);
+    }
+  };
 
   // ── P1-2: 会话管理 API ──
   app.get('/api/sessions', (req, res) => {
@@ -2754,14 +2640,6 @@ setSearchManager(searchManagerInstance);
     }
   }
 
-  // 根据用户 ID 查询 numeric_id（用于在线状态广播）
-  function getNumericId(userId: string): number | null {
-    try {
-      const u = db.getUser(userId);
-      return u?.numeric_id || null;
-    } catch { return null; }
-  }
-
   wss.on('connection', (ws, req) => {
     const urlStr = req.url || '';
     const queryIndex = urlStr.indexOf('?');
@@ -2781,18 +2659,16 @@ setSearchManager(searchManagerInstance);
     if (!clientId) {
       const devAnonId = params.get('id');
       const adminToken = process.env.ADMIN_TOKEN;
-      // v2.0.7: 免登录连接仅限本地/内网来源（与 jwt-auth 中间件一致），公网必须携带 token
-      const localOnly = isTrustedLocalSource(req as any);
       // v1.9.9: ADMIN_TOKEN 模式——配了 ADMIN_TOKEN 就允许免登录连接
-      if (adminToken && devAnonId && localOnly) {
+      if (adminToken && devAnonId) {
         clientId = devAnonId;
         console.log('[WS] ADMIN_TOKEN 模式免登录连接:', clientId);
-      } else if (devAnonId && localOnly) {
+      } else if (devAnonId) {
         // v2.0.5: 个人本地引擎兜底——无 token 时始终允许连接（与 jwt-auth 中间件一致）
         clientId = devAnonId;
         console.log('[WS] 本地引擎免登录连接:', clientId);
       } else {
-        console.warn('[WS] 拒绝未认证连接 - 缺少客户端 ID 或来源不受信任');
+        console.warn('[WS] 拒绝未认证连接 - 缺少客户端 ID');
         ws.close(4001, '认证失败：请提供有效的 JWT token');
         return;
       }
@@ -2800,7 +2676,7 @@ setSearchManager(searchManagerInstance);
     console.log('[WS] connect:', clientId, token ? '(认证)' : '(开发模式匿名)');
     if (!clients.has(clientId)) clients.set(clientId, new Set());
     clients.get(clientId)!.add(ws);
-    broadcast({ type: 'user.online', userId: clientId, numericId: getNumericId(clientId), message: clientId + ' 上线了' });
+    broadcast({ type: 'user.online', userId: clientId, message: clientId + ' 上线了' });
     // 自动为访客创建用户 + 聊天 + Agent（如果还没有）
     ensureUserSetup(clientId, db, manager, toolRegistry);
     ws.on('message', (raw) => {
@@ -2819,7 +2695,7 @@ setSearchManager(searchManagerInstance);
         if (set.size === 0) clients.delete(clientId);
       }
       console.log('[WS] close:', clientId);
-      broadcast({ type: 'user.offline', userId: clientId, numericId: getNumericId(clientId) });
+      broadcast({ type: 'user.offline', userId: clientId });
       try { getDB().run('UPDATE users SET status = ? WHERE id = ?', ['offline', clientId]); } catch {}
     });
     ws.on('error', (err) => {
@@ -3594,69 +3470,6 @@ setSearchManager(searchManagerInstance);
     }
     throw err;
   });
-
-  // ── 目标任务 "开始" → AI 执行 钩子 ──
-  GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
-    // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
-    const chatId = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
-    if (!chatId) {
-      console.log(`[GoalTracker] 目标 "${goal.title}" 已开始，但未绑定会话 (projectId=${goal.projectId})`);
-      return;
-    }
-    const msgId = 'goal-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-    // 自主执行指令：AI 必须持续工作直到验收标准全部满足
-    const taskPrompt = goal.acceptanceCriteria
-      ? `请开始执行目标任务：「${goal.title}」\n\n验收标准：${goal.acceptanceCriteria}\n\n要求：\n1. 将目标拆解为子步骤，逐步执行\n2. 每个子步骤都需要实际完成（调用工具、生成结果），不只是写计划\n3. 全部验收标准满足后再总结报告\n4. 如果一次性无法完成，告知进度并继续`
-      : `请开始执行目标任务：「${goal.title}」\n\n要求：\n1. 拆解为子步骤，逐步执行\n2. 每个子步骤实际完成\n3. 全部完成后总结`;
-    const content = taskPrompt;
-    try {
-      db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
-      broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
-      // 触发 AI 执行目标 — 这里传递 taskGoal 让 router 知道这是目标任务
-      try { processUserMessage(chatId, 'goal-tracker', content, undefined, router, broadcast); } catch (e: any) {
-        console.error(`[GoalTracker] 触发AI执行失败:`, e?.message || e);
-      }
-      console.log(`[GoalTracker] 已向 ${chatId} 注入目标 "${goal.title}"`);
-
-      // ── 自主执行循环：AI回复后自动继续，直到完成或超限 ──
-      const MAX_ROUNDS = 8;
-      let round = 0;
-      const checkAndContinue = () => {
-        round++;
-        if (round > MAX_ROUNDS) { console.log(`[GoalTracker] 目标 "${goal.title}" 达到最大轮次`); return; }
-        // 检查目标是否已完成
-        const current = GoalTracker.get(goal.id);
-        if (!current || current.status === 'done' || current.status === 'cancelled') return;
-        
-        setTimeout(() => {
-          const continueMsg = `请报告目标任务「${goal.title}」的进度：\n1. 已完成了哪些子步骤？\n2. 还有哪些未完成？\n3. 如果验收标准全部满足，请回复「全部完成」；否则继续执行未完成的部分。`;
-          try {
-            const mid = 'goal-cont-' + Date.now();
-            db.addMessage({ id: mid, chatId, senderType: 'user', senderId: 'goal-tracker', content: continueMsg, type: 'text', timestamp: Date.now() });
-            broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content: continueMsg, timestamp: Date.now() });
-            try { processUserMessage(chatId, 'goal-tracker', continueMsg, undefined, router, broadcast); } catch (_) {}
-            // 检查AI是否汇报完成（检测最近消息中是否包含完成关键词）
-            setTimeout(() => {
-              try {
-                const msgs = db.listMessages(chatId, 5) || [];
-                const lastMsg = msgs[msgs.length - 1];
-                if (lastMsg && lastMsg.sender_type === 'agent' && /全部完成|所有任务.*完成|所有验收标准.*满足|DONE/i.test(lastMsg.content)) {
-                  GoalTracker.markDone(goal.id);
-                  console.log(`[GoalTracker] 目标 "${goal.title}" AI自评完成，已自动标记为done`);
-                }
-              } catch (_) {}
-            }, 120000); // 等2分钟让AI完成回复后再检查
-            // 递归调度下一轮（给AI足够时间回复）
-            setTimeout(checkAndContinue, 30000);
-          } catch (_) {}
-        }, 60000); // 等60秒让AI完成当前回复
-      };
-      // 启动检查循环（第一轮等待 AI 完成初始回复）
-      setTimeout(checkAndContinue, 90000);
-    } catch (e: any) {
-      console.error(`[GoalTracker] 注入目标消息失败:`, e?.message || e);
-    }
-  };
 
   server.listen(port, '0.0.0.0', () => {
     console.log('');

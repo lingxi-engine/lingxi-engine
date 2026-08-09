@@ -358,11 +358,6 @@ export class AIHub {
       baseURL,
     });
     this.providers.set(cfg.id, { client, config: { ...cfg, baseUrl: baseURL } });
-    // 自动设置默认模型：首个注册的 provider 的首个模型
-    if (!this.getDefaultModel() && cfg.models.length > 0) {
-      this.setDefaultModel(cfg.models[0]);
-      console.log(`[AI Hub] 自动设置默认模型: ${cfg.models[0]} (来自 ${cfg.id})`);
-    }
     console.log(`[AI Hub] 动态注册 Provider: ${cfg.id} (${cfg.models.length} 模型, ${baseURL})`);
   }
 
@@ -461,25 +456,6 @@ export class AIHub {
    * 匹配顺序：精确 → 模糊 → fallback
    */
   getClient(model: string): { client: OpenAI; resolvedModel: string } | null {
-    // BUG-D 修复: 空模型名直接走 fallback（否则 model.split("-")[0] 为空串，pid.includes('') 恒真 → 错误命中 provider，resolvedModel 变空串）
-    if (!model) {
-      for (const [, entry] of this.providers) {
-        if (entry.config.type === "nvidia" && entry.config.models.length > 0) {
-          return { client: entry.client, resolvedModel: entry.config.models[0] };
-        }
-      }
-      for (const [, entry] of this.providers) {
-        if (entry.config.isLocal && entry.config.models.length > 0) {
-          return { client: entry.client, resolvedModel: entry.config.models[0] };
-        }
-      }
-      for (const [, entry] of this.providers) {
-        if (entry.config.models.length > 0) {
-          return { client: entry.client, resolvedModel: entry.config.models[0] };
-        }
-      }
-      return null;
-    }
     // 1. 精确匹配
     for (const [, entry] of this.providers) {
       if (entry.config.models.some(m => model === m)) {
@@ -527,21 +503,9 @@ export class AIHub {
       }
     }
 
-    // 4. 最后兜底：遍历所有 provider，找到第一个有模型的就用，resolvedModel 从该 provider 的 models 取
-    for (const [pid, entry] of this.providers) {
-      if (entry.config.models.length > 0) {
-        const fallbackModel = entry.config.models[0];
-        console.log(`[AI Hub] 模型 "${model}" 无精确匹配，fallback 到 provider ${pid}: ${fallbackModel}`);
-        return { client: entry.client, resolvedModel: fallbackModel };
-      }
-    }
-    // 5. 实在没有，用第一个 provider 的 client + 其首个模型
+    // 4. 最后兜底
     const first = this.providers.values().next().value;
-    if (first && first.config.models.length > 0) {
-      console.log(`[AI Hub] 模型 "${model}" 无匹配，使用第一个 provider ${first.config.id}: ${first.config.models[0]}`);
-      return { client: first.client, resolvedModel: first.config.models[0] };
-    }
-    return null;
+    return first ? { client: first.client, resolvedModel: first.config.models[0] || model } : null;
   }
 
   /**

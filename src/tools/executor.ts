@@ -311,17 +311,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     let aiResponse: OpenAIChatResponse;
     try {
-      // 传入 signal：用户点"停止"时可立即中断进行中的 AI 请求（不必等轮次结束）
-      aiResponse = await client.chat.completions.create(
-        requestParams,
-        signal ? { signal } : undefined
-      ) as OpenAIChatResponse;
+      aiResponse = await client.chat.completions.create(requestParams) as OpenAIChatResponse;
     } catch (err: unknown) {
-      // 用户主动停止：直接退出循环，由上层按"已停止"处理
-      if (signal?.aborted) {
-        result.aborted = true;
-        break;
-      }
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
@@ -523,26 +514,16 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   }
 
   // 兜底
-  if (!result.finalContent && !result.aborted) {
+  if (!result.finalContent) {
     // 兜底：强制再调一次 AI（不带 tools），让它必须出文字回复
-    // ⚠️ 只带最近的消息，避免多轮工具调用后上下文超限导致这次兜底也失败
-    // （这正是"干了半天最后显示没有回复"的常见根因）
-    const trimmedMessages = result.messages.length > 24
-      ? [
-          ...result.messages.slice(0, 2),
-          { role: "user", content: `（中间 ${result.messages.length - 24} 条工具调用记录已省略）` } as ChatMessage,
-          ...result.messages.slice(-22),
-        ]
-      : result.messages;
     try {
       const finalResp = await client.chat.completions.create({
         model,
-        messages: [...trimmedMessages, { role: "user", content: "请根据以上工具返回的结果，给出最终回复。如果工具没有返回有用信息，请说明情况。" }],
+        messages: [...result.messages, { role: "user", content: "请根据以上工具返回的结果，给出最终回复。如果工具没有返回有用信息，请说明情况。" }],
         temperature,
         max_tokens: maxTokens,
-      }, signal ? { signal } : undefined) as OpenAIChatResponse;
-      result.finalContent = finalResp.choices[0]?.message?.content
-        || "工具已执行完毕，但模型未给出文字总结。请再发一条消息让我汇总结果。";
+      }) as OpenAIChatResponse;
+      result.finalContent = finalResp.choices[0]?.message?.content || "[AI 生成中，未产生最终回复]";
       if (finalResp.usage) {
         UsageTracker.record({
           model,
@@ -552,22 +533,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         });
       }
     } catch {
-      if (signal?.aborted) {
-        result.aborted = true;
-      } else {
-        const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant" && m.content);
-        const lastTool = [...result.messages].reverse().find((m) => m.role === "tool");
-        result.finalContent = lastAssistant?.content
-          || (lastTool
-            ? `工具已执行完毕，但汇总回复调用失败（可能是上下文过大）。最近一次工具结果：${String(lastTool.content).slice(0, 300)}`
-            : "本次生成未产生最终回复，请重试或换一种问法。");
-      }
+      const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant");
+      result.finalContent = lastAssistant?.content || "[AI 生成中，未产生最终回复]";
     }
-  }
-
-  // 被停止时给前端一个明确文本，避免空气泡
-  if (!result.finalContent && result.aborted) {
-    result.finalContent = "⏹ 已停止生成。";
   }
 
   return result;

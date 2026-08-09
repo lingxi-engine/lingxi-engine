@@ -468,5 +468,24 @@ export function createAdminRoutes(ctx: ServerContext): Router {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── 一键升级接口 ──
+  router.post('/update', async (_req, res) => {
+    try {
+      const { execSync } = await import('child_process');
+      const updateUrl = process.env.UPDATE_URL || 'http://47.93.157.83:8080/lingxi-engine.tar.gz';
+      const installScript = process.env.UPDATE_SCRIPT || 'cd /opt/lingxi-engine && curl -fsSL ' + updateUrl + ' -o /tmp/lingxi-update.tar.gz && tar xzf /tmp/lingxi-update.tar.gz --overwrite && npm install --no-audit --no-fund 2>&1 | tail -3 && pm2 restart lingxi';
+      
+      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: '2.0.6' });
+      
+      setTimeout(() => {
+        try {
+          execSync(installScript, { timeout: 120000, stdio: 'pipe', cwd: '/opt/lingxi-engine' });
+        } catch (e: any) {
+          console.error('[Update] 升级失败:', e.message);
+        }
+      }, 1000);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   return router;
 }

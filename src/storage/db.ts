@@ -274,16 +274,6 @@ function _dbInit(db: any) {
       updated_at INTEGER
     );
 
-    CREATE TABLE IF NOT EXISTS workflow_runs (
-      id TEXT PRIMARY KEY,
-      workflow_id TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'running',
-      results TEXT,
-      error TEXT,
-      started_at INTEGER,
-      finished_at INTEGER
-    );
-
     -- 娑堟伅璇勪环锛堟槦绾э級
     CREATE TABLE IF NOT EXISTS message_ratings (
       id TEXT PRIMARY KEY,

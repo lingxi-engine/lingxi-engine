@@ -163,17 +163,8 @@ export class ApprovalManager {
    * 判断操作是否需要审批
    */
   needsApproval(tool: string, args: Record<string, any>): boolean {
-    const dangerousTools = ['write_file', 'code_execute', 'browser_navigate', 'shell_exec', 'delete_file', 'rename_file'];
+    const dangerousTools = ['write_file', 'code_execute', 'browser_navigate'];
     if (dangerousTools.includes(tool)) return true;
-
-    // shell_exec 危险命令检测
-    if (tool === 'shell_exec' && args.command) {
-      const cmd = String(args.command);
-      const dangerousCmds = ['git clone', 'git push', 'npm install -g', 'pip install', 'rm -rf', 'rmdir /s',
-        'sudo ', 'chmod 777', 'chown ', 'mkfs', 'dd if=', 'format ', 'shutdown', 'reboot',
-        'docker rm', 'docker rmi', 'kubectl delete', 'wget ', 'curl.*|.*sh', '> /dev/'];
-      if (dangerousCmds.some(c => cmd.toLowerCase().includes(c))) return true;
-    }
     
     // 写系统目录需审批
     if (tool === 'write_file' && args.path) {

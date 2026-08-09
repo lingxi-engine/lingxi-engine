@@ -2,6 +2,7 @@
  * 好友路由 — 好友请求、好友列表
  */
 import { Router } from 'express';
+import { getDB } from '../storage/db.js';
 import type { ServerContext } from '../server/context.js';
 
 export function createFriendsRoutes(ctx: ServerContext): Router {
@@ -108,7 +109,7 @@ export function createFriendsRoutes(ctx: ServerContext): Router {
       const userId = (req.query.userId as string) || '';
       const friendId = req.params.id;
       if (!userId || !friendId) return res.status(400).json({ error: 'userId 和 friendId 必填' });
-      const d = require('../storage/db.js').getDB();
+      const d = getDB();
       // 删除双向好友关系
       d.run("DELETE FROM friendships WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)",
         [userId, friendId, friendId, userId]);
