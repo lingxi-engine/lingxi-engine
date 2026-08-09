@@ -142,6 +142,102 @@ async function loadTools() {
       <div class="card"><h3>🔧 ${esc(tool.name||'?')}</h3><p style="font-size:12px;color:var(--text2)">${esc(tool.description||'')}</p></div>
     `).join('') || '<div class="empty">'+t('tools.none')+'</div>';
   } catch(e) { document.getElementById('toolsGrid').innerHTML = '<div class="empty">'+t('err.loadFail')+'</div>'; }
+  loadRagDocs();
+  loadWorkspace();
+}
+
+// ═══ 知识库 (v2.0.6) ═══
+async function loadRagDocs() {
+  const el = document.getElementById('ragDocsList');
+  if (!el) return;
+  el.textContent = '加载中...';
+  try {
+    const d = await api('/api/rag/documents', 'GET');
+    if (!d.ok) { el.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
+    const docs = d.documents || [];
+    if (!docs.length) { el.innerHTML = '<div style="color:var(--text3)">暂无文档，添加或扫描工作区</div>'; return; }
+    el.innerHTML = docs.map(doc => `<div style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid var(--border)">
+      <span style="flex:1">📄 ${esc(doc.title)}${doc.chunkCount ? ' <span style="color:var(--text3);font-size:11px">('+doc.chunkCount+'块)</span>' : ''}</span>
+      <button onclick="deleteRagDoc('${esc(doc.id)}')" style="background:none;border:none;color:var(--red);cursor:pointer">🗑</button>
+    </div>`).join('');
+  } catch(e) { el.textContent = '❌ ' + (e.message || '网络错误'); }
+}
+
+async function addRagDoc() {
+  const title = (document.getElementById('ragTitle')||{}).value?.trim();
+  const source = (document.getElementById('ragSource')||{}).value?.trim();
+  const content = (document.getElementById('ragContent')||{}).value?.trim();
+  if (!title || !content) { toast('请填写标题和内容'); return; }
+  try {
+    const d = await api('/api/rag/documents', 'POST', { title, source, content, mimeType: 'text/plain' });
+    if (d.ok) { toast('✅ 已添加 ' + (d.chunkCount||0) + ' 块'); loadRagDocs(); document.getElementById('ragContent').value=''; }
+    else toast('❌ ' + _errMsg(d, '添加失败'));
+  } catch(e) { toast('❌ 添加失败: ' + e.message); }
+}
+
+async function deleteRagDoc(id) {
+  if (!confirm('删除该文档？')) return;
+  try {
+    const d = await api('/api/rag/documents/' + encodeURIComponent(id), 'DELETE');
+    if (d.ok) { toast('已删除'); loadRagDocs(); }
+    else toast('❌ ' + _errMsg(d, '删除失败'));
+  } catch(e) { toast('❌ 删除失败'); }
+}
+
+async function searchRag() {
+  const q = (document.getElementById('ragQuery')||{}).value?.trim();
+  const out = document.getElementById('ragSearchOut');
+  if (!q) { toast('请输入检索词'); return; }
+  out.textContent = '检索中...';
+  try {
+    const d = await api('/api/rag/search?q=' + encodeURIComponent(q), 'GET');
+    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '检索失败'); return; }
+    const hits = d.hits || [];
+    if (!hits.length) { out.innerHTML = '<div style="color:var(--text3)">无结果</div>'; return; }
+    out.innerHTML = hits.map((h,i) => `<div style="padding:6px;border-left:3px solid var(--accent);margin-bottom:6px;background:var(--bg2)">
+      <div style="font-weight:600">[${i+1}] ${esc(h.docTitle||'')} <span style="color:var(--text3);font-size:11px">相关度 ${h.score.toFixed ? h.score.toFixed(2) : h.score}</span></div>
+      <div style="color:var(--text2);font-size:11px">${esc((h.content||'').slice(0,200))}...</div>
+    </div>`).join('');
+  } catch(e) { out.textContent = '❌ 检索失败'; }
+}
+
+async function scanWorkspaceDocs() {
+  if (!confirm('扫描当前工作区，自动导入支持的文档到知识库？')) return;
+  try {
+    const d = await api('/api/rag/scan-workspace', 'POST');
+    if (d.ok) {
+      toast('✅ 工作区扫描完成: 导入 ' + (d.imported||0) + ' 个, 跳过 ' + (d.skipped||0) + ' 个');
+      loadRagDocs();
+    } else toast('❌ ' + _errMsg(d, '扫描失败'));
+  } catch(e) { toast('❌ 扫描失败: ' + e.message); }
+}
+
+// ═══ 工作区 (v2.0.6) ═══
+async function loadWorkspace() {
+  try {
+    const d = await api('/api/workspace-mode', 'GET');
+    if (!d) { return; }
+    const modeSel = document.getElementById('wsModeSelect');
+    if (modeSel) modeSel.value = d.mode || 'personal';
+    const root = document.getElementById('wsRootInput');
+    if (root) root.value = d.workspaceRoot || '';
+    const info = document.getElementById('wsInfo');
+    if (info) info.innerHTML = `当前工作区: <b style="color:var(--accent)">${esc(d.workspaceRoot||'')}</b> (模式: ${d.mode==='collab'?'👥 协作':'👤 个人'})`;
+  } catch(e) {}
+}
+
+async function setWorkspaceMode() {
+  const mode = document.getElementById('wsModeSelect').value;
+  const root = (document.getElementById('wsRootInput').value || '').trim();
+  try {
+    const d = await api('/api/workspace-mode', 'POST', { mode, workspaceRoot: root || undefined });
+    if (d && d.ok !== false) { toast('✅ 已切换为 ' + mode); loadWorkspace(); }
+    else toast('❌ ' + (d?.error || '设置失败'));
+  } catch(e) { toast('❌ 设置失败: ' + e.message); }
+}
+
+async function saveWorkspace() {
+  setWorkspaceMode();
 }
 
 function toast(msg) {
@@ -214,11 +310,11 @@ function getOrCreateUserId() {
   try {
     let id = localStorage.getItem('lingxi-user-id');
     if (!id) {
-      id = 'u-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+      id = 'user-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
       localStorage.setItem('lingxi-user-id', id);
     }
     return id;
-  } catch(e) { return 'u-' + Date.now().toString(36); }
+  } catch(e) { return 'user-' + Date.now().toString(36); }
 }
 
 function connect() {
@@ -243,6 +339,11 @@ function connect() {
       setStatus(t('status.online'), 'ok');
       enableInput(true);
       loadChatList().catch(()=>{});
+      // ⭐ v2.0.5: 重连后恢复上次打开的聊天
+      var _lastSavedChat = localStorage.getItem('lingxi-last-chat');
+      if (_lastSavedChat && myChats.some(function(c3){ return c3.id === _lastSavedChat; })) {
+        switchChat(_lastSavedChat);
+      }
       loadFriends().catch(()=>{});
       loadRequests().catch(()=>{});
       loadModels().catch(()=>{});
@@ -501,8 +602,11 @@ function handleMessage(msg) {
           s.el.querySelector('.msg-content') && s.el.querySelector('.msg-content').textContent === msg.content
         );
         // 乐观渲染去重：如果是服务端回传的用户自己消息，且已立即渲染过，跳过
-        const _echoKey = (msg.chatId || '') + '|' + (msg.content || '') + '|' + (msg.from || msg.senderId || '');
-        const isOptimisticDuplicate = _optimisticSent.has(_echoKey);
+        // 兼容本地 clientId（user-xxx）和服务端 senderId（user-10000）两种情况
+        const _senderId = msg.from || msg.senderId || '';
+        const _echoKey = (msg.chatId || '') + '|' + (msg.content || '') + '|' + _senderId;
+        const _echoKeyClientId = (msg.chatId || '') + '|' + (msg.content || '') + '|' + (clientId || '');
+        const isOptimisticDuplicate = _optimisticSent.has(_echoKey) || _optimisticSent.has(_echoKeyClientId);
         if (isOptimisticDuplicate) {
           _optimisticSent.delete(_echoKey); // 命中后立即清理
         }
@@ -600,6 +704,20 @@ function handleMessage(msg) {
       }
       toast(t('err.error', { msg: (msg.message||'').slice(0,80) }));
       break;
+
+    case 'session.restore':
+      // v2.0.6: 服务端重启后恢复会话上下文
+      console.log('[Session] 收到恢复信息, lastChatId:', msg.lastChatId, '会话数:', (msg.sessions||[]).length);
+      if (msg.lastChatId && typeof switchChat === 'function') {
+        // 延迟一小段时间等聊天列表加载完成再切换
+        setTimeout(function() {
+          if (currentChat !== msg.lastChatId) {
+            switchChat(msg.lastChatId);
+          }
+        }, 500);
+      }
+      break;
+
     default: break;
   }
 }
@@ -654,6 +772,8 @@ async function deleteChat(chatId) {
 }
 
 async function switchChat(chatId) {
+  // ⭐ v2.0.5: 保存上次打开的聊天到 localStorage（重启后可恢复）
+  if (chatId) localStorage.setItem('lingxi-last-chat', chatId);
   currentChat = chatId;
   delete unreadCounts[chatId];
   updateGenUI();
@@ -1068,8 +1188,7 @@ async function send() {
     toast(t('chat.queuedAuto', { n: sendQueue.length }));
     return;
   }
-  try { ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: content })); }
-  catch(e) { toast('发送失败，请检查连接'); console.error('[send] ws.send error:', e); return; }
+  ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: content }));
   input.value = '';
   // 乐观渲染：立即在本地显示用户消息，不等服务端回传
   const _dedupKey = chatId + '|' + content + '|' + (clientId || '');
@@ -1324,21 +1443,9 @@ function renderFriends() {
 }
 async function openChatFriend(fid, fname) {
   const myNumericId = lanMeId || clientId;
+  const chatId = 'chat-platform-' + [String(myNumericId), String(fid)].sort().join('-');
   try {
-    const d = await api('/api/chats');
-    const allChats = (d.chats || []);
-    // 优先复用后端 respondFriendRequest 已创建的 chat（格式: chat-{fromUserId}-{toUserId}）
-    const legacyA = 'chat-' + String(myNumericId) + '-' + String(fid);
-    const legacyB = 'chat-' + String(fid) + '-' + String(myNumericId);
-    const legacy = allChats.find(c => c.id === legacyA || c.id === legacyB);
-    if (legacy) {
-      // 同一实例好友：后端已自动建 chat，直接使用 → 走 WebSocket 消息通道
-      hideFriendPanel(); await loadChatList(); switchChat(legacy.id);
-      return;
-    }
-    // 跨平台好友：创建 chat-platform 格式 → 走 Mesh 中继通道
-    const chatId = 'chat-platform-' + [String(myNumericId), String(fid)].sort().join('-');
-    const exists = allChats.some(c => c.id === chatId);
+    const d = await api('/api/chats'); const exists = (d.chats||[]).some(c=>c.id===chatId);
     if (!exists) {
       await api('/api/chats', 'POST', { id: chatId, type: 'private', name: fname });
       await api('/api/participants', 'POST', { id: 'p-'+chatId+'-1', chatId, userId: String(myNumericId) });
@@ -1617,7 +1724,7 @@ function closeSettings() { document.getElementById('settingsOverlay').classList.
 
 async function loadModels() {
   try {
-    const d = await api('/api/providers');
+    const d = await api('/api/providers/models');
     const hSel = document.getElementById('headerModelSelect');
     const models = d.models || [];
     const opts = models.map(m => '<option value="'+esc(m.id)+'">' + esc(m.providerName||m.provider||'') + ' / ' + esc(m.id) + '</option>').join('');
@@ -2014,12 +2121,15 @@ async function testTTS() {
 
 // ── 注册/登录 ──
 let authToken = null;
-const PLATFORM_URL = 'http://47.93.157.83:8080';  // 云平台地址
+const PLATFORM_URL = '';  // v2.0.6: 本地部署时不走云平台，直接用本地 API。如需云平台功能，改为 'http://47.93.157.83:8080'
 
 // 通用 API：本地（不要带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
+  // 自动携带 JWT token（如果已登录）
+  const token = localStorage.getItem('authToken');
+  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
   const r = await fetch(url, opts); return r.json();
 }
 // 云平台 API：注册/登录/市场
@@ -2593,7 +2703,7 @@ function toggleAdmin(force) {
 }
 async function refreshAllAdmin() {
   adminHealth(); adminAgents(); adminSessions(); adminSubAgents(); adminCron(); adminMCP(); adminPlugins(); loadApprovals(); loadVoiceStatus(); loadPromptAgentSelect(); loadGoals();
-  refreshStatusBar();
+  refreshStatusBar(); refreshAdminVersion();
 }
 async function refreshStatusBar() {
   try {
@@ -2641,6 +2751,34 @@ async function loadLogs() {
     out.textContent = lines.length ? lines.join('\n') : '(暂无日志)';
     out.scrollTop = out.scrollHeight;
   } catch(e) { out.textContent = '❌ ' + (e.message || '网络错误'); }
+}
+
+// ── 一键升级 ──
+async function doUpdate() {
+  const stat = document.getElementById('updateStatus');
+  if (!confirm('确认升级到最新版？服务器将自动下载并重启（约 10 秒）。')) return;
+  if (stat) stat.textContent = '⏳ 正在升级...';
+  try {
+    const d = await api('/api/update', 'POST');
+    if (d.ok) {
+      if (stat) stat.textContent = '✅ 升级已触发！服务器重启中...';
+      toast('升级已开始，服务器即将重启');
+      // 10 秒后刷新页面
+      setTimeout(function(){ location.reload(); }, 10000);
+    } else {
+      if (stat) stat.textContent = '❌ ' + _errMsg(d, '升级失败');
+      toast('升级失败: ' + _errMsg(d, '未知错误'));
+    }
+  } catch(e) {
+    if (stat) stat.textContent = '❌ ' + (e.message || '网络错误');
+  }
+}
+
+// 管理面板打开时刷新版本号
+function refreshAdminVersion() {
+  var v = document.getElementById('adminVerTag');
+  var vt = document.getElementById('verTag');
+  if (v && vt) v.textContent = vt.textContent;
 }
 
 // ── 实例组网 (Instance Mesh) ──
@@ -3308,3 +3446,306 @@ function handleLanMessage(msg) {
     }
   }
 }
+
+
+// ═══ RIGHT SIDEBAR: 任务监控 + 目标任务 ═══
+let rsCurrentTab = 'tasks';
+function rsTab(name) {
+  rsCurrentTab = name;
+  document.getElementById('rsTabTasks').classList.toggle('active', name === 'tasks');
+  document.getElementById('rsTabGoals').classList.toggle('active', name === 'goals');
+  document.getElementById('rsTasks').classList.toggle('hidden', name !== 'tasks');
+  document.getElementById('rsGoals').classList.toggle('hidden', name !== 'goals');
+  if (name === 'tasks') loadRightTasks();
+  else loadRightGoals();
+}
+function toggleRightSidebar() {
+  const rs = document.getElementById('rightSidebar');
+  if (!rs) return;
+  rs.classList.toggle('collapsed');
+}
+
+// 任务监控：/api/cron
+async function loadRightTasks() {
+  const list = document.getElementById('rsTasksList');
+  if (!list) return;
+  list.innerHTML = '<div class="rs-empty">加载中...</div>';
+  try {
+    const d = await api('/api/cron');
+    if (!d.ok) { list.innerHTML = '<div class="rs-empty">❌ ' + esc(_errMsg(d, '加载失败')) + '</div>'; return; }
+    const jobs = d.jobs || [];
+    const cnt = document.getElementById('rsTaskCount');
+    if (cnt) cnt.textContent = jobs.length + ' 个任务';
+    if (!jobs.length) { list.innerHTML = '<div class="rs-empty">暂无定时任务</div>'; return; }
+    list.innerHTML = jobs.map(j => {
+      const name = esc(j.name || '未命名');
+      const expr = esc(j.schedule && j.schedule.expr || j.expr || '-');
+      const tz = esc(j.schedule && j.schedule.tz || j.tz || '');
+      const en = j.enabled !== false;
+      const last = j.lastRun ? new Date(j.lastRun).toLocaleString('zh-CN', {hour12:false}) : '从未执行';
+      const next = j.nextRun ? new Date(j.nextRun).toLocaleString('zh-CN', {hour12:false}) : '-';
+      return '<div class="rs-item">' +
+        '<div class="rs-item-title"><span>' + (en ? '⏰' : '⏸') + ' ' + name + '</span>' +
+        '<span class="rs-tag ' + (en ? 'run' : 'pause') + '">' + (en ? '运行中' : '已暂停') + '</span></div>' +
+        '<div class="rs-item-sub">表达式: ' + expr + (tz ? ' · ' + esc(tz) : '') + '<br>上次: ' + last + '<br>下次: ' + next + '</div>' +
+        '<div class="rs-item-actions">' +
+        '<button onclick="rsToggleCron(\'' + j.id + '\', ' + (en ? 'false' : 'true') + ')">' + (en ? '暂停' : '启用') + '</button>' +
+        '<button onclick="rsRunCron(\'' + j.id + '\')">立即执行</button>' +
+        '<button onclick="rsDeleteCron(\'' + j.id + '\')">删除</button>' +
+        '</div></div>';
+    }).join('');
+  } catch(e) { list.innerHTML = '<div class="rs-empty">❌ ' + esc(e.message || '网络错误') + '</div>'; }
+}
+
+// 目标任务：/api/goals
+async function loadRightGoals() {
+  const list = document.getElementById('rsGoalsList');
+  if (!list) return;
+  list.innerHTML = '<div class="rs-empty">加载中...</div>';
+  try {
+    const d = await api('/api/goals');
+    if (!d.ok) { list.innerHTML = '<div class="rs-empty">❌ ' + esc(_errMsg(d, '加载失败')) + '</div>'; return; }
+    const goals = d.goals || [];
+    const cnt = document.getElementById('rsGoalCount');
+    if (cnt) cnt.textContent = goals.length + ' 个目标';
+    if (!goals.length) { list.innerHTML = '<div class="rs-empty">暂无目标</div>'; return; }
+    const EMO = { pending: '⏳', in_progress: '🔄', done: '✅', cancelled: '❌' };
+    list.innerHTML = goals.map(g => {
+      const st = g.status || 'pending';
+      const tagCls = st === 'done' ? 'done' : (st === 'cancelled' ? 'pause' : (st === 'in_progress' ? 'run' : 'wait'));
+      const tagTxt = st === 'done' ? '已完成' : (st === 'cancelled' ? '已取消' : (st === 'in_progress' ? '进行中' : '待开始'));
+      const acts = [];
+      if (st === 'pending') acts.push('<button onclick="rsSetGoal(\'' + g.id + '\',\'in_progress\')">开始</button>');
+      if (st !== 'done' && st !== 'cancelled') acts.push('<button onclick="rsSetGoal(\'' + g.id + '\',\'done\')">完成</button>');
+      if (st === 'done' || st === 'cancelled') acts.push('<button onclick="rsSetGoal(\'' + g.id + '\',\'pending\')">恢复</button>');
+      acts.push('<button onclick="rsRemoveGoal(\'' + g.id + '\')">删除</button>');
+      return '<div class="rs-item">' +
+        '<div class="rs-item-title"><span>' + (EMO[st] || '⏳') + ' ' + esc(g.title || '未命名') + '</span>' +
+        '<span class="rs-tag ' + tagCls + '">' + tagTxt + '</span></div>' +
+        (g.acceptanceCriteria ? '<div class="rs-item-sub">' + esc(g.acceptanceCriteria) + '</div>' : '') +
+        '<div class="rs-item-actions">' + acts.join('') + '</div></div>';
+    }).join('');
+  } catch(e) { list.innerHTML = '<div class="rs-empty">❌ ' + esc(e.message || '网络错误') + '</div>'; }
+}
+
+// 右侧操作（复用现有 API）
+async function rsToggleCron(id, enable) {
+  try {
+    const d = await api('/api/cron/' + id, 'PATCH', { enabled: enable });
+    if (!d.ok) { toast('❌ ' + _errMsg(d, '操作失败')); return; }
+    toast(enable ? '✅ 任务已启用' : '⏸ 任务已暂停');
+    loadRightTasks();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function rsRunCron(id) {
+  try {
+    const d = await api('/api/cron/' + id + '/run', 'POST');
+    if (!d.ok) { toast('❌ ' + _errMsg(d, '执行失败')); return; }
+    toast('✅ 已触发执行');
+    loadRightTasks();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function rsDeleteCron(id) {
+  if (!confirm('确定删除该任务？')) return;
+  try {
+    const d = await api('/api/cron/' + id, 'DELETE');
+    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
+    toast('🗑 已删除');
+    loadRightTasks();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function rsSetGoal(id, status) {
+  try {
+    const d = await api('/api/goals/' + id, 'PATCH', { status: status });
+    if (!d.ok) { toast('❌ ' + _errMsg(d, '操作失败')); return; }
+    loadRightGoals();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function rsRemoveGoal(id) {
+  if (!confirm('确定删除该目标？')) return;
+  try {
+    const d = await api('/api/goals/' + id, 'DELETE');
+    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
+    loadRightGoals();
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ═══ LEFT SIDEBAR: 日志（点开即看） ═══
+function toggleSideLog() {
+  const box = document.getElementById('sideLog');
+  const body = document.getElementById('sideLogBody');
+  if (!box || !body) return;
+  const open = box.classList.toggle('open');
+  body.classList.toggle('hidden', !open);
+  if (open && document.getElementById('sideLogOut').textContent.indexOf('点击') >= 0) loadSideLogs();
+}
+async function loadSideLogs() {
+  const out = document.getElementById('sideLogOut');
+  if (!out) return;
+  out.textContent = '加载中...';
+  try {
+    const d = await api('/api/logs?limit=120');
+    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
+    const lines = d.lines || [];
+    out.textContent = lines.length ? lines.slice(-80).join('\n') : '(暂无日志)';
+    out.scrollTop = out.scrollHeight;
+  } catch(e) { out.textContent = '❌ ' + (e.message || '网络错误'); }
+}
+
+// ═══════════════════ v2.0.7 新布局：左栏功能导航+日志面板 / 右栏任务监控+目标任务 ═══════════════════
+
+// ── 功能导航：切换面板 + 同步激活态 + 收起侧栏 ──
+function goPanel(name) {
+  switchPanel(name);
+  document.querySelectorAll('.side-nav button').forEach(function(b) { b.classList.toggle('active', b.dataset.nav === name); });
+  var s = document.getElementById('sidebar');
+  if (s && s.classList.contains('show')) toggleSidebar();
+}
+
+// ── 日志面板：点开就能看日志 ──
+function toggleLogPanel(force) {
+  var p = document.getElementById('logPanel');
+  if (!p) return;
+  var open = force !== undefined ? !!force : !p.classList.contains('open');
+  p.classList.toggle('open', open);
+  if (open) loadLogBody();
+}
+function loadLogBody() {
+  var body = document.getElementById('logBody');
+  if (!body) return;
+  body.innerHTML = '加载中...';
+  api('/api/logs?limit=150').then(function(d) {
+    if (!d || !d.ok) { body.innerHTML = '<div class="log-line err">❌ ' + esc(_errMsg(d, '加载失败')) + '</div>'; return; }
+    var lines = d.lines || [];
+    if (!lines.length) { body.innerHTML = '<div class="log-line info">(暂无日志)</div>'; return; }
+    body.innerHTML = lines.map(function(l) {
+      var cls = 'info';
+      if (/error|exception|失败|错误/i.test(l)) cls = 'err';
+      else if (/warn|警告|重试|超时/i.test(l)) cls = 'warn';
+      else if (/ok|成功|完成|ready|started|listening|已启动/i.test(l)) cls = 'ok';
+      var m = l.match(/^(\d{4}[-/]\d{1,2}[-/]\d{1,2}[ T]\d{1,2}:\d{2}:\d{2})/);
+      if (m) {
+        var rest = l.slice(m[0].length);
+        return '<div class="log-line"><span class="t">' + m[0] + '</span> <span class="' + cls + '">' + esc(rest) + '</span></div>';
+      }
+      return '<div class="log-line ' + cls + '">' + esc(l) + '</div>';
+    }).join('');
+    body.scrollTop = body.scrollHeight;
+  }).catch(function(e) {
+    body.innerHTML = '<div class="log-line err">❌ ' + esc(e.message || '网络错误') + '</div>';
+  });
+}
+
+// ── 右侧栏：任务监控 / 目标任务 ──
+function switchRightTab(tab) {
+  var t1 = document.getElementById('rbTabTasks'), t2 = document.getElementById('rbTabGoals');
+  var p1 = document.getElementById('rbTasks'), p2 = document.getElementById('rbGoals');
+  if (!t1 || !p1) return;
+  t1.classList.toggle('active', tab === 'tasks');
+  t2.classList.toggle('active', tab === 'goals');
+  p1.style.display = tab === 'tasks' ? '' : 'none';
+  p2.style.display = tab === 'goals' ? '' : 'none';
+  if (tab === 'tasks') loadTaskMonitor(); else loadRightGoalsNew();
+}
+function loadTaskMonitor() {
+  var el = document.getElementById('taskMonitorList');
+  if (!el) return;
+  el.innerHTML = '加载中...';
+  Promise.all([
+    api('/api/cron')['catch'](function() { return { ok: false }; }),
+    api('/api/agents')['catch'](function() { return { ok: false }; }),
+    api('/api/health')['catch'](function() { return { ok: false }; })
+  ]).then(function(rs) {
+    var jobs = (rs[0] && rs[0].jobs) || [];
+    var agents = (rs[1] && rs[1].agents) || [];
+    var healthOk = !!(rs[2] && rs[2].status === 'ok');
+    var ca = document.getElementById('rbAgentCount');
+    var cc = document.getElementById('rbCronCount');
+    var hs = document.getElementById('rbHealthState');
+    if (ca) ca.textContent = agents.length;
+    if (cc) cc.textContent = jobs.length;
+    if (hs) { hs.textContent = healthOk ? '运行中' : '异常'; hs.style.color = healthOk ? 'var(--green)' : 'var(--red)'; }
+    var html = '';
+    html += '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">⏰ 定时任务 (' + jobs.length + ')</div>';
+    if (!jobs.length) html += '<div style="color:var(--text3);margin-bottom:10px">暂无定时任务，可在「管理」中添加</div>';
+    jobs.forEach(function(j) {
+      var on = j.enabled !== false;
+      var sch = '-';
+      if (typeof j.schedule === 'string') sch = j.schedule;
+      else if (j.schedule) sch = j.schedule.cron || j.schedule.interval || JSON.stringify(j.schedule);
+      var last = j.lastRunAt ? new Date(j.lastRunAt).toLocaleString('zh-CN', { hour12: false }) : '-';
+      var next = j.nextRunAt ? new Date(j.nextRunAt).toLocaleString('zh-CN', { hour12: false }) : '';
+      html += '<div class="task-card">' +
+        '<div class="task-name">' + esc(j.name || '未命名') + ' <span class="status-pill ' + (on ? 'pill-on' : 'pill-off') + '">' + (on ? '运行中' : '已停用') + '</span></div>' +
+        '<div class="task-meta">⏱ ' + esc(sch) + '<br>🔁 运行 ' + (j.runCount || 0) + ' 次 · 上次 ' + last +
+        (next ? '<br>⏭ 下次 ' + next : '') + '</div></div>';
+    });
+    html += '<div style="font-size:11px;color:var(--text3);margin:12px 0 6px">🤖 Agent (' + agents.length + ')</div>';
+    if (!agents.length) html += '<div style="color:var(--text3)">暂无 Agent</div>';
+    agents.slice(0, 10).forEach(function(a) {
+      var st = a.status || 'idle';
+      var busy = /busy|running|working|active/i.test(st);
+      html += '<div class="task-card"><div class="task-name">' + esc(a.displayName || a.name || a.id || 'Agent') +
+        ' <span class="status-pill ' + (busy ? 'pill-on' : 'pill-off') + '">' + esc(st) + '</span></div>' +
+        '<div class="task-meta">🤖 ' + esc(a.model || '-') + '</div></div>';
+    });
+    el.innerHTML = html;
+  })['catch'](function(e) {
+    el.innerHTML = '<div style="color:var(--red)">❌ ' + esc(e.message || '加载失败') + '</div>';
+  });
+}
+function loadRightGoalsNew() {
+  var el = document.getElementById('rightGoalsList');
+  if (!el) return;
+  el.innerHTML = '加载中...';
+  api('/api/goals').then(function(d) {
+    if (!d || !d.ok) { el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(_errMsg(d, '加载失败')) + '</span>'; return; }
+    var goals = d.goals || [];
+    if (!goals.length) {
+      el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:24px 0">🎯 暂无目标<br><span style="font-size:11px">在上方输入框添加第一个目标</span></div>';
+      return;
+    }
+    var done = goals.filter(function(g) { return g.status === 'done'; }).length;
+    var pct = Math.round(done / goals.length * 100);
+    el.innerHTML = goals.map(function(g) {
+      var em = (typeof GOAL_EMOJI !== 'undefined' && GOAL_EMOJI[g.status]) || '⏳';
+      var acts = '';
+      if (g.status === 'pending') acts += '<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\');loadRightGoalsNew()" title="开始">▶️</a> ';
+      if (g.status !== 'done' && g.status !== 'cancelled') acts += '<a onclick="setGoalStatus(\'' + g.id + '\',\'done\');loadRightGoalsNew()" title="完成">✅</a> ';
+      if (g.status === 'done' || g.status === 'cancelled') acts += '<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\');loadRightGoalsNew()" title="恢复">↩️</a> ';
+      acts += '<a onclick="removeGoal(\'' + g.id + '\');loadRightGoalsNew()" title="删除" style="color:var(--red)">🗑️</a>';
+      var st = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
+      return '<div class="goal-item">' +
+        '<div class="goal-head"><span class="g-status">' + em + '</span><span style="' + st + ';flex:1;word-break:break-all">' + esc(g.title) + '</span><span class="goal-acts">' + acts + '</span></div>' +
+        (g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:4px">📌 ' + esc(g.acceptanceCriteria) + '</div>' : '') +
+        '</div>';
+    }).join('') +
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3);margin-top:10px"><span>✅ 已完成 ' + done + '/' + goals.length + '</span><span>' + pct + '%</span></div>' +
+      '<div class="goal-bar" style="margin-top:4px"><i style="width:' + pct + '%"></i></div>';
+  })['catch'](function(e) {
+    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</span>';
+  });
+}
+function addRightGoal() {
+  var inp = document.getElementById('rightGoalInput');
+  if (!inp) return;
+  var title = inp.value.trim();
+  if (!title) { toast('请输入目标内容'); return; }
+  api('/api/goals', 'POST', { title: title }).then(function(d) {
+    if (!d || !d.ok) { toast('❌ ' + _errMsg(d, '添加失败')); return; }
+    inp.value = '';
+    toast('✅ 目标已添加');
+    loadRightGoalsNew();
+    if (typeof loadGoals === 'function') loadGoals();
+  })['catch'](function(e) { toast('❌ ' + e.message); });
+}
+
+// ── 新布局初始化：加载右栏 + 日志面板，并定时刷新 ──
+window.addEventListener('load', function() {
+  try {
+    loadTaskMonitor();
+    loadRightGoalsNew();
+    setInterval(loadTaskMonitor, 60000);
+    setInterval(loadRightGoals, 60000);
+  } catch (e) { console.warn('[Layout] init error:', e); }
+});

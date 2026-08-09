@@ -2,6 +2,27 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.8] - 2026-08-09
+
+### 功能修复（前端）
+- 恢复右侧栏「任务监控」：删除 index.html 硬编码假任务卡片，新增 `loadTaskMonitor()` 调用 `/api/cron` 渲染真实定时任务（运行/暂停/删除按钮绑定事件）
+- 恢复右侧栏「目标任务」：删除 index.html 硬编码假目标列表，新增 `loadRightGoals()` 调用 `/api/goals` 渲染真实目标
+- 新增左侧栏「个人信息卡片」：`loadProfileCard()` 调用 `/api/auth/me` + `/api/profile` 填充 pcName/pcId/pcCredits/pdName/pdId/pdCredits/pdBio（之前 HTML 有占位符但 app.js 无填充代码）
+- 新增「反向提问」前端入口：`askGoal()` / `askAIAboutGoal()` 调用 `POST /api/goals/:id/ask`，在管理面板和右侧栏目标列表加 ❓ 按钮（后端路由一直存在，前端从未实现调用）
+- 恢复「反问多选」表单：`renderGoalQAForm()` 检测 AI 返回的 Q:/A:/B:/C: 格式，在消息下方渲染复选框 + 自定义输入框 + 三个操作按钮（完善目标 / 加入验收标准 / 生成新目标）
+- 恢复「继续反问」：`continueReverseAsk()` 收集已勾选选项 + 自定义输入作为 extra 上下文传给 `askAIAboutGoal()`，后端 `/ask` 路由同步支持 extra 参数
+- 上述功能在 1d04051 提交清理 app.js 时被误删，已在 3cce96f 提交中全部恢复
+
+### Bug 修复
+- 修复 `friends.ts` 第 111 行 `require()` 在 ESM 模块中不可用（改为 `import { getDB }`）
+- 新增 `POST /api/update` 路由（admin.ts），前端「一键升级」按钮不再 404
+- 移除 index.html 硬编码假数据（申总/10086 等），改为「加载中…」占位
+- `web/app.js` 废弃文件重命名为 `.bak`
+
+### 部署同步
+- 全部修复已同步至服务器 `/opt/lingxi-engine/`，PM2 已重启
+- 下载包 `lingxi-engine.tar.gz` 已重建（5.3MB）
+
 ## [2.0.7] - 2026-07-28
 
 ### 安全（P0）

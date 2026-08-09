@@ -469,14 +469,23 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   });
 
   // ── 一键升级接口 ──
-  router.post('/update', async (_req, res) => {
+  // v2.0.7 安全加固：该端点会在服务器上执行下载+安装脚本，必须显式携带 ADMIN_TOKEN，
+  // admin-auto 免登录兜底不授权此操作（公网/内网都一样），未配置 ADMIN_TOKEN 时端点直接禁用
+  router.post('/update', async (req, res) => {
     try {
+      const adminToken = process.env.ADMIN_TOKEN;
+      const authHeader = (req.headers['authorization'] as string) || '';
+      const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ((req.headers['x-admin-token'] as string) || '');
+      if (!adminToken || provided !== adminToken) {
+        console.warn('[Update] 拒绝未授权升级请求, 来源:', (req.socket?.remoteAddress || ''));
+        return res.status(401).json({ ok: false, error: '升级需要 ADMIN_TOKEN 授权' });
+      }
       const { execSync } = await import('child_process');
       const updateUrl = process.env.UPDATE_URL || 'http://47.93.157.83:8080/lingxi-engine.tar.gz';
       const installScript = process.env.UPDATE_SCRIPT || 'cd /opt/lingxi-engine && curl -fsSL ' + updateUrl + ' -o /tmp/lingxi-update.tar.gz && tar xzf /tmp/lingxi-update.tar.gz --overwrite && npm install --no-audit --no-fund 2>&1 | tail -3 && pm2 restart lingxi';
-      
-      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: '2.0.6' });
-      
+
+      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: process.env.npm_package_version || '2.0.7' });
+
       setTimeout(() => {
         try {
           execSync(installScript, { timeout: 120000, stdio: 'pipe', cwd: '/opt/lingxi-engine' });

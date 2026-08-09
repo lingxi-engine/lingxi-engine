@@ -13,15 +13,19 @@
 
 - 🤖 **AI Agent 双向对话** — 每个用户自带 AI 分身，群聊中真人与 Agent 共存
 - 🧠 **推理过程可视化** — 支持 DeepSeek R1 / OpenAI o1 等推理模型的思考链流式展示
+- 🎯 **目标任务系统** — 目标创建/开始/完成/删除全生命周期；AI 反向提问（结构化 Q:/A:/B:/C: 多选表单）；继续反问（基于已勾选项追问）；三个操作按钮（完善目标 / 加入验收标准 / 生成新目标）
+- 📋 **任务监控** — 右侧栏实时展示 Cron 定时任务（运行/暂停/删除）
+- 👤 **个人信息卡片** — 左侧栏自动加载用户头像/ID/积分/简介（/api/auth/me + /api/profile）
 - 🔧 **多工具系统** — web_search / code_execute / shell_exec / 文件读写 / 时间计算
 - 🛡️ **安全沙箱** — Docker 隔离执行代码和命令，默认开启
-- 📦 **零依赖前端** — 单文件 HTML (1811 行)，无需 React/Vue
+- 📦 **零依赖前端** — 单文件 HTML，无需 React/Vue
 - 🔌 **多渠道** — 支持 Telegram / Signal / iMessage 接入
 - 🌐 **多 AI Provider** — OpenAI / DeepSeek / NVIDIA NIM / Ollama 即插即用
 - ⏰ **Cron 定时任务** — 带时区支持 + 磁盘持久化
 - 💾 **SQLite 存储** — 零配置本地数据库
-- 🔒 **JWT 认证** — access token + 刷新令牌滚动刷新
+- 🔒 **JWT 认证** — access token + 刷新令牌滚动刷新；内网白名单 + 公网拒绝 + 限频日志
 - 📡 **WebSocket 实时推送** — 流式输出 + 工具调用进度广播
+- 🏥 **健康检查** — `GET /api/health` 返回版本/内存/运行时长/WS连接数/DB状态
 
 ## 🚀 快速开始
 
@@ -81,14 +85,34 @@ index.ts (1849 行)          ← HTTP + WebSocket 主入口
 │   ├── search-providers.ts ← Web 搜索 (3 Provider)
 │   ├── auto-skill.ts       ← 自动技能学习
 │   └── registry.ts         ← 工具注册表
+├── src/routes/
+│   ├── goals-outcomes.ts   ← 目标任务 + 成果评分路由（含 /ask 反向提问 + extra 上下文）
+│   ├── friends.ts          ← 好友 / Mesh / LAN 兼容路由
+│   ├── chat.ts             ← 会话 CRUD + 空列表兜底
+│   ├── provider.ts         ← AI Provider 注册 + 模型列表 + 默认模型切换
+│   ├── market.ts           ← Agent 市场 / 积分 / 雇佣
+│   ├── admin.ts            ← 管理面板 + 一键升级 POST /api/update
+│   ├── auth.ts             ← 注册 / 登录 / /auth/me
+│   ├── profile.ts          ← 个人资料 / 头像上传
+│   ├── misc.ts             ← 杂项（含 /api/rag/scan-workspace）
+│   └── upload.ts           ← 文件上传
 ├── src/middleware/
-│   ├── jwt-auth.ts         ← JWT 鉴权 (required/optional)
+│   ├── jwt-auth.ts         ← JWT 鉴权 + isTrustedLocalSource() 内网白名单
 │   ├── admin-auth.ts       ← Admin Token 鉴权 (fail-secure)
 │   └── rate-limit.ts       ← 内存限流 (X-Forwarded-For)
 ├── src/storage/db.ts       ← SQLite (better-sqlite3) 数据库
 ├── src/channels/           ← Telegram / Signal / iMessage 适配
 ├── src/voice/              ← TTS + STT
-└── web/index.html          ← 前端单文件 (1811行)
+└── web/
+    ├── index.html          ← 前端单文件 HTML（无硬编码假数据，JS 动态渲染）
+    └── js/app.js           ← 前端逻辑（~3700 行）
+        ├── loadProfileCard()       ← 左侧栏个人信息填充
+        ├── loadTaskMonitor()       ← 右侧栏任务监控（/api/cron）
+        ├── loadRightGoals()        ← 右侧栏目标任务（/api/goals）
+        ├── askGoal() / askAIAboutGoal()  ← AI 反向提问入口
+        ├── renderGoalQAForm()      ← 反问多选表单渲染（Q:/A:/B:/C:）
+        ├── applyGoalRefine()       ← 完善目标 / 加入验收 / 生成新目标
+        └── continueReverseAsk()   ← 继续反问（extra 上下文传递）
 ```
 
 ## 🔒 安全
