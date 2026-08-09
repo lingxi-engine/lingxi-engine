@@ -621,13 +621,7 @@ function handleMessage(msg) {
     case 'agent.streaming.start':
       // 总是注册流式状态（即使不在当前聊天），防止切走后丢失
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
-      if (genTimers[msg.chatId]) clearTimeout(genTimers[msg.chatId]);
-      genTimers[msg.chatId] = setTimeout(function() {
-        var gc = generatingChats[msg.chatId] || 0;
-        if (gc > 0) { generatingChats[msg.chatId] = 0; updateGenUI(); }
-        delete genTimers[msg.chatId];
-        if (msg.chatId === currentChat) toast("⏰ 生成超时，htoken已消耗但未产生完整回复，可重试或缩短提问");
-      }, 180000); // 3分钟超时保底
+      armGenTimer(msg.chatId);
       updateGenUI();
       appendStreamingMsg(msg);
       break;
@@ -635,9 +629,11 @@ function handleMessage(msg) {
       if (msg.chatId === currentChat) {
         appendToolCallRow(msg);
       }
+      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 工具执行中 → 续期
       break;
     case 'tool.result':
       updateToolCallRow(msg);
+      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 仍有活动 → 续期
       break;
     case 'agent.streaming.chunk':
       if (streamingMsgs[msg.msgId]) {
@@ -646,6 +642,7 @@ function handleMessage(msg) {
         s.el.querySelector('.msg-content').textContent = s.content;
         document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
       }
+      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId); // 有输出 → 续期
       break;
     case 'agent.streaming.think':
       if (streamingMsgs[msg.msgId]) {
@@ -656,10 +653,15 @@ function handleMessage(msg) {
           document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
         }
       }
+      if ((generatingChats[msg.chatId] || 0) > 0) armGenTimer(msg.chatId);
       break;
     case 'agent.streaming.end':
-      if (genTimers[msg.chatId]) { clearTimeout(genTimers[msg.chatId]); delete genTimers[msg.chatId]; }
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
+      if ((generatingChats[msg.chatId] || 0) > 0) {
+        armGenTimer(msg.chatId); // 还有其他 Agent 在生成，重置保底计时
+      } else if (genTimers[msg.chatId]) {
+        clearTimeout(genTimers[msg.chatId]); delete genTimers[msg.chatId];
+      }
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
         const dot = s.el.querySelector('.typing-dot');
@@ -1142,6 +1144,19 @@ function updateCtxInfo() {
 
 function isChatGenerating(chatId) {
   return (generatingChats[chatId] || 0) > 0;
+}
+// 生成保底计时器：必须大于后端总超时（router.ts TOTAL_TIMEOUT=10分钟），
+// 否则前端会提前误判"生成结束"→ 停止按钮消失、新消息不进队列。
+// 只要有输出/工具活动就会续期，真正卡死时才会触发。
+const GEN_TIMER_MS = 660000; // 11 分钟
+function armGenTimer(chatId) {
+  if (genTimers[chatId]) clearTimeout(genTimers[chatId]);
+  genTimers[chatId] = setTimeout(function() {
+    var gc = generatingChats[chatId] || 0;
+    if (gc > 0) { generatingChats[chatId] = 0; updateGenUI(); }
+    delete genTimers[chatId];
+    if (chatId === currentChat) toast("⏰ 生成超时，token 已消耗但未产生完整回复，可重试或缩短提问");
+  }, GEN_TIMER_MS);
 }
 // 根据"当前聊天是否生成中 / 队列是否有消息"刷新停止按钮和排队提示
 function updateGenUI() {

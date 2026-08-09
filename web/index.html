@@ -299,8 +299,13 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 .msg .who{font-size:11px;color:var(--text3);margin-bottom:2px}
 .input-area{display:flex;align-items:center;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:var(--bg2);height:56px}
 .input-area textarea{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--input-radius);font-size:13px;resize:none;font-family:var(--font);transition:all .3s}
-.input-area button{padding:6px 14px;border-radius:var(--btn-radius);border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;white-space:nowrap}
+.input-area button{padding:6px 14px;border-radius:var(--btn-radius);border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;white-space:nowrap;cursor:pointer}
 .input-area button.primary{background:var(--accent);color:#fff}
+.input-area .stop-btn{border-color:#e74c3c;color:#e74c3c;background:rgba(231,76,60,.08)}
+.input-area .stop-btn:hover{background:#e74c3c;color:#fff}
+.queue-bar{display:flex;align-items:center;gap:10px;padding:6px 14px;background:var(--bg3);border-top:1px solid var(--border);font-size:12px;color:var(--text2)}
+.queue-bar .queue-cancel-btn{padding:3px 10px;border-radius:var(--btn-radius);border:1px solid var(--border);background:transparent;color:var(--text2);font-size:12px;cursor:pointer}
+.queue-bar .queue-cancel-btn:hover{border-color:#e74c3c;color:#e74c3c}
 
 /* ══════════════ 右侧栏 ══════════════ */
 .rightbar{width:300px;min-width:300px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:background .4s,border-color .4s}
@@ -529,9 +534,14 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <div class="messages" id="messages">
         <div class="empty">选择或创建一个会话</div>
       </div>
+      <div id="queueBar" class="queue-bar" style="display:none">
+        <span id="queueCount"></span>
+        <button class="queue-cancel-btn" onclick="clearQueue()">取消排队</button>
+      </div>
       <div class="input-area">
         <textarea id="input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
         <button class="primary" id="sendBtn" onclick="send()">发送</button>
+        <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display:none">⏹ 停止</button>
       </div>
     </div>
 
@@ -1053,11 +1063,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-<div id="queueBar" style="display:none"></div>
-<div id="queueCount" style="display:none"></div>
+
 <div id="recordBtn" style="display:none"></div>
 <div id="routeModeTag" style="display:none"></div>
-<div id="stopBtn" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>
 
