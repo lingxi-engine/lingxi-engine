@@ -26,6 +26,9 @@ _*.py
 _*.txt
 _*.cjs
 _*.sql
+_*.js
+_*.html
+_*.png
 tsc_out.txt
 *.tar.gz
 
