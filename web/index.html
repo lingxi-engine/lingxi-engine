@@ -539,6 +539,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <button class="queue-cancel-btn" onclick="clearQueue()">取消排队</button>
       </div>
       <div class="input-area">
+        <button id="attachBtn" onclick="document.getElementById('fileInput').click()" style="border:none;background:none;font-size:16px;cursor:pointer;padding:4px;color:var(--text2)" title="发送文件/图片">📎</button>
+        <button id="recordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" onmouseleave="stopRecording()" ontouchstart="startRecording()" ontouchend="stopRecording()" style="border:1px solid var(--border);background:transparent;color:var(--text2);font-size:14px;cursor:pointer;padding:4px 8px;line-height:1;border-radius:var(--btn-radius)" title="按住说话，松开发送">🎙️</button>
         <textarea id="input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
         <button class="primary" id="sendBtn" onclick="send()">发送</button>
         <button class="stop-btn" id="stopBtn" onclick="stopGeneration()" style="display:none">⏹ 停止</button>
@@ -1028,9 +1030,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="chatSearchBar" style="display:none"></div>
 <div id="chatSearchInput" style="display:none"></div>
 <div id="chatSearchResults" style="display:none"></div>
-<div id="fileInput" style="display:none"></div>
-<div id="filePreview" style="display:none"></div>
-<div id="filePreviewName" style="display:none"></div>
+<input type="file" id="fileInput" style="display:none" onchange="previewFile()" accept="image/*,.pdf,.doc,.docx,.txt,.xls,.xlsx,.csv,.zip">
+<div id="filePreview" style="display:none;padding:6px 16px;background:var(--bg3);border-top:1px solid var(--border);font-size:12px;color:var(--text2)">📎 <span id="filePreviewName"></span><button onclick="clearFile()" style="background:none;border:none;color:var(--red);cursor:pointer;margin-left:8px;font-size:14px" title="移除文件">×</button></div>
 <div id="friendPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
   <!-- 搜索栏 -->
   <div style="padding:10px;border-bottom:1px solid var(--border)">
@@ -1064,7 +1065,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
 
-<div id="recordBtn" style="display:none"></div>
+<style>#recordBtn.recording{border-color:var(--red) !important;color:var(--red) !important;background:rgba(231,76,60,.1) !important}</style>
 <div id="routeModeTag" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>

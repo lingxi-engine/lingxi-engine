@@ -17,7 +17,7 @@ import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
-import { jwtAuth } from './src/middleware/jwt-auth.js';
+import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
@@ -509,6 +509,29 @@ setSearchManager(searchManagerInstance);
   }
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
   port = await resolveAvailablePort(port, autoPort);
+
+  // ── v2.0.7: 健康检查端点（置于鉴权/限流之前，供探针与部署脚本使用）──
+  // 同时保留旧响应字段 status/agents/time，兼容前端状态栏与冒烟测试
+  app.get('/api/health', (_req, res) => {
+    try {
+      let dbOk = false;
+      try { dbOk = !!db && typeof (db as any).getUser === 'function'; } catch { dbOk = false; }
+      res.json({
+        ok: true,
+        status: 'ok',
+        version: (process.env.npm_package_version) || '2.0.7',
+        agents: manager.list().length,
+        time: Date.now(),
+        uptime: Math.floor(process.uptime()),
+        memory: process.memoryUsage().rss,
+        wsConnections: clients.size,
+        db: dbOk,
+        timestamp: Date.now(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ── 全局鉴权兜底：所有 /api 路由至少走一次 JWT 检查 ──
   app.use('/api', jwtAuth({ required: false }));
@@ -1259,10 +1282,7 @@ setSearchManager(searchManagerInstance);
   const mm = now.getMinutes();
   const APP_VERSION = `v${Y}.${M}.${D}-${HH}.${mm}`;
 
-  app.get('/api/health', (_req, res) => {
-    try { res.json({ status: 'ok', agents: manager.list().length, time: Date.now(), version: APP_VERSION }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
+  // v2.0.7: /api/health 已前移至鉴权之前注册（见上方），此处旧注册已移除
 
   app.get('/api/version', (_req, res) => {
     res.json({ version: APP_VERSION });
@@ -2761,16 +2781,18 @@ setSearchManager(searchManagerInstance);
     if (!clientId) {
       const devAnonId = params.get('id');
       const adminToken = process.env.ADMIN_TOKEN;
+      // v2.0.7: 免登录连接仅限本地/内网来源（与 jwt-auth 中间件一致），公网必须携带 token
+      const localOnly = isTrustedLocalSource(req as any);
       // v1.9.9: ADMIN_TOKEN 模式——配了 ADMIN_TOKEN 就允许免登录连接
-      if (adminToken && devAnonId) {
+      if (adminToken && devAnonId && localOnly) {
         clientId = devAnonId;
         console.log('[WS] ADMIN_TOKEN 模式免登录连接:', clientId);
-      } else if (devAnonId) {
+      } else if (devAnonId && localOnly) {
         // v2.0.5: 个人本地引擎兜底——无 token 时始终允许连接（与 jwt-auth 中间件一致）
         clientId = devAnonId;
         console.log('[WS] 本地引擎免登录连接:', clientId);
       } else {
-        console.warn('[WS] 拒绝未认证连接 - 缺少客户端 ID');
+        console.warn('[WS] 拒绝未认证连接 - 缺少客户端 ID 或来源不受信任');
         ws.close(4001, '认证失败：请提供有效的 JWT token');
         return;
       }
