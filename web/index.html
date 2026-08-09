@@ -296,10 +296,10 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 .task-card .task-actions .del{color:var(--red)}
 .goal-item{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:10px;margin-bottom:8px;box-shadow:var(--shadow);transition:all .3s}
 .goal-item .goal-head{display:flex;align-items:center;gap:6px;font-size:13px}
-.goal-item .goal-head .g-status{font-size:12px}
+.goal-item .goal-head .g-status{font-size:16px}
 .goal-item .goal-bar{height:5px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
 .goal-item .goal-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
-.goal-item .goal-foot{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);margin-top:5px}
+.goal-item .goal-foot{display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:5px}
 .add-goal{padding:8px;border:1px dashed var(--border);border-radius:var(--radius);background:transparent;color:var(--text2);width:100%;font-size:12px;margin-top:4px}
 .add-goal:hover{color:var(--accent);border-color:var(--accent)}
 
@@ -444,17 +444,18 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="profile-detail" id="profileDetail">
       <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">加载中...</span></div>
       <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val" id="pdEmail">加载中...</span></div>
       <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">加载中...</span><span class="pd-note green">可用于雇佣等消费</span></div>
       <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">¥ --</span><span class="pd-note">功能暂未开放，敬请期待</span></div>
-      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val" id="pdRating">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val" id="pdUsage">加载中...</span></div>
       <div class="pd-bio" id="pdBio">加载中...</div>
       <div class="pd-actions">
-        <button class="primary">编辑资料</button>
-        <button>上传头像</button>
-        <button>积分明细</button>
+        <button class="primary" onclick="editProfile()">编辑资料</button>
+        <button onclick="uploadAvatar()">上传头像</button>
+        <button onclick="showCreditsDetail()">积分明细</button>
       </div>
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="doUploadAvatar(this)">
     </div>
 
     <!-- 功能导航（纯文字） -->

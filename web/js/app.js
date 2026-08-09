@@ -2316,9 +2316,136 @@ async function loadProfileCard() {
     el = document.getElementById('pcCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString() + ' 积分';
     el = document.getElementById('pdName'); if (el) el.textContent = name;
     el = document.getElementById('pdId'); if (el) el.textContent = esc(String(idShow));
+    el = document.getElementById('pdEmail'); if (el) el.textContent = esc(email || '未设置');
     el = document.getElementById('pdCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString();
+    el = document.getElementById('pdRating'); if (el) el.textContent = rating;
+    el = document.getElementById('pdUsage'); if (el) el.textContent = 'Token: ' + Number(tokens).toLocaleString() + ' · 调用: ' + Number(calls).toLocaleString();
     el = document.getElementById('pdBio'); if (el) el.textContent = bio ? '个人介绍：' + esc(bio) : '暂无介绍';
   } catch(e) { console.error('[loadProfileCard]', e); }
+}
+
+// ── 编辑资料 ──
+async function editProfile() {
+  var token = localStorage.getItem('authToken');
+  if (!token) { toast('请先登录'); return; }
+  // 获取当前用户 ID
+  var userId = clientId || '';
+  if (!userId) { toast('无法获取用户信息'); return; }
+  // 获取当前资料
+  var curName = '', curBio = '';
+  try {
+    var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
+    if (pr && pr.ok && pr.profile) {
+      curName = pr.profile.display_name || '';
+      curBio = pr.profile.bio || '';
+    }
+  } catch(e) {}
+  // 弹出编辑框
+  var newName = prompt('请输入新的用户名：', curName);
+  if (newName === null) return;
+  var newBio = prompt('请输入个人介绍：', curBio);
+  if (newBio === null) return;
+  try {
+    var r = await api('/api/profile', 'PUT', { userId: userId, displayName: newName, bio: newBio });
+    if (r && r.ok) {
+      toast('✅ 资料已更新');
+      loadProfileCard();
+    } else {
+      toast('❌ 更新失败: ' + (r?.error || '未知错误'));
+    }
+  } catch(e) { toast('❌ 更新失败: ' + e.message); }
+}
+
+// ── 上传头像 ──
+function uploadAvatar() {
+  var token = localStorage.getItem('authToken');
+  if (!token) { toast('请先登录'); return; }
+  var input = document.getElementById('avatarFileInput');
+  if (input) input.click();
+}
+async function doUploadAvatar(input) {
+  var file = input.files[0];
+  if (!file) return;
+  input.value = ''; // 重置以便下次可选同一文件
+  var userId = clientId || '';
+  if (!userId) { toast('无法获取用户信息'); return; }
+  // 校验文件类型
+  if (!/^image\//.test(file.type)) { toast('请选择图片文件'); return; }
+  if (file.size > 5 * 1024 * 1024) { toast('图片大小不能超过 5MB'); return; }
+  var fd = new FormData();
+  fd.append('file', file);
+  fd.append('userId', userId);
+  try {
+    toast('上传中...');
+    var token = localStorage.getItem('authToken');
+    var res = await fetch('/api/profile/avatar', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: fd
+    });
+    var data = await res.json();
+    if (data && data.ok) {
+      toast('✅ 头像上传成功');
+      loadProfileCard();
+    } else {
+      toast('❌ 上传失败: ' + (data?.error || '未知错误'));
+    }
+  } catch(e) { toast('❌ 上传失败: ' + e.message); }
+}
+
+// ── 积分明细 ──
+async function showCreditsDetail() {
+  var token = localStorage.getItem('authToken');
+  if (!token) { toast('请先登录'); return; }
+  var userId = clientId || '';
+  if (!userId) { toast('无法获取用户信息'); return; }
+  // 获取积分余额
+  var credits = 0, totalEarned = 0, totalSpent = 0;
+  try {
+    var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
+    if (pr && pr.ok) {
+      credits = pr.credits || 0;
+      totalEarned = pr.totalEarned || 0;
+      totalSpent = pr.totalSpent || 0;
+    }
+  } catch(e) {}
+  // 获取积分历史
+  var history = [];
+  try {
+    var hr = await api('/api/credits/history?userId=' + encodeURIComponent(userId));
+    if (hr && hr.ok && hr.history) history = hr.history;
+  } catch(e) {}
+  // 构建弹窗内容
+  var html = '<div style="margin-bottom:12px">';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:var(--accent)">' + Number(credits).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">当前积分</div></div>';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#4ade80">' + Number(totalEarned).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">累计获得</div></div>';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#f59e0b">' + Number(totalSpent).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">累计消费</div></div>';
+  html += '</div>';
+  if (history.length > 0) {
+    html += '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">📜 积分变动记录</div>';
+    html += '<div style="max-height:300px;overflow-y:auto">';
+    for (var i = 0; i < history.length; i++) {
+      var h = history[i];
+      var isEarn = h.amount > 0;
+      var time = h.created_at ? new Date(h.created_at).toLocaleString('zh-CN') : '';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--border)">';
+      html += '<div><span style="color:' + (isEarn ? '#4ade80' : '#f59e0b') + ';font-weight:600">' + (isEarn ? '+' : '') + h.amount + '</span> <span style="font-size:11px;color:var(--text3);margin-left:6px">' + esc(h.reason || '') + '</span></div>';
+      html += '<div style="font-size:10px;color:var(--text3)">' + esc(time) + '</div>';
+      html += '</div>';
+    }
+    html += '</div>';
+  } else {
+    html += '<div style="text-align:center;color:var(--text3);padding:20px 0">暂无积分变动记录</div>';
+  }
+  html += '</div>';
+  // 用已有的 profileModal 显示
+  var box = document.getElementById('profileContent');
+  if (box) {
+    document.getElementById('profileOverlay').style.display = 'block';
+    document.getElementById('profileModal').style.display = 'block';
+    box.innerHTML = html;
+  }
 }
 
 // ── 个人中心弹窗 ──
@@ -2949,11 +3076,11 @@ async function loadGoals() {
     if (!goals.length) { el.innerHTML = '<span style="color:var(--text3)">暂无目标，在上方输入添加</span>'; return; }
     el.innerHTML = goals.map(g => {
       const acts = [];
-      if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="开始" style="cursor:pointer">▶️</a>');
-      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="完成" style="cursor:pointer">✅</a>');
-      if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="恢复" style="cursor:pointer">↩️</a>');
-      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer">❓</a>');
-      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="删除" style="cursor:pointer">🗑️</a>');
+      if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="开始" style="cursor:pointer;font-size:16px">▶️</a>');
+      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="完成" style="cursor:pointer;font-size:16px">✅</a>');
+      if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="恢复" style="cursor:pointer;font-size:16px">↩️</a>');
+      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer;font-size:16px">❓</a>');
+      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="删除" style="cursor:pointer;font-size:16px">🗑️</a>');
       const style = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3)">' + esc(g.acceptanceCriteria) + '</div>' : '';
       return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">' +
@@ -3038,7 +3165,7 @@ function renderGoalQAForm(content, msgEl, chatId) {
   }
   // 自定义输入
   html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">自定义补充：</div>';
-  html += '<input type="text" style="width:90%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg1)" placeholder="输入你的补充..."></div>';
+  html += '<input type="text" style="width:90%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text)" placeholder="输入你的补充..."></div>';
   html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
   html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,\'refine\')">✅ 完善目标</button>';
   html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'criteria\')">📎 加入验收标准</button>';
@@ -3728,11 +3855,11 @@ async function loadRightGoals() {
       const style = st === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (st === 'cancelled' ? 'color:var(--text3)' : '');
       const gid = esc(g.id);
       let acts = '';
-      if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="开始" style="cursor:pointer">▶️</a> ';
-      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="完成" style="cursor:pointer">✅</a> ';
-      if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="恢复" style="cursor:pointer">↩️</a> ';
-      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer">❓</a> ';
-      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="删除" style="cursor:pointer">🗑️</a>';
+      if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="开始" style="cursor:pointer;font-size:16px">▶️</a> ';
+      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="完成" style="cursor:pointer;font-size:16px">✅</a> ';
+      if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="恢复" style="cursor:pointer;font-size:16px">↩️</a> ';
+      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer;font-size:16px">❓</a> ';
+      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="删除" style="cursor:pointer;font-size:16px">🗑️</a>';
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">' + esc(g.acceptanceCriteria) + '</div>' : '';
       const barColor = st === 'done' ? 'var(--green)' : 'var(--accent)';
       const barWidth = st === 'done' ? 100 : (st === 'in_progress' ? 50 : 0);

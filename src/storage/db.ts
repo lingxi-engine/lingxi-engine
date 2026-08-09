@@ -112,8 +112,8 @@ function _dbInit(db: any) {
       publisher_id TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT '閫氱敤',
-      price INTEGER NOT NULL DEFAULT 0,  -- 绉垎/娆?
+      category TEXT NOT NULL DEFAULT '通用',
+      price INTEGER NOT NULL DEFAULT 0,  -- 积分/次
       tags TEXT NOT NULL DEFAULT '[]',
       rating REAL DEFAULT 0,
       hire_count INTEGER DEFAULT 0,
@@ -219,7 +219,7 @@ function _dbInit(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_inbox_agent ON inbox(agent_id, created_at DESC);
 
-    -- 鈹€鈹€ V7: 鎸佷箙韬唤浣撶郴 鈹€鈹€
+    -- ———— V7: 持久身份体系 ————
     CREATE TABLE IF NOT EXISTS user_verifications (
       id TEXT PRIMARY KEY,
       user_id TEXT NOT NULL REFERENCES users(id),
@@ -265,7 +265,7 @@ function _dbInit(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_entities_chat ON entities(chat_id, agent_id);
 
-    -- 鐢ㄦ埛绉垎
+    -- 用户积分
     CREATE TABLE IF NOT EXISTS user_credits (
       user_id TEXT PRIMARY KEY REFERENCES users(id),
       credits INTEGER DEFAULT 1000,
@@ -274,7 +274,7 @@ function _dbInit(db: any) {
       updated_at INTEGER
     );
 
-    -- 娑堟伅璇勪环锛堟槦绾э級
+    -- 消息评价（星级）
     CREATE TABLE IF NOT EXISTS message_ratings (
       id TEXT PRIMARY KEY,
       message_id TEXT NOT NULL,
@@ -286,7 +286,18 @@ function _dbInit(db: any) {
     CREATE INDEX IF NOT EXISTS idx_ratings_msg ON message_ratings(message_id);
     CREATE INDEX IF NOT EXISTS idx_ratings_user ON message_ratings(user_id);
 
-    -- 宸ヤ綔娴佺紪鎺?
+    -- 积分变动记录
+    CREATE TABLE IF NOT EXISTS credit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      reason TEXT,
+      balance_after INTEGER,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_credit_log_user ON credit_log(user_id);
+
+    -- 工作流编排
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -303,7 +314,7 @@ function _dbInit(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
 
-    -- 鏂规C: LAN 缇ら個璇风‘璁よ〃
+    -- 方案C: LAN 群邀请确认表
     CREATE TABLE IF NOT EXISTS lan_group_invites (
       id TEXT PRIMARY KEY,
       group_id TEXT NOT NULL,
@@ -321,7 +332,7 @@ function _dbInit(db: any) {
     CREATE INDEX IF NOT EXISTS idx_lan_group_invites_user ON lan_group_invites(invited_user_id, status);
     CREATE INDEX IF NOT EXISTS idx_lan_group_invites_group ON lan_group_invites(group_id);
 
-    -- 鏂规C: LAN 绀句氦 - 璺ㄥ紩鎿庡彲瑙佺殑缇ょ粍
+    -- 方案C: LAN 社交 - 跨引擎可见的群组
     CREATE TABLE IF NOT EXISTS lan_groups (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -344,7 +355,7 @@ function _dbInit(db: any) {
     );
         CREATE INDEX IF NOT EXISTS idx_lan_group_members_group ON lan_group_members(group_id);
 
-    -- LAN 杩滅▼韬唤缂撳瓨
+    -- LAN 远程身份缓存
     CREATE TABLE IF NOT EXISTS lan_remote_identities (
       user_id TEXT PRIMARY KEY,
       instance_id TEXT NOT NULL,
@@ -354,7 +365,7 @@ function _dbInit(db: any) {
       updated_at INTEGER NOT NULL
     );
 
-    -- 闆囦剑鍏崇郴琛?
+    -- 雇佣关系表
     CREATE TABLE IF NOT EXISTS hires (
       id TEXT PRIMARY KEY,
       listing_id TEXT NOT NULL,
@@ -370,7 +381,7 @@ function _dbInit(db: any) {
     );
     CREATE INDEX IF NOT EXISTS idx_hires_buyer ON hires(buyer_id, status);
     CREATE INDEX IF NOT EXISTS idx_hires_seller ON hires(seller_id, status);
-    -- 鍥㈤槦鍗忎綔 (TeamManager 鎸佷箙鍖?
+    -- 团队协作 (TeamManager 持久化)
     CREATE TABLE IF NOT EXISTS team_groups (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
@@ -410,13 +421,13 @@ function _dbInit(db: any) {
     addIf('updated_at', 'INTEGER NOT NULL DEFAULT 0');
     addIf('last_active_at', 'INTEGER');
     addIf('avatar_url', 'TEXT DEFAULT ""');       // 澶村儚URL
-    addIf('bio', 'TEXT DEFAULT ""');              // 涓汉浠嬬粛
+    addIf('bio', 'TEXT DEFAULT ""');              // 个人介绍
     // numeric_id uniqueness 鈥?best-effort via index
     try { db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_numeric_id ON users(numeric_id)`); } catch(_e) {}
     // email uniqueness
     try { db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)`); }
     catch(_e) {}
-    // 琛ュ厖澶栭敭绱㈠紩
+    // 补充外键索引
     try { db.exec(`CREATE INDEX IF NOT EXISTS idx_chats_id ON chats(id)`); } catch(_e) {}
     try { db.exec(`CREATE INDEX IF NOT EXISTS idx_rag_docs_id ON rag_documents(id)`); } catch(_e) {}
     // set sqlite_sequence seed so next numeric_id starts at 10000
@@ -426,12 +437,12 @@ function _dbInit(db: any) {
       if (!seqRow || (seqRow[0] as number) < 9999) {
         db.run(`INSERT OR REPLACE INTO sqlite_sequence (name, seq) VALUES ('users', 9999)`);
       }
-    } catch(_e) { /* sqlite_sequence 琛ㄤ笉瀛樺湪鏃跺拷鐣?鈥?鎴戜滑鐢ㄦ墜鍔?_nextNumericId */ }
+    } catch(_e) { /* sqlite_sequence 表不存在时忽略，我们用手动 _nextNumericId */ }
   } catch (e: any) {
     console.warn('[DB] V7 migration warning:', e.message);
   }
 
-  // 鈹€鈹€ v1.4.0: 杩佺Щ 鈥?缁?chats 琛ㄨˉ shared_workspace 鍒?鈹€鈹€
+  // —— v1.4.0: 迁移：给 chats 表补 shared_workspace 列 ——
   try {
     const chatCols = db.exec(`PRAGMA table_info(chats)`)[0]?.values?.map((r: any) => r[1]) || [];
     if (!chatCols.includes('shared_workspace')) {
@@ -442,7 +453,7 @@ function _dbInit(db: any) {
     console.warn('[DB] v1.4.0 migration warning:', e.message);
   }
 
-  // 鈹€鈹€ v1.7.2: 杩佺Щ 鈥?缁?chats 琛ㄨˉ chat_mode 鍒楋紙缇よ亰鍗忎綔妯″紡鎸佷箙鍖栵級鈹€鈹€
+  // —— v1.7.2: 迁移：给 chats 表补 chat_mode 列（群聊协作模式持久化）——
   try {
     const chatCols2 = db.exec(`PRAGMA table_info(chats)`)[0]?.values?.map((r: any) => r[1]) || [];
     if (!chatCols2.includes('chat_mode')) {
@@ -454,7 +465,7 @@ function _dbInit(db: any) {
   }
 }
 
-// 鈹€鈹€ 杈呭姪锛氬甫鍙傛暟鐨?SELECT 鏌ヨ锛坰ql.js exec 涓嶆敮鎸佸弬鏁扮粦瀹氾級
+// —— 辅助：带参数的 SELECT 查询（sql.js exec 不支持参数绑定）
 function queryAll(sql: string, params: any[] = []): any[][] {
   const stmt = _db.prepare(sql);
   if (params.length) stmt.bind(params);
@@ -481,11 +492,11 @@ function queryObjects(sql: string, params: any[] = []): any[] {
   return rows;
 }
 
-// 鈹€鈹€ Users 鈹€鈹€
+// ———— Users ————
 export function createUser(id: string, displayName: string, email?: string, username?: string) {
   const now = Date.now();
   _db.run("INSERT INTO users (id, display_name, email, username, created_at) VALUES (?, ?, ?, ?, ?)", [id, displayName, email ?? null, username ?? null, now]);
-  // 涓嶅啀鑷姩寤?dummy agent锛岀敱 AgentManager.register 缁熶竴绠＄悊
+  // 不再自动创建 dummy agent，由 AgentManager.register 统一管理
   return { id, displayName, email, username, createdAt: now };
 }
 
@@ -509,7 +520,7 @@ export function listUsers() {
   return queryObjects("SELECT * FROM users");
 }
 
-// 鈹€鈹€ Agents 鈹€鈹€
+// ———— Agents ————
 export function createAgent(id: string, userId: string, displayName: string, personality: string, autonomy: string, model?: string) {
   const now = Date.now();
   _db.run(
@@ -531,7 +542,7 @@ export function listAgents() {
   return queryObjects("SELECT * FROM agents");
 }
 
-// Bug #14 淇锛歋QL 鍙傛暟鐢ㄦ暟缁勪紶閫掞紝涓嶅啀鐢?spread
+// Bug #14 修复：SQL 参数用数组传递，不再用 spread
 export function updateAgent(agentId: string, updates: Record<string, any>) {
   const allowed = ['personality', 'memory_summary', 'memory_facts', 'status', 'model', 'display_name'];
   const sets: string[] = [];
@@ -552,7 +563,7 @@ export function updateAgentMemory(agentId: string, summary: string, facts: Recor
   _db.run("UPDATE agents SET memory_summary = ?, memory_facts = ? WHERE id = ?", [summary, JSON.stringify(facts), agentId]);
 }
 
-// v1.4.0: 缇よ亰鐙珛璁板繂
+// v1.4.0: 群聊独立记忆
 export function upsertChatMemory(chatId: string, agentId: string, summary: string, facts: Record<string, string>) {
   const id = `${chatId}:${agentId}`;
   const now = Date.now();
@@ -587,7 +598,7 @@ export function appendMemorySummary(agentId: string, newContent: string) {
   _db.run("UPDATE agents SET memory_summary = ? WHERE id = ?", [trimmed, agentId]);
 }
 
-// 鈹€鈹€ Chats 鈹€鈹€
+// ———— Chats ————
 export function createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string) {
   const now = Date.now();
   _db.run("INSERT INTO chats (id, type, shared_workspace, created_at) VALUES (?, ?, ?, ?)", [id, type, sharedWorkspace ?? null, now]);
@@ -621,7 +632,7 @@ export function updateChatWorkspace(id: string, sharedWorkspace: string | null) 
   _db.run("UPDATE chats SET shared_workspace = ? WHERE id = ?", [sharedWorkspace, id]);
 }
 
-// 鈹€鈹€ 缇よ亰鍗忎綔妯″紡锛坴1.7.2锛夆攢鈹€
+// —— 群聊协作模式（v1.7.2）——
 export const CHAT_MODES = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote'] as const;
 export type ChatModeType = typeof CHAT_MODES[number];
 
@@ -654,7 +665,7 @@ export function removeParticipant(chatId: string, userId: string, agentId?: stri
   }
 }
 
-// 鈹€鈹€ Messages 鈹€鈹€
+// ———— Messages ————
 export function addMessage(msg: DBMessage) {
   _db.run(
     "INSERT INTO messages (id, chat_id, sender_type, sender_id, content, type, reply_to, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -671,7 +682,7 @@ export function listMessages(chatId: string, limit = 100) {
   return queryObjects("SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?", [chatId, limit]).reverse();
 }
 
-// 鈹€鈹€ 楠岃瘉鐮?鈹€鈹€
+// —— 验证码 ——
 export function saveVerificationCode(email: string, code: string, username?: string, expiresAtMs?: number) {
   const now = Date.now();
   const exp = expiresAtMs ?? now + 5 * 60 * 1000;
@@ -693,7 +704,7 @@ export function deleteVerificationCode(email: string) {
   _db.run("DELETE FROM verification_codes WHERE email = ?", [email]);
 }
 
-// 鈹€鈹€ Friendships 鈹€鈹€
+// ———— Friendships ————
 export function messageExists(msgId: string): boolean {
   const row = queryOne("SELECT 1 FROM messages WHERE id = ?", [msgId]);
   return !!row;
@@ -701,7 +712,7 @@ export function messageExists(msgId: string): boolean {
 export function sendFriendRequest(fromUserId: string, toUserId: string, message: string = '') {
   const now = Date.now();
   const id = 'friend-' + now + '-' + Math.random().toString(36).slice(2, 6);
-  // Check if already exists (鍙屽悜妫€鏌ワ紝闃叉鍙嶅悜閲嶅)
+  // Check if already exists (双向检查，防止反向重复)
   let existingRow = queryOne("SELECT id, status FROM friendships WHERE from_user_id = ? AND to_user_id = ?", [fromUserId, toUserId]);
   if (!existingRow) {
     existingRow = queryOne("SELECT id, status FROM friendships WHERE from_user_id = ? AND to_user_id = ?", [toUserId, fromUserId]);
@@ -711,8 +722,8 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
     // friendships columns: id, from_user_id, to_user_id, status, message, created_at, updated_at
     const existingId = existingRow[0];
     const status = existingRow[1];
-    if (status === 'pending') return { error: '濂藉弸鐢宠宸插彂閫侊紝绛夊緟瀵规柟澶勭悊' };
-    if (status === 'accepted') return { error: '浣犱滑宸茬粡鏄ソ鍙嬩簡' };
+    if (status === 'pending') return { error: '好友申请已发送，等待对方处理' };
+    if (status === 'accepted') return { error: '你们已经是好友了' };
     // If denied, allow re-send
     _db.run("UPDATE friendships SET status='pending', message=?, created_at=?, updated_at=? WHERE id=?", [message, now, now, existingId]);
     return { ok: true, id: existingId, status: 'pending' };
@@ -794,7 +805,7 @@ export function deleteFriendshipByPair(fromUserId: string, toUserId: string): vo
   _db.run("DELETE FROM participants WHERE chat_id = ?", ["chat-" + fromUserId + "-" + toUserId]);
   _db.run("DELETE FROM friendships WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)", [fromUserId, toUserId, toUserId, fromUserId]);
 }
-// 鈹€鈹€ LAN Remote Identities 鈹€鈹€
+// ———— LAN Remote Identities ————
 export function upsertLanRemoteIdentity(params: {
   userId: string;
   instanceId: string;
@@ -828,7 +839,7 @@ export function getAgentByUserId(userId: string) {
   return null;
 }
 
-// 鈹€鈹€ Types 鈹€鈹€
+// ———— Types ————
 export interface DBMessage {
   id: string;
   chatId: string;
@@ -842,11 +853,11 @@ export interface DBMessage {
 }
 
 /**
- * DB 绫?- 鍏煎鏃х増 `new DB(...)` 椋庢牸鐨勫叆鍙ｏ紝浣嗗唴閮ㄧ敤鍏ㄥ眬 _db
- * 杩欐牱 AgentManager 杩欑 `this.db.listAgents()` 鐨勫啓娉曞彲浠ョ洿鎺ュ伐浣溿€?
+ * DB 类 - 兼容旧版 `new DB(...)` 风格的入口，但内部用全局 _db
+ * 这样 AgentManager 这种 `this.db.listAgents()` 的写法可以直接工作。
  */
 
-// 鈹€鈹€ 绉垎 CRUD 鈹€鈹€
+// ———— 积分 CRUD ————
 
 export function ensureUserCredits(userId: string): void {
   const existing = queryOne("SELECT user_id FROM user_credits WHERE user_id = ?", [userId]);
@@ -875,7 +886,9 @@ export function addCredits(userId: string, amount: number, note?: string): numbe
     [amount, amount, Date.now(), userId]
   );
   const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
-  return row ? Number(row[0]) : 0;
+  const balance = row ? Number(row[0]) : 0;
+  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, Math.abs(amount), note || '系统奖励', balance, Date.now()]); } catch {}
+  return balance;
 }
 
 export function spendCredits(userId: string, amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
@@ -883,17 +896,34 @@ export function spendCredits(userId: string, amount: number, note?: string): { o
   const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
   const balance = row ? Number(row[0]) : 1000;
   if (balance < amount) {
-    return { ok: false, balance, error: '绉垎涓嶈冻锛岄渶瑕?' + amount + '锛屽綋鍓?' + balance };
+    return { ok: false, balance, error: '积分不足，需要 ' + amount + '，当前 ' + balance };
   }
   _db.run(
     "UPDATE user_credits SET credits = credits - ?, total_spent = total_spent + ?, updated_at = ? WHERE user_id = ?",
     [amount, amount, Date.now(), userId]
   );
   const newRow = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
-  return { ok: true, balance: newRow ? Number(newRow[0]) : 0 };
+  const newBal = newRow ? Number(newRow[0]) : 0;
+  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, -Math.abs(amount), note || '消费支出', newBal, Date.now()]); } catch {}
+  return { ok: true, balance: newBal };
 }
 
-// 鈹€鈹€ 闆囦剑 CRUD 鈹€鈹€
+// 获取积分变动历史
+export function getCreditHistory(userId: string, limit: number = 50): any[] {
+  try {
+    const stmt = _db.prepare("SELECT id, user_id, amount, reason, balance_after, created_at FROM credit_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
+    stmt.bind([userId, limit]);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      const r = stmt.getAsObject();
+      rows.push({ id: r.id, userId: r.user_id, amount: r.amount, reason: r.reason, balanceAfter: r.balance_after, created_at: r.created_at });
+    }
+    stmt.free();
+    return rows;
+  } catch { return []; }
+}
+
+// ———— 雇佣 CRUD ————
 
 export function createHire(params: {
   id: string; listingId: string; buyerId: string; sellerId: string;
@@ -957,7 +987,7 @@ export class DB {
     return addParticipant(id, chatId, userId, agentId, role);
   }
   getChatParticipants(chatId: string) { return getChatParticipants(chatId); }
-  /** listParticipants 鍒悕 (鍏煎鏃т唬鐮? */
+  /** listParticipants 别名 (兼容旧代码) */
   listParticipants(chatId: string) { return getChatParticipants(chatId); }
   listChats() { return listChats(); }
   getChatMode(chatId: string) { return getChatMode(chatId); }
@@ -976,7 +1006,7 @@ export class DB {
   insertRagDocument(doc: any) { return insertRagDocument(doc); }
   insertRagChunk(chunk: any) { return insertRagChunk(chunk); }
   deleteRagDocument(docId: string) { return deleteRagDocument(docId); }
-  /** 鏀朵欢绠?*/
+  /** 收件箱 */
   addInboxItem(item: any) { return addInboxItem(item); }
   listInbox(agentId?: string) { return listInbox(agentId); }
   markInboxRead(id: string) { return markInboxRead(id); }
@@ -987,14 +1017,14 @@ export class DB {
   respondFriendRequest(requestId: string, action: 'accept' | 'reject') { return respondFriendRequest(requestId, action); }
   getFriendRequests(userId: string) { return getFriendRequests(userId); }
   listFriends(userId: string) { return listFriends(userId); }
-  /** 璁?manager.update 杩欑 `db.db.prepare(...)` 椋庢牸涔熻兘宸ヤ綔 */
+  /** 让 manager.update 这种 `db.db.prepare(...)` 风格也能工作 */
   getAgentByUserId(userId: string) { return getAgentByUserId(userId); }
   markChatRead(userId: string, chatId: string) { return markChatRead(userId, chatId); }
   getUnreadCount(userId: string) { return getUnreadCount(userId); }
   getChatUnreadCounts(userId: string) { return getChatUnreadCounts(userId); }
   get db() { return _db; }
 
-  // 鈹€鈹€ Entity 鎸佷箙鍖?鈹€鈹€
+  // —— Entity 持久化 ——
   getEntities(chatId: string, agentId: string): any[] {
     return queryObjects('SELECT * FROM entities WHERE chat_id = ? AND agent_id = ? ORDER BY count DESC LIMIT 50', [chatId, agentId]);
   }
@@ -1012,25 +1042,26 @@ export class DB {
     _db.run('DELETE FROM entities WHERE chat_id=? AND agent_id=?', [chatId, agentId]);
   }
 
-  // 鈹€鈹€ 鏂规C: LAN 缇ら個璇?鈹€鈹€
+  // —— 方案C: LAN 群邀请 ——
   saveLanGroupInvite(params: Parameters<typeof saveLanGroupInvite>[0]) { return saveLanGroupInvite(params); }
   listLanGroupInvites(userId: string, status?: string) { return listLanGroupInvites(userId, status); }
   updateLanGroupInviteStatus(id: string, status: string) { return updateLanGroupInviteStatus(id, status); }
   getLanGroupInviteByGroup(userId: string, groupId: string) { return getLanGroupInviteByGroup(userId, groupId); }
   getLanGroupInvite(id: string) { return getLanGroupInvite(id); }
 
-  // 鈹€鈹€ 鏂规C: LAN 缇ょ粍 鈹€鈹€
+  // ———— 方案C: LAN 群组 ————
   createLanGroup(id: string, name: string, ownerInstance: string, ownerUserId: string, chatMode?: string) { return createLanGroup(id, name, ownerInstance, ownerUserId, chatMode); }
   getLanGroup(id: string) { return getLanGroup(id); }
   listLanGroups() { return listLanGroups(); }
   deleteLanGroup(id: string) { return deleteLanGroup(id); }
   addLanGroupMember(params: Parameters<typeof addLanGroupMember>[0]) { return addLanGroupMember(params); }
   getLanGroupMembers(groupId: string) { return getLanGroupMembers(groupId); }
-  // 鈹€鈹€ 绉垎 鈹€鈹€
+  // ———— 积分 ————
   getUserCredits(userId: string) { return getUserCredits(userId); }
   addCredits(userId: string, amount: number, note?: string) { return addCredits(userId, amount, note); }
   spendCredits(userId: string, amount: number) { return spendCredits(userId, amount); }
-  // 鈹€鈹€ 闆囦剑 鈹€鈹€
+  getCreditHistory(userId: string, limit?: number) { return getCreditHistory(userId, limit); }
+  // ———— 雇佣 ————
   createHire(params: Parameters<typeof createHire>[0]) { return createHire(params); }
   getHire(id: string) { return getHire(id); }
   listHiresByBuyer(userId: string, status?: string) { return listHiresByBuyer(userId, status); }
@@ -1040,7 +1071,7 @@ export class DB {
 }
 
 
-// 鈹€鈹€鈹€ RAG 鐭ヨ瘑搴撴寔涔呭寲 鈹€鈹€鈹€
+// —————— RAG 知识库持久化 ——————
 
 export function insertRagDocument(doc: {
   id: string; title: string; source: string; mimeType: string; content: string;
@@ -1081,7 +1112,7 @@ export function deleteRagDocument(docId: string): void {
   _db.run("DELETE FROM rag_documents WHERE id = ?", [docId]);
 }
 
-// 鈹€鈹€鈹€ 鏀朵欢绠?鈹€鈹€鈹€
+// —— 收件箱 ——
 
 export function addInboxItem(item: {
   id: string;
@@ -1115,9 +1146,9 @@ export function deleteInboxItem(id: string): void {
 }
 
 
-// 鈹€鈹€ 鑱婂ぉ宸茶鐘舵€?鈹€鈹€
+// —— 聊天已读状态 ——
 
-/** 鏍囪鐢ㄦ埛宸茶鏌愯亰澶?*/
+/** 标记用户已读某聊天 */
 export function markChatRead(userId: string, chatId: string): void {
   _db.run(
     "INSERT OR REPLACE INTO chat_read_state (user_id, chat_id, last_read_at) VALUES (?, ?, ?)",
@@ -1125,9 +1156,9 @@ export function markChatRead(userId: string, chatId: string): void {
   );
 }
 
-/** 鑾峰彇鐢ㄦ埛鐨勬湭璇绘秷鎭暟 */
+/** 获取用户的未读消息数 */
 export function getUnreadCount(userId: string): number {
-  // 缁熻鐢ㄦ埛鍙備笌鐨勬墍鏈夎亰澶╃殑鏈娑堟伅鎬绘暟
+  // 统计用户参与的所有聊天的未读消息总数
   const row = queryOne(`
     SELECT COUNT(*) as cnt FROM messages m
     INNER JOIN participants p ON p.chat_id = m.chat_id
@@ -1160,18 +1191,18 @@ export function getChatUnreadCounts(userId: string): Record<string, number> {
 }
 
 
-// 鈹€鈹€ V7: 鎸佷箙韬唤 CRUD 鈹€鈹€
+// ———— V7: 持久身份 CRUD ————
 
 let _nextNumericId = 10000;
 
-/** 鍏嗗垵濮嬪寲锛氫粠 DB 璇诲綋鍓嶆渶澶?numeric_id锛屼繚璇佽嚜澧?*/
+/** 初始化：从 DB 读当前最大 numeric_id，保证自增 */
 export function initNumericIdSeq(): void {
   const row = queryOne(`SELECT MAX(numeric_id) FROM users WHERE numeric_id IS NOT NULL`);
   if (row && row[0]) _nextNumericId = Math.max(10000, (row[0] as number) + 1);
   else _nextNumericId = 10000;
 }
 
-/** 鍒嗛厤涓嬩竴涓?numeric_id锛?0000 璧疯嚜澧烇級*/
+/** 分配下一个 numeric_id（10000 起自增）*/
 export function nextNumericId(): number {
   return _nextNumericId++;
 }
@@ -1187,29 +1218,29 @@ export function createFullUser(params: {
      VALUES (?, ?, ?, 0, ?, ?, 'offline', ?, ?, ?, ?)`,
     [params.id, params.numericId, params.email, params.passwordHash, params.displayName, params.legacyUserId || null, params.inviteCode || null, now, now]
   );
-  // 娑堣垂閭€璇风爜
+  // 消费邀请码
   if (params.inviteCode) {
     _db.run(`UPDATE invite_codes SET used_count = used_count + 1 WHERE code = ?`, [params.inviteCode]);
   }
   return getUser(params.id);
 }
 
-/** 鏇存柊鐢ㄦ埛閭楠岃瘉鐘舵€?*/
+/** 更新用户邮箱验证状态 */
 export function verifyUserEmail(userId: string): void {
   _db.run(`UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?`, [Date.now(), userId]);
 }
 
-/** 鏇存柊鐢ㄦ埛瀵嗙爜 */
+/** 更新用户密码 */
 export function updateUserPassword(userId: string, newPasswordHash: string): void {
   _db.run(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, [newPasswordHash, Date.now(), userId]);
 }
 
-/** 鏇存柊鐢ㄦ埛鐘舵€?*/
+/** 更新用户状态 */
 export function updateUserStatus(userId: string, status: string): void {
   _db.run(`UPDATE users SET status = ?, last_active_at = ? WHERE id = ?`, [status, Date.now(), userId]);
 }
 
-/** 閫氳繃鏁板瓧 ID 鎵剧敤鎴?*/
+/** 通过数字 ID 找用户 */
 export function getUserByNumericId(numericId: number): any {
   return queryObjects(`SELECT * FROM users WHERE numeric_id = ?`, [numericId])[0] || null;
 }
@@ -1229,17 +1260,17 @@ export function getVerificationToken(token: string): any {
   return queryObjects(`SELECT * FROM user_verifications WHERE token = ? AND consumed_at IS NULL`, [token])[0] || null;
 }
 
-/** 娑堣垂楠岃瘉 token */
+/** 消费验证 token */
 export function consumeVerificationToken(tokenId: string): void {
   _db.run(`UPDATE user_verifications SET consumed_at = ? WHERE id = ?`, [Date.now(), tokenId]);
 }
 
-/** 娓呯悊杩囨湡 token */
+/** 清理过期 token */
 export function cleanupExpiredTokens(): void {
   _db.run(`DELETE FROM user_verifications WHERE expires_at < ?`, [Date.now()]);
 }
 
-/** 楠岃瘉閭€璇风爜 */
+/** 验证邀请码 */
 export function validateInviteCode(code: string): { valid: boolean; reason?: string } {
   const row = queryObjects(`SELECT * FROM invite_codes WHERE code = ?`, [code])[0];
   if (!row) return { valid: false, reason: "invite_code_not_found" };
@@ -1248,7 +1279,7 @@ export function validateInviteCode(code: string): { valid: boolean; reason?: str
   return { valid: true };
 }
 
-/** 鑺濆彇閭€璇风爜鍒楄〃 */
+/** 获取邀请码列表 */
 export function listInviteCodes(): any[] {
   return queryObjects(`SELECT * FROM invite_codes ORDER BY created_at DESC`);
 }
@@ -1259,7 +1290,7 @@ export function createInviteCode(code: string, createdBy: string, maxUses: numbe
     [code, createdBy, maxUses, expiresAt || null, Date.now()]);
 }
 
-/** 鍒涘缓浼氳瘽璁板綍 */
+/** 创建会话记录 */
 export function createUserSession(params: {
   id: string; userId: string; refreshTokenHash: string; deviceInfo?: string; expiresAtMs: number;
 }): void {
@@ -1269,44 +1300,44 @@ export function createUserSession(params: {
   );
 }
 
-/** 閫氳繃 refreshToken 鎵炬椿璺冧細璇濓紙閬嶅巻 + bcrypt 姣斿锛*/
+/** 通过 refreshToken 找活跃会话（遍历 + bcrypt 比对）*/
 export function getActiveSessionByToken(refreshToken: string): any {
-  // 瀹夊叏锛氶檺鍒舵渶澶氭鏌?1000 鏉★紝闃?DoS
+  // 安全：限制最多检查 1000 条，防 DoS
   const rows = queryObjects(
     `SELECT * FROM user_sessions WHERE revoked_at IS NULL AND expires_at > ? LIMIT 1000`,
     [Date.now()]
   );
-  // bcrypt.compare 鏄亽瀹氭椂闂寸殑锛涢亶鍘嗗父閲忎笂闄愪粛鏄嚎鎬э紝浣嗙敤鎴烽噺灏忕殑閮ㄧ讲鍙帴鍙?
+  // bcrypt.compare 是恒定时间的；遍历常量上限仍是线性，但用户量小的部署可接受
   for (const row of rows) {
     try {
       if (bcrypt.compareSync(refreshToken, row.refresh_token_hash)) {
         return row;
       }
     } catch {
-      // hash 鎹熷潖鐨?session 璺宠繃
+      // hash 损坏的 session 跳过
       continue;
     }
   }
   return null;
 }
 
-/** 婊氬姩鍒锋柊锛氭浛鎹細璇濋噷鐨?refresh_token_hash */
+/** 滚动刷新：替换会话里的 refresh_token_hash */
 export function rotateUserSession(sessionId: string, newRefreshTokenHash: string): void {
   _db.run(`UPDATE user_sessions SET refresh_token_hash = ? WHERE id = ?`, [newRefreshTokenHash, sessionId]);
 }
 
-/** 鎾ら攢浼氳瘽 */
+/** 撤销会话 */
 export function revokeSession(sessionId: string): void {
   _db.run(`UPDATE user_sessions SET revoked_at = ? WHERE id = ?`, [Date.now(), sessionId]);
 }
 
-/** 鎾ら攢鐢ㄦ埛鐨勬墍鏈変細璇濓紙鐢ㄤ簬鏀瑰瘑/閫€鍑虹櫥褰曪級 */
+/** 撤销用户的所有会话（用于改密/退出登录） */
 export function revokeUserSessions(userId: string): void {
   _db.run(`UPDATE user_sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL`, [Date.now(), userId]);
 }
 
 
-// 鈹€鈹€ 鏂规C: LAN 缇ら個璇?CRUD 鈹€鈹€
+// —— 方案C: LAN 群邀请 CRUD ——
 
 export function saveLanGroupInvite(params: {
   id: string;
@@ -1356,7 +1387,7 @@ export function getLanGroupInviteByGroup(userId: string, groupId: string): any {
   )[0] || null;
 }
 
-// 鈹€鈹€ 鏂规C: LAN 缇ょ粍 CRUD 鈹€鈹€
+// ———— 方案C: LAN 群组 CRUD ————
 
 export function createLanGroup(id: string, name: string, ownerInstance: string, ownerUserId: string, chatMode: string = 'free'): void {
   const now = Date.now();

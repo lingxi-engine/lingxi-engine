@@ -12,7 +12,7 @@ import { randomInt, timingSafeEqual } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
@@ -1138,6 +1138,14 @@ setSearchManager(searchManagerInstance);
     next();
   }, express.static(uploadsDir, { index: false }));
 
+  // ── 头像静态文件服务 ──
+  const avatarsDir = join(dataDir, 'avatars');
+  if (!existsSync(avatarsDir)) mkdirSync(avatarsDir, { recursive: true });
+  app.use('/avatars', (req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+  }, express.static(avatarsDir, { index: false }));
+
   // ── 聊天成员管理 ──
   app.get('/api/chats/:id/available-members', requireAuth, (req, res) => {
     try {
@@ -1494,6 +1502,15 @@ setSearchManager(searchManagerInstance);
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
       const balance = typeof getUserCredits === 'function' ? getUserCredits(userId) : { credits: 1000, totalEarned: 0, totalSpent: 0 };
       res.json({ ok: true, ...balance });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** 积分变动历史 */
+  app.get('/api/credits/history', (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || '';
+      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      const history = typeof getCreditHistory === 'function' ? getCreditHistory(userId, 50) : [];
+      res.json({ ok: true, history });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 管理员加积分 */
@@ -1992,8 +2009,8 @@ setSearchManager(searchManagerInstance);
     const msgId = 'goal-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
     // 自主执行指令：AI 必须持续工作直到验收标准全部满足
     const taskPrompt = goal.acceptanceCriteria
-      ? `请开始执行目标任务：「${goal.title}」\n\n验收标准：${goal.acceptanceCriteria}\n\n要求：\n1. 将目标拆解为子步骤，逐步执行\n2. 每个子步骤都需要实际完成（调用工具、生成结果），不只是写计划\n3. 全部验收标准满足后再总结报告\n4. 如果一次性无法完成，告知进度并继续`
-      : `请开始执行目标任务：「${goal.title}」\n\n要求：\n1. 拆解为子步骤，逐步执行\n2. 每个子步骤实际完成\n3. 全部完成后总结`;
+      ? `请开始执行目标任务：「${goal.title}」\n\n验收标准：${goal.acceptanceCriteria}\n\n要求：\n1. 将目标拆解为子步骤，逐步执行\n2. 每个子步骤都需要实际完成（调用工具、生成结果），不只是写计划\n3. 全部验收标准满足后再总结报告\n4. 如果一次性无法完成，告知进度并继续\n5. 不要停下来问用户问题，不要等待确认，自主判断并执行\n6. 一旦开始就必须持续工作直到目标完全达成，中途不可暂停\n7. 遇到困难时换一种方式继续，不要放弃不要停`
+      : `请开始执行目标任务：「${goal.title}」\n\n要求：\n1. 拆解为子步骤，逐步执行\n2. 每个子步骤实际完成\n3. 不要停下来问用户问题，自主判断并执行\n4. 一旦开始就必须持续工作直到全部完成，中途不可暂停\n5. 全部完成后总结`;
     const content = taskPrompt;
     try {
       db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });

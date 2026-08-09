@@ -28,6 +28,11 @@ export interface ProjectGoal {
 }
 
 export class GoalTracker {
+  /** 目标开始时的回调（由 index.ts 注册，触发 AI 自动执行） */
+  static onGoalStarted: ((goal: ProjectGoal) => void) | null = null;
+  /** 项目全部完成的回调（由 goals-outcomes.ts 注册，自动生成评分卡） */
+  static onProjectCompleted: ((projectId: string) => void) | null = null;
+
   /**
    * 创建目标
    */
@@ -76,6 +81,22 @@ export class GoalTracker {
     // 先将该项目其他进行中的目标恢复为 pending
     db.run(`UPDATE project_goals SET status = 'pending' WHERE project_id = ? AND status = 'in_progress'`, [goal.projectId]);
     db.run(`UPDATE project_goals SET status = 'in_progress' WHERE id = ?`, [id]);
+    // 触发 onGoalStarted 回调（AI 自动执行）
+    try {
+      const updated = GoalTracker.get(id);
+      if (updated && GoalTracker.onGoalStarted) GoalTracker.onGoalStarted(updated);
+    } catch (e: any) { console.error('[GoalTracker] onGoalStarted 回调异常:', e?.message || e); }
+    return true;
+  }
+
+  /**
+   * 恢复目标为待开始
+   */
+  static markPending(id: string): boolean {
+    const db = getDB();
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
+    db.run(`UPDATE project_goals SET status = 'pending', done_at = NULL WHERE id = ?`, [id]);
     return true;
   }
 
@@ -85,6 +106,28 @@ export class GoalTracker {
   static cancel(id: string): boolean {
     const db = getDB();
     db.run(`UPDATE project_goals SET status = 'cancelled' WHERE id = ?`, [id]);
+    return true;
+  }
+
+  /**
+   * 更新目标字段（title / acceptanceCriteria / status 等）
+   */
+  static update(id: string, fields: Partial<Pick<ProjectGoal, 'title' | 'acceptanceCriteria' | 'status'>>): boolean {
+    const db = getDB();
+    const goal = GoalTracker.get(id);
+    if (!goal) return false;
+    const sets: string[] = [];
+    const vals: any[] = [];
+    if (fields.title !== undefined) { sets.push('title = ?'); vals.push(fields.title); }
+    if (fields.acceptanceCriteria !== undefined) { sets.push('acceptance_criteria = ?'); vals.push(fields.acceptanceCriteria); }
+    if (fields.status !== undefined) {
+      sets.push('status = ?'); vals.push(fields.status);
+      if (fields.status === 'done') sets.push('done_at = ?'), vals.push(Date.now());
+      else sets.push('done_at = NULL');
+    }
+    if (sets.length === 0) return true;
+    vals.push(id);
+    db.run(`UPDATE project_goals SET ${sets.join(', ')} WHERE id = ?`, vals);
     return true;
   }
 
