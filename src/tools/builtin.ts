@@ -520,7 +520,7 @@ async function handleGitBranch(args: Record<string, any>) { const { action='list
 
 const TOOL_CODE_EXECUTE: ToolDefinition = {
   name: "code_execute",
-  description: "Execute JavaScript code in a sandboxed environment. Safe by default.",
+  description: "Execute JavaScript code in an isolated VM. Safe, no access to filesystem or network (for network ops use shell_exec).",
   parameters: {
     type: "object",
     properties: {
@@ -664,7 +664,7 @@ async function handleReadFile(args: Record<string, any>) {
 
 const TOOL_SHELL_EXEC: ToolDefinition = {
   name: "shell_exec",
-  description: "Execute a shell command in a sandboxed environment.",
+  description: "Execute a shell command. Full network access — can use curl, wget, pip, npm, apt, git, etc. Not sandboxed.",
   parameters: {
     type: "object",
     properties: {

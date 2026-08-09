@@ -59,7 +59,7 @@ export interface DockerRunOptions {
   image?: string; // 覆盖默认镜像
   cwd?: string;
   timeout?: number;
-  network?: boolean; // 默认 false（--network none）
+  network?: boolean; // 默认 true（--network bridge，允许联网）
   binds?: string[]; // 额外挂载，格式 ["host:container"]
   input?: string; // stdin 输入
 }
