@@ -285,10 +285,10 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
     try {
       const goal = GoalTracker.get(req.params.id);
       if (!goal) return res.status(404).json({ error: '目标不存在' });
-      const { chatId } = req.body || {};
+      const { chatId, extra } = req.body || {};
       if (!chatId) return res.status(400).json({ error: '需要 chatId' });
       const msgId = 'goal-ask-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      const content = `请针对目标任务「${goal.title}」进行结构化分析。
+      let content = `请针对目标任务「${goal.title}」进行结构化分析。
 
 要求输出格式（严格遵循）：
 Q: 问题1？
@@ -301,6 +301,10 @@ A: 选项A描述
 B: 选项B描述
 
 （输出2-3个最关键的问题，每个问题2-3个选项。问题要帮助明确目标范围、验收标准、优先级、资源需求等。）`;
+      // 如果有额外上下文（继续反问时传入用户已选选项），附加到提示中
+      if (extra && typeof extra === 'string' && extra.length > 0) {
+        content += `\n\n用户已选的上下文信息：${extra}\n请基于以上信息提出更深入、更具体的追问。`;
+      }
       ctx.db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-tracker', content, type: 'text', timestamp: Date.now() });
       ctx.broadcast({ type: 'message.new', chatId, from: 'goal-tracker', senderId: 'goal-tracker', senderType: 'user', content, timestamp: Date.now() });
       // 触发 AI 审查目标

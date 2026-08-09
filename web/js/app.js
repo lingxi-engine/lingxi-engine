@@ -19,6 +19,7 @@ let streamingMsgs = {};
 let connectIntended = false;
 let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发送
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是否"生成中"）
+let _currentAskGoalId = null;  // 当前反问的目标ID，供多选表单按钮回溯使用
 
 // ═══ Panel Switching ═══
 function switchPanel(name) {
@@ -347,6 +348,7 @@ function connect() {
       loadFriends().catch(()=>{});
       loadRequests().catch(()=>{});
       loadModels().catch(()=>{});
+      loadProfileCard().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
         if (authToken) {
@@ -420,6 +422,9 @@ window.addEventListener('load', function() {
     refreshStatusBar();
     fetchVersion();
     loadModels().catch(()=>{});
+    loadTaskMonitor().catch(()=>{});
+    loadRightGoals().catch(()=>{});
+    loadProfileCard().catch(()=>{});
   }, 300);
 });
 
@@ -908,6 +913,12 @@ function appendMessage(msg) {
     '<div class="msg-meta">' + esc(time) + '</div></div>';
   
   container.appendChild(el);
+
+  // 检测结构化问答格式（Q:/A:/B:/C:）→ 自动渲染多选表单
+  if (isAgent && content.includes && content.includes('Q:') && content.includes('A:')) {
+    setTimeout(function() { renderGoalQAForm(content, el, chatId); }, 200);
+  }
+
   container.scrollTop = container.scrollHeight;
 }
 
@@ -2255,7 +2266,62 @@ function checkAuthStatus() {
 }
 
 
-// ── 个人中心 ──
+// ── 左侧栏个人信息卡片 ──
+async function loadProfileCard() {
+  try {
+    var token = localStorage.getItem('authToken');
+    var u = null;
+    if (token) {
+      try {
+        var r = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
+        var d = await r.json();
+        if (d && d.ok && d.user) u = d.user;
+      } catch(e) {}
+    }
+    if (!u && clientId) {
+      u = { id: clientId, display_name: '用户' };
+    }
+    if (!u) return;
+    var userId = u.id || u.sub || '';
+    var name = u.display_name || u.username || '用户';
+    var idShow = u.numeric_id || u.id || '';
+    var avatarUrl = u.avatar_url || '';
+    var bio = u.bio || '';
+    var credits = 0;
+    var rating = '暂无';
+    var tokens = 0;
+    var calls = 0;
+    var email = u.email || '';
+    var createdAt = u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-';
+    try {
+      var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
+      if (pr && pr.ok && pr.profile) {
+        var p = pr.profile;
+        name = p.display_name || name;
+        idShow = p.numeric_id || p.id || idShow;
+        avatarUrl = p.avatar_url || avatarUrl;
+        bio = p.bio || bio;
+        email = p.email || email;
+        createdAt = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN') : createdAt;
+        credits = pr.credits || 0;
+        if (pr.ratings && pr.ratings.avgRating) rating = Number(pr.ratings.avgRating).toFixed(1) + '星';
+        if (pr.ratings && pr.ratings.count) rating += ' (' + pr.ratings.count + '评)';
+        if (pr.usage) { tokens = pr.usage.totalTokens || 0; calls = pr.usage.calls || 0; }
+      }
+    } catch(e) {}
+    var el;
+    el = document.getElementById('pcAvatar'); if (el) { if (avatarUrl) { el.style.backgroundImage = 'url(' + esc(avatarUrl) + ')'; el.style.backgroundSize = 'cover'; } el.textContent = avatarUrl ? '' : esc((name[0]||'U').toUpperCase()); }
+    el = document.getElementById('pcName'); if (el) el.textContent = name;
+    el = document.getElementById('pcId'); if (el) el.textContent = 'ID: ' + esc(String(idShow));
+    el = document.getElementById('pcCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString() + ' 积分';
+    el = document.getElementById('pdName'); if (el) el.textContent = name;
+    el = document.getElementById('pdId'); if (el) el.textContent = esc(String(idShow));
+    el = document.getElementById('pdCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString();
+    el = document.getElementById('pdBio'); if (el) el.textContent = bio ? '个人介绍：' + esc(bio) : '暂无介绍';
+  } catch(e) { console.error('[loadProfileCard]', e); }
+}
+
+// ── 个人中心弹窗 ──
 function showProfileModal() {
   document.getElementById('profileOverlay').style.display = 'block';
   document.getElementById('profileModal').style.display = 'block';
@@ -2886,6 +2952,7 @@ async function loadGoals() {
       if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="开始" style="cursor:pointer">▶️</a>');
       if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="完成" style="cursor:pointer">✅</a>');
       if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="恢复" style="cursor:pointer">↩️</a>');
+      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer">❓</a>');
       acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="删除" style="cursor:pointer">🗑️</a>');
       const style = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3)">' + esc(g.acceptanceCriteria) + '</div>' : '';
@@ -2922,6 +2989,106 @@ async function removeGoal(id) {
     toast('已删除');
     loadGoals();
   } catch(e) { toast('❌ ' + e.message); }
+}
+// ── 反向提问：AI 针对目标提澄清问题（含多选表单 + 继续反问） ──
+async function askAIAboutGoal(goalId, title) {
+  _currentAskGoalId = goalId;
+  if (!currentChat) { toast('❌ 请先选择一个会话'); return; }
+  try {
+    toast('⏳ AI 正在分析目标并生成反问...');
+    const extra = (typeof title === 'string' && (title.includes(';') || title.includes('自定义'))) ? title : '';
+    const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat, extra: extra });
+    if (d.ok) {
+      toast('✅ AI 反问已发送到当前会话');
+    } else {
+      toast('❌ ' + _errMsg(d, '反问失败'));
+    }
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// 兼容旧调用名
+var askGoal = askAIAboutGoal;
+
+// ── 目标反向提问 -> 选项表单渲染 ──
+// AI 回复中包含 Q:/A:/B:/C: 格式时，自动在消息下方插入多选表单
+function renderGoalQAForm(content, msgEl, chatId) {
+  var questions = [];
+  var currentQ = null;
+  var clines = content.split('\n');
+  for (var i = 0; i < clines.length; i++) {
+    var line = clines[i].trim();
+    var qm = line.match(/^Q:?\s*(.+)/);
+    var am = line.match(/^([A-C]):?\s*(.+)/);
+    if (qm) { currentQ = { q: qm[1], opts: [] }; questions.push(currentQ); }
+    else if (am && currentQ) { currentQ.opts.push({ key: am[1], text: am[2] }); }
+  }
+  if (questions.length === 0) return;
+
+  var html = '<div style="margin:8px 0 8px 48px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)" data-goal-id="' + esc(_currentAskGoalId || '') + '">';
+  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">📋 请选择以完善目标</div>';
+  for (var qi = 0; qi < questions.length; qi++) {
+    var q = questions[qi];
+    html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + esc(q.q) + '</div>';
+    for (var oi = 0; oi < q.opts.length; oi++) {
+      var o = q.opts[oi];
+      var cbId = 'ga-' + qi + '-' + oi + '-' + Date.now();
+      html += '<label style="display:block;font-size:12px;cursor:pointer;padding:2px 0"><input type="checkbox" id="' + cbId + '" style="margin-right:4px">' + esc(o.text) + '</label>';
+    }
+    html += '</div>';
+  }
+  // 自定义输入
+  html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">自定义补充：</div>';
+  html += '<input type="text" style="width:90%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg1)" placeholder="输入你的补充..."></div>';
+  html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
+  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,\'refine\')">✅ 完善目标</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'criteria\')">📎 加入验收标准</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'create\')">🆕 生成新目标</button>';
+  html += '</div></div>';
+  html += '<button class="btn" style="font-size:11px;margin-left:48px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
+
+  var wrapper = document.createElement('div');
+  wrapper.innerHTML = html;
+  msgEl.parentNode.insertBefore(wrapper, msgEl.nextSibling);
+}
+
+// ── 多选表单按钮：完善/加入验收/生成新目标 ──
+function applyGoalRefine(btn, action) {
+  var form = btn.closest('div');
+  while (form && !form.querySelector('input[type=checkbox]')) form = form.parentElement;
+  if (!form) return;
+  var checks = form.querySelectorAll('input[type=checkbox]:checked');
+  if (!checks.length) { toast('请至少勾选一个选项'); return; }
+  var selections = [];
+  checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
+  // 也收集自定义输入
+  form.querySelectorAll('input[type=text]').forEach(function(t) { if (t.value.trim()) selections.push('自定义: ' + t.value.trim()); });
+
+  var goalId = form.getAttribute('data-goal-id') || _currentAskGoalId;
+  if (!goalId) { var ri = document.querySelector('#rightGoalsList .goal-item'); if (ri) goalId = ri.getAttribute('data-goal-id'); }
+  if (!goalId) { toast('未找到对应的目标'); return; }
+
+  api('/api/goals/' + goalId + '/refine', 'POST', { selections: selections, action: action }).then(function(d) {
+    if (d.ok) {
+      toast('✅ ' + (action === 'create' ? '已生成新目标' : action === 'criteria' ? '已加入验收标准' : '目标已完善'));
+      if (typeof loadRightGoals === 'function') loadRightGoals();
+      if (typeof loadGoals === 'function') loadGoals();
+    } else toast('❌ ' + _errMsg(d, '操作失败'));
+  }).catch(function(e) { toast('❌ ' + e.message); });
+}
+
+// ── 继续反问：带已选上下文再次向AI提问 ──
+function continueReverseAsk(btn) {
+  var form = btn.closest('div');
+  while (form && !form.querySelector('input[type=checkbox]')) form = form.parentElement;
+  if (!form) return;
+  var goalId = form.getAttribute('data-goal-id') || _currentAskGoalId;
+  if (!goalId) { toast('未找到对应的目标'); return; }
+  var context = [];
+  form.querySelectorAll('input[type=checkbox]:checked').forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
+  form.querySelectorAll('input[type=text]').forEach(function(t) { if (t.value.trim()) context.push('自定义: ' + t.value.trim()); });
+  var extra = context.length ? context.join('; ') : '';
+  toast('💬 继续提问中...');
+  askAIAboutGoal(goalId, extra);
 }
 async function adminAgents() {
   try {
@@ -3478,25 +3645,132 @@ function handleLanMessage(msg) {
   }
 }
 
-// ── 目标系统 (GoalTracker) 前端函数 ──
-function addRightGoal() {
+// ── 右侧栏：任务监控（Cron 定时任务）──
+async function loadTaskMonitor() {
+  const el = document.getElementById('taskMonitorList');
+  if (!el) return;
+  try {
+    const d = await api('/api/cron');
+    const jobs = d.jobs || [];
+    if (!jobs.length) {
+      el.innerHTML = '<span style="color:var(--text3)">暂无定时任务，可在管理面板添加</span>';
+      return;
+    }
+    el.innerHTML = jobs.map(j => {
+      const name = esc(j.name || j.id || '未命名');
+      const expr = esc(String(j.schedule?.expr || j.schedule || '-'));
+      const enabled = j.enabled !== false;
+      const pill = enabled ? '<span class="status-pill pill-on">运行中</span>' : '<span class="status-pill pill-off">已暂停</span>';
+      const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : '-';
+      const lastRun = j.lastRun ? new Date(j.lastRun).toLocaleString() : '-';
+      const runCount = j.runCount || 0;
+      const jid = esc(j.id);
+      const runBtn = enabled
+        ? '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">▶ 运行</button><button onclick="toggleTaskMonitor(\'' + jid + '\',false)">暂停</button>'
+        : '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">▶ 运行</button><button style="color:var(--green)" onclick="toggleTaskMonitor(\'' + jid + '\',true)">启用</button>';
+      return '<div class="task-card">' +
+        '<div class="task-name">' + name + ' ' + pill + '</div>' +
+        '<div class="task-meta">表达式：<code>' + expr + '</code><br>下次执行：' + esc(next) + '<br>上次：' + esc(lastRun) + ' · 执行' + runCount + '次</div>' +
+        '<div class="task-actions">' + runBtn +
+          '<button class="del" onclick="removeTaskMonitor(\'' + jid + '\')">删除</button>' +
+        '</div></div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || '加载失败') + '</span>';
+  }
+}
+async function runTaskMonitor(id) {
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id) + '/run', 'POST');
+    if (d.ok) { toast('✅ 已触发运行'); loadTaskMonitor(); }
+    else toast('❌ 运行失败');
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function toggleTaskMonitor(id, enabled) {
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id), 'PATCH', { enabled });
+    if (d.ok) { toast(enabled ? '已启用' : '已暂停'); loadTaskMonitor(); }
+    else toast('❌ 操作失败');
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function removeTaskMonitor(id) {
+  if (!confirm('确定删除该定时任务？')) return;
+  try {
+    const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
+    if (d.ok) { toast('已删除'); loadTaskMonitor(); }
+    else toast('❌ 删除失败');
+  } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ── 右侧栏：目标任务（GoalTracker）──
+const RIGHT_GOAL_EMOJI = { pending: '⏳', in_progress: '🔄', done: '✅', cancelled: '❌' };
+const RIGHT_GOAL_LABEL = { pending: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' };
+const RIGHT_GOAL_COLOR = { pending: 'var(--text3)', in_progress: 'var(--accent)', done: 'var(--green)', cancelled: 'var(--text3)' };
+async function loadRightGoals() {
+  const el = document.getElementById('rightGoalsList');
+  if (!el) return;
+  try {
+    const d = await api('/api/goals');
+    if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(_errMsg(d, '加载失败')) + '</span>'; return; }
+    const goals = d.goals || [];
+    if (!goals.length) {
+      el.innerHTML = '<span style="color:var(--text3)">暂无目标，点击下方添加</span>';
+      return;
+    }
+    const done = goals.filter(g => g.status === 'done').length;
+    const total = goals.length;
+    const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    el.innerHTML = goals.map(g => {
+      const st = g.status || 'pending';
+      const emoji = RIGHT_GOAL_EMOJI[st] || '⏳';
+      const label = RIGHT_GOAL_LABEL[st] || st;
+      const color = RIGHT_GOAL_COLOR[st] || 'var(--text3)';
+      const style = st === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (st === 'cancelled' ? 'color:var(--text3)' : '');
+      const gid = esc(g.id);
+      let acts = '';
+      if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="开始" style="cursor:pointer">▶️</a> ';
+      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="完成" style="cursor:pointer">✅</a> ';
+      if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="恢复" style="cursor:pointer">↩️</a> ';
+      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer">❓</a> ';
+      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="删除" style="cursor:pointer">🗑️</a>';
+      const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">' + esc(g.acceptanceCriteria) + '</div>' : '';
+      const barColor = st === 'done' ? 'var(--green)' : 'var(--accent)';
+      const barWidth = st === 'done' ? 100 : (st === 'in_progress' ? 50 : 0);
+      return '<div class="goal-item">' +
+        '<div class="goal-head"><span class="g-status">' + emoji + '</span>' +
+        '<b style="' + style + '">' + esc(g.title) + '</b>' +
+        '<span style="margin-left:auto;font-size:11px;color:' + color + '">' + label + '</span></div>' +
+        '<div class="goal-bar"><i style="width:' + barWidth + '%;background:' + barColor + '"></i></div>' +
+        '<div class="goal-foot"><span>进度 ' + barWidth + '%</span>' +
+        '<span style="float:right">' + acts + '</span></div>' +
+        criteria + '</div>';
+    }).join('');
+  } catch(e) {
+    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</span>';
+  }
+}
+async function addRightGoal() {
   const title = prompt('目标名称：');
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
-  fetch('/api/goals', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ project: 'default', title: title.trim(), acceptanceCriteria: desc || '' })
-  }).then(r => r.json()).then(d => {
-    if (d.ok) { toast('目标已添加'); setTimeout(() => location.reload(), 500); }
-    else toast('添加失败');
-  }).catch(e => toast('添加失败: ' + e.message));
+  try {
+    const d = await api('/api/goals', 'POST', { title: title.trim(), acceptanceCriteria: desc || '' });
+    if (d.ok) { toast('✅ 目标已添加'); loadRightGoals(); }
+    else toast('❌ ' + _errMsg(d, '添加失败'));
+  } catch(e) { toast('❌ ' + e.message); }
 }
-function deleteGoal(id) {
+async function setRightGoalStatus(id, status) {
+  try {
+    const d = await api('/api/goals/' + encodeURIComponent(id), 'PATCH', { status });
+    if (d.ok) loadRightGoals();
+    else toast('❌ ' + _errMsg(d, '操作失败'));
+  } catch(e) { toast('❌ ' + e.message); }
+}
+async function deleteRightGoal(id) {
   if (!confirm('确定删除此目标？')) return;
-  fetch('/api/goals/' + encodeURIComponent(id), { method: 'DELETE' })
-    .then(r => r.json()).then(d => {
-      if (d.ok) { toast('已删除'); location.reload(); }
-      else toast('删除失败');
-    }).catch(e => toast('删除失败: ' + e.message));
+  try {
+    const d = await api('/api/goals/' + encodeURIComponent(id), 'DELETE');
+    if (d.ok) { toast('已删除'); loadRightGoals(); }
+    else toast('❌ ' + _errMsg(d, '删除失败'));
+  } catch(e) { toast('❌ ' + e.message); }
 }
