@@ -978,8 +978,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
 
 <!-- [修复] 补齐 JS 依赖的隐藏元素 -->
-<button id="membersBtn" style="display:none" onclick="showMembersPanel()"></button>
-<button id="memoryBtn" style="display:none" onclick="showMemoryPanel()"></button>
+<button id="membersBtn" class="hidden" onclick="showMembersPanel()"></button>
+<button id="memoryBtn" class="hidden" onclick="showMemoryPanel()"></button>
 <div id="sidebarOverlay" style="display:none" onclick="hideSidebar()"></div>
 
 <!-- [修复] 补齐JS依赖的缺失DOM元素 -->

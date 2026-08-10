@@ -3068,7 +3068,8 @@ async function loadGoals() {
   const el = document.getElementById('goalsList');
   if (!el) return;
   try {
-    const d = await api('/api/goals');
+    const project = currentChat ? ('project-' + currentChat) : 'default';
+    const d = await api('/api/goals?project=' + encodeURIComponent(project));
     if (!d.ok) { el.innerHTML = '❌ ' + esc(_errMsg(d, '加载失败')); return; }
     const goals = d.goals || [];
     const pg = document.getElementById('goalProgress');
@@ -3094,7 +3095,8 @@ async function addGoal() {
   const title = inp ? inp.value.trim() : '';
   if (!title) { toast('请输入目标内容'); return; }
   try {
-    const d = await api('/api/goals', 'POST', { title });
+    const project = currentChat ? ('project-' + currentChat) : 'default';
+    const d = await api('/api/goals', 'POST', { title, project: project });
     if (!d.ok) { toast('❌ ' + _errMsg(d, '添加失败')); return; }
     if (inp) inp.value = '';
     toast('✅ 目标已添加');
@@ -3837,7 +3839,8 @@ async function loadRightGoals() {
   const el = document.getElementById('rightGoalsList');
   if (!el) return;
   try {
-    const d = await api('/api/goals');
+    const project = currentChat ? ('project-' + currentChat) : 'default';
+    const d = await api('/api/goals?project=' + encodeURIComponent(project));
     if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(_errMsg(d, '加载失败')) + '</span>'; return; }
     const goals = d.goals || [];
     if (!goals.length) {
@@ -3881,7 +3884,8 @@ async function addRightGoal() {
   if (!title) return;
   const desc = prompt('目标描述（可选）：');
   try {
-    const d = await api('/api/goals', 'POST', { title: title.trim(), acceptanceCriteria: desc || '' });
+    const project = currentChat ? ('project-' + currentChat) : 'default';
+    const d = await api('/api/goals', 'POST', { title: title.trim(), acceptanceCriteria: desc || '', project: project });
     if (d.ok) { toast('✅ 目标已添加'); loadRightGoals(); }
     else toast('❌ ' + _errMsg(d, '添加失败'));
   } catch(e) { toast('❌ ' + e.message); }

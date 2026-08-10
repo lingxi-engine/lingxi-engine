@@ -14,6 +14,7 @@ import { join } from 'path';
 import multer from 'multer';
 import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
+import type { ProjectGoal } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
@@ -2001,7 +2002,17 @@ setSearchManager(searchManagerInstance);
   // ── GoalTracker.onGoalStarted: 任务监控/AI自动执行 ──
   GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
     // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
-    const chatId = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
+    let chatId: string | null = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
+    if (!chatId) {
+      // projectId 为 'default' 时，回退到最近活跃会话
+      try {
+        const chats = db.listChats();
+        if (chats && chats.length > 0) {
+          chatId = chats[0].id;
+          console.log(`[GoalTracker] 目标 "${goal.title}" projectId=${goal.projectId}，回退到最近会话 ${chatId}`);
+        }
+      } catch (e: any) { /* ignore */ }
+    }
     if (!chatId) {
       console.log(`[GoalTracker] 目标 "${goal.title}" 已开始，但未绑定会话 (projectId=${goal.projectId})`);
       return;
