@@ -21,6 +21,12 @@ Thumbs.db
 # Uploads
 uploads/
 
+# Runtime data (generated at runtime, not source code)
+data/
+
+# External project (not part of this repo)
+diffrhythm-local/
+
 # Temp files
 _*.py
 _*.txt
