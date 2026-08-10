@@ -404,23 +404,23 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       </g>
       <ellipse cx="32" cy="56" rx="15.5" ry="3.4" fill="url(#gShadow)"/>
     </svg>
-    <span class="logo-txt"><b>灵犀引擎</b><i>LINGXI&nbsp;ENGINE</i></span>
+    <span class="logo-txt"><b data-i18n="app.title">灵犀引擎</b><i>LINGXI&nbsp;ENGINE</i></span>
   </a>
   <span class="ver-tag" id="verTag">v2.2-design</span>
-  <select id="headerModelSelect" onchange="switchHeaderModel(this.value)"><option value="">连接Ollama或添加Provider...</option></select>
-  <div class="theme-switch" title="切换主题（完整风格，不只是背景色）">
-    <button data-theme="dark" class="active" onclick="switchTheme('dark',this)">深海</button>
-    <button data-theme="glass" onclick="switchTheme('glass',this)">玻璃</button>
-    <button data-theme="light" onclick="switchTheme('light',this)">晨光</button>
-    <button data-theme="retro" onclick="switchTheme('retro',this)">终端</button>
-    <button data-theme="minimal" onclick="switchTheme('minimal',this)">极简</button>
-    <button data-theme="pink" onclick="switchTheme('pink',this)">粉红</button>
+  <select id="headerModelSelect" onchange="switchHeaderModel(this.value)"><option value="" data-i18n="settings.connectOllamaHint">连接Ollama或添加Provider...</option></select>
+  <div class="theme-switch" data-i18n-title="nav.switchTheme" title="切换主题（完整风格，不只是背景色）">
+    <button data-theme="dark" class="active" onclick="switchTheme('dark',this)" data-i18n="theme.dark">深海</button>
+    <button data-theme="glass" onclick="switchTheme('glass',this)" data-i18n="theme.glass">玻璃</button>
+    <button data-theme="light" onclick="switchTheme('light',this)" data-i18n="theme.light">晨光</button>
+    <button data-theme="retro" onclick="switchTheme('retro',this)" data-i18n="theme.retro">终端</button>
+    <button data-theme="minimal" onclick="switchTheme('minimal',this)" data-i18n="theme.minimal">极简</button>
+    <button data-theme="pink" onclick="switchTheme('pink',this)" data-i18n="theme.pink">粉红</button>
   </div>
   <div class="spacer"></div>
   <span class="status-dot" id="wsState">🟢 已连接</span>
-  <button class="btn-sm green" id="loginBtn" onclick="showLoginModal()">登录</button>
-  <button class="btn-sm" id="registerBtn" onclick="showRegisterModal()">注册</button>
-<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><button class="btn-sm" onclick="showProfileModal()">个人中心</button><button class="btn-sm" onclick="logout()">退出</button></span>
+  <button class="btn-sm green" id="loginBtn" onclick="showLoginModal()" data-i18n="nav.login">登录</button>
+  <button class="btn-sm" id="registerBtn" onclick="showRegisterModal()" data-i18n="nav.register">注册</button>
+<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
 </nav>
 
 <!-- ═══ 主体 ═══ -->
@@ -433,7 +433,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="profile-card" onclick="toggleProfile()">
       <div class="profile-avatar" id="pcAvatar"></div>
       <div class="profile-main">
-        <div class="profile-name" id="pcName">加载中...</div>
+        <div class="profile-name" id="pcName" data-i18n="common.loading">加载中...</div>
         <div class="profile-id" id="pcId"></div>
         <div class="profile-credits" id="pcCredits"></div>
       </div>
@@ -442,52 +442,52 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
     <!-- 个人资料详情（积分/钱包/介绍/ID/用户名/头像/邮箱/评分/用量） -->
     <div class="profile-detail" id="profileDetail">
-      <div class="pd-row"><span class="pd-label">用户名</span><span class="pd-val" id="pdName">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">用户 ID</span><span class="pd-val" id="pdId">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">邮箱</span><span class="pd-val" id="pdEmail">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">积分</span><span class="pd-val coins" id="pdCredits">加载中...</span><span class="pd-note green">可用于雇佣等消费</span></div>
-      <div class="pd-row"><span class="pd-label">钱包</span><span class="pd-val">¥ --</span><span class="pd-note">功能暂未开放，敬请期待</span></div>
-      <div class="pd-row"><span class="pd-label">信用评分</span><span class="pd-val" id="pdRating">加载中...</span></div>
-      <div class="pd-row"><span class="pd-label">累计用量</span><span class="pd-val" id="pdUsage">加载中...</span></div>
-      <div class="pd-bio" id="pdBio">加载中...</div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.username">用户名</span><span class="pd-val" id="pdName" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.userId">用户 ID</span><span class="pd-val" id="pdId" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.email">邮箱</span><span class="pd-val" id="pdEmail" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.credits">积分</span><span class="pd-val coins" id="pdCredits" data-i18n="common.loading">加载中...</span><span class="pd-note green" data-i18n="profile.creditsNote">可用于雇佣等消费</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.wallet">钱包</span><span class="pd-val">¥ --</span><span class="pd-note" data-i18n="profile.walletNote">功能暂未开放，敬请期待</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.rating">信用评分</span><span class="pd-val" id="pdRating" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.usage">累计用量</span><span class="pd-val" id="pdUsage" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-bio" id="pdBio" data-i18n="common.loading">加载中...</div>
       <div class="pd-actions">
-        <button class="primary" onclick="editProfile()">编辑资料</button>
-        <button onclick="uploadAvatar()">上传头像</button>
-        <button onclick="showCreditsDetail()">积分明细</button>
+        <button class="primary" onclick="editProfile()" data-i18n="profile.edit">编辑资料</button>
+        <button onclick="uploadAvatar()" data-i18n="profile.avatar">上传头像</button>
+        <button onclick="showCreditsDetail()" data-i18n="profile.creditsDetail">积分明细</button>
       </div>
       <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="doUploadAvatar(this)">
     </div>
 
     <!-- 功能导航（纯文字） -->
     <div class="side-nav">
-      <button class="active" onclick="switchPanel('chat')" data-nav="chat">会话</button>
-      <button onclick="showFriendPanel()" data-nav="friends">好友 <span class="nav-badge" id="reqBadge" style="display:none">0</span></button>
-      <button onclick="toggleInbox()" data-nav="inbox">收件箱</button>
-      <button onclick="openWorkflowEditor()" data-nav="workflow">工作流</button>
-      <button onclick="openSettings()" data-nav="settings">设置</button>
+      <button class="active" onclick="switchPanel('chat')" data-nav="chat" data-i18n="tb.chat">会话</button>
+      <button onclick="showFriendPanel()" data-nav="friends"><span data-i18n="sidebar.friends">好友</span> <span class="nav-badge" id="reqBadge" style="display:none">0</span></button>
+      <button onclick="toggleInbox()" data-nav="inbox" data-i18n="nav.inbox">收件箱</button>
+      <button onclick="openWorkflowEditor()" data-nav="workflow" data-i18n="tb.workflow">工作流</button>
+      <button onclick="openSettings()" data-nav="settings" data-i18n="tb.settings">设置</button>
     </div>
 
     <!-- 会话列表 -->
-    <div class="side-section-title"><span>会话列表</span><span style="color:var(--accent);cursor:pointer" onclick="newChat()">＋ 新建</span></div>
+    <div class="side-section-title"><span data-i18n="tb.chatTitle">会话列表</span><span style="color:var(--accent);cursor:pointer" onclick="newChat()" data-i18n="sidebar.new">＋ 新建</span></div>
     <div class="chat-list" id="chatList">
-      <div class="empty" style="height:auto;padding:16px;color:var(--text3)">连接中...</div>
+      <div class="empty" style="height:auto;padding:16px;color:var(--text3)" data-i18n="settings.connecting">连接中...</div>
     </div>
 
     <!-- 日志面板（左侧底部，点击展开） -->
     <div class="log-panel" id="logPanel">
       <div class="log-head" onclick="toggleLog()">
         <div class="log-orb"></div>
-        <span class="log-title">运行日志</span>
-        <span style="font-size:10px;color:var(--text3)">自动刷新 · 3s</span>
+        <span class="log-title" data-i18n="log.title">运行日志</span>
+        <span style="font-size:10px;color:var(--text3)" data-i18n="log.autoRefresh">自动刷新 · 3s</span>
         <span id="logArrow" style="font-size:10px">▲</span>
       </div>
       <div class="log-body" id="logBody">
-        <div class="log-line"><span class="info">加载中...</span></div>
+        <div class="log-line"><span class="info" data-i18n="common.loading">加载中...</span></div>
       </div>
       <div class="log-toolbar">
-        <button onclick="loadLogBody()">刷新</button>
-        <button onclick="toggleAutoLog()">自动</button>
-        <button style="margin-left:auto" onclick="clearLogBody()">清空</button>
+        <button onclick="loadLogBody()" data-i18n="common.refresh">刷新</button>
+        <button onclick="toggleAutoLog()" data-i18n="log.auto">自动</button>
+        <button style="margin-left:auto" onclick="clearLogBody()" data-i18n="common.clear">清空</button>
       </div>
     </div>
   </aside>
@@ -500,11 +500,11 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <span style="font-size:10px;color:var(--text3)" id="ctxInfo"></span>
       </div>
       <div class="messages" id="messages">
-        <div class="empty">选择或创建一个会话</div>
+        <div class="empty" data-i18n="chat.selectOrCreate">选择或创建一个会话</div>
       </div>
       <div class="input-area">
-        <textarea id="input" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
-        <button class="primary" id="sendBtn" onclick="send()">发送</button>
+        <textarea id="input" data-i18n-ph="chat.inputPh" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
+        <button class="primary" id="sendBtn" onclick="send()" data-i18n="common.send">发送</button>
       </div>
     </div>
 
@@ -566,36 +566,36 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         
         <!-- 知识库 (v2.0.6 新增) -->
         <div style="margin-top:24px">
-          <h3 style="font-size:16px;margin-bottom:8px">📚 知识库</h3>
+          <h3 style="font-size:16px;margin-bottom:8px" data-i18n="tools.knowledge">📚 知识库</h3>
           <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-            <input id="ragTitle" placeholder="标题" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
-            <input id="ragSource" placeholder="来源" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
+            <input id="ragTitle" data-i18n-ph="tools.docTitle" placeholder="标题" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
+            <input id="ragSource" data-i18n-ph="tools.docSource" placeholder="来源" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
             <button class="btn" onclick="addRagDoc()" style="font-size:12px" data-i18n="tools.addDoc">＋ 添加文档</button>
             <button class="btn" onclick="loadRagDocs()" style="font-size:12px" data-i18n="common.refresh">↻ 刷新</button>
             <button class="btn green" onclick="scanWorkspaceDocs()" style="font-size:12px" data-i18n="tools.scanWs">🗂 扫描工作区</button>
           </div>
           <div style="display:flex;gap:6px;margin-bottom:10px">
-            <input id="ragContent" placeholder="文档内容..." style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
+            <input id="ragContent" data-i18n-ph="tools.docContentPh" placeholder="文档内容..." style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
           </div>
           <div style="display:flex;gap:6px;margin-bottom:10px">
-            <input id="ragQuery" placeholder="🔍 检索知识库..." onkeydown="if(event.key==='Enter')searchRag()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
-            <button class="btn" onclick="searchRag()" style="font-size:12px">🔍 检索</button>
+            <input id="ragQuery" data-i18n-ph="tools.searchPh" placeholder="🔍 检索知识库..." onkeydown="if(event.key==='Enter')searchRag()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
+            <button class="btn" onclick="searchRag()" style="font-size:12px" data-i18n="tools.search">🔍 检索</button>
           </div>
-          <div id="ragDocsList" style="font-size:12px">加载中...</div>
+          <div id="ragDocsList" style="font-size:12px" data-i18n="common.loading">加载中...</div>
           <div id="ragSearchOut" style="font-size:12px;margin-top:8px"></div>
         </div>
         
         <!-- 工作区 (v2.0.6 新增) -->
         <div style="margin-top:24px">
-          <h3 style="font-size:16px;margin-bottom:8px">🗂 工作区</h3>
+          <h3 style="font-size:16px;margin-bottom:8px" data-i18n="ws.title">🗂 工作区</h3>
           <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-            <span style="font-size:12px">模式:</span>
+            <span style="font-size:12px" data-i18n="ws.mode">模式:</span>
             <select id="wsModeSelect" onchange="setWorkspaceMode()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
-              <option value="personal">👤 个人模式</option>
-              <option value="collab">👥 协作模式</option>
+              <option value="personal" data-i18n="ws.personal">👤 个人模式</option>
+              <option value="collab" data-i18n="ws.collab">👥 协作模式</option>
             </select>
-            <input id="wsRootInput" placeholder="工作区路径 (默认: workspace)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:180px">
-            <button class="btn" onclick="saveWorkspace()" style="font-size:12px">💾 保存</button>
+            <input id="wsRootInput" data-i18n-ph="ws.rootPh" placeholder="工作区路径 (默认: workspace)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:180px">
+            <button class="btn" onclick="saveWorkspace()" style="font-size:12px">💾 <span data-i18n="common.save">保存</span></button>
           </div>
           <div id="wsInfo" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
         </div>
@@ -669,30 +669,30 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <!-- ═══ 右侧栏：任务监控 + 目标任务 ═══ -->
   <aside class="rightbar" id="rightbar">
     <div class="right-head">
-      <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks">任务监控</button>
-      <button onclick="switchTab('goals',this)" id="rbTabGoals">目标任务</button>
+      <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks" data-i18n="right.tasks">任务监控</button>
+      <button onclick="switchTab('goals',this)" id="rbTabGoals" data-i18n="right.goals">目标任务</button>
     </div>
     <div class="right-body" id="tab-tasks" style="display:block">
-      <div id="taskMonitorList" style="font-size:12px"><span style="color:var(--text3)">加载中…</span></div>
+      <div id="taskMonitorList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
     </div>
     <div class="right-body" id="tab-goals" style="display:none">
-      <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)">加载中…</span></div>
-      <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()">＋ 添加目标任务</button>
+      <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
+      <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()" data-i18n="right.addGoal">＋ 添加目标任务</button>
     </div>
   </aside>
 </div>
 
 <!-- ═══ 底部工具栏（纯文字）═══ -->
 <div class="bottom-toolbar">
-  <button class="active" onclick="switchPanel('chat');toggleSidebar()" id="tbChatBtn">会话</button>
-  <button onclick="switchPanel('market')" id="tbMarketBtn">市场</button>
-  <button onclick="switchPanel('tools')" id="tbToolsBtn">工具</button>
-  <button onclick="switchPanel('social')" id="tbSocialBtn">局域网</button>
+  <button class="active" onclick="switchPanel('chat');toggleSidebar()" id="tbChatBtn" data-i18n="tb.chat">会话</button>
+  <button onclick="switchPanel('market')" id="tbMarketBtn" data-i18n="tb.market">市场</button>
+  <button onclick="switchPanel('tools')" id="tbToolsBtn" data-i18n="tb.tools">工具</button>
+  <button onclick="switchPanel('social')" id="tbSocialBtn" data-i18n="tb.social">局域网</button>
   <div class="tb-spacer"></div>
-  <button onclick="document.getElementById('rightbar').classList.toggle('show')">任务</button>
+  <button onclick="document.getElementById('rightbar').classList.toggle('show')" data-i18n="tb.tasks">任务</button>
   <button onclick="document.getElementById('membersBtn').click()" id="tbMembersBtn">👥</button>
   <button onclick="document.getElementById('memoryBtn').click()" id="tbMemoBtn">🧠</button>
-  <button onclick="toggleAdmin()" id="tbAdminBtn">管理</button>
+  <button onclick="toggleAdmin()" id="tbAdminBtn" data-i18n="tb.admin">管理</button>
   <div class="tb-status">
     <span>API <span id="apiHealth" class="ok">✓</span></span>
     <span id="currentModelDisplay" style="color:var(--accent)">模型 deepseek-v4-flash</span>
@@ -751,13 +751,13 @@ function switchTheme(name,btn){
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
         <select id="newProviderType" onchange="onProviderTypeChange()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
           <optgroup label="── 免费云端（推荐）──" data-i18n-label="settings.freeCloud">
-            <option value="nvidia">NVIDIA NIM (免费额度)</option>
+            <option value="nvidia" data-i18n="provider.nvidia">NVIDIA NIM (免费额度)</option>
           </optgroup>
           <optgroup label="── 国内云端 ──" data-i18n-label="settings.cnCloud">
-            <option value="deepseek">DeepSeek</option><option value="zhipu">智谱 GLM</option>
-            <option value="moonshot">Kimi</option><option value="qwen">通义千问</option>
-            <option value="stepfun">阶跃星辰</option><option value="siliconflow">硅基流动</option>
-            <option value="minimax">MiniMax</option><option value="volcengine">火山引擎</option>
+            <option value="deepseek">DeepSeek</option><option value="zhipu" data-i18n="provider.zhipu">智谱 GLM</option>
+            <option value="moonshot">Kimi</option><option value="qwen" data-i18n="provider.qwen">通义千问</option>
+            <option value="stepfun" data-i18n="provider.stepfun">阶跃星辰</option><option value="siliconflow" data-i18n="provider.siliconflow">硅基流动</option>
+            <option value="minimax">MiniMax</option><option value="volcengine" data-i18n="provider.volcengine">火山引擎</option>
           </optgroup>
           <optgroup label="── 国际 ──" data-i18n-label="settings.intl">
             <option value="openai">OpenAI</option><option value="anthropic">Claude</option>
@@ -844,10 +844,10 @@ function switchTheme(name,btn){
       <div class="card"><h4 data-i18n="admin.card.plugins">🧩 插件</h4><button onclick="adminPlugins()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminPluginsOut">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.approval">✅ 审批</h4><button onclick="loadApprovals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="approvalList" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.token">📊 Token</h4><button onclick="loadUsage()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="usageStats" style="font-size:12px">-</div></div>
-      <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural">晓晓</option><option value="zh-CN-YunxiNeural">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
+      <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural" data-i18n="admin.voiceXiaoxiao">晓晓</option><option value="zh-CN-YunxiNeural" data-i18n="admin.voiceYunxi">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
       <div class="card"><h4 data-i18n="admin.card.goals">🎯 目标</h4><div class="row" style="margin-bottom:4px"><input id="goalInput" data-i18n-ph="admin.goalPh" placeholder="输入新目标..." onkeydown="if(event.key==='Enter')addGoal()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:11px"><button onclick="addGoal()" class="btn green" style="font-size:11px" data-i18n="common.add">+ 添加</button></div><button onclick="loadGoals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="goalsList" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.logs">📋 日志</h4><button onclick="loadLogs()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="admin.viewRecent">查看最近</button><pre id="logsOut" style="font-size:10px;max-height:200px;overflow:auto">-</pre></div>
-      <div class="card"><h4>⬆️ 系统升级</h4><div id="updateStatus" style="font-size:12px;margin-bottom:4px;color:var(--text3)">当前: <span id="adminVerTag">-</span></div><button onclick="doUpdate()" class="btn green" style="width:100%;font-size:12px">🔄 一键升级到最新版</button></div>
+      <div class="card"><h4 data-i18n="admin.update">⬆️ 系统升级</h4><div id="updateStatus" style="font-size:12px;margin-bottom:4px;color:var(--text3)"><span data-i18n="admin.currentVer">当前:</span> <span id="adminVerTag">-</span></div><button onclick="doUpdate()" class="btn green" style="width:100%;font-size:12px" data-i18n="admin.doUpdate">🔄 一键升级到最新版</button></div>
       <div class="card"><h4 data-i18n="admin.card.system">📊 系统</h4><button onclick="adminHealth()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminHealthOut" style="font-size:10px">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.mesh">🕸️ 实例组网</h4><button onclick="loadMesh()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="meshStatus" style="font-size:11px;margin-bottom:4px">-</div><div id="meshPeers" style="font-size:11px;margin-bottom:6px">-</div><div class="row" style="margin-bottom:4px"><select id="meshPeerSelect" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px"><option value="" data-i18n="admin.selectInstance">选择实例...</option></select></div><div class="row"><input id="meshMsgInput" data-i18n-ph="admin.meshMsgPh" placeholder="发消息给该实例的 AI..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:11px"><button onclick="sendMeshMsg()" class="btn primary" style="font-size:11px" data-i18n="common.send">发送</button></div></div>
     </div>
@@ -929,10 +929,10 @@ function switchTheme(name,btn){
   <div class="panel-header"><h2 data-i18n="profile.title">👤 个人中心</h2><button onclick="closeProfileModal()">×</button></div>
   <div style="padding:20px" id="profileContent"></div>
   <div style="padding:0 20px 20px;border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div style="font-size:13px;color:var(--text2);margin-bottom:8px">🔍 搜索用户（输入数字 ID 或用户名）</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:8px" data-i18n="profile.searchHint">🔍 搜索用户（输入数字 ID 或用户名）</div>
     <div style="display:flex;gap:6px">
-      <input id="userSearchInput" placeholder="如: 10000" style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px" onkeydown="if(event.key==='Enter')searchUser()">
-      <button class="btn-sm" onclick="searchUser()" style="padding:8px 14px">搜索</button>
+      <input id="userSearchInput" data-i18n-ph="profile.searchPh" placeholder="如: 10000" style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px" onkeydown="if(event.key==='Enter')searchUser()">
+      <button class="btn-sm" onclick="searchUser()" style="padding:8px 14px" data-i18n="chat.searchBtn">搜索</button>
     </div>
     <div id="userSearchResults" style="margin-top:10px"></div>
   </div>
@@ -997,11 +997,11 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   <!-- 搜索栏 -->
   <div style="padding:10px;border-bottom:1px solid var(--border)">
     <div style="display:flex;gap:6px;margin-bottom:8px">
-      <button class="btn-sm active" id="tabFriends" onclick="switchFriendTab('friends')" style="flex:1">好友列表</button>
-      <button class="btn-sm" id="tabRequests" onclick="switchFriendTab('requests')" style="flex:1">好友申请</button>
+      <button class="btn-sm active" id="tabFriends" onclick="switchFriendTab('friends')" style="flex:1" data-i18n="friends.list">好友列表</button>
+      <button class="btn-sm" id="tabRequests" onclick="switchFriendTab('requests')" style="flex:1" data-i18n="social.friendRequests">好友申请</button>
     </div>
     <div style="display:flex;gap:6px">
-      <input id="searchBox" placeholder="搜索用户 ID 或名称..." oninput="searchUsers()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px">
+      <input id="searchBox" data-i18n-ph="friends.searchPh" placeholder="搜索用户 ID 或名称..." oninput="searchUsers()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px">
     </div>
     <div id="searchResult" style="margin-top:8px"></div>
   </div>
@@ -1014,7 +1014,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
   </div>
   <!-- 返回会话列表 -->
   <div style="padding:8px;border-top:1px solid var(--border)">
-    <button class="btn-sm" onclick="hideFriendPanel()" style="width:100%">← 返回会话列表</button>
+    <button class="btn-sm" onclick="hideFriendPanel()" style="width:100%" data-i18n="friends.back">← 返回会话列表</button>
   </div>
 </div>
 <div id="inboxBadge" style="display:none"></div>

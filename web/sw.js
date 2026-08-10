@@ -1,6 +1,6 @@
-// 灵犀引擎 Service Worker - PWA 离线支持 (v2.0.5)
-const CACHE_NAME = 'lingxi-v11';
-const STATIC_ASSETS = ['/', '/index.html', '/install.html', '/manifest.json', '/css/style.css', '/css/mobile.css', '/js/app.js', '/icon.svg'];
+// 灵犀引擎 Service Worker - PWA 离线支持 (v2.0.6)
+const CACHE_NAME = 'lingxi-v12';
+const STATIC_ASSETS = ['/', '/index.html', '/install.html', '/manifest.json', '/css/style.css', '/css/mobile.css', '/js/app.js', '/js/i18n.js', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

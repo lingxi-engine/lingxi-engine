@@ -151,66 +151,66 @@ async function loadTools() {
 async function loadRagDocs() {
   const el = document.getElementById('ragDocsList');
   if (!el) return;
-  el.textContent = '加载中...';
+  el.textContent = t('common.loading');
   try {
     const d = await api('/api/rag/documents', 'GET');
-    if (!d.ok) { el.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
+    if (!d.ok) { el.textContent = '❌ ' + _errMsg(d, t('err.loadFail')); return; }
     const docs = d.documents || [];
-    if (!docs.length) { el.innerHTML = '<div style="color:var(--text3)">暂无文档，添加或扫描工作区</div>'; return; }
+    if (!docs.length) { el.innerHTML = '<div style="color:var(--text3)">' + t('rag.noDocs') + '</div>'; return; }
     el.innerHTML = docs.map(doc => `<div style="display:flex;align-items:center;gap:8px;padding:6px;border-bottom:1px solid var(--border)">
-      <span style="flex:1">📄 ${esc(doc.title)}${doc.chunkCount ? ' <span style="color:var(--text3);font-size:11px">('+doc.chunkCount+'块)</span>' : ''}</span>
+      <span style="flex:1">📄 ${esc(doc.title)}${doc.chunkCount ? ' <span style="color:var(--text3);font-size:11px">(' + t('rag.chunks', {n: doc.chunkCount}) + ')</span>' : ''}</span>
       <button onclick="deleteRagDoc('${esc(doc.id)}')" style="background:none;border:none;color:var(--red);cursor:pointer">🗑</button>
     </div>`).join('');
-  } catch(e) { el.textContent = '❌ ' + (e.message || '网络错误'); }
+  } catch(e) { el.textContent = '❌ ' + (e.message || t('err.networkError')); }
 }
 
 async function addRagDoc() {
   const title = (document.getElementById('ragTitle')||{}).value?.trim();
   const source = (document.getElementById('ragSource')||{}).value?.trim();
   const content = (document.getElementById('ragContent')||{}).value?.trim();
-  if (!title || !content) { toast('请填写标题和内容'); return; }
+  if (!title || !content) { toast(t('rag.fillTitleContent')); return; }
   try {
     const d = await api('/api/rag/documents', 'POST', { title, source, content, mimeType: 'text/plain' });
-    if (d.ok) { toast('✅ 已添加 ' + (d.chunkCount||0) + ' 块'); loadRagDocs(); document.getElementById('ragContent').value=''; }
-    else toast('❌ ' + _errMsg(d, '添加失败'));
-  } catch(e) { toast('❌ 添加失败: ' + e.message); }
+    if (d.ok) { toast(t('rag.added', {n: d.chunkCount||0})); loadRagDocs(); document.getElementById('ragContent').value=''; }
+    else toast('❌ ' + _errMsg(d, t('err.addFail')));
+  } catch(e) { toast('❌ ' + t('err.addFail') + ': ' + e.message); }
 }
 
 async function deleteRagDoc(id) {
-  if (!confirm('删除该文档？')) return;
+  if (!confirm(t('rag.confirmDelete'))) return;
   try {
     const d = await api('/api/rag/documents/' + encodeURIComponent(id), 'DELETE');
-    if (d.ok) { toast('已删除'); loadRagDocs(); }
-    else toast('❌ ' + _errMsg(d, '删除失败'));
-  } catch(e) { toast('❌ 删除失败'); }
+    if (d.ok) { toast(t('toast.deleted')); loadRagDocs(); }
+    else toast('❌ ' + _errMsg(d, t('err.deleteFail')));
+  } catch(e) { toast('❌ ' + t('err.deleteFail')); }
 }
 
 async function searchRag() {
   const q = (document.getElementById('ragQuery')||{}).value?.trim();
   const out = document.getElementById('ragSearchOut');
-  if (!q) { toast('请输入检索词'); return; }
-  out.textContent = '检索中...';
+  if (!q) { toast(t('rag.enterQuery')); return; }
+  out.textContent = t('rag.searching');
   try {
     const d = await api('/api/rag/search?q=' + encodeURIComponent(q), 'GET');
-    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '检索失败'); return; }
+    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, t('rag.searchFail')); return; }
     const hits = d.hits || [];
-    if (!hits.length) { out.innerHTML = '<div style="color:var(--text3)">无结果</div>'; return; }
+    if (!hits.length) { out.innerHTML = '<div style="color:var(--text3)">' + t('search.noResult') + '</div>'; return; }
     out.innerHTML = hits.map((h,i) => `<div style="padding:6px;border-left:3px solid var(--accent);margin-bottom:6px;background:var(--bg2)">
-      <div style="font-weight:600">[${i+1}] ${esc(h.docTitle||'')} <span style="color:var(--text3);font-size:11px">相关度 ${h.score.toFixed ? h.score.toFixed(2) : h.score}</span></div>
+      <div style="font-weight:600">[${i+1}] ${esc(h.docTitle||'')} <span style="color:var(--text3);font-size:11px">${t('rag.relevance', {score: h.score.toFixed ? h.score.toFixed(2) : h.score})}</span></div>
       <div style="color:var(--text2);font-size:11px">${esc((h.content||'').slice(0,200))}...</div>
     </div>`).join('');
-  } catch(e) { out.textContent = '❌ 检索失败'; }
+  } catch(e) { out.textContent = '❌ ' + t('rag.searchFail'); }
 }
 
 async function scanWorkspaceDocs() {
-  if (!confirm('扫描当前工作区，自动导入支持的文档到知识库？')) return;
+  if (!confirm(t('rag.confirmScan'))) return;
   try {
     const d = await api('/api/rag/scan-workspace', 'POST');
     if (d.ok) {
-      toast('✅ 工作区扫描完成: 导入 ' + (d.imported||0) + ' 个, 跳过 ' + (d.skipped||0) + ' 个');
+      toast(t('rag.scanDone', {imported: d.imported||0, skipped: d.skipped||0}));
       loadRagDocs();
-    } else toast('❌ ' + _errMsg(d, '扫描失败'));
-  } catch(e) { toast('❌ 扫描失败: ' + e.message); }
+    } else toast('❌ ' + _errMsg(d, t('err.scanFail')));
+  } catch(e) { toast('❌ ' + t('err.scanFail') + ': ' + e.message); }
 }
 
 // ═══ 工作区 (v2.0.6) ═══
@@ -223,7 +223,7 @@ async function loadWorkspace() {
     const root = document.getElementById('wsRootInput');
     if (root) root.value = d.workspaceRoot || '';
     const info = document.getElementById('wsInfo');
-    if (info) info.innerHTML = `当前工作区: <b style="color:var(--accent)">${esc(d.workspaceRoot||'')}</b> (模式: ${d.mode==='collab'?'👥 协作':'👤 个人'})`;
+    if (info) info.innerHTML = t('ws.currentPrefix') + '<b style="color:var(--accent)">' + esc(d.workspaceRoot||'') + '</b> ' + t('ws.modeInfo', {mode: d.mode==='collab'?t('ws.modeCollab'):t('ws.modePersonal')});
   } catch(e) {}
 }
 
@@ -232,9 +232,9 @@ async function setWorkspaceMode() {
   const root = (document.getElementById('wsRootInput').value || '').trim();
   try {
     const d = await api('/api/workspace-mode', 'POST', { mode, workspaceRoot: root || undefined });
-    if (d && d.ok !== false) { toast('✅ 已切换为 ' + mode); loadWorkspace(); }
-    else toast('❌ ' + (d?.error || '设置失败'));
-  } catch(e) { toast('❌ 设置失败: ' + e.message); }
+    if (d && d.ok !== false) { toast(t('ws.switched', {mode})); loadWorkspace(); }
+    else toast('❌ ' + (d?.error || t('err.setFail')));
+  } catch(e) { toast('❌ ' + t('err.setFail') + ': ' + e.message); }
 }
 
 async function saveWorkspace() {
@@ -1178,13 +1178,13 @@ async function send() {
 
   // 跨平台好友聊天：走 HTTP -> 本地引擎 -> Mesh 中继
   if (String(chatId).startsWith('chat-platform-')) {
-    if (!ws || ws.readyState !== 1) { toast('未连接本地引擎'); return; }
+    if (!ws || ws.readyState !== 1) { toast(t('chat.engineNotConnected')); return; }
     input.value = '';
     appendMessage({ chatId, senderId: String(lanMeId || clientId || 'user'), senderType: 'user', content, timestamp: Date.now() });
     try {
       const d = await api('/api/chats/' + encodeURIComponent(chatId) + '/send-friend', 'POST', { content, fromUserId: lanMeId || clientId });
-      if (!d.ok) toast(d.error?.message || d.error || '发送失败');
-    } catch(e) { toast('发送失败: ' + (e.message || '')); }
+      if (!d.ok) toast(d.error?.message || d.error || t('err.sendFail'));
+    } catch(e) { toast(t('err.sendFail') + ': ' + (e.message || '')); }
     return;
   }
 
@@ -1359,7 +1359,7 @@ let outgoingRequests = [];
 async function searchUsers() {
   const q = document.getElementById('searchBox').value.trim();
   if (!q) { document.getElementById('searchResult').innerHTML=''; return; }
-  document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">搜索中...</div>';
+  document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">'+t('chat.searching')+'</div>';
   try {
     let data;
     if (authToken) {
@@ -1370,7 +1370,7 @@ async function searchUsers() {
       searchResults = data.users || [];
     }
     renderSearch();
-  } catch(e) { document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">搜索失败</div>'; }
+  } catch(e) { document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">'+t('err.searchFail')+'</div>'; }
 }
 function renderSearch() {
   const c = document.getElementById('searchResult');
@@ -1384,10 +1384,10 @@ function renderSearch() {
     const isPending = outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending');
     const isMe = uid === String(lanMeId) || u.id === clientId;
     let action;
-    if (isMe) action = '<span style="color:var(--text3);font-size:11px">我自己</span>';
-    else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">✓ 已好友</span>';
-    else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">⏳ 已申请</span>';
-    else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+uid+'\')">＋好友</button>';
+    if (isMe) action = '<span style="color:var(--text3);font-size:11px">'+t('friends.me')+'</span>';
+    else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">'+t('friends.isFriend')+'</span>';
+    else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">'+t('friends.requestedStatus')+'</span>';
+    else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+uid+'\')">'+t('social.addFriend')+'</button>';
     const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc((u.displayName||'?')[0].toUpperCase())+'</div>';
     return '<div class="friend-item" style="display:flex;align-items:center;gap:10px">'+avatar+'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:500">'+esc(u.displayName)+'</div><div style="font-size:11px;color:var(--text3)">ID: '+uid+'</div></div><div>'+action+'</div></div>';
   }).join('');
@@ -1396,8 +1396,8 @@ async function sendRequest(to) {
   if (!authToken && !clientId) { toast(t('toast.connectFirst')); return; }
   // 防重复：先检查本地状态
   const uid = String(to);
-  if (myFriends.some(f => String(f.friendId) === uid)) { toast('已经是好友了'); return; }
-  if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast('已发送过申请，请等待对方处理'); return; }
+  if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
+  if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
   try {
     if (authToken) {
       const d = await platformApi('/api/lan/friend-request', 'POST', { toNumericId: Number(to), message: '' });
@@ -1407,7 +1407,7 @@ async function sendRequest(to) {
     }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
-    outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || ('用户' + uid), createdAt: Date.now() });
+    outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || (t('profile.defaultUser') + uid), createdAt: Date.now() });
     searchUsers(); loadRequests().catch(() => {});
   } catch(e) { toast(t('err.sendFail')); }
 }
@@ -1429,12 +1429,12 @@ async function loadFriends() {
 function renderFriends() {
   const el = document.getElementById('friendsList');
   if (!myFriends.length) {
-    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">👥</div><div style="font-size:13px">暂无好友</div><div style="font-size:11px;margin-top:4px">搜索用户 ID 或名称添加好友</div></div>';
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)"><div style="font-size:28px;margin-bottom:8px">👥</div><div style="font-size:13px">'+t('friends.noFriends')+'</div><div style="font-size:11px;margin-top:4px">'+t('friends.searchHint')+'</div></div>';
     return;
   }
   el.innerHTML = myFriends.map(f => {
     const fid = String(f.friendId);
-    const fname = f.friendName || f.displayName || ('用户'+fid);
+    const fname = f.friendName || f.displayName || (t('profile.defaultUser')+fid);
     const femail = f.friendEmail || '';
     const initial = (fname||'?')[0].toUpperCase();
     const avatar = '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;font-size:18px;color:#fff;flex-shrink:0;font-weight:600">'+esc(initial)+'</div>';
@@ -1445,8 +1445,8 @@ function renderFriends() {
         '<div style="font-size:11px;color:var(--text3);margin-top:2px">ID: '+fid+(femail?' · '+esc(femail):'')+'</div>' +
       '</div>' +
       '<div style="display:flex;gap:4px;flex-shrink:0">' +
-        '<button class="btn-sm" style="background:var(--accent);color:#fff;padding:4px 10px;font-size:11px" onclick="openChatFriend(\''+fid+'\',\''+esc(fname)+'\')" title="发消息">💬</button>' +
-        '<button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="confirmDeleteFriend(\''+fid+'\',\''+esc(fname)+'\')" title="删除好友">✕</button>' +
+        '<button class="btn-sm" style="background:var(--accent);color:#fff;padding:4px 10px;font-size:11px" onclick="openChatFriend(\''+fid+'\',\''+esc(fname)+'\')" title="'+t('friends.sendMsg')+'">💬</button>' +
+        '<button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="confirmDeleteFriend(\''+fid+'\',\''+esc(fname)+'\')" title="'+t('friends.deleteFriend')+'">✕</button>' +
       '</div></div>';
   }).join('');
 }
@@ -1464,7 +1464,7 @@ async function openChatFriend(fid, fname) {
   } catch(e) { console.error('[openChatFriend]', e); toast(t('err.openChatFail')); }
 }
 function confirmDeleteFriend(fid, fname) {
-  if (confirm('确定要删除好友「'+fname+'」吗？删除后需要重新发送好友申请。')) {
+  if (confirm(t('friends.confirmDelete', {name: fname}))) {
     deleteFriend(fid);
   }
 }
@@ -1474,7 +1474,7 @@ async function deleteFriend(fid) {
       const d = await platformApi('/api/lan/friends/' + fid, 'DELETE');
       if (d.error) { toast(d.error); return; }
     }
-    toast('已删除好友'); loadFriends();
+    toast(t('friends.deleted')); loadFriends();
   } catch(e) { toast(t('err.operationFail')); }
 }
 async function loadRequests() {
@@ -1498,16 +1498,16 @@ function renderRequests() {
   const inEl = document.getElementById('incomingRequests');
   if (!inEl) return;
   if (!incomingRequests.length) {
-    inEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">暂无新申请</div>';
+    inEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">'+t('friends.noNewRequests')+'</div>';
   } else {
     inEl.innerHTML = incomingRequests.map(r => {
-      const name = r.fromName || ('用户'+r.fromUserId);
+      const name = r.fromName || (t('profile.defaultUser')+r.fromUserId);
       const initial = name[0].toUpperCase();
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">'+esc(initial)+'</div>';
       return '<div class="request-item" style="display:flex;align-items:center;gap:10px;padding:10px">' +
         avatar +
         '<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:600">'+esc(name)+'</div>' +
-        (r.message?'<div style="font-size:11px;color:var(--text3);margin-top:2px">留言: '+esc(r.message)+'</div>':'') +
+        (r.message?'<div style="font-size:11px;color:var(--text3);margin-top:2px">'+t('friends.messageLabel')+esc(r.message)+'</div>':'') +
         '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+new Date(r.createdAt).toLocaleString()+'</div></div>' +
         '<div style="display:flex;gap:4px;flex-shrink:0">' +
           '<button class="btn-sm btn-accept" onclick="respondReq(\''+r.id+'\',\'accept\')">'+t('friends.accept')+'</button>' +
@@ -1519,21 +1519,21 @@ function renderRequests() {
   const outEl = document.getElementById('outgoingRequests');
   if (!outEl) return;
   if (!outgoingRequests.length) {
-    outEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">暂无发出的申请</div>';
+    outEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">'+t('friends.noSentRequests')+'</div>';
   } else {
     outEl.innerHTML = outgoingRequests.map(r => {
-      const name = r.toName || ('用户'+r.toUserId);
+      const name = r.toName || (t('profile.defaultUser')+r.toUserId);
       const initial = name[0].toUpperCase();
-      const statusLabel = r.status === 'pending' ? '<span style="color:#f59e0b;font-size:11px">⏳ 等待中</span>' :
-        r.status === 'accepted' ? '<span style="color:#4ade80;font-size:11px">✓ 已通过</span>' :
-        '<span style="color:#ef4444;font-size:11px">✕ 已拒绝</span>';
+      const statusLabel = r.status === 'pending' ? '<span style="color:#f59e0b;font-size:11px">'+t('friends.statusPending')+'</span>' :
+        r.status === 'accepted' ? '<span style="color:#4ade80;font-size:11px">'+t('friends.statusAccepted')+'</span>' :
+        '<span style="color:#ef4444;font-size:11px">'+t('friends.statusRejected')+'</span>';
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc(initial)+'</div>';
       return '<div class="request-item" style="display:flex;align-items:center;gap:10px;padding:10px">' +
         avatar +
         '<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text)">'+esc(name)+'</div>' +
         '<div style="font-size:10px;color:var(--text3);margin-top:2px">'+new Date(r.createdAt).toLocaleString()+'</div></div>' +
         '<div style="display:flex;align-items:center;gap:6px">' + statusLabel +
-        (r.status === 'pending' ? ' <button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="withdrawRequest(\''+r.id+'\')">撤回</button>' : '') +
+        (r.status === 'pending' ? ' <button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="withdrawRequest(\''+r.id+'\')">'+t('friends.withdraw')+'</button>' : '') +
         '</div></div>';
     }).join('');
   }
@@ -1551,13 +1551,13 @@ async function respondReq(rid, action) {
   } catch(e) { toast(t('err.operationFail')); }
 }
 async function withdrawRequest(rid) {
-  if (!confirm('确定撤回这条好友申请吗？')) return;
+  if (!confirm(t('friends.confirmWithdraw'))) return;
   try {
     if (authToken) {
       const d = await platformApi('/api/lan/friend-request/' + rid, 'DELETE');
       if (d.error) { toast(d.error); return; }
     }
-    toast('已撤回申请'); loadRequests();
+    toast(t('friends.withdrawn')); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
 }
 
@@ -1567,7 +1567,7 @@ async function searchUser() {
   const box = document.getElementById('userSearchResults');
   if (!box) return;
   if (!q || !q.trim()) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">搜索中...</div>';
+  box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">'+t('chat.searching')+'</div>';
   try {
     let results = [];
     if (authToken) {
@@ -1577,21 +1577,21 @@ async function searchUser() {
     // 去重
     const seen = new Set();
     results = results.filter(u => { const k = String(u.numericId); if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!results.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">未找到用户</div>'; return; }
+    if (!results.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">'+t('friends.userNotFound')+'</div>'; return; }
     box.innerHTML = results.map(u => {
       const isFriend = myFriends.some(f => String(f.friendId) === String(u.numericId));
       const isPending = outgoingRequests.some(r => String(r.toUserId) === String(u.numericId) && r.status === 'pending');
       const isMe = String(u.numericId) === String(lanMeId);
       let action;
-      if (isMe) action = '<span style="color:var(--text3);font-size:11px">我</span>';
-      else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">✓ 已好友</span>';
-      else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">⏳ 已申请</span>';
-      else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+u.numericId+'\')">＋好友</button>';
+      if (isMe) action = '<span style="color:var(--text3);font-size:11px">'+t('friends.meShort')+'</span>';
+      else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">'+t('friends.isFriend')+'</span>';
+      else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">'+t('friends.requestedStatus')+'</span>';
+      else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+u.numericId+'\')">'+t('social.addFriend')+'</button>';
       const initial = (u.displayName||'?')[0].toUpperCase();
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc(initial)+'</div>';
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border)">'+avatar+'<div style="flex:1"><div style="font-size:13px;color:var(--text)">'+esc(u.displayName)+'</div><div style="font-size:11px;color:var(--text3)">ID: '+u.numericId+'</div></div>'+action+'</div>';
     }).join('');
-  } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:12px;padding:8px">搜索失败</div>'; }
+  } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:12px;padding:8px">'+t('err.searchFail')+'</div>'; }
 }
 
 // ── Create Group ──
@@ -1962,19 +1962,19 @@ async function addProvider() {
 
 const PROVIDER_PRESETS = {
   deepseek: {name:'DeepSeek',url:'https://api.deepseek.com/v1',models:'deepseek-v4-pro,deepseek-v4-flash,deepseek-chat,deepseek-reasoner',keyHint:'sk-xxx'},
-  zhipu: {name:'智谱GLM',url:'https://open.bigmodel.cn/api/paas/v4',models:'glm-5.2,glm-5.1,glm-5-turbo,glm-4.7,glm-4.7-flash',keyHint:'智谱API Key'},
+  zhipu: {name:'智谱GLM',url:'https://open.bigmodel.cn/api/paas/v4',models:'glm-5.2,glm-5.1,glm-5-turbo,glm-4.7,glm-4.7-flash',keyHint:'智谱API Key',nk:'provider.zhipu',hk:'provider.keyZhipu'},
   moonshot: {name:'Kimi',url:'https://api.moonshot.ai/v1',models:'kimi-latest,kimi-k2.6,kimi-k2.7-code,moonshot-v1-128k',keyHint:'Kimi API Key'},
   nvidia: {name:'NVIDIA NIM',url:'https://integrate.api.nvidia.com/v1',models:'minimaxai/minimax-m3,z-ai/glm-5.2,stepfun-ai/step-3.7-flash,qwen/qwen3-next-80b-a3b-instruct,deepseek-ai/deepseek-v4-flash',keyHint:'__hintFree__'},
   minimax: {name:'MiniMax',url:'https://api.minimax.io/v1',models:'MiniMax-M3,abab6.5-chat',keyHint:'MiniMax Key'},
-  qwen: {name:'通义千问',url:'https://dashscope.aliyuncs.com/compatible-mode/v1',models:'qwen3.7-max,qwen3.7-plus,qwen3.6-flash,qwen-max',keyHint:'DashScope Key'},
-  baidu: {name:'百度文心',url:'https://qianfan.baidubce.com/v2',models:'ernie-4.0-turbo,ernie-3.5-turbo',keyHint:'千帆API Key'},
-  yi: {name:'零一万物',url:'https://api.lingyiwanwu.com/v1',models:'yi-large,yi-medium,yi-lightning',keyHint:'Yi API Key'},
-  baichuan: {name:'百川',url:'https://api.baichuan-ai.com/v1',models:'Baichuan4,Baichuan3-Turbo',keyHint:'百川API Key'},
-  stepfun: {name:'阶跃星辰',url:'https://api.stepfun.com/v1',models:'step-3-8k,step-3.7-flash',keyHint:'StepFun Key'},
-  siliconflow: {name:'硅基流动',url:'https://api.siliconflow.cn/v1',models:'Qwen/Qwen3-235B-A22B,deepseek-ai/deepseek-v4-flash',keyHint:'硅基流动Key'},
-  iflytek: {name:'讯飞星火',url:'https://spark-api-open.xf-yun.com/v1',models:'spark-v4.0,spark-v3.5',keyHint:'讯飞API Key'},
-  volcengine: {name:'火山引擎',url:'https://ark.cn-beijing.volces.com/api/v3',models:'doubao-pro-128k,doubao-pro-32k',keyHint:'火山引擎Key'},
-  tencent: {name:'腾讯混元',url:'https://api.hunyuan.cloud.tencent.com/v1',models:'hunyuan-turbo,hunyuan-standard',keyHint:'腾讯云Key'},
+  qwen: {name:'通义千问',url:'https://dashscope.aliyuncs.com/compatible-mode/v1',models:'qwen3.7-max,qwen3.7-plus,qwen3.6-flash,qwen-max',keyHint:'DashScope Key',nk:'provider.qwen'},
+  baidu: {name:'百度文心',url:'https://qianfan.baidubce.com/v2',models:'ernie-4.0-turbo,ernie-3.5-turbo',keyHint:'千帆API Key',nk:'provider.baidu',hk:'provider.keyBaidu'},
+  yi: {name:'零一万物',url:'https://api.lingyiwanwu.com/v1',models:'yi-large,yi-medium,yi-lightning',keyHint:'Yi API Key',nk:'provider.yi'},
+  baichuan: {name:'百川',url:'https://api.baichuan-ai.com/v1',models:'Baichuan4,Baichuan3-Turbo',keyHint:'百川API Key',nk:'provider.baichuan',hk:'provider.keyBaichuan'},
+  stepfun: {name:'阶跃星辰',url:'https://api.stepfun.com/v1',models:'step-3-8k,step-3.7-flash',keyHint:'StepFun Key',nk:'provider.stepfun'},
+  siliconflow: {name:'硅基流动',url:'https://api.siliconflow.cn/v1',models:'Qwen/Qwen3-235B-A22B,deepseek-ai/deepseek-v4-flash',keyHint:'硅基流动Key',nk:'provider.siliconflow',hk:'provider.keySiliconflow'},
+  iflytek: {name:'讯飞星火',url:'https://spark-api-open.xf-yun.com/v1',models:'spark-v4.0,spark-v3.5',keyHint:'讯飞API Key',nk:'provider.iflytek',hk:'provider.keyIflytek'},
+  volcengine: {name:'火山引擎',url:'https://ark.cn-beijing.volces.com/api/v3',models:'doubao-pro-128k,doubao-pro-32k',keyHint:'火山引擎Key',nk:'provider.volcengine',hk:'provider.keyVolc'},
+  tencent: {name:'腾讯混元',url:'https://api.hunyuan.cloud.tencent.com/v1',models:'hunyuan-turbo,hunyuan-standard',keyHint:'腾讯云Key',nk:'provider.tencent',hk:'provider.keyTencent'},
   openai: {name:'OpenAI',url:'https://api.openai.com/v1',models:'gpt-5.6-luna-pro,gpt-4o,gpt-4o-mini',keyHint:'sk-xxx'},
   anthropic: {name:'Claude',url:'https://api.anthropic.com/v1',models:'claude-sonnet-5,claude-sonnet-4,claude-opus-4',keyHint:'sk-ant-xxx'},
   google: {name:'Gemini',url:'https://generativelanguage.googleapis.com/v1beta/openai',models:'gemini-3-pro-image,gemini-2.0-flash',keyHint:'Google AI Key'},
@@ -1992,8 +1992,8 @@ function onProviderTypeChange() {
   var type = document.getElementById('newProviderType').value;
   var p = PROVIDER_PRESETS[type];
   if (!p) return;
-  var presetName = p.name === '__custom__' ? t('misc.custom') : p.name;
-  var hint = p.keyHint === '__hintFree__' ? t('misc.keyHintFree') : (p.keyHint === '__hintLocal__' ? t('misc.keyHintLocal') : p.keyHint);
+  var presetName = p.name === '__custom__' ? t('misc.custom') : (p.nk ? t(p.nk) : p.name);
+  var hint = p.keyHint === '__hintFree__' ? t('misc.keyHintFree') : (p.keyHint === '__hintLocal__' ? t('misc.keyHintLocal') : (p.hk ? t(p.hk) : p.keyHint));
   document.getElementById('newProviderName').value = presetName;
   document.getElementById('newProviderUrl').value = p.url;
   document.getElementById('newProviderModels').value = p.models;
@@ -2074,7 +2074,7 @@ async function loadPromptAgentSelect() {
     const agents = d.agents || [];
     const sel = document.getElementById('promptAgentSelect');
     if (!sel) return;
-    sel.innerHTML = '<option value="">选择 Agent...</option>' +
+    sel.innerHTML = '<option value="">'+t('admin.selectAgent')+'</option>' +
       agents.map(a => '<option value="'+esc(a.id)+'">'+esc(a.display_name || a.id)+'</option>').join('');
   } catch(e) {}
 }
@@ -2084,32 +2084,32 @@ async function loadAgentPrompt() {
   try {
     const d = await api('/api/agents/' + agentId + '/memory');
     document.getElementById('promptEditArea').value = d.personality || d.memory_summary || '';
-  } catch(e) { toast('❌ 加载失败'); }
+  } catch(e) { toast('❌ ' + t('err.loadFail')); }
 }
 async function saveAgentPrompt() {
   const agentId = document.getElementById('promptAgentSelect').value;
   const prompt = document.getElementById('promptEditArea').value;
-  if (!agentId) { toast('请先选择 Agent'); return; }
+  if (!agentId) { toast(t('admin.selectAgentFirst')); return; }
   try {
     await api('/api/agents/' + agentId + '/memory', 'PUT', { personality: prompt });
-    toast('✅ 提示词已保存');
-  } catch(e) { toast('❌ 保存失败: ' + e.message); }
+    toast(t('admin.promptSaved'));
+  } catch(e) { toast('❌ ' + t('err.saveFail') + ': ' + e.message); }
 }
 
 async function uploadVision(event) {
   const file = event.target.files[0];
   if (!file) return;
-  document.getElementById('visionResult').textContent = '分析中...';
+  document.getElementById('visionResult').textContent = t('admin.analyzing');
   try {
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('prompt', '描述这张图片的内容');
+    fd.append('prompt', t('admin.visionPrompt'));
     const r = await fetch('/api/vision/analyze', { method: 'POST', body: fd });
     const d = await r.json();
     if (d.ok && d.result) {
       document.getElementById('visionResult').textContent = d.result;
     } else {
-      document.getElementById('visionResult').textContent = '❌ ' + _errMsg(d, '分析失败');
+      document.getElementById('visionResult').textContent = '❌ ' + _errMsg(d, t('admin.analyzeFail'));
     }
   } catch(e) { document.getElementById('visionResult').textContent = '❌ ' + e.message; }
 }
@@ -2120,21 +2120,21 @@ async function loadVoiceStatus() {
     const el = document.getElementById('voiceStatus');
     if (!el) return;
     const tts = d.tts || {};
-    el.textContent = 'TTS: ' + (tts.available ? '✅ 可用' : '❌ 未配置') + ' | STT: ' + (d.stt?.available ? '✅' : '❌');
+    el.textContent = 'TTS: ' + (tts.available ? t('admin.ttsAvailable') : t('admin.ttsNotConfigured')) + ' | STT: ' + (d.stt?.available ? '✅' : '❌');
   } catch(e) {}
 }
 async function testTTS() {
   const voice = document.getElementById('ttsVoiceSelect').value;
   try {
-    const r = await api('/api/voice/tts', 'POST', { text: '灵犀引擎语音测试', voice });
+    const r = await api('/api/voice/tts', 'POST', { text: t('admin.ttsTestText'), voice });
     if (r.ok && r.audio) {
       const audio = new Audio('data:audio/mp3;base64,' + r.audio);
       audio.play();
-      toast('🔊 正在播放');
+      toast(t('admin.playing'));
     } else {
-      toast('❌ TTS 不可用: ' + (r.error || ''));
+      toast(t('admin.ttsUnavailable', {msg: r.error || ''}));
     }
-  } catch(e) { toast('❌ TTS 失败: ' + e.message); }
+  } catch(e) { toast(t('admin.ttsFail', {msg: e.message})); }
 }
 
 
@@ -2227,9 +2227,9 @@ async function submitAuth() {
       document.getElementById('loginButtons').style.display = 'none';
       closeAuthModal();
       connect();
-      toast('✅ ' + (authMode === 'register' ? '注册成功' : '登录成功'));
+      toast('✅ ' + (authMode === 'register' ? t('auth.registerSuccess') : t('auth.loginSuccess')));
     } else {
-      document.getElementById('authMsg').textContent = '❌ ' + (r.error || '失败');
+      document.getElementById('authMsg').textContent = '❌ ' + (r.error || t('err.fail'));
     }
   } catch(e) {
     document.getElementById('authMsg').textContent = '❌ ' + e.message;
@@ -2243,7 +2243,7 @@ async function logout() {
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
   if (ws) try { ws.close(); } catch {}
-  toast('已退出');
+  toast(t('auth.loggedOut'));
 }
 function checkAuthStatus() {
   const saved = localStorage.getItem('authToken');
@@ -2253,7 +2253,7 @@ function checkAuthStatus() {
       .then(r => r.json())
       .then(d => {
         if (d.ok && d.user) {
-          document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || '用户');
+          document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || t('profile.defaultUser'));
           document.getElementById('loginArea').style.display = '';
           document.getElementById('loginButtons').style.display = 'none';
           connect();
@@ -2279,16 +2279,16 @@ async function loadProfileCard() {
       } catch(e) {}
     }
     if (!u && clientId) {
-      u = { id: clientId, display_name: '用户' };
+      u = { id: clientId, display_name: t('profile.defaultUser') };
     }
     if (!u) return;
     var userId = u.id || u.sub || '';
-    var name = u.display_name || u.username || '用户';
+    var name = u.display_name || u.username || t('profile.defaultUser');
     var idShow = u.numeric_id || u.id || '';
     var avatarUrl = u.avatar_url || '';
     var bio = u.bio || '';
     var credits = 0;
-    var rating = '暂无';
+    var rating = t('common.none');
     var tokens = 0;
     var calls = 0;
     var email = u.email || '';
@@ -2304,8 +2304,8 @@ async function loadProfileCard() {
         email = p.email || email;
         createdAt = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN') : createdAt;
         credits = pr.credits || 0;
-        if (pr.ratings && pr.ratings.avgRating) rating = Number(pr.ratings.avgRating).toFixed(1) + '星';
-        if (pr.ratings && pr.ratings.count) rating += ' (' + pr.ratings.count + '评)';
+        if (pr.ratings && pr.ratings.avgRating) rating = t('profile.starUnit', {n: Number(pr.ratings.avgRating).toFixed(1)});
+        if (pr.ratings && pr.ratings.count) rating += t('profile.ratingCount', {n: pr.ratings.count});
         if (pr.usage) { tokens = pr.usage.totalTokens || 0; calls = pr.usage.calls || 0; }
       }
     } catch(e) {}
@@ -2313,24 +2313,24 @@ async function loadProfileCard() {
     el = document.getElementById('pcAvatar'); if (el) { if (avatarUrl) { el.style.backgroundImage = 'url(' + esc(avatarUrl) + ')'; el.style.backgroundSize = 'cover'; } el.textContent = avatarUrl ? '' : esc((name[0]||'U').toUpperCase()); }
     el = document.getElementById('pcName'); if (el) el.textContent = name;
     el = document.getElementById('pcId'); if (el) el.textContent = 'ID: ' + esc(String(idShow));
-    el = document.getElementById('pcCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString() + ' 积分';
+    el = document.getElementById('pcCredits'); if (el) el.textContent = t('profile.creditsVal', {n: Number(credits).toLocaleString()});
     el = document.getElementById('pdName'); if (el) el.textContent = name;
     el = document.getElementById('pdId'); if (el) el.textContent = esc(String(idShow));
-    el = document.getElementById('pdEmail'); if (el) el.textContent = esc(email || '未设置');
+    el = document.getElementById('pdEmail'); if (el) el.textContent = esc(email || t('profile.notSet'));
     el = document.getElementById('pdCredits'); if (el) el.textContent = '⚡ ' + Number(credits).toLocaleString();
     el = document.getElementById('pdRating'); if (el) el.textContent = rating;
-    el = document.getElementById('pdUsage'); if (el) el.textContent = 'Token: ' + Number(tokens).toLocaleString() + ' · 调用: ' + Number(calls).toLocaleString();
-    el = document.getElementById('pdBio'); if (el) el.textContent = bio ? '个人介绍：' + esc(bio) : '暂无介绍';
+    el = document.getElementById('pdUsage'); if (el) el.textContent = t('profile.usageLine', {tokens: Number(tokens).toLocaleString(), calls: Number(calls).toLocaleString()});
+    el = document.getElementById('pdBio'); if (el) el.textContent = bio ? t('profile.bioPrefix') + esc(bio) : t('profile.noBio');
   } catch(e) { console.error('[loadProfileCard]', e); }
 }
 
 // ── 编辑资料 ──
 async function editProfile() {
   var token = localStorage.getItem('authToken');
-  if (!token) { toast('请先登录'); return; }
+  if (!token) { toast(t('auth.loginFirst')); return; }
   // 获取当前用户 ID
   var userId = clientId || '';
-  if (!userId) { toast('无法获取用户信息'); return; }
+  if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 获取当前资料
   var curName = '', curBio = '';
   try {
@@ -2341,25 +2341,25 @@ async function editProfile() {
     }
   } catch(e) {}
   // 弹出编辑框
-  var newName = prompt('请输入新的用户名：', curName);
+  var newName = prompt(t('profile.enterNewName'), curName);
   if (newName === null) return;
-  var newBio = prompt('请输入个人介绍：', curBio);
+  var newBio = prompt(t('profile.enterBio'), curBio);
   if (newBio === null) return;
   try {
     var r = await api('/api/profile', 'PUT', { userId: userId, displayName: newName, bio: newBio });
     if (r && r.ok) {
-      toast('✅ 资料已更新');
+      toast(t('profile.updated'));
       loadProfileCard();
     } else {
-      toast('❌ 更新失败: ' + (r?.error || '未知错误'));
+      toast('❌ ' + t('err.updateFail') + ': ' + (r?.error || t('err.unknown')));
     }
-  } catch(e) { toast('❌ 更新失败: ' + e.message); }
+  } catch(e) { toast('❌ ' + t('err.updateFail') + ': ' + e.message); }
 }
 
 // ── 上传头像 ──
 function uploadAvatar() {
   var token = localStorage.getItem('authToken');
-  if (!token) { toast('请先登录'); return; }
+  if (!token) { toast(t('auth.loginFirst')); return; }
   var input = document.getElementById('avatarFileInput');
   if (input) input.click();
 }
@@ -2368,15 +2368,15 @@ async function doUploadAvatar(input) {
   if (!file) return;
   input.value = ''; // 重置以便下次可选同一文件
   var userId = clientId || '';
-  if (!userId) { toast('无法获取用户信息'); return; }
+  if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 校验文件类型
-  if (!/^image\//.test(file.type)) { toast('请选择图片文件'); return; }
-  if (file.size > 5 * 1024 * 1024) { toast('图片大小不能超过 5MB'); return; }
+  if (!/^image\//.test(file.type)) { toast(t('profile.pickImage')); return; }
+  if (file.size > 5 * 1024 * 1024) { toast(t('profile.imageTooLarge')); return; }
   var fd = new FormData();
   fd.append('file', file);
   fd.append('userId', userId);
   try {
-    toast('上传中...');
+    toast(t('common.uploading'));
     var token = localStorage.getItem('authToken');
     var res = await fetch('/api/profile/avatar', {
       method: 'POST',
@@ -2385,20 +2385,20 @@ async function doUploadAvatar(input) {
     });
     var data = await res.json();
     if (data && data.ok) {
-      toast('✅ 头像上传成功');
+      toast(t('profile.avatarOk'));
       loadProfileCard();
     } else {
-      toast('❌ 上传失败: ' + (data?.error || '未知错误'));
+      toast('❌ ' + t('err.uploadFail') + ': ' + (data?.error || t('err.unknown')));
     }
-  } catch(e) { toast('❌ 上传失败: ' + e.message); }
+  } catch(e) { toast('❌ ' + t('err.uploadFail') + ': ' + e.message); }
 }
 
 // ── 积分明细 ──
 async function showCreditsDetail() {
   var token = localStorage.getItem('authToken');
-  if (!token) { toast('请先登录'); return; }
+  if (!token) { toast(t('auth.loginFirst')); return; }
   var userId = clientId || '';
-  if (!userId) { toast('无法获取用户信息'); return; }
+  if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 获取积分余额
   var credits = 0, totalEarned = 0, totalSpent = 0;
   try {
@@ -2418,12 +2418,12 @@ async function showCreditsDetail() {
   // 构建弹窗内容
   var html = '<div style="margin-bottom:12px">';
   html += '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">';
-  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:var(--accent)">' + Number(credits).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">当前积分</div></div>';
-  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#4ade80">' + Number(totalEarned).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">累计获得</div></div>';
-  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#f59e0b">' + Number(totalSpent).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">累计消费</div></div>';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:var(--accent)">' + Number(credits).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">' + t('profile.creditsNow') + '</div></div>';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#4ade80">' + Number(totalEarned).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">' + t('profile.creditsEarned') + '</div></div>';
+  html += '<div style="text-align:center;background:var(--bg3);border-radius:8px;padding:10px"><div style="font-size:18px;font-weight:700;color:#f59e0b">' + Number(totalSpent).toLocaleString() + '</div><div style="font-size:10px;color:var(--text3)">' + t('profile.creditsSpent') + '</div></div>';
   html += '</div>';
   if (history.length > 0) {
-    html += '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">📜 积分变动记录</div>';
+    html += '<div style="font-size:13px;color:var(--text2);margin-bottom:8px">' + t('profile.creditsHistory') + '</div>';
     html += '<div style="max-height:300px;overflow-y:auto">';
     for (var i = 0; i < history.length; i++) {
       var h = history[i];
@@ -2436,7 +2436,7 @@ async function showCreditsDetail() {
     }
     html += '</div>';
   } else {
-    html += '<div style="text-align:center;color:var(--text3);padding:20px 0">暂无积分变动记录</div>';
+    html += '<div style="text-align:center;color:var(--text3);padding:20px 0">' + t('profile.noCreditsHistory') + '</div>';
   }
   html += '</div>';
   // 用已有的 profileModal 显示
@@ -2462,8 +2462,8 @@ async function loadProfile() {
   const box = document.getElementById('profileContent');
   try {
     const token = localStorage.getItem('authToken');
-    if (!token) { toast('请先登录'); return; }
-    box.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px 0">加载中...</div>';
+    if (!token) { toast(t('auth.loginFirst')); return; }
+    box.innerHTML = '<div style="text-align:center;color:var(--text3);padding:30px 0">' + t('common.loading') + '</div>';
     // ── 获取用户身份：本地引擎优先，失败回退云平台 ──
     let u = null, fromCloud = false;
     try {
@@ -2478,26 +2478,26 @@ async function loadProfile() {
       } catch (e) { /* 云平台不可达 */ }
     }
     if (!u) {
-      box.innerHTML = '<div style="text-align:center;color:var(--red);padding:30px 0">获取用户信息失败，请重新登录</div>';
+      box.innerHTML = '<div style="text-align:center;color:var(--red);padding:30px 0">' + t('profile.loadUserFail') + '</div>';
       return;
     }
     const userId = u.id || u.sub || '';
     // ── 组装资料数据：本地 /api/profile 优先，云账号回退云平台 ──
-    let name = '用户', idShow = userId, credits = 0, rating = '暂无', tokens = 0, calls = 0, createdAt = '-', status = '在线', ratingsHtml = '';
+    let name = t('profile.defaultUser'), idShow = userId, credits = 0, rating = t('common.none'), tokens = 0, calls = 0, createdAt = '-', status = t('profile.online'), ratingsHtml = '';
     let pr = null;
     if (!fromCloud) {
       try { pr = await api('/api/profile?userId=' + encodeURIComponent(userId)); } catch (e) {}
     }
     if (pr && pr.ok && pr.profile) {
       const p = pr.profile;
-      name = p.display_name || '用户';
+      name = p.display_name || t('profile.defaultUser');
       idShow = p.numeric_id || p.id;
       credits = pr.credits || 0;
-      rating = pr.ratings?.avgRating ? '⭐ ' + Number(pr.ratings.avgRating).toFixed(1) : '暂无';
+      rating = pr.ratings?.avgRating ? '⭐ ' + Number(pr.ratings.avgRating).toFixed(1) : t('common.none');
       tokens = pr.usage?.totalTokens || 0;
       calls = pr.usage?.calls || 0;
       createdAt = new Date(p.created_at).toLocaleString('zh-CN');
-      status = p.status === 'offline' ? '离线' : '在线';
+      status = p.status === 'offline' ? t('profile.offline') : t('profile.online');
       if ((pr.ratings?.count || 0) > 0) {
         try {
           const rr = await api('/api/ratings?userId=' + encodeURIComponent(userId));
@@ -2516,11 +2516,11 @@ async function loadProfile() {
         const cpr = await platformApi('/api/user/me', 'GET');
         if (cpr && cpr.ok && cpr.user) cu = cpr.user;
       } catch (e) { /* 用已有信息兜底 */ }
-      name = cu.username || cu.display_name || cu.displayName || '用户';
+      name = cu.username || cu.display_name || cu.displayName || t('profile.defaultUser');
       idShow = cu.id || userId;
       credits = cu.points != null ? cu.points : 0;
       createdAt = cu.created_at ? new Date(cu.created_at).toLocaleString('zh-CN') : '-';
-      status = cu.status === 'offline' ? '离线' : '在线';
+      status = cu.status === 'offline' ? t('profile.offline') : t('profile.online');
     }
     // ── 渲染个人中心卡片 ──
     const cell = 'background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:10px;text-align:center';
@@ -2533,27 +2533,27 @@ async function loadProfile() {
         '<div style="font-size:11px;color:var(--text3)">ID: ' + esc(String(idShow)) + ' · ' + esc(status) + '</div>' +
       '</div>' +
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">' +
-        '<div style="' + cell + '"><div style="' + num + '">' + Number(credits).toLocaleString() + '</div><div style="' + lab + '">积分</div></div>' +
-        '<div style="' + cell + '"><div style="' + num + '">' + esc(rating) + '</div><div style="' + lab + '">评分</div></div>' +
-        '<div style="' + cell + '"><div style="' + num + '">' + Number(tokens).toLocaleString() + '</div><div style="' + lab + '">Token 用量</div></div>' +
-        '<div style="' + cell + '"><div style="' + num + '">' + Number(calls).toLocaleString() + '</div><div style="' + lab + '">调用次数</div></div>' +
+        '<div style="' + cell + '"><div style="' + num + '">' + Number(credits).toLocaleString() + '</div><div style="' + lab + '">' + t('profile.credits') + '</div></div>' +
+        '<div style="' + cell + '"><div style="' + num + '">' + esc(rating) + '</div><div style="' + lab + '">' + t('profile.rating') + '</div></div>' +
+        '<div style="' + cell + '"><div style="' + num + '">' + Number(tokens).toLocaleString() + '</div><div style="' + lab + '">' + t('profile.tokenUsage') + '</div></div>' +
+        '<div style="' + cell + '"><div style="' + num + '">' + Number(calls).toLocaleString() + '</div><div style="' + lab + '">' + t('profile.callCount') + '</div></div>' +
       '</div>' +
-      '<div style="font-size:11px;color:var(--text2);margin-bottom:12px">注册时间：' + esc(createdAt) + '</div>' +
-      (ratingsHtml ? '<div style="font-size:12px;color:var(--accent);margin-bottom:6px">我的评价</div>' + ratingsHtml : '');
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:12px">' + t('profile.registeredAt', {time: esc(createdAt)}) + '</div>' +
+      (ratingsHtml ? '<div style="font-size:12px;color:var(--accent);margin-bottom:6px">' + t('profile.myRatings') + '</div>' + ratingsHtml : '');
   } catch (e) {
-    box.innerHTML = '<div style="text-align:center;color:var(--red);padding:30px 0">加载失败: ' + esc(e.message) + '</div>';
+    box.innerHTML = '<div style="text-align:center;color:var(--red);padding:30px 0">' + t('err.loadFail') + ': ' + esc(e.message) + '</div>';
   }
 }
 async function rateMessage(msgId, rating) {
   try {
     const token = localStorage.getItem('authToken');
-    if (!token) { toast('请先登录'); return; }
+    if (!token) { toast(t('auth.loginFirst')); return; }
     const r = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
     const d = await r.json();
     if (!d.ok) return;
     await api('/api/ratings', 'POST', { messageId: msgId, userId: d.user.id, rating });
-    toast('✅ 已评分 ' + rating + ' 星');
-  } catch(e) { toast('❌ 评分失败'); }
+    toast(t('profile.rated', {n: rating}));
+  } catch(e) { toast(t('profile.rateFail')); }
 }
 
 
@@ -2572,21 +2572,21 @@ async function setChatMode(mode) {
   if (!currentChat) return;
   try {
     await api('/api/chats/' + encodeURIComponent(currentChat) + '/mode', 'POST', { mode });
-    var names = {free:'自由',route:'路由',debate:'辩论',chain:'链式',roundtable:'圆桌',vote:'投票'};
-    toast('✅ 协作模式: ' + (names[mode] || mode));
-  } catch(e) { toast('❌ 设置失败'); }
+    var names = {free:t('mode.free'),route:t('mode.route'),debate:t('mode.debate'),chain:t('mode.chain'),roundtable:t('mode.roundtable'),vote:t('mode.vote')};
+    toast(t('chat.collabMode', {mode: names[mode] || mode}));
+  } catch(e) { toast('❌ ' + t('err.setFail')); }
 }
 
 
 // ── 找回密码 ──
 async function showForgotPassword() {
-  var email = document.getElementById('authUsername').value.trim() || prompt('请输入注册邮箱：');
+  var email = document.getElementById('authUsername').value.trim() || prompt(t('auth.enterEmail'));
   if (!email) return;
   try {
     var r = await api('/api/auth/forgot-password', 'POST', { email: email });
-    document.getElementById('authMsg').innerHTML = '<span style="color:#4ade80">✅ 如果邮箱已注册，重置链接已发送到 ' + esc(email) + '</span>';
+    document.getElementById('authMsg').innerHTML = '<span style="color:#4ade80">' + t('auth.resetSent', {email: esc(email)}) + '</span>';
   } catch(e) {
-    document.getElementById('authMsg').innerHTML = '<span style="color:#ef4444">❌ ' + (e.message || '发送失败') + '</span>';
+    document.getElementById('authMsg').innerHTML = '<span style="color:#ef4444">❌ ' + (e.message || t('err.sendFail')) + '</span>';
   }
 }
 
@@ -2640,13 +2640,13 @@ function wfDragAgent(e, idx) {
 }
 function wfAddStartNode() {
   wfPushUndo();
-  wfNodes.push({id:'node-'+Date.now(), type:'start', label:'开始', x:100, y:100 + wfNodes.filter(n=>n.type==='start').length*80, config:{}});
+  wfNodes.push({id:'node-'+Date.now(), type:'start', label:t('wf.startLabel'), x:100, y:100 + wfNodes.filter(n=>n.type==='start').length*80, config:{}});
   renderWF(true);
 }
 function wfAddAgentNode() {
-  const name = prompt('输入这个 Agent 节点的显示名称:') || 'Agent';
+  const name = prompt(t('wf.nodeNamePh')) || 'Agent';
   wfPushUndo();
-  wfNodes.push({id:'node-'+Date.now(), type:'agent', label:name, x:350, y:100 + wfNodes.filter(n=>n.type==='agent').length*120, config:{prompt:'回答用户问题', model:'default'}});
+  wfNodes.push({id:'node-'+Date.now(), type:'agent', label:name, x:350, y:100 + wfNodes.filter(n=>n.type==='agent').length*120, config:{prompt:t('wf.defaultPrompt'), model:'default'}});
   renderWF(true);
 }
 
@@ -2717,10 +2717,10 @@ function wfDblClick(e) {
   const nodeId = nodeEl.dataset.nodeId;
   const node = wfNodes.find(n => n.id === nodeId);
   if (!node || node.type !== 'agent') return;
-  const newPrompt = prompt('编辑指令:', node.config.prompt || '回答用户问题');
+  const newPrompt = prompt(t('wf.editPrompt'), node.config.prompt || t('wf.defaultPrompt'));
   if (newPrompt !== null) {
     node.config.prompt = newPrompt;
-    const newModel = prompt('编辑模型 (default=默认):', node.config.model || 'default');
+    const newModel = prompt(t('wf.editModel'), node.config.model || 'default');
     if (newModel !== null) node.config.model = newModel;
     renderWF();
   }
@@ -2767,10 +2767,10 @@ function renderWF() {
   container.innerHTML = wfNodes.map(n => 
     '<div class="wf-node'+(n.id===wfSelectedNode?' wf-selected':'')+'" data-node-id="'+n.id+'" style="left:'+n.x+'px;top:'+n.y+'px">' +
     '<div class="wf-header">'+(n.type==='start'?'🟢':'🤖')+' '+esc(n.label)+'</div>' +
-    '<div class="wf-body">'+(n.type==='agent'?'指令: '+(n.config.prompt||'').slice(0,30):'流程开始')+'</div>' +
+    '<div class="wf-body">'+(n.type==='agent'?t('wf.instructionPrefix')+(n.config.prompt||'').slice(0,30):t('wf.flowStart'))+'</div>' +
     '<button class="wf-delete" onclick="event.stopPropagation();wfDeleteNode(\''+n.id+'\')\">×</button>' +
-    (n.type!=='start'?'<div class="wf-connector wf-in" title="输入" onclick="event.stopPropagation();wfEndConnection(\''+n.id+'\')\"></div>':'') +
-    '<div class="wf-connector wf-out" title="输出" onmousedown="event.stopPropagation();wfStartConnection(\''+n.id+'\',\'out\')"></div>' +
+    (n.type!=='start'?'<div class="wf-connector wf-in" title="'+t('wf.inputTitle')+'" onclick="event.stopPropagation();wfEndConnection(\''+n.id+'\')\"></div>':'') +
+    '<div class="wf-connector wf-out" title="'+t('wf.outputTitle')+'" onmousedown="event.stopPropagation();wfStartConnection(\''+n.id+'\',\'out\')"></div>' +
     '</div>'
   ).join('');
 
@@ -2784,7 +2784,7 @@ function renderWF() {
       const to = wfNodes.find(n=>n.id===c.to);
       if (!from || !to) return '';
       const x1 = from.x + 80, y1 = from.y + 50, x2 = to.x + 80, y2 = to.y;
-      return '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" onclick="wfDeleteConnection(\''+c.from+'\',\''+c.to+'\')" style="pointer-events:all;cursor:pointer" title="点击删除连线"/>';
+      return '<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" onclick="wfDeleteConnection(\''+c.from+'\',\''+c.to+'\')" style="pointer-events:all;cursor:pointer" title="'+t('wf.deleteConnTitle')+'"/>';
     }).join('');
 }
 // ── 撤销/重做 ──
@@ -2816,19 +2816,19 @@ document.addEventListener('keydown', e => {
 });
 
 async function wfSaveToCloud() {
-  const name = document.getElementById('wfName').value || '未命名工作流';
+  const name = document.getElementById('wfName').value || t('wf.unnamed');
   const id = 'wf-' + Date.now();
   const data = { nodes: wfNodes, connections: wfConnections };
   try {
     await api('/api/workflows', 'POST', { id, name, data });
-    toast('✅ 已保存: ' + name);
-  } catch(e) { toast('❌ 保存失败: ' + e.message); }
+    toast(t('wf.saved', {name: name}));
+  } catch(e) { toast('❌ ' + t('err.saveFail') + ': ' + e.message); }
 }
 async function wfLoadFromCloud() {
   try {
     const d = await api('/api/workflows');
-    if (!d.ok || !d.workflows.length) { toast('没有已保存的工作流'); return; }
-    const name = prompt('选择工作流（输入编号）：\n' + d.workflows.map((w,i) => (i+1)+'. '+w.name+' ('+new Date(w.updated_at).toLocaleDateString()+')').join('\n'));
+    if (!d.ok || !d.workflows.length) { toast(t('wf.noSaved')); return; }
+    const name = prompt(t('wf.selectWf') + '\n' + d.workflows.map((w,i) => (i+1)+'. '+w.name+' ('+new Date(w.updated_at).toLocaleDateString()+')').join('\n'));
     if (!name) return;
     const idx = parseInt(name) - 1;
     if (idx < 0 || idx >= d.workflows.length) return;
@@ -2839,20 +2839,20 @@ async function wfLoadFromCloud() {
       wfConnections = dd.connections || [];
       document.getElementById('wfName').value = detail.workflow.name;
       renderWF();
-      toast('✅ 已加载: ' + detail.workflow.name);
+      toast(t('wf.loaded', {name: detail.workflow.name}));
     }
-  } catch(e) { toast('❌ 加载失败: ' + e.message); }
+  } catch(e) { toast('❌ ' + t('err.loadFail') + ': ' + e.message); }
 }
 
 function wfExportJSON() {
-  const name = document.getElementById('wfName').value || '工作流';
+  const name = document.getElementById('wfName').value || t('wf.defaultName');
   const json = {name, nodes:wfNodes, connections:wfConnections, exportedAt:Date.now()};
   const blob = new Blob([JSON.stringify(json,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name+'.json';
   a.click();
-  toast('✅ 已导出: '+name+'.json');
+  toast(t('wf.exported', {name: name}));
 }
 function wfImportJSON(e) {
   const file = e.target.files[0];
@@ -2865,21 +2865,24 @@ function wfImportJSON(e) {
       if (json.connections) wfConnections = json.connections;
       document.getElementById('wfName').value = json.name || '';
       renderWF();
-      toast('✅ 已导入: '+(json.nodes?.length||0)+' 个节点');
-    } catch(e2) { toast('❌ 导入失败: '+e2.message); }
+      toast(t('wf.imported', {n: json.nodes?.length||0}));
+    } catch(e2) { toast(t('wf.importFail', {msg: e2.message})); }
   };
   reader.readAsText(file);
 }
 
 // ── Theme ──
 const THEMES = ['dark', 'light', 'ocean', 'warm', 'forest'];
-const THEME_NAMES = { dark: '暗夜', light: '浅色', ocean: '海洋', warm: '暖阳', forest: '森林' };
+function themeName(k) {
+  var m = { dark: t('misc.themeDark'), light: t('misc.themeLight'), ocean: t('misc.themeOcean'), warm: t('misc.themeWarm'), forest: t('misc.themeForest') };
+  return m[k] || k;
+}
 function toggleTheme() {
   const cur = document.documentElement.getAttribute('data-theme') || 'dark';
   const idx = THEMES.indexOf(cur);
   const next = THEMES[(idx + 1) % THEMES.length];
   setTheme(next);
-  toast('🎨 主题：' + (THEME_NAMES[next] || next));
+  toast(t('misc.themePrefix') + themeName(next));
 }
 function setTheme(t) {
   document.documentElement.setAttribute('data-theme', t);
@@ -2911,7 +2914,7 @@ async function refreshStatusBar() {
     const h = await api('/api/health');
     const aEl = document.getElementById('apiHealth');
     const healthy = h.status === 'ok';
-    aEl.textContent = healthy ? t('status.apiOk') : '❌ ' + (h.status || '异常');
+    aEl.textContent = healthy ? t('status.apiOk') : '❌ ' + (h.status || t('admin.abnormal'));
     aEl.className = healthy ? 'ok' : 'err';
   } catch(e) { document.getElementById('apiHealth').textContent=t('status.apiDown'); document.getElementById('apiHealth').className='err'; }
   try {
@@ -2944,34 +2947,34 @@ async function adminHealth() {
 async function loadLogs() {
   const out = document.getElementById('logsOut');
   if (!out) return;
-  out.textContent = '加载中...';
+  out.textContent = t('common.loading');
   try {
     const d = await api('/api/logs?limit=200');
-    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
+    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, t('err.loadFail')); return; }
     const lines = d.lines || [];
-    out.textContent = lines.length ? lines.join('\n') : '(暂无日志)';
+    out.textContent = lines.length ? lines.join('\n') : t('admin.noLogs');
     out.scrollTop = out.scrollHeight;
-  } catch(e) { out.textContent = '❌ ' + (e.message || '网络错误'); }
+  } catch(e) { out.textContent = '❌ ' + (e.message || t('err.networkError')); }
 }
 
 // ── 一键升级 ──
 async function doUpdate() {
   const stat = document.getElementById('updateStatus');
-  if (!confirm('确认升级到最新版？服务器将自动下载并重启（约 10 秒）。')) return;
-  if (stat) stat.textContent = '⏳ 正在升级...';
+  if (!confirm(t('admin.confirmUpdate'))) return;
+  if (stat) stat.textContent = t('admin.updating');
   try {
     const d = await api('/api/update', 'POST');
     if (d.ok) {
-      if (stat) stat.textContent = '✅ 升级已触发！服务器重启中...';
-      toast('升级已开始，服务器即将重启');
+      if (stat) stat.textContent = t('admin.updateTriggered');
+      toast(t('admin.updateStarted'));
       // 10 秒后刷新页面
       setTimeout(function(){ location.reload(); }, 10000);
     } else {
-      if (stat) stat.textContent = '❌ ' + _errMsg(d, '升级失败');
-      toast('升级失败: ' + _errMsg(d, '未知错误'));
+      if (stat) stat.textContent = '❌ ' + _errMsg(d, t('admin.updateFail'));
+      toast('❌ ' + t('admin.updateFail') + ': ' + _errMsg(d, t('err.unknown')));
     }
   } catch(e) {
-    if (stat) stat.textContent = '❌ ' + (e.message || '网络错误');
+    if (stat) stat.textContent = '❌ ' + (e.message || t('err.networkError'));
   }
 }
 
@@ -2988,30 +2991,30 @@ async function loadMesh() {
   const peersEl = document.getElementById('meshPeers');
   const sel = document.getElementById('meshPeerSelect');
   if (!statusEl) return;
-  statusEl.textContent = '加载中...';
+  statusEl.textContent = t('common.loading');
   try {
     const st = await api('/api/mesh/status');
     if (!st.enabled) {
-      statusEl.innerHTML = '<span style="color:var(--text3)">未启用（需配置 MESH_PLATFORM_URL / MESH_TOKEN）</span>';
+      statusEl.innerHTML = '<span style="color:var(--text3)">' + t('admin.meshDisabled') + '</span>';
       peersEl.textContent = '';
-      sel.innerHTML = '<option value="">选择实例...</option>';
+      sel.innerHTML = '<option value="">' + t('admin.selectInstance') + '</option>';
       return;
     }
-    const dot = st.connected ? '<span style="color:#4ade80">● 已连接</span>' : '<span style="color:#ef4444">● 未连接</span>';
+    const dot = st.connected ? '<span style="color:#4ade80">' + t('admin.meshConnected') + '</span>' : '<span style="color:#ef4444">' + t('admin.meshNotConnected') + '</span>';
     statusEl.innerHTML = dot + ' <span style="color:var(--text3)">' + esc(st.instanceId) + '</span><br><span style="color:var(--text3);font-size:10px">' + esc(st.lanIp || '') + ' @ ' + esc(st.platformUrl || '') + '</span>';
     const d = await api('/api/mesh/peers');
     const peers = d.instances || [];
-    if (d.disabled) { peersEl.textContent = '未配置平台'; }
-    else if (!peers.length) { peersEl.textContent = '暂无其他在线实例'; }
+    if (d.disabled) { peersEl.textContent = t('admin.meshNoPlatform'); }
+    else if (!peers.length) { peersEl.textContent = t('admin.meshNoPeers'); }
     else {
       peersEl.innerHTML = peers.map(function(p){
         return '<div style="padding:3px 0;border-bottom:1px solid var(--border)">🟢 ' + esc(p.instanceId) + ' <span style="color:var(--text3);font-size:10px">' + esc(p.lanIp||'') + ':' + (p.port||'') + ' · ' + (p.agents?p.agents.length:0) + ' AI</span></div>';
       }).join('');
     }
-    sel.innerHTML = '<option value="">选择实例...</option>' + peers.map(function(p){
+    sel.innerHTML = '<option value="">' + t('admin.selectInstance') + '</option>' + peers.map(function(p){
       return '<option value="' + esc(p.instanceId) + '">' + esc(p.instanceId) + '</option>';
     }).join('');
-  } catch(e) { statusEl.textContent = '❌ ' + (e.message || '网络错误'); }
+  } catch(e) { statusEl.textContent = '❌ ' + (e.message || t('err.networkError')); }
 }
 
 async function sendMeshMsg() {
@@ -3019,13 +3022,13 @@ async function sendMeshMsg() {
   const input = document.getElementById('meshMsgInput');
   const toInstance = sel.value;
   const content = (input.value || '').trim();
-  if (!toInstance) { toast('❌ 请先选择目标实例'); return; }
-  if (!content) { toast('❌ 请输入消息内容'); return; }
+  if (!toInstance) { toast(t('admin.selectInstanceFirst')); return; }
+  if (!content) { toast(t('admin.enterMessage')); return; }
   try {
     const d = await api('/api/mesh/send', 'POST', { toInstance: toInstance, content: content });
-    if (d.ok) { toast('✅ 已发送到 ' + toInstance); input.value = ''; }
-    else toast('❌ 发送失败（对方可能不在线）');
-  } catch(e) { toast('❌ ' + (e.message || '发送失败')); }
+    if (d.ok) { toast(t('admin.sentTo', {inst: toInstance})); input.value = ''; }
+    else toast(t('admin.sendFailOffline'));
+  } catch(e) { toast('❌ ' + (e.message || t('err.sendFail'))); }
 }
 
 async function loadUsage() {
@@ -3035,30 +3038,30 @@ async function loadUsage() {
     const s = d.stats;
     let html = '';
     html += '<div style="margin-bottom:8px;padding:6px;background:rgba(0,0,0,.3);border-radius:6px">';
-    html += '<b>总计</b>: ' + s.total.calls + ' 次调用 | ' + s.total.totalTokens.toLocaleString() + ' tokens<br>';
-    html += '输入 ' + s.total.promptTokens.toLocaleString() + ' / 输出 ' + s.total.completionTokens.toLocaleString() + '<br>';
-    html += '近1小时: ' + s.recent1h.calls + ' 次 / ' + s.recent1h.totalTokens.toLocaleString() + ' tokens<br>';
-    html += '近24小时: ' + s.recent24h.calls + ' 次 / ' + s.recent24h.totalTokens.toLocaleString() + ' tokens';
+    html += '<b>' + t('admin.total') + '</b>: ' + s.total.calls + ' ' + t('admin.callsUnit') + ' | ' + s.total.totalTokens.toLocaleString() + ' tokens<br>';
+    html += t('admin.input') + ' ' + s.total.promptTokens.toLocaleString() + ' / ' + t('admin.output') + ' ' + s.total.completionTokens.toLocaleString() + '<br>';
+    html += t('admin.recent1h') + ': ' + s.recent1h.calls + ' ' + t('admin.timesUnit') + ' / ' + s.recent1h.totalTokens.toLocaleString() + ' tokens<br>';
+    html += t('admin.recent24h') + ': ' + s.recent24h.calls + ' ' + t('admin.timesUnit') + ' / ' + s.recent24h.totalTokens.toLocaleString() + ' tokens';
     html += '</div>';
     if (Object.keys(s.byModel).length > 0) {
-      html += '<div style="margin-top:6px"><b>按模型:</b></div>';
+      html += '<div style="margin-top:6px"><b>' + t('admin.byModel') + '</b></div>';
       for (const [model, m] of Object.entries(s.byModel)) {
-        html += '<div>' + model + ': ' + m.calls + '次 / ' + m.totalTokens.toLocaleString() + ' tokens</div>';
+        html += '<div>' + model + ': ' + m.calls + t('admin.timesUnit') + ' / ' + m.totalTokens.toLocaleString() + ' tokens</div>';
       }
     }
     if (Object.keys(s.byType).length > 0) {
-      html += '<div style="margin-top:6px"><b>按类型:</b></div>';
-      const typeNames = { tool: '工具调用', reply: '回复', compaction: '压缩', summary: '摘要', reflection: '记忆反思' };
-      for (const [type, t] of Object.entries(s.byType)) {
-        html += '<div>' + (typeNames[type]||type) + ': ' + t.calls + '次 / ' + t.totalTokens.toLocaleString() + ' tokens</div>';
+      html += '<div style="margin-top:6px"><b>' + t('admin.byType') + '</b></div>';
+      const typeNames = { tool: t('admin.typeTool'), reply: t('admin.typeReply'), compaction: t('admin.typeCompaction'), summary: t('admin.typeSummary'), reflection: t('admin.typeReflection') };
+      for (const [type, item] of Object.entries(s.byType)) {
+        html += '<div>' + (typeNames[type]||type) + ': ' + item.calls + t('admin.timesUnit') + ' / ' + item.totalTokens.toLocaleString() + ' tokens</div>';
       }
     }
-    document.getElementById('usageStats').innerHTML = html || '<暂无数据>';
+    document.getElementById('usageStats').innerHTML = html || t('admin.noData');
   } catch(e) { document.getElementById('usageStats').innerHTML = '<span style="color:#f44">Error: ' + esc(e.message) + '</span>'; }
 }
 
 async function resetUsage() {
-  if (!confirm('确定清空所有统计？')) return;
+  if (!confirm(t('admin.confirmResetUsage'))) return;
   try { await api('/api/usage/reset', 'POST'); loadUsage(); } catch(e) {}
 }
 
@@ -3070,67 +3073,67 @@ async function loadGoals() {
   try {
     const project = currentChat ? ('project-' + currentChat) : 'default';
     const d = await api('/api/goals?project=' + encodeURIComponent(project));
-    if (!d.ok) { el.innerHTML = '❌ ' + esc(_errMsg(d, '加载失败')); return; }
+    if (!d.ok) { el.innerHTML = '❌ ' + esc(_errMsg(d, t('err.loadFail'))); return; }
     const goals = d.goals || [];
     const pg = document.getElementById('goalProgress');
     if (pg) pg.textContent = d.progress ? (d.progress.done + '/' + d.progress.total) : '-';
-    if (!goals.length) { el.innerHTML = '<span style="color:var(--text3)">暂无目标，在上方输入添加</span>'; return; }
+    if (!goals.length) { el.innerHTML = '<span style="color:var(--text3)">' + t('admin.noGoals') + '</span>'; return; }
     el.innerHTML = goals.map(g => {
       const acts = [];
-      if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="开始" style="cursor:pointer;font-size:16px">▶️</a>');
-      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="完成" style="cursor:pointer;font-size:16px">✅</a>');
-      if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="恢复" style="cursor:pointer;font-size:16px">↩️</a>');
-      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer;font-size:16px">❓</a>');
-      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="删除" style="cursor:pointer;font-size:16px">🗑️</a>');
+      if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="' + t('admin.goalStart') + '" style="cursor:pointer;font-size:16px">▶️</a>');
+      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">✅</a>');
+      if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="' + t('admin.goalRestore') + '" style="cursor:pointer;font-size:16px">↩️</a>');
+      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">❓</a>');
+      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑️</a>');
       const style = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3)">' + esc(g.acceptanceCriteria) + '</div>' : '';
       return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">' +
         '<span>' + (GOAL_EMOJI[g.status] || '⏳') + ' <span style="' + style + '">' + esc(g.title) + '</span></span> ' +
         '<span style="float:right">' + acts.join(' ') + '</span>' + criteria + '</div>';
     }).join('');
-  } catch(e) { el.innerHTML = '❌ ' + esc(e.message || '网络错误'); }
+  } catch(e) { el.innerHTML = '❌ ' + esc(e.message || t('err.networkError')); }
 }
 async function addGoal() {
   const inp = document.getElementById('goalInput');
   const title = inp ? inp.value.trim() : '';
-  if (!title) { toast('请输入目标内容'); return; }
+  if (!title) { toast(t('admin.enterGoal')); return; }
   try {
     const project = currentChat ? ('project-' + currentChat) : 'default';
     const d = await api('/api/goals', 'POST', { title, project: project });
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '添加失败')); return; }
+    if (!d.ok) { toast('❌ ' + _errMsg(d, t('err.addFail'))); return; }
     if (inp) inp.value = '';
-    toast('✅ 目标已添加');
+    toast(t('admin.goalAdded'));
     loadGoals();
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function setGoalStatus(id, status) {
   try {
     const d = await api('/api/goals/' + id, 'PATCH', { status });
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '操作失败')); return; }
+    if (!d.ok) { toast('❌ ' + _errMsg(d, t('err.operationFail'))); return; }
     loadGoals();
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function removeGoal(id) {
-  if (!confirm('确定删除该目标？')) return;
+  if (!confirm(t('admin.confirmDeleteGoal'))) return;
   try {
     const d = await api('/api/goals/' + id, 'DELETE');
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
-    toast('已删除');
+    if (!d.ok) { toast('❌ ' + _errMsg(d, t('err.deleteFail'))); return; }
+    toast(t('common.deleted'));
     loadGoals();
   } catch(e) { toast('❌ ' + e.message); }
 }
 // ── 反向提问：AI 针对目标提澄清问题（含多选表单 + 继续反问） ──
 async function askAIAboutGoal(goalId, title) {
   _currentAskGoalId = goalId;
-  if (!currentChat) { toast('❌ 请先选择一个会话'); return; }
+  if (!currentChat) { toast('❌ ' + t('chat.selectChatFirst')); return; }
   try {
-    toast('⏳ AI 正在分析目标并生成反问...');
+    toast(t('admin.aiAnalyzing'));
     const extra = (typeof title === 'string' && (title.includes(';') || title.includes('自定义'))) ? title : '';
     const d = await api('/api/goals/' + encodeURIComponent(goalId) + '/ask', 'POST', { chatId: currentChat, extra: extra });
     if (d.ok) {
-      toast('✅ AI 反问已发送到当前会话');
+      toast(t('admin.aiAskSent'));
     } else {
-      toast('❌ ' + _errMsg(d, '反问失败'));
+      toast('❌ ' + _errMsg(d, t('err.askFail')));
     }
   } catch(e) { toast('❌ ' + e.message); }
 }
@@ -3154,7 +3157,7 @@ function renderGoalQAForm(content, msgEl, chatId) {
   if (questions.length === 0) return;
 
   var html = '<div style="margin:8px 0 8px 48px;padding:12px;background:var(--bg2);border-radius:8px;border:1px solid var(--border)" data-goal-id="' + esc(_currentAskGoalId || '') + '">';
-  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">📋 请选择以完善目标</div>';
+  html += '<div style="font-weight:bold;margin-bottom:8px;color:var(--accent)">' + t('admin.refineTitle') + '</div>';
   for (var qi = 0; qi < questions.length; qi++) {
     var q = questions[qi];
     html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + esc(q.q) + '</div>';
@@ -3166,14 +3169,14 @@ function renderGoalQAForm(content, msgEl, chatId) {
     html += '</div>';
   }
   // 自定义输入
-  html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">自定义补充：</div>';
-  html += '<input type="text" style="width:90%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text)" placeholder="输入你的补充..."></div>';
+  html += '<div style="margin-bottom:8px"><div style="font-size:12px;color:var(--text2);margin-bottom:4px">' + t('admin.customExtra') + '</div>';
+  html += '<input type="text" style="width:90%;font-size:12px;padding:4px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg3);color:var(--text)" placeholder="' + t('admin.extraPh') + '"></div>';
   html += '<div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap">';
-  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,\'refine\')">✅ 完善目标</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'criteria\')">📎 加入验收标准</button>';
-  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'create\')">🆕 生成新目标</button>';
+  html += '<button class="btn" style="font-size:11px;background:var(--green);color:#fff" onclick="applyGoalRefine(this,\'refine\')">' + t('admin.refineBtn') + '</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'criteria\')">' + t('admin.criteriaBtn') + '</button>';
+  html += '<button class="btn" style="font-size:11px" onclick="applyGoalRefine(this,\'create\')">' + t('admin.newGoalBtn') + '</button>';
   html += '</div></div>';
-  html += '<button class="btn" style="font-size:11px;margin-left:48px" onclick="continueReverseAsk(this)">💬 继续反问</button>';
+  html += '<button class="btn" style="font-size:11px;margin-left:48px" onclick="continueReverseAsk(this)">' + t('admin.continueAskBtn') + '</button>';
 
   var wrapper = document.createElement('div');
   wrapper.innerHTML = html;
@@ -3186,22 +3189,22 @@ function applyGoalRefine(btn, action) {
   while (form && !form.querySelector('input[type=checkbox]')) form = form.parentElement;
   if (!form) return;
   var checks = form.querySelectorAll('input[type=checkbox]:checked');
-  if (!checks.length) { toast('请至少勾选一个选项'); return; }
+  if (!checks.length) { toast(t('admin.checkOneAtLeast')); return; }
   var selections = [];
   checks.forEach(function(c) { selections.push(c.parentElement.textContent.trim()); });
   // 也收集自定义输入
-  form.querySelectorAll('input[type=text]').forEach(function(t) { if (t.value.trim()) selections.push('自定义: ' + t.value.trim()); });
+  form.querySelectorAll('input[type=text]').forEach(function(inp) { if (inp.value.trim()) selections.push(t('admin.customPrefix') + inp.value.trim()); });
 
   var goalId = form.getAttribute('data-goal-id') || _currentAskGoalId;
   if (!goalId) { var ri = document.querySelector('#rightGoalsList .goal-item'); if (ri) goalId = ri.getAttribute('data-goal-id'); }
-  if (!goalId) { toast('未找到对应的目标'); return; }
+  if (!goalId) { toast(t('admin.goalNotFound')); return; }
 
   api('/api/goals/' + goalId + '/refine', 'POST', { selections: selections, action: action }).then(function(d) {
     if (d.ok) {
-      toast('✅ ' + (action === 'create' ? '已生成新目标' : action === 'criteria' ? '已加入验收标准' : '目标已完善'));
+      toast('✅ ' + (action === 'create' ? t('admin.goalCreated') : action === 'criteria' ? t('admin.criteriaAdded') : t('admin.goalRefined')));
       if (typeof loadRightGoals === 'function') loadRightGoals();
       if (typeof loadGoals === 'function') loadGoals();
-    } else toast('❌ ' + _errMsg(d, '操作失败'));
+    } else toast('❌ ' + _errMsg(d, t('err.operationFail')));
   }).catch(function(e) { toast('❌ ' + e.message); });
 }
 
@@ -3211,12 +3214,12 @@ function continueReverseAsk(btn) {
   while (form && !form.querySelector('input[type=checkbox]')) form = form.parentElement;
   if (!form) return;
   var goalId = form.getAttribute('data-goal-id') || _currentAskGoalId;
-  if (!goalId) { toast('未找到对应的目标'); return; }
+  if (!goalId) { toast(t('admin.goalNotFound')); return; }
   var context = [];
   form.querySelectorAll('input[type=checkbox]:checked').forEach(function(c) { context.push(c.parentElement.textContent.trim()); });
-  form.querySelectorAll('input[type=text]').forEach(function(t) { if (t.value.trim()) context.push('自定义: ' + t.value.trim()); });
+  form.querySelectorAll('input[type=text]').forEach(function(inp) { if (inp.value.trim()) context.push(t('admin.customPrefix') + inp.value.trim()); });
   var extra = context.length ? context.join('; ') : '';
-  toast('💬 继续提问中...');
+  toast(t('admin.askingMore'));
   askAIAboutGoal(goalId, extra);
 }
 async function adminAgents() {
@@ -3238,37 +3241,37 @@ async function adminSubAgents() {
   } catch(e) { document.getElementById('adminSubOut').textContent = '❌ ' + e.message; }
 }
 function spawnSubAgent() {
-  const task = prompt('输入 SubAgent 任务描述:');
-  if (!task || !clientId) { toast('请先连接'); return; }
-  api('/api/subagents/spawn', 'POST', { name: '手动任务-' + Date.now(), task: task, userId: clientId }).then(d => toast('任务已创建: ' + d.id)).catch(e => toast('失败: ' + e.message));
+  const task = prompt(t('admin.subagentPh'));
+  if (!task || !clientId) { toast(t('toast.connectFirst')); return; }
+  api('/api/subagents/spawn', 'POST', { name: t('admin.manualTask') + Date.now(), task: task, userId: clientId }).then(d => toast(t('admin.taskCreated', {id: d.id}))).catch(e => toast('❌ ' + t('err.fail') + ': ' + e.message));
 }
 async function adminCron() {
   try {
     const d = await api('/api/cron');
     const jobs = d.jobs || [];
     const el = document.getElementById('adminCronOut');
-    if (!jobs.length) { el.innerHTML = '<span style="color:var(--text3);font-size:12px">暂无定时任务</span>'; return; }
+    if (!jobs.length) { el.innerHTML = '<span style="color:var(--text3);font-size:12px">' + t('admin.noCronShort') + '</span>'; return; }
     el.innerHTML = jobs.map(j => {
-      const name = j.name || j.id || '未命名';
+      const name = j.name || j.id || t('common.unnamed');
       const expr = j.schedule?.expr || j.schedule || '-';
       const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : '-';
       return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
         '⏰ <b>' + esc(name) + '</b>' +
         ' <span style="color:var(--text3)">' + esc(String(expr)) + '</span>' +
-        ' <span style="color:var(--text3);font-size:10px">下次: ' + next + '</span>' +
+        ' <span style="color:var(--text3);font-size:10px">' + t('admin.nextRunShort', {time: next}) + '</span>' +
         '<span style="float:right">' +
-          '<button class="btn-sm" onclick="removeCron(\'' + esc(j.id) + '\')" style="color:var(--red);border-color:var(--red);padding:1px 6px;font-size:10px">🗑 删除</button>' +
+          '<button class="btn-sm" onclick="removeCron(\'' + esc(j.id) + '\')" style="color:var(--red);border-color:var(--red);padding:1px 6px;font-size:10px">' + t('admin.cronDeleteBtn') + '</button>' +
         '</span></div>';
     }).join('');
   } catch(e) { document.getElementById('adminCronOut').textContent = '❌ ' + e.message; }
 }
 function showAddCron() { document.getElementById('addCronForm').classList.toggle('hidden'); }
 async function removeCron(id) {
-  if (!confirm('确定删除该定时任务？')) return;
+  if (!confirm(t('admin.confirmDeleteCron'))) return;
   try {
     const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
-    toast('已删除');
+    if (!d.ok) { toast('❌ ' + _errMsg(d, t('err.deleteFail'))); return; }
+    toast(t('common.deleted'));
     adminCron();
   } catch(e) { toast('❌ ' + e.message); }
 }
@@ -3277,12 +3280,12 @@ async function addCron() {
   const expr = document.getElementById('cronExpr').value.trim();
   const tz = document.getElementById('cronTz').value.trim();
   let payload;
-  try { payload = JSON.parse(document.getElementById('cronPayload').value); } catch(e) { toast('Payload JSON 格式错误'); return; }
-  if (!name || !expr) { toast('名称和表达式必填'); return; }
+  try { payload = JSON.parse(document.getElementById('cronPayload').value); } catch(e) { toast(t('admin.payloadJsonError')); return; }
+  if (!name || !expr) { toast(t('admin.nameExprRequired')); return; }
   try {
     const d = await api('/api/cron', 'POST', { name, schedule: { kind: 'cron', expr, tz }, payload });
-    toast('✅ 任务已创建'); document.getElementById('addCronForm').classList.add('hidden'); adminCron();
-  } catch(e) { toast('失败: ' + e.message); }
+    toast(t('admin.cronCreated')); document.getElementById('addCronForm').classList.add('hidden'); adminCron();
+  } catch(e) { toast('❌ ' + t('err.fail') + ': ' + e.message); }
 }
 async function adminMCP() {
   try {
@@ -3295,12 +3298,12 @@ async function addMCP() {
   const name = document.getElementById('mcpName').value.trim();
   const cmd = document.getElementById('mcpCmd').value.trim();
   const argsStr = document.getElementById('mcpArgs').value.trim();
-  if (!name || !cmd) { toast('名称和命令必填'); return; }
+  if (!name || !cmd) { toast(t('admin.nameCmdRequired')); return; }
   const args = argsStr ? argsStr.split(',').map(s=>s.trim()) : [];
   try {
     const d = await api('/api/mcp/servers', 'POST', { id: name, name, command: cmd, args });
-    toast('✅ MCP 已添加'); document.getElementById('addMCPForm').classList.add('hidden'); adminMCP();
-  } catch(e) { toast('失败: ' + e.message); }
+    toast(t('admin.mcpAdded')); document.getElementById('addMCPForm').classList.add('hidden'); adminMCP();
+  } catch(e) { toast('❌ ' + t('err.fail') + ': ' + e.message); }
 }
 async function adminPlugins() {
   try {
@@ -3309,21 +3312,21 @@ async function adminPlugins() {
   } catch(e) { document.getElementById('adminPluginsOut').textContent = '❌ ' + e.message; }
 }
 async function reloadPlugins() {
-  try { const d = await api('/api/plugins/reload', 'POST', {}); toast('✅ 插件已重载'); adminPlugins(); }
-  catch(e) { toast('失败: ' + e.message); }
+  try { const d = await api('/api/plugins/reload', 'POST', {}); toast(t('admin.pluginsReloaded')); adminPlugins(); }
+  catch(e) { toast('❌ ' + t('err.fail') + ': ' + e.message); }
 }
 
 // ── Skill binding (bonus) ──
 async function bindSkill(agentId, skillName) {
-  try { await api('/api/agents/'+encodeURIComponent(agentId)+'/skills', 'POST', { skill: skillName }); toast('✅ 已绑定: ' + skillName); }
-  catch(e) { toast('绑定失败'); }
+  try { await api('/api/agents/'+encodeURIComponent(agentId)+'/skills', 'POST', { skill: skillName }); toast(t('admin.skillBound', {skill: skillName})); }
+  catch(e) { toast(t('admin.bindFail')); }
 }
 
 // ── Utility ──
 // ── V5 语音录制 ──
 let mediaRecorder = null, audioChunks = [], recordingStream = null, recordingTimer = null, recordingStart = 0;
 function startRecording() {
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast('不支持录音'); return; }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { toast(t('err.recordUnsupported')); return; }
   navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
     recordingStream = stream;
     audioChunks = [];
@@ -3344,10 +3347,10 @@ function startRecording() {
           if (data.ok && ws && ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'message', chatId: currentChat || 'chat-demo-1', content: data.url, fileType: 'voice', duration: Math.ceil((Date.now() - recordingStart) / 1000) }));
           }
-        } catch(e) { toast('语音上传失败'); }
+        } catch(e) { toast(t('err.voiceUploadFail')); }
       };
       reader.readAsDataURL(blob);
-      stream.getTracks().forEach(t => t.stop());
+      stream.getTracks().forEach(tr => tr.stop());
     };
     mediaRecorder.start();
     recordingStart = Date.now();
@@ -3357,7 +3360,7 @@ function startRecording() {
       const sec = Math.ceil((Date.now() - recordingStart) / 1000);
       if (sec >= 60) stopRecording();
     }, 1000);
-  }).catch(e => { toast('麦克风访问失败'); });
+  }).catch(e => { toast(t('err.micFail')); });
 }
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
@@ -3379,7 +3382,7 @@ async function loadInbox() {
     const items = d.items || [];
     const list = document.getElementById('inboxList');
     if (!list) return;
-    list.innerHTML = !items.length ? '<div style="color:#555;font-size:12px;padding:8px">暂无收件</div>' :
+    list.innerHTML = !items.length ? '<div style="color:#555;font-size:12px;padding:8px">' + t('inbox.none') + '</div>' :
       items.map(i => '<div style="padding:8px;border-bottom:1px solid var(--border);cursor:pointer" onclick="readInbox(\'' + i.id + '\')"><div style="font-size:12px;color:' + (i.read ? 'var(--text3)' : 'var(--text)') + '">' + (i.read ? '✅' : '🔵') + ' [' + i.type + '] ' + esc(i.title) + '</div><div style="font-size:11px;color:var(--text3)">' + new Date(i.createdAt).toLocaleString('zh-CN') + '</div></div>').join('');
     const badge = document.getElementById('inboxBadge');
     if (badge) { badge.textContent = d.unread || 0; badge.style.display = d.unread ? 'inline-flex' : 'none'; }
@@ -3402,7 +3405,7 @@ const _origHandleMessage = window.handleMessage;
 window.handleMessage = function(msg) {
   try { _origHandleMessage(msg); } catch(e) { console.error('[handleMessage]', e); }
   if (msg.type === 'message.new' && msg.chatId !== currentChat && document.hidden) {
-    showNotification('灵犀引擎', (msg.senderName || msg.senderId || '新消息') + ': ' + (msg.content || '').slice(0, 50));
+    showNotification(t('notify.appName'), (msg.senderName || msg.senderId || t('chat.newMessage')) + ': ' + (msg.content || '').slice(0, 50));
   }
 };
 
@@ -3431,7 +3434,7 @@ async function loadSocial() {
     if (d && d.ok) {
       lanSelf = d;
       const badge = document.getElementById('lanSelfBadge');
-      if (badge) badge.textContent = '本机 IP ' + (d.lanIp || '?') + ' · 邻居 ' + (d.peerCount || 0);
+      if (badge) badge.textContent = t('social.selfBadge', {ip: d.lanIp || '?', n: d.peerCount || 0});
     }
   }).catch(() => {});
   lanRefresh();
@@ -3439,9 +3442,9 @@ async function loadSocial() {
 
 function lanSwitchTab(tab) {
   lanTab = tab;
-  ['peers', 'friends', 'groups'].forEach(t => {
-    const b = document.getElementById('lanTab' + t.charAt(0).toUpperCase() + t.slice(1));
-    if (b) { b.style.background = t === tab ? 'var(--accent)' : 'var(--bg3)'; b.style.color = t === tab ? '#fff' : 'var(--text2)'; }
+  ['peers', 'friends', 'groups'].forEach(k => {
+    const b = document.getElementById('lanTab' + k.charAt(0).toUpperCase() + k.slice(1));
+    if (b) { b.style.background = k === tab ? 'var(--accent)' : 'var(--bg3)'; b.style.color = k === tab ? '#fff' : 'var(--text2)'; }
   });
   document.getElementById('lanSearchInput').value = '';
   lanRefresh();
@@ -3452,7 +3455,7 @@ function lanRefresh() {
   if (lanTab === 'peers') {
     api('/api/lan/peers', 'GET').then(d => lanRenderPeers((d && d.peers) || []));
   } else if (lanTab === 'friends') {
-    if (!authToken) { list.innerHTML = '<div class="empty">请先登录后查看好友</div>'; return; }
+    if (!authToken) { list.innerHTML = '<div class="empty">' + t('social.loginToView') + '</div>'; return; }
     Promise.all([
       platformApi('/api/lan/friend-requests', 'GET'),
       platformApi('/api/lan/friends', 'GET'),
@@ -3477,7 +3480,7 @@ function lanSearch() {
 
 function lanRenderPeers(peers) {
   const list = document.getElementById('lanList');
-  if (!peers.length) { list.innerHTML = '<div class="empty">暂未发现邻居<br><span style="font-size:11px">确保对方灵犀引擎在同一局域网</span></div>'; return; }
+  if (!peers.length) { list.innerHTML = '<div class="empty">' + t('social.noPeers') + '<br><span style="font-size:11px">' + t('social.noPeersHint') + '</span></div>'; return; }
   let html = '';
   for (const p of peers) {
     html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">';
@@ -3485,7 +3488,7 @@ function lanRenderPeers(peers) {
     for (const u of (p.users || [])) {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;font-size:12px">' +
         '<span>👤 ' + esc(u.displayName) + ' <span style="color:var(--text3)">#' + u.numericId + '</span></span>' +
-        '<button class="btn-sm" onclick="lanAddFriend(' + u.numericId + ')">＋好友</button></div>';
+        '<button class="btn-sm" onclick="lanAddFriend(' + u.numericId + ')">' + t('social.addFriend') + '</button></div>';
     }
     html += '</div>';
   }
@@ -3494,12 +3497,12 @@ function lanRenderPeers(peers) {
 
 function lanRenderSearch(results) {
   const list = document.getElementById('lanList');
-  if (!results.length) { list.innerHTML = '<div class="empty">未找到匹配的用户</div>'; return; }
-  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">搜索结果</div>';
+  if (!results.length) { list.innerHTML = '<div class="empty">' + t('social.noUserMatch') + '</div>'; return; }
+  let html = '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">' + t('social.searchResults') + '</div>';
   for (const r of results) {
     html += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;font-size:12px">' +
       '<span>' + (r.local ? '🏠' : '🌐') + ' ' + esc(r.displayName) + ' <span style="color:var(--text3)">#' + r.numericId + '</span></span>' +
-      (String(r.numericId) === String(lanMyId()) ? '<span style="color:var(--text3);font-size:10px">本机</span>' : '<button class="btn-sm" onclick="lanAddFriend(' + r.numericId + ')">＋好友</button>') +
+      (String(r.numericId) === String(lanMyId()) ? '<span style="color:var(--text3);font-size:10px">' + t('social.localMachine') + '</span>' : '<button class="btn-sm" onclick="lanAddFriend(' + r.numericId + ')">' + t('social.addFriend') + '</button>') +
       '</div>';
   }
   list.innerHTML = html;
@@ -3509,18 +3512,18 @@ function lanRenderFriends(incoming, friends) {
   const list = document.getElementById('lanList');
   let html = '';
   if (incoming.length) {
-    html += '<div style="font-size:11px;color:var(--accent);margin:4px 0">好友申请</div>';
+    html += '<div style="font-size:11px;color:var(--accent);margin:4px 0">' + t('social.friendRequests') + '</div>';
     for (const r of incoming) {
       html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;font-size:12px">' +
         '<div>👤 ' + esc(r.fromName || r.fromUserId) + (r.fromNumericId ? ' <span style="color:var(--text3)">#' + r.fromNumericId + '</span>' : '') + '</div>' +
         (r.message ? '<div style="color:var(--text3);font-size:11px;margin:2px 0">' + esc(r.message) + '</div>' : '') +
-        '<div style="display:flex;gap:6px;margin-top:4px"><button class="btn-sm" style="background:#16a34a;color:#fff" onclick="lanRespondFriend(\'' + r.id + '\',\'accept\')">接受</button>' +
-        '<button class="btn-sm" onclick="lanRespondFriend(\'' + r.id + '\',\'reject\')">拒绝</button></div></div>';
+        '<div style="display:flex;gap:6px;margin-top:4px"><button class="btn-sm" style="background:#16a34a;color:#fff" onclick="lanRespondFriend(\'' + r.id + '\',\'accept\')">' + t('social.acceptBtn') + '</button>' +
+        '<button class="btn-sm" onclick="lanRespondFriend(\'' + r.id + '\',\'reject\')">' + t('social.rejectBtn') + '</button></div></div>';
     }
   }
-  html += '<div style="font-size:11px;color:var(--accent);margin:4px 0">我的好友</div>';
+  html += '<div style="font-size:11px;color:var(--accent);margin:4px 0">' + t('social.myFriends') + '</div>';
   if (!friends.length) {
-    html += '<div class="empty">还没有好友<br><span style="font-size:11px">在「邻居」里按 ID 添加</span></div>';
+    html += '<div class="empty">' + t('social.noFriends') + '<br><span style="font-size:11px">' + t('social.noFriendsHint') + '</span></div>';
   } else {
     for (const f of friends) {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px;font-size:12px">' +
@@ -3532,52 +3535,52 @@ function lanRenderFriends(incoming, friends) {
 
 function lanRenderGroups(groups) {
   const list = document.getElementById('lanList');
-  if (!groups.length) { list.innerHTML = '<div class="empty">还没有群组<br><span style="font-size:11px">点击下方按钮创建</span></div>'; return; }
+  if (!groups.length) { list.innerHTML = '<div class="empty">' + t('social.noGroups') + '<br><span style="font-size:11px">' + t('social.noGroupsHint') + '</span></div>'; return; }
   let html = '';
   for (const g of groups) {
     const active = lanCurrentGroup && lanCurrentGroup.id === g.id;
     html += '<div onclick="lanOpenGroup(\'' + g.id + '\')" style="cursor:pointer;background:' + (active ? 'var(--bg3)' : 'var(--bg)') + ';border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:6px">' +
       '<div style="font-size:13px;font-weight:600">👥 ' + esc(g.name) + '</div>' +
-      '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + (g.memberCount || 0) + ' 成员 · 模式 ' + esc(g.chatMode || 'free') + '</div></div>';
+      '<div style="font-size:11px;color:var(--text3);margin-top:2px">' + t('social.memberMode', {n: g.memberCount || 0, mode: esc(g.chatMode || 'free')}) + '</div></div>';
   }
   list.innerHTML = html;
 }
 
 async function lanAddFriend(numericId) {
-  if (!authToken) { toast('请先登录后加好友'); return; }
-  const message = prompt('给 ' + numericId + ' 的好友申请留言（可留空）:', '') || '';
+  if (!authToken) { toast(t('social.loginToAdd')); return; }
+  const message = prompt(t('social.friendMsgPh', {id: numericId}), '') || '';
   try {
     const r = await platformApi('/api/lan/friend-request', 'POST', { fromUserId: lanMyId(), toNumericId: numericId, message });
-    if (r && r.ok !== false && !r.error) toast('✅ 好友申请已发送');
-    else toast('❌ ' + (r.error || '发送失败'));
+    if (r && r.ok !== false && !r.error) toast(t('social.friendReqSent'));
+    else toast('❌ ' + (r.error || t('err.sendFail')));
   } catch (e) { toast('❌ ' + e.message); }
 }
 
 async function lanRespondFriend(requestId, action) {
   try {
     const r = await platformApi('/api/lan/friend-respond', 'POST', { requestId, action });
-    if (r && !r.error) toast(action === 'accept' ? '✅ 已添加好友' : '已拒绝');
-    else toast('❌ ' + (r.error || '操作失败'));
+    if (r && !r.error) toast(action === 'accept' ? t('social.friendAdded') : t('friends.rejected'));
+    else toast('❌ ' + (r.error || t('err.operationFail')));
     lanRefresh();
   } catch (e) { toast('❌ ' + e.message); }
 }
 
 async function lanShowCreateGroup() {
-  const name = prompt('群组名称:', '局域网群聊');
+  const name = prompt(t('social.groupNamePh'), t('social.defaultGroupName'));
   if (!name) return;
-  const idsRaw = prompt('成员数字 ID（逗号分隔，可留空仅自己）:', '');
+  const idsRaw = prompt(t('social.memberIdsPh'), '');
   const memberNumericIds = (idsRaw || '').split(/[,，\s]+/).map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
   try {
     const r = await api('/api/lan/group-create', 'POST', { ownerUserId: lanMyId(), name, memberNumericIds, chatMode: 'free' });
-    if (r && r.ok) { toast('✅ 群组已创建'); lanSwitchTab('groups'); lanOpenGroup(r.groupId); }
-    else toast('❌ ' + (r.error || '创建失败'));
+    if (r && r.ok) { toast(t('social.groupCreated')); lanSwitchTab('groups'); lanOpenGroup(r.groupId); }
+    else toast('❌ ' + (r.error || t('err.createFail')));
   } catch (e) { toast('❌ ' + e.message); }
 }
 
 async function lanOpenGroup(groupId) {
   try {
     const d = await api('/api/lan/group?groupId=' + encodeURIComponent(groupId), 'GET');
-    if (!d || !d.group) { toast('群组不存在'); return; }
+    if (!d || !d.group) { toast(t('social.groupNotExist')); return; }
     lanCurrentGroup = d.group;
     // 订阅这个群的两个聊天，接收实时消息
     try {
@@ -3605,7 +3608,7 @@ async function lanLoadHistory(chatId, container) {
     const d = await api('/api/chats/' + encodeURIComponent(chatId) + '/messages', 'GET');
     container.innerHTML = '';
     const msgs = (d && d.messages) || [];
-    if (!msgs.length) { container.innerHTML = '<div class="empty">暂无消息</div>'; return; }
+    if (!msgs.length) { container.innerHTML = '<div class="empty">' + t('social.noMsg') + '</div>'; return; }
     // 历史消息 DB 不存 senderName，从群成员表解析显示名
     const nameByAgent = {}, nameByUser = {};
     for (const m of (typeof lanCurrentGroup !== 'undefined' && lanCurrentGroup && lanCurrentGroup.members) || []) {
@@ -3622,15 +3625,15 @@ async function lanLoadHistory(chatId, container) {
       }, container);
     }
     container.scrollTop = container.scrollHeight;
-  } catch (e) { container.innerHTML = '<div class="empty">加载失败</div>'; }
+  } catch (e) { container.innerHTML = '<div class="empty">' + t('err.loadFail') + '</div>'; }
 }
 
 async function lanSetGroupMode(mode) {
   if (!lanCurrentGroup) return;
   try {
     const r = await api('/api/lan/group-mode', 'POST', { groupId: lanCurrentGroup.id, mode });
-    if (r && r.ok) toast('✅ 智能体模式: ' + mode);
-    else toast('❌ ' + (r.error || '设置失败'));
+    if (r && r.ok) toast(t('social.agentMode', {mode: mode}));
+    else toast('❌ ' + (r.error || t('err.setFail')));
   } catch (e) { toast('❌ ' + e.message); }
 }
 
@@ -3700,7 +3703,7 @@ function lanStreamingStart(msg) {
   el.className = 'msg-row ai';
   const name = (msg.senderName || (msg.from || '').replace(/^agent:/, '')).toString();
   el.innerHTML = '<div class="msg-avatar ai">🤖</div><div style="max-width:72%"><div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">' + esc(name) + '</div>' +
-    '<div class="msg-bubble"><div class="msg-content"><span class="typing-dot">思考中…</span></div></div></div>';
+    '<div class="msg-bubble"><div class="msg-content"><span class="typing-dot">' + t('chat.thinking') + '</span></div></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
   lanStreaming[msg.msgId] = { el, content: '', senderId: msg.senderId || msg.from || '' };
@@ -3755,21 +3758,21 @@ function handleLanMessage(msg) {
       if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--text3);margin:4px 0">ℹ️ ' + esc(msg.message || '') + '</div>'); c.scrollTop = c.scrollHeight; }
     }
   } else if (type === 'lan.friend.request') {
-    toast('🌐 收到好友申请: ' + ((msg.from && msg.from.displayName) || ''));
+    toast(t('social.lanFriendRequest', {name: (msg.from && msg.from.displayName) || ''}));
     if (lanTab === 'friends') lanRefresh();
   } else if (type === 'lan.friend.accepted') {
-    toast('✅ 好友已接受');
+    toast(t('social.friendAccepted'));
     if (lanTab === 'friends') lanRefresh();
   } else if (type === 'lan.group.invited') {
-    toast('🌐 你被邀请加入群组: ' + (msg.name || ''));
+    toast(t('social.groupInvited', {name: msg.name || ''}));
     if (lanTab === 'groups') lanRefresh();
   } else if (type === 'lan.group.created') {
     if (lanTab === 'groups') lanRefresh();
   } else if (type === 'error') {
     if (lanCurrentGroup && msg.chatId === lanCurrentGroup.agentChatId) {
-      toast('❌ ' + (msg.message || '智能体编排失败'));
+      toast('❌ ' + (msg.message || t('social.orchestrateFail')));
       const c = document.getElementById('lanAgentMessages');
-      if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--red);margin:4px 0">❌ ' + esc(msg.message || '编排失败') + '</div>'); c.scrollTop = c.scrollHeight; }
+      if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--red);margin:4px 0">❌ ' + esc(msg.message || t('social.orchestrateFailShort')) + '</div>'); c.scrollTop = c.scrollHeight; }
     }
   }
 }
@@ -3782,58 +3785,61 @@ async function loadTaskMonitor() {
     const d = await api('/api/cron');
     const jobs = d.jobs || [];
     if (!jobs.length) {
-      el.innerHTML = '<span style="color:var(--text3)">暂无定时任务，可在管理面板添加</span>';
+      el.innerHTML = '<span style="color:var(--text3)">' + t('task.empty') + '</span>';
       return;
     }
     el.innerHTML = jobs.map(j => {
-      const name = esc(j.name || j.id || '未命名');
+      const name = esc(j.name || j.id || t('common.unnamed'));
       const expr = esc(String(j.schedule?.expr || j.schedule || '-'));
       const enabled = j.enabled !== false;
-      const pill = enabled ? '<span class="status-pill pill-on">运行中</span>' : '<span class="status-pill pill-off">已暂停</span>';
+      const pill = enabled ? '<span class="status-pill pill-on">' + t('task.running') + '</span>' : '<span class="status-pill pill-off">' + t('task.paused') + '</span>';
       const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : '-';
       const lastRun = j.lastRun ? new Date(j.lastRun).toLocaleString() : '-';
       const runCount = j.runCount || 0;
       const jid = esc(j.id);
       const runBtn = enabled
-        ? '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">▶ 运行</button><button onclick="toggleTaskMonitor(\'' + jid + '\',false)">暂停</button>'
-        : '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">▶ 运行</button><button style="color:var(--green)" onclick="toggleTaskMonitor(\'' + jid + '\',true)">启用</button>';
+        ? '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">' + t('task.run') + '</button><button onclick="toggleTaskMonitor(\'' + jid + '\',false)">' + t('task.pause') + '</button>'
+        : '<button class="run" onclick="runTaskMonitor(\'' + jid + '\')">' + t('task.run') + '</button><button style="color:var(--green)" onclick="toggleTaskMonitor(\'' + jid + '\',true)">' + t('task.enable') + '</button>';
       return '<div class="task-card">' +
         '<div class="task-name">' + name + ' ' + pill + '</div>' +
-        '<div class="task-meta">表达式：<code>' + expr + '</code><br>下次执行：' + esc(next) + '<br>上次：' + esc(lastRun) + ' · 执行' + runCount + '次</div>' +
+        '<div class="task-meta">' + t('task.expr') + '<code>' + expr + '</code><br>' + t('task.nextRun') + esc(next) + '<br>' + t('task.lastRun') + esc(lastRun) + ' · ' + t('task.runCount', {n: runCount}) + '</div>' +
         '<div class="task-actions">' + runBtn +
-          '<button class="del" onclick="removeTaskMonitor(\'' + jid + '\')">删除</button>' +
+          '<button class="del" onclick="removeTaskMonitor(\'' + jid + '\')">' + t('common.delete') + '</button>' +
         '</div></div>';
     }).join('');
   } catch(e) {
-    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || '加载失败') + '</span>';
+    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || t('err.loadFail')) + '</span>';
   }
 }
 async function runTaskMonitor(id) {
   try {
     const d = await api('/api/cron/' + encodeURIComponent(id) + '/run', 'POST');
-    if (d.ok) { toast('✅ 已触发运行'); loadTaskMonitor(); }
-    else toast('❌ 运行失败');
+    if (d.ok) { toast(t('task.triggered')); loadTaskMonitor(); }
+    else toast('❌ ' + t('err.runFail'));
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function toggleTaskMonitor(id, enabled) {
   try {
     const d = await api('/api/cron/' + encodeURIComponent(id), 'PATCH', { enabled });
-    if (d.ok) { toast(enabled ? '已启用' : '已暂停'); loadTaskMonitor(); }
-    else toast('❌ 操作失败');
+    if (d.ok) { toast(enabled ? t('task.enabled') : t('task.paused')); loadTaskMonitor(); }
+    else toast('❌ ' + t('err.operationFail'));
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function removeTaskMonitor(id) {
-  if (!confirm('确定删除该定时任务？')) return;
+  if (!confirm(t('admin.confirmDeleteCron'))) return;
   try {
     const d = await api('/api/cron/' + encodeURIComponent(id), 'DELETE');
-    if (d.ok) { toast('已删除'); loadTaskMonitor(); }
-    else toast('❌ 删除失败');
+    if (d.ok) { toast(t('common.deleted')); loadTaskMonitor(); }
+    else toast('❌ ' + t('err.deleteFail'));
   } catch(e) { toast('❌ ' + e.message); }
 }
 
 // ── 右侧栏：目标任务（GoalTracker）──
 const RIGHT_GOAL_EMOJI = { pending: '⏳', in_progress: '🔄', done: '✅', cancelled: '❌' };
-const RIGHT_GOAL_LABEL = { pending: '待开始', in_progress: '进行中', done: '已完成', cancelled: '已取消' };
+function rightGoalLabel(st) {
+  var m = { pending: t('right.goalPending'), in_progress: t('right.goalProgress'), done: t('right.goalDone'), cancelled: t('right.goalCancelled') };
+  return m[st] || st;
+}
 const RIGHT_GOAL_COLOR = { pending: 'var(--text3)', in_progress: 'var(--accent)', done: 'var(--green)', cancelled: 'var(--text3)' };
 async function loadRightGoals() {
   const el = document.getElementById('rightGoalsList');
@@ -3841,10 +3847,10 @@ async function loadRightGoals() {
   try {
     const project = currentChat ? ('project-' + currentChat) : 'default';
     const d = await api('/api/goals?project=' + encodeURIComponent(project));
-    if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(_errMsg(d, '加载失败')) + '</span>'; return; }
+    if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(_errMsg(d, t('err.loadFail'))) + '</span>'; return; }
     const goals = d.goals || [];
     if (!goals.length) {
-      el.innerHTML = '<span style="color:var(--text3)">暂无目标，点击下方添加</span>';
+      el.innerHTML = '<span style="color:var(--text3)">' + t('right.noGoals') + '</span>';
       return;
     }
     const done = goals.filter(g => g.status === 'done').length;
@@ -3853,16 +3859,16 @@ async function loadRightGoals() {
     el.innerHTML = goals.map(g => {
       const st = g.status || 'pending';
       const emoji = RIGHT_GOAL_EMOJI[st] || '⏳';
-      const label = RIGHT_GOAL_LABEL[st] || st;
+      const label = rightGoalLabel(st);
       const color = RIGHT_GOAL_COLOR[st] || 'var(--text3)';
       const style = st === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (st === 'cancelled' ? 'color:var(--text3)' : '');
       const gid = esc(g.id);
       let acts = '';
-      if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="开始" style="cursor:pointer;font-size:16px">▶️</a> ';
-      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="完成" style="cursor:pointer;font-size:16px">✅</a> ';
-      if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="恢复" style="cursor:pointer;font-size:16px">↩️</a> ';
-      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer;font-size:16px">❓</a> ';
-      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="删除" style="cursor:pointer;font-size:16px">🗑️</a>';
+      if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="' + t('admin.goalStart') + '" style="cursor:pointer;font-size:16px">▶️</a> ';
+      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">✅</a> ';
+      if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="' + t('admin.goalRestore') + '" style="cursor:pointer;font-size:16px">↩️</a> ';
+      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">❓</a> ';
+      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑️</a>';
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">' + esc(g.acceptanceCriteria) + '</div>' : '';
       const barColor = st === 'done' ? 'var(--green)' : 'var(--accent)';
       const barWidth = st === 'done' ? 100 : (st === 'in_progress' ? 50 : 0);
@@ -3871,37 +3877,37 @@ async function loadRightGoals() {
         '<b style="' + style + '">' + esc(g.title) + '</b>' +
         '<span style="margin-left:auto;font-size:11px;color:' + color + '">' + label + '</span></div>' +
         '<div class="goal-bar"><i style="width:' + barWidth + '%;background:' + barColor + '"></i></div>' +
-        '<div class="goal-foot"><span>进度 ' + barWidth + '%</span>' +
+        '<div class="goal-foot"><span>' + t('right.progress', {n: barWidth}) + '</span>' +
         '<span style="float:right">' + acts + '</span></div>' +
         criteria + '</div>';
     }).join('');
   } catch(e) {
-    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || '网络错误') + '</span>';
+    el.innerHTML = '<span style="color:var(--red)">❌ ' + esc(e.message || t('err.networkError')) + '</span>';
   }
 }
 async function addRightGoal() {
-  const title = prompt('目标名称：');
+  const title = prompt(t('right.goalNamePh'));
   if (!title) return;
-  const desc = prompt('目标描述（可选）：');
+  const desc = prompt(t('right.goalDescPh'));
   try {
     const project = currentChat ? ('project-' + currentChat) : 'default';
     const d = await api('/api/goals', 'POST', { title: title.trim(), acceptanceCriteria: desc || '', project: project });
-    if (d.ok) { toast('✅ 目标已添加'); loadRightGoals(); }
-    else toast('❌ ' + _errMsg(d, '添加失败'));
+    if (d.ok) { toast(t('admin.goalAdded')); loadRightGoals(); }
+    else toast('❌ ' + _errMsg(d, t('err.addFail')));
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function setRightGoalStatus(id, status) {
   try {
     const d = await api('/api/goals/' + encodeURIComponent(id), 'PATCH', { status });
     if (d.ok) loadRightGoals();
-    else toast('❌ ' + _errMsg(d, '操作失败'));
+    else toast('❌ ' + _errMsg(d, t('err.operationFail')));
   } catch(e) { toast('❌ ' + e.message); }
 }
 async function deleteRightGoal(id) {
-  if (!confirm('确定删除此目标？')) return;
+  if (!confirm(t('right.confirmDeleteGoal'))) return;
   try {
     const d = await api('/api/goals/' + encodeURIComponent(id), 'DELETE');
-    if (d.ok) { toast('已删除'); loadRightGoals(); }
-    else toast('❌ ' + _errMsg(d, '删除失败'));
+    if (d.ok) { toast(t('common.deleted')); loadRightGoals(); }
+    else toast('❌ ' + _errMsg(d, t('err.deleteFail')));
   } catch(e) { toast('❌ ' + e.message); }
 }
