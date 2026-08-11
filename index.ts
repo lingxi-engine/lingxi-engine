@@ -843,7 +843,7 @@ setSearchManager(searchManagerInstance);
       const filtered = keyword
         ? users.filter((u: any) => (u.display_name || '').toLowerCase().includes(keyword.toLowerCase()) || String(u.numeric_id || '').includes(keyword))
         : users;
-      res.json({ ok: true, users: filtered.map((u: any) => ({ id: u.id, displayName: u.display_name })) });
+      res.json({ ok: true, users: filtered.map((u: any) => ({ id: u.id, numericId: u.numeric_id, displayName: u.display_name })) }); // v2.0.9: 补充 numericId 供前端加好友使用
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1988,16 +1988,20 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 模块化路由挂载（目标追踪/评分卡、个人资料、杂项）──
-  app.use('/api', requireAuth, createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
-  
+  // v2.0.9: 仅对子路由实际路径执行 requireAuth，避免 app.use('/api', requireAuth, ...) 对所有 /api 请求先鉴权，
+  // 导致无效 token 拦截到免鉴权路由（如 /api/lan/search）
+  const authIfMatch = (pattern: RegExp) => (req: any, res: any, next: any) =>
+    pattern.test(req.path) ? requireAuth(req, res, next) : next();
+  app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
+
   // ── 个人资料 API（GET/PUT /api/profile、头像上传）──
-  app.use('/api', requireAuth, createProfileRoutes({ db, dataDir } as any));
-  
+  app.use('/api', authIfMatch(/^\/profile(\/|$)/), createProfileRoutes({ db, dataDir } as any));
+
   // ── 杂项 API（时间/标签/联邦通信/Mesh/工作区模式）──
   app.use('/api', createMiscRoutes({ db, manager, router, broadcast, dataDir } as any));
-  
+
   // ── 上传管理 API ──
-  app.use('/api', requireAuth, createUploadRoutes({ db, dataDir } as any));
+  app.use('/api', authIfMatch(/^\/upload(\/|$)/), createUploadRoutes({ db, dataDir } as any));
 
   // ── GoalTracker.onGoalStarted: 任务监控/AI自动执行 ──
   GoalTracker.onGoalStarted = (goal: ProjectGoal) => {

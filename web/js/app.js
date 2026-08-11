@@ -1364,10 +1364,13 @@ async function searchUsers() {
     let data;
     if (authToken) {
       data = await platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
+      // v2.0.9: token 失效（401/ok:false）时清除旧 token 并回退本地免登录搜索
+      if (!data || data.ok === false) { authToken = null; localStorage.removeItem('authToken'); data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET'); }
       searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     } else {
-      data = await api('/api/users?q=' + encodeURIComponent(q));
-      searchResults = data.users || [];
+      // v2.0.9: 未登录也统一走免鉴权的 /api/lan/search，避免 /api/users 需要登录态
+      data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
+      searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     }
     renderSearch();
   } catch(e) { document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">'+t('err.searchFail')+'</div>'; }
@@ -1572,6 +1575,11 @@ async function searchUser() {
     let results = [];
     if (authToken) {
       const d = await platformApi('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
+      // v2.0.9: token 失效时清除旧 token 并回退本地免登录搜索
+      const d2 = (!d || d.ok === false) ? await ((authToken = null, localStorage.removeItem('authToken')), api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET')) : d;
+      results = (d2.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
+    } else {
+      const d = await api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
       results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
     }
     // 去重
@@ -2258,6 +2266,7 @@ function checkAuthStatus() {
           document.getElementById('loginButtons').style.display = 'none';
           connect();
         } else {
+          authToken = null;
           localStorage.removeItem('authToken');
         }
       })
@@ -3470,10 +3479,15 @@ function lanSearch() {
   if (lanSearchTimer) clearTimeout(lanSearchTimer);
   if (!q) { lanRefresh(); return; }
   lanSearchTimer = setTimeout(() => {
+    const url = '/api/lan/search?q=' + encodeURIComponent(q);
     if (authToken) {
-      platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET').then(d => lanRenderSearch((d && d.results) || []));
+      platformApi(url, 'GET').then(d => {
+        // v2.0.9: token 失效时清除旧 token 并回退本地免登录搜索
+        if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); return api(url, 'GET'); }
+        return d;
+      }).then(d => lanRenderSearch((d && d.results) || []));
     } else {
-      api('/api/lan/search?q=' + encodeURIComponent(q), 'GET').then(d => lanRenderSearch((d && d.results) || []));
+      api(url, 'GET').then(d => lanRenderSearch((d && d.results) || []));
     }
   }, 250);
 }
