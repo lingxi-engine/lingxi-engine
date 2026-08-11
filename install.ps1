@@ -239,7 +239,31 @@ try {
     W-Warn "Ollama not running or not installed"
 }
 
-# --- 7. Done ---
+# --- 7. Firewall rules (LAN discovery + engine port) ---
+W-Info "Configuring firewall rules..."
+try {
+    # UDP 3457: LAN 发现层灯塔广播（必须放行，否则跨机器搜不到好友）
+    $fwUdp = Get-NetFirewallRule -DisplayName "LingXi LAN Discovery (UDP 3457)" -ErrorAction SilentlyContinue
+    if (-not $fwUdp) {
+        New-NetFirewallRule -DisplayName "LingXi LAN Discovery (UDP 3457)" -Direction Inbound -Protocol UDP -LocalPort 3457 -Action Allow -Profile Any | Out-Null
+        W-OK "Firewall: UDP 3457 inbound allowed (LAN discovery)"
+    } else {
+        W-OK "Firewall: UDP 3457 rule already exists"
+    }
+    # TCP 3456: 引擎 HTTP 端口（邻居引擎通过此端口互相通信）
+    $fwTcp = Get-NetFirewallRule -DisplayName "LingXi Engine (TCP 3456)" -ErrorAction SilentlyContinue
+    if (-not $fwTcp) {
+        New-NetFirewallRule -DisplayName "LingXi Engine (TCP 3456)" -Direction Inbound -Protocol TCP -LocalPort 3456 -Action Allow -Profile Any | Out-Null
+        W-OK "Firewall: TCP 3456 inbound allowed (engine HTTP)"
+    } else {
+        W-OK "Firewall: TCP 3456 rule already exists"
+    }
+} catch {
+    W-Warn "Firewall rule setup failed (need admin). LAN discovery may not work across machines."
+    W-Warn "Manual fix: Run as admin: netsh advfirewall firewall add rule name=\"LingXi LAN\" dir=in action=allow protocol=UDP localport=3457"
+}
+
+# --- 8. Done ---
 Write-Host ""
 Write-Host "===========================================" -ForegroundColor Green
 Write-Host "  LingXi Engine installed!" -ForegroundColor White
@@ -284,7 +308,7 @@ Write-Host ""
 Write-Host "  Open: http://localhost:3456" -ForegroundColor White
 Write-Host ""
 
-# --- 8. Auto-start ---
+# --- 9. Auto-start ---
 $startNow = Read-Host "  Start now? (y/n)"
 if ($startNow -eq 'y' -or $startNow -eq 'Y') {
     # 再次确保旧进程已杀掉
