@@ -351,8 +351,11 @@ function connect() {
       loadProfileCard().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
-        // v2.1.3: 统一用 /api/auth/me 获取当前用户信息（含 numeric_id）
-        api('/api/auth/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.numeric_id || d.user.numericId || d.user.id || null; } }).catch(()=>{});
+        if (authToken) {
+          platformApi('/api/user/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.id || d.user.sub || null; } }).catch(()=>{});
+        } else {
+          api('/api/auth/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.numeric_id || d.user.numericId || null; } }).catch(()=>{});
+        }
       }
       // 订阅局域网社交通知频道
       try { socket.send(JSON.stringify({ type: 'subscribe', chatId: '__lan_social__' })); } catch(_e) {}
@@ -1358,13 +1361,17 @@ async function searchUsers() {
   if (!q) { document.getElementById('searchResult').innerHTML=''; return; }
   document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">'+t('chat.searching')+'</div>';
   try {
-    // v2.1.3: 统一走本地 /api/lan/search（免鉴权），不再区分 authToken
-    let data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
-    if (!data || data.ok === false) {
-      // 回退：如果 lan/search 失败，尝试 /api/users/search
-      data = await api('/api/users/search?q=' + encodeURIComponent(q), 'GET');
+    let data;
+    if (authToken) {
+      data = await platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
+      // v2.0.9: token 失效（401/ok:false）时清除旧 token 并回退本地免登录搜索
+      if (!data || data.ok === false) { authToken = null; localStorage.removeItem('authToken'); data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET'); }
+      searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
+    } else {
+      // v2.0.9: 未登录也统一走免鉴权的 /api/lan/search，避免 /api/users 需要登录态
+      data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
+      searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     }
-    searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     renderSearch();
   } catch(e) { document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">'+t('err.searchFail')+'</div>'; }
 }
@@ -1395,11 +1402,12 @@ async function sendRequest(to) {
   if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
   try {
-    // v2.1.3: 统一走 /api/lan/friend-request，始终传 fromUserId + toNumericId
-    // fromUserId 优先用 lanMeId（数据库 user id），回退 clientId（WebSocket 匿名 id）
-    const fromUserId = lanMeId || clientId;
-    const d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
-    if (d.error) { toast(typeof d.error === 'string' ? d.error : (d.error.message || '发送失败')); return; }
+    if (authToken) {
+      const d = await platformApi('/api/lan/friend-request', 'POST', { toNumericId: Number(to), message: '' });
+      if (d.error) { toast(d.error); return; }
+    } else {
+      await api('/api/friends/request', 'POST', { fromUserId: clientId, toUserId: to, message: '' });
+    }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
     outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || (t('profile.defaultUser') + uid), createdAt: Date.now() });
@@ -1407,11 +1415,14 @@ async function sendRequest(to) {
   } catch(e) { toast(t('err.sendFail')); }
 }
 async function loadFriends() {
-  if (!clientId) return;
+  if (!authToken && !clientId) return;
   try {
-    // v2.1.3: 统一走本地 /api/lan/friends
-    const userId = lanMeId || clientId;
-    const d = await api('/api/lan/friends?userId=' + encodeURIComponent(userId), 'GET');
+    let d;
+    if (authToken) {
+      d = await platformApi('/api/lan/friends', 'GET');
+    } else {
+      d = await api('/api/friends/list?userId=' + encodeURIComponent(clientId));
+    }
     // 去重（同一好友可能有多条记录）
     const seen = new Set();
     myFriends = (d.friends||[]).filter(f => { const k = String(f.friendId); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -1462,18 +1473,22 @@ function confirmDeleteFriend(fid, fname) {
 }
 async function deleteFriend(fid) {
   try {
-    // v2.1.3: 统一走本地 /api/lan/friends/:id
-    const d = await api('/api/lan/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE');
-    if (d.error) { toast(d.error); return; }
+    if (authToken) {
+      const d = await platformApi('/api/lan/friends/' + fid, 'DELETE');
+      if (d.error) { toast(d.error); return; }
+    }
     toast(t('friends.deleted')); loadFriends();
   } catch(e) { toast(t('err.operationFail')); }
 }
 async function loadRequests() {
-  if (!clientId) return;
+  if (!authToken && !clientId) return;
   try {
-    // v2.1.3: 统一走本地 /api/lan/friend-requests
-    const userId = lanMeId || clientId;
-    const d = await api('/api/lan/friend-requests?userId=' + encodeURIComponent(userId), 'GET');
+    let d;
+    if (authToken) {
+      d = await platformApi('/api/lan/friend-requests', 'GET');
+    } else {
+      d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
+    }
     incomingRequests = d.incoming||[];
     outgoingRequests = d.outgoing||[];
     requestNotifyCount = incomingRequests.length;
@@ -1528,9 +1543,12 @@ function renderRequests() {
 }
 async function respondReq(rid, action) {
   try {
-    // v2.1.3: 统一走本地 /api/lan/friend-respond
-    const d = await api('/api/lan/friend-respond', 'POST', { requestId: rid, action });
-    if (d.error) { toast(typeof d.error === 'string' ? d.error : (d.error.message || '操作失败')); return; }
+    if (authToken) {
+      const d = await platformApi('/api/lan/friend-respond', 'POST', { requestId: rid, action });
+      if (d.error) { toast(d.error); return; }
+    } else {
+      await api('/api/friends/respond', 'POST', { requestId: rid, action });
+    }
     toast(action==='accept'?t('friends.accepted'):t('friends.rejected'));
     loadFriends(); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
@@ -1538,9 +1556,10 @@ async function respondReq(rid, action) {
 async function withdrawRequest(rid) {
   if (!confirm(t('friends.confirmWithdraw'))) return;
   try {
-    // v2.1.3: 统一走本地 API
-    const d = await api('/api/lan/friend-request/' + rid, 'DELETE');
-    if (d && d.error) { toast(d.error); return; }
+    if (authToken) {
+      const d = await platformApi('/api/lan/friend-request/' + rid, 'DELETE');
+      if (d.error) { toast(d.error); return; }
+    }
     toast(t('friends.withdrawn')); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
 }
@@ -1554,9 +1573,15 @@ async function searchUser() {
   box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">'+t('chat.searching')+'</div>';
   try {
     let results = [];
-    // v2.1.3: 统一走本地 /api/lan/search
-    const d = await api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
-    results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
+    if (authToken) {
+      const d = await platformApi('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
+      // v2.0.9: token 失效时清除旧 token 并回退本地免登录搜索
+      const d2 = (!d || d.ok === false) ? await ((authToken = null, localStorage.removeItem('authToken')), api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET')) : d;
+      results = (d2.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
+    } else {
+      const d = await api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
+      results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
+    }
     // 去重
     const seen = new Set();
     results = results.filter(u => { const k = String(u.numericId); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -2281,7 +2306,8 @@ async function loadProfileCard() {
       var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
       if (pr && pr.ok && pr.profile) {
         var p = pr.profile;
-        name = p.display_name || name;
+        // 过滤本地默认名称（"用户+nid"模式），避免覆盖真实姓名
+        if (p.display_name && !/^用户\d+$/.test(p.display_name)) name = p.display_name;
         idShow = p.numeric_id || p.id || idShow;
         avatarUrl = p.avatar_url || avatarUrl;
         bio = p.bio || bio;
@@ -2467,14 +2493,15 @@ async function loadProfile() {
     }
     const userId = u.id || u.sub || '';
     // ── 组装资料数据：本地 /api/profile 优先，云账号回退云平台 ──
-    let name = t('profile.defaultUser'), idShow = userId, credits = 0, rating = t('common.none'), tokens = 0, calls = 0, createdAt = '-', status = t('profile.online'), ratingsHtml = '';
+    let name = u.display_name || u.username || t('profile.defaultUser'), idShow = userId, credits = 0, rating = t('common.none'), tokens = 0, calls = 0, createdAt = '-', status = t('profile.online'), ratingsHtml = '';
     let pr = null;
     if (!fromCloud) {
       try { pr = await api('/api/profile?userId=' + encodeURIComponent(userId)); } catch (e) {}
     }
     if (pr && pr.ok && pr.profile) {
       const p = pr.profile;
-      name = p.display_name || t('profile.defaultUser');
+      // 过滤本地默认名称（"用户+nid"模式），避免覆盖来自 /api/auth/me 的真实姓名
+      if (p.display_name && !/^用户\d+$/.test(p.display_name)) name = p.display_name;
       idShow = p.numeric_id || p.id;
       credits = pr.credits || 0;
       rating = pr.ratings?.avgRating ? '⭐ ' + Number(pr.ratings.avgRating).toFixed(1) : t('common.none');

@@ -715,6 +715,11 @@ setSearchManager(searchManagerInstance);
               const raw2 = getDB();
               raw2.run('UPDATE users SET numeric_id = ?, status = ? WHERE id = ?', [Number(user.id), 'online', localId]);
               saveToDisk();
+            } else if (existing && user.username && existing.display_name !== user.username) {
+              // 修复: 同步云平台最新 display_name 到本地数据库，避免刷新后回退为"用户+nid"
+              const raw2 = getDB();
+              raw2.run('UPDATE users SET display_name = ?, status = ? WHERE id = ?', [user.username, 'online', localId]);
+              saveToDisk();
             }
           } catch(_e) {}
           // 注册到 Mesh 平台（让其他实例能找到此用户）
