@@ -1127,13 +1127,13 @@ function isChatGenerating(chatId) {
 }
 // 根据"当前聊天是否生成中 / 队列是否有消息"刷新停止按钮和排队提示
 function updateGenUI() {
-  const stopBtn = document.getElementById('stopBtn');
+  const stopBar = document.getElementById('stopBar');
   const queueBar = document.getElementById('queueBar');
   const busy = !!(currentChat && isChatGenerating(currentChat));
-  if (stopBtn) stopBtn.style.display = busy ? '' : 'none';
+  if (stopBar) stopBar.style.display = busy ? 'flex' : 'none';
   if (queueBar) {
     if (sendQueue.length) {
-      queueBar.style.display = '';
+      queueBar.style.display = 'flex';
       const qc = document.getElementById('queueCount');
       if (qc) qc.textContent = t('chat.queuedInfo', { n: sendQueue.length });
     } else {
@@ -1263,6 +1263,13 @@ async function uploadAndSendFile(file) {
 }
 
 // ── File Upload ──
+// 点击 📎 按钮选择文件后直接上传发送（与粘贴/拖拽行为一致）
+function onFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  uploadAndSendFile(file);
+  input.value = ''; // 重置以便再次选择同一文件
+}
 function previewFile() {
   const input = document.getElementById('fileInput');
   const file = input.files[0];

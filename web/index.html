@@ -503,8 +503,17 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <div class="empty" data-i18n="chat.selectOrCreate">选择或创建一个会话</div>
       </div>
       <div class="input-area">
+        <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="上传文件" style="padding:6px 10px;font-size:18px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0">📎</button>
+        <input type="file" id="fileInput" style="display:none" onchange="onFileSelected(this)">
         <textarea id="input" data-i18n-ph="chat.inputPh" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
         <button class="primary" id="sendBtn" onclick="send()" data-i18n="common.send">发送</button>
+      </div>
+      <div id="stopBar" style="display:none;justify-content:center;align-items:center;gap:8px;padding:4px 14px;border-top:1px solid var(--border);background:var(--bg2)">
+        <button id="stopBtn" onclick="stopGeneration()" style="padding:4px 16px;border-radius:var(--input-radius);border:1px solid #e74c3c;background:#e74c3c;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap">⏹ 停止生成</button>
+      </div>
+      <div id="queueBar" style="display:none;justify-content:center;align-items:center;gap:8px;padding:4px 14px;border-top:1px solid var(--border);background:var(--bg2)">
+        <span id="queueCount" style="font-size:12px;color:var(--text2)"></span>
+        <button onclick="clearQueue()" style="padding:2px 10px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:11px">✕ 取消排队</button>
       </div>
     </div>
 
@@ -990,7 +999,6 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="chatSearchBar" style="display:none"></div>
 <div id="chatSearchInput" style="display:none"></div>
 <div id="chatSearchResults" style="display:none"></div>
-<div id="fileInput" style="display:none"></div>
 <div id="filePreview" style="display:none"></div>
 <div id="filePreviewName" style="display:none"></div>
 <div id="friendPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
@@ -1025,11 +1033,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-<div id="queueBar" style="display:none"></div>
-<div id="queueCount" style="display:none"></div>
 <div id="recordBtn" style="display:none"></div>
 <div id="routeModeTag" style="display:none"></div>
-<div id="stopBtn" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>
 </body>
