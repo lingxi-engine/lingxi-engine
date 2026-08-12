@@ -7,7 +7,7 @@ import 'dotenv/config';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { randomInt, timingSafeEqual } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
@@ -2897,7 +2897,71 @@ setSearchManager(searchManagerInstance);
       } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
     });
 
-    // 向某个 peer 实例发消息（会触发对方本地 AI 处理）
+    // ═══════ 云平台业务代理 (闭源 platform-server) ═══════
+// 引擎内置默认平台地址(用户无需配置)。env 可覆盖。
+const CLOUD_PLATFORM_URL = process.env.PLATFORM_SERVER_URL || 'http://47.93.157.83:3001';
+const CLOUD_TOKEN_FILE = join(process.cwd(), 'storage', 'platform-token.json');
+function platformGetToken(): string {
+  try { if (existsSync(CLOUD_TOKEN_FILE)) { const d = JSON.parse(readFileSync(CLOUD_TOKEN_FILE, 'utf8')); return d.token || ''; } } catch (_e) {}
+  return '';
+}
+function platformSetToken(tok: string) {
+  try {
+    if (!existsSync(join(process.cwd(), 'storage'))) mkdirSync(join(process.cwd(), 'storage'), { recursive: true });
+    writeFileSync(CLOUD_TOKEN_FILE, JSON.stringify({ token: tok, savedAt: Date.now() }), 'utf8');
+  } catch (_e) {}
+}
+async function platformProxy(req: any, res: any, path: string, method: string = 'GET') {
+  try {
+    const tok = platformGetToken();
+    const headers: any = { 'Content-Type': 'application/json' };
+    if (tok) headers['Authorization'] = 'Bearer ' + tok;
+    const url = CLOUD_PLATFORM_URL.replace(/\/$/, '') + path;
+    const opt: any = { method, headers };
+    if (method !== 'GET' && req.body) opt.body = JSON.stringify(req.body);
+    const r = await fetch(url, opt);
+    const txt = await r.text();
+    let d: any; try { d = JSON.parse(txt); } catch { d = { ok: false, raw: txt }; }
+    if (r.status === 401 && d&&!d.ok) d.needLogin = true;
+    res.status(r.status).json(d);
+  } catch (err: any) { res.status(502).json({ ok: false, error: '平台不可达: ' + err.message }); }
+}
+app.get('/api/platform/status', (_req, res) => {
+  res.json({ ok: true, loggedIn: !!platformGetToken(), platformUrl: CLOUD_PLATFORM_URL });
+});
+app.post('/api/platform/register', async (req, res) => {
+  try {
+    const r = await fetch(CLOUD_PLATFORM_URL.replace(/\/$/, '') + '/api/user/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req.body) });
+    const d = await r.json();
+    if (d.ok && d.token) platformSetToken(d.token);
+    res.status(r.status).json(d);
+  } catch (err: any) { res.status(502).json({ ok: false, error: err.message }); }
+});
+app.post('/api/platform/login', async (req, res) => {
+  try {
+    const r = await fetch(CLOUD_PLATFORM_URL.replace(/\/$/, '') + '/api/user/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: req.body?.email, password: req.body?.password }) });
+    const d = await r.json();
+    if (d.ok && d.token) platformSetToken(d.token);
+    res.status(r.status).json(d);
+  } catch (err: any) { res.status(502).json({ ok: false, error: err.message }); }
+});
+app.post('/api/platform/logout', (_req, res) => { platformSetToken(''); res.json({ ok: true }); });
+app.get('/api/platform/me', (req, res) => platformProxy(req, res, '/api/user/me', 'GET'));
+app.get('/api/platform/credits', (req, res) => platformProxy(req, res, '/api/user/credits', 'GET'));
+app.get('/api/platform/search', (req, res) => platformProxy(req, res, '/api/user/search?q=' + encodeURIComponent(String(req.query.q || '')), 'GET'));
+app.get('/api/platform/friends', (req, res) => platformProxy(req, res, '/api/friend/list', 'GET'));
+app.get('/api/platform/friend-requests', (req, res) => platformProxy(req, res, '/api/friend/requests', 'GET'));
+app.post('/api/platform/friend-request', (req, res) => platformProxy(req, res, '/api/friend/request', 'POST'));
+app.post('/api/platform/friend-respond', (req, res) => platformProxy(req, res, '/api/friend/respond', 'POST'));
+app.post('/api/platform/friend-remove', (req, res) => platformProxy(req, res, '/api/friend/remove', 'POST'));
+app.get('/api/platform/hire-market', (req, res) => platformProxy(req, res, '/api/hire/market', 'GET'));
+app.get('/api/platform/hire-my', (req, res) => platformProxy(req, res, '/api/hire/my-orders', 'GET'));
+app.post('/api/platform/hire-list', (req, res) => platformProxy(req, res, '/api/hire/list', 'POST'));
+app.post('/api/platform/hire-order', (req, res) => platformProxy(req, res, '/api/hire/order', 'POST'));
+
+
+
+// 向某个 peer 实例发消息（会触发对方本地 AI 处理）
     app.post('/api/mesh/send', (req, res) => {
       const { toInstance, content, chatId } = req.body || {};
       if (!toInstance || !content) return res.status(400).json({ error: '需要 toInstance 和 content' });
