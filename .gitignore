@@ -71,3 +71,4 @@ _align_check*.py
 _agent_list.*
 tsc_out.txt
 .smoke-test.js
+ecosystem.config.cjs
