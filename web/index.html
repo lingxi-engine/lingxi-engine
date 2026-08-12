@@ -506,6 +506,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="上传文件" style="padding:6px 10px;font-size:18px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0">📎</button>
         <input type="file" id="fileInput" style="display:none" onchange="onFileSelected(this)">
         <textarea id="input" data-i18n-ph="chat.inputPh" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
+<button id="recordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording();event.preventDefault()" ontouchend="stopRecording()" title="hold to talk" style="padding:6px 10px;font-size:16px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0;user-select:none" aria-label="璇煶杈撳叆">🎤</button>
         <button class="primary" id="sendBtn" onclick="send()" data-i18n="common.send">发送</button>
       </div>
       <div id="stopBar" style="display:none;justify-content:center;align-items:center;gap:8px;padding:4px 14px;border-top:1px solid var(--border);background:var(--bg2)">
@@ -1025,7 +1026,6 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-<div id="recordBtn" style="display:none"></div>
 <div id="routeModeTag" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>

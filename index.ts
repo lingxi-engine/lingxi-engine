@@ -238,8 +238,8 @@ async function main() {
   }
   // 缓存到全局，供 jwt-auth 中间件使用
   (globalThis as any).__platformAdminUser = platformAdminUser;
-  (globalThis as any).__platformApiUrl = PLATFORM_API_URL;
-  (globalThis as any).__platformAdminToken = PLATFORM_ADMIN_TOKEN;
+  (globalThis as any).__platformApiUrl = process.env.MESH_PLATFORM_URL || PLATFORM_API_URL || '';
+  (globalThis as any).__platformAdminToken = process.env.MESH_TOKEN || PLATFORM_ADMIN_TOKEN || '';
 
   // 如果平台不可达，回退到旧的 admin-auto 逻辑
   if (!platformAdminUser) {
@@ -2978,19 +2978,20 @@ setSearchManager(searchManagerInstance);
       // 优先从平台搜索用户
       if (platformApiUrl && platformAdminToken) {
         try {
-          const resp = await fetch(`${platformApiUrl}/api/admin/search?q=${encodeURIComponent(q)}&token=${platformAdminToken}`);
+          const resp = await fetch(`${platformApiUrl}/api/users/search?q=${encodeURIComponent(q)}`, { headers: { 'Authorization': `Bearer ${platformAdminToken}` } });
           const d = await resp.json() as any;
           if (d.ok && d.results) {
             platformResults = d.results.map((u: any) => ({
-              numericId: u.id,
-              displayName: u.username,
+              numericId: u.numericId ?? u.id,
+              displayName: u.displayName ?? u.username,
               email: u.email || '',
-              userId: String(u.id),
+              userId: String(u.userId ?? u.id),
               status: u.status || 'active',
               online: (u.status || 'active') !== 'offline' && (u.status || 'active') !== 'inactive',
               source: 'platform',
               points: u.points || 0,
               createdAt: u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-',
+              instanceId: u.instanceId,
             }));
           }
         } catch (e: any) {
