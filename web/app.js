@@ -1540,36 +1540,6 @@ async function withdrawRequest(rid) {
   } catch(e) { toast(t('err.operationFail')); }
 }
 
-// ── 个人中心搜索用户 ──
-async function searchUser() {
-  const q = (document.getElementById('userSearchInput') || {}).value || '';
-  const box = document.getElementById('userSearchResults');
-  if (!box) return;
-  if (!q || !q.trim()) { box.innerHTML = ''; return; }
-  box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">搜索中...</div>';
-  try {
-    // v2.0.10: 统一用 /api/users/search（平台+本地+LAN三合一）
-    const d = await api('/api/users/search?q=' + encodeURIComponent(q.trim()), 'GET');
-    let results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
-    // 去重
-    const seen = new Set();
-    results = results.filter(u => { const k = String(u.numericId); if (seen.has(k)) return false; seen.add(k); return true; });
-    if (!results.length) { box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">未找到用户</div>'; return; }
-    box.innerHTML = results.map(u => {
-      const isFriend = myFriends.some(f => String(f.friendId) === String(u.numericId));
-      const isPending = outgoingRequests.some(r => String(r.toUserId) === String(u.numericId) && r.status === 'pending');
-      const isMe = String(u.numericId) === String(lanMeId);
-      let action;
-      if (isMe) action = '<span style="color:var(--text3);font-size:11px">我</span>';
-      else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">✓ 已好友</span>';
-      else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">⏳ 已申请</span>';
-      else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+u.numericId+'\')">＋好友</button>';
-      const initial = (u.displayName||'?')[0].toUpperCase();
-      const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc(initial)+'</div>';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border)">'+avatar+'<div style="flex:1"><div style="font-size:13px;color:var(--text)">'+esc(u.displayName)+'</div><div style="font-size:11px;color:var(--text3)">ID: '+u.numericId+'</div></div>'+action+'</div>';
-    }).join('');
-  } catch(e) { box.innerHTML = '<div style="color:#ef4444;font-size:12px;padding:8px">搜索失败</div>'; }
-}
 
 // ── Create Group ──
 function showCreateGroup() {

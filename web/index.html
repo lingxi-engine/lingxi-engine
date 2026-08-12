@@ -937,14 +937,6 @@ function switchTheme(name,btn){
 <div class="settings-panel" id="profileModal" style="right:50%;transform:translateX(50%);width:380px;border-radius:12px">
   <div class="panel-header"><h2 data-i18n="profile.title">👤 个人中心</h2><button onclick="closeProfileModal()">×</button></div>
   <div style="padding:20px" id="profileContent"></div>
-  <div style="padding:0 20px 20px;border-top:1px solid var(--border);margin-top:8px;padding-top:16px">
-    <div style="font-size:13px;color:var(--text2);margin-bottom:8px" data-i18n="profile.searchHint">🔍 搜索用户（输入数字 ID 或用户名）</div>
-    <div style="display:flex;gap:6px">
-      <input id="userSearchInput" data-i18n-ph="profile.searchPh" placeholder="如: 10000" style="flex:1;padding:8px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px" onkeydown="if(event.key==='Enter')searchUser()">
-      <button class="btn-sm" onclick="searchUser()" style="padding:8px 14px" data-i18n="chat.searchBtn">搜索</button>
-    </div>
-    <div id="userSearchResults" style="margin-top:10px"></div>
-  </div>
 </div>
 
 <!-- ═══ TOAST ═══ -->
