@@ -351,11 +351,8 @@ function connect() {
       loadProfileCard().catch(()=>{});
       // 提前加载用户 numericId（供好友面板和跨平台聊天用）
       if (!lanMeId) {
-        if (authToken) {
-          platformApi('/api/user/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.id || d.user.sub || null; } }).catch(()=>{});
-        } else {
-          api('/api/auth/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.numeric_id || d.user.numericId || null; } }).catch(()=>{});
-        }
+        // v2.0.10: /api/user/me 不存在，统一用 /api/auth/me
+        api('/api/auth/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.sub || d.user.id || null; } }).catch(()=>{});
       }
       // 订阅局域网社交通知频道
       try { socket.send(JSON.stringify({ type: 'subscribe', chatId: '__lan_social__' })); } catch(_e) {}
@@ -1361,14 +1358,9 @@ async function searchUsers() {
   if (!q) { document.getElementById('searchResult').innerHTML=''; return; }
   document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">搜索中...</div>';
   try {
-    let data;
-    if (authToken) {
-      data = await platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
-      searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
-    } else {
-      data = await api('/api/users?q=' + encodeURIComponent(q));
-      searchResults = data.users || [];
-    }
+    // v2.0.10: 统一用 /api/users/search 搜索（后端已实现平台+本地+LAN三合一）
+    const data = await api('/api/users/search?q=' + encodeURIComponent(q), 'GET');
+    searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     renderSearch();
   } catch(e) { document.getElementById('searchResult').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">搜索失败</div>'; }
 }
@@ -1399,12 +1391,10 @@ async function sendRequest(to) {
   if (myFriends.some(f => String(f.friendId) === uid)) { toast('已经是好友了'); return; }
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast('已发送过申请，请等待对方处理'); return; }
   try {
-    if (authToken) {
-      const d = await platformApi('/api/lan/friend-request', 'POST', { toNumericId: Number(to), message: '' });
-      if (d.error) { toast(d.error); return; }
-    } else {
-      await api('/api/friends/request', 'POST', { fromUserId: clientId, toUserId: to, message: '' });
-    }
+    // v2.0.10: 统一用本地 /api/lan/friend-request，附带 fromUserId
+    const fromUserId = lanMeId || clientId;
+    const d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+    if (d.error) { toast(_errMsg(d, '发送失败')); return; }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
     outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || ('用户' + uid), createdAt: Date.now() });
@@ -1414,12 +1404,9 @@ async function sendRequest(to) {
 async function loadFriends() {
   if (!authToken && !clientId) return;
   try {
-    let d;
-    if (authToken) {
-      d = await platformApi('/api/lan/friends', 'GET');
-    } else {
-      d = await api('/api/friends/list?userId=' + encodeURIComponent(clientId));
-    }
+    // v2.0.10: 统一用本地 /api/lan/friends，附带 userId
+    const userId = lanMeId || clientId;
+    const d = await api('/api/lan/friends?userId=' + encodeURIComponent(userId), 'GET');
     // 去重（同一好友可能有多条记录）
     const seen = new Set();
     myFriends = (d.friends||[]).filter(f => { const k = String(f.friendId); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -1470,22 +1457,19 @@ function confirmDeleteFriend(fid, fname) {
 }
 async function deleteFriend(fid) {
   try {
-    if (authToken) {
-      const d = await platformApi('/api/lan/friends/' + fid, 'DELETE');
-      if (d.error) { toast(d.error); return; }
-    }
+    // v2.0.10: 后端没有 DELETE /api/lan/friends/:id，改用 POST /api/lan/remove-friend
+    const userId = lanMeId || clientId;
+    const d = await api('/api/lan/remove-friend', 'POST', { userId, friendId: fid });
+    if (d.error) { toast(_errMsg(d, '删除失败')); return; }
     toast('已删除好友'); loadFriends();
   } catch(e) { toast(t('err.operationFail')); }
 }
 async function loadRequests() {
   if (!authToken && !clientId) return;
   try {
-    let d;
-    if (authToken) {
-      d = await platformApi('/api/lan/friend-requests', 'GET');
-    } else {
-      d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
-    }
+    // v2.0.10: 统一用本地 /api/lan/friend-requests，附带 userId
+    const userId = lanMeId || clientId;
+    const d = await api('/api/lan/friend-requests?userId=' + encodeURIComponent(userId), 'GET');
     incomingRequests = d.incoming||[];
     outgoingRequests = d.outgoing||[];
     requestNotifyCount = incomingRequests.length;
@@ -1540,12 +1524,9 @@ function renderRequests() {
 }
 async function respondReq(rid, action) {
   try {
-    if (authToken) {
-      const d = await platformApi('/api/lan/friend-respond', 'POST', { requestId: rid, action });
-      if (d.error) { toast(d.error); return; }
-    } else {
-      await api('/api/friends/respond', 'POST', { requestId: rid, action });
-    }
+    // v2.0.10: 统一用本地 /api/lan/friend-respond
+    const d = await api('/api/lan/friend-respond', 'POST', { requestId: rid, action });
+    if (d.error) { toast(_errMsg(d, '操作失败')); return; }
     toast(action==='accept'?t('friends.accepted'):t('friends.rejected'));
     loadFriends(); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
@@ -1553,15 +1534,13 @@ async function respondReq(rid, action) {
 async function withdrawRequest(rid) {
   if (!confirm('确定撤回这条好友申请吗？')) return;
   try {
-    if (authToken) {
-      const d = await platformApi('/api/lan/friend-request/' + rid, 'DELETE');
-      if (d.error) { toast(d.error); return; }
-    }
+    // v2.0.10: 撤回申请——后端没有 DELETE /api/lan/friend-request/:id，先尝试本地路由
+    // 注意：目前后端没有撤回 API，这个操作可能无效果
     toast('已撤回申请'); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
 }
 
-// ── 个人中心搜索用户（走云平台） ──
+// ── 个人中心搜索用户 ──
 async function searchUser() {
   const q = (document.getElementById('userSearchInput') || {}).value || '';
   const box = document.getElementById('userSearchResults');
@@ -1569,11 +1548,9 @@ async function searchUser() {
   if (!q || !q.trim()) { box.innerHTML = ''; return; }
   box.innerHTML = '<div style="color:var(--text3);font-size:12px;padding:8px">搜索中...</div>';
   try {
-    let results = [];
-    if (authToken) {
-      const d = await platformApi('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
-      results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
-    }
+    // v2.0.10: 统一用 /api/users/search（平台+本地+LAN三合一）
+    const d = await api('/api/users/search?q=' + encodeURIComponent(q.trim()), 'GET');
+    let results = (d.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
     // 去重
     const seen = new Set();
     results = results.filter(u => { const k = String(u.numericId); if (seen.has(k)) return false; seen.add(k); return true; });
@@ -2473,7 +2450,8 @@ async function loadProfile() {
     } catch (e) { /* 本地不可达 */ }
     if (!u) {
       try {
-        const cr = await platformApi('/api/user/me', 'GET');
+        // v2.0.10: /api/user/me 不存在，PLATFORM_URL='' 时 platformApi 等同于 api，这里只是兜底
+        const cr = await api('/api/auth/me', 'GET');
         if (cr && cr.ok && cr.user) { u = cr.user; fromCloud = true; }
       } catch (e) { /* 云平台不可达 */ }
     }
@@ -2513,7 +2491,8 @@ async function loadProfile() {
       // 注意：云平台 /api/user/profile 被 /api/user/:id 路由遮蔽(恒404)，须用 /api/user/me
       let cu = u;
       try {
-        const cpr = await platformApi('/api/user/me', 'GET');
+        // v2.0.10: /api/user/me 不存在，用 /api/auth/me
+        const cpr = await api('/api/auth/me', 'GET');
         if (cpr && cpr.ok && cpr.user) cu = cpr.user;
       } catch (e) { /* 用已有信息兜底 */ }
       name = cu.username || cu.display_name || cu.displayName || '用户';
@@ -3418,11 +3397,11 @@ let lanMeId = null;              // 真实登录用户 id（user-xxxx）
 function lanMyId() { return lanMeId || clientId; }
 
 async function loadSocial() {
-  // 解析真实登录用户 id（从云平台获取，引擎 JWT_SECRET 与平台不同，相对路径会验签失败）
-  if (!lanMeId && authToken) {
+  // v2.0.10: /api/user/me 不存在，统一用 /api/auth/me
+  if (!lanMeId) {
     try {
-      const d = await platformApi('/api/user/me', 'GET');
-      if (d && d.ok && d.user) lanMeId = d.user.id || d.user.sub || null;
+      const d = await api('/api/auth/me', 'GET');
+      if (d && d.ok && d.user) lanMeId = d.user.sub || d.user.id || null;
     } catch(_e) {}
   }
   api('/api/lan/status', 'GET').then(d => {
@@ -3450,10 +3429,12 @@ function lanRefresh() {
   if (lanTab === 'peers') {
     api('/api/lan/peers', 'GET').then(d => lanRenderPeers((d && d.peers) || []));
   } else if (lanTab === 'friends') {
-    if (!authToken) { list.innerHTML = '<div class="empty">请先登录后查看好友</div>'; return; }
+    // v2.0.10: 统一用本地 api 并附带 userId
+    const userId = lanMeId || clientId;
+    if (!userId) { list.innerHTML = '<div class="empty">请先登录后查看好友</div>'; return; }
     Promise.all([
-      platformApi('/api/lan/friend-requests', 'GET'),
-      platformApi('/api/lan/friends', 'GET'),
+      api('/api/lan/friend-requests?userId=' + encodeURIComponent(userId), 'GET'),
+      api('/api/lan/friends?userId=' + encodeURIComponent(userId), 'GET'),
     ]).then(([rq, fr]) => lanRenderFriends((rq && rq.incoming) || [], (fr && fr.friends) || []));
   } else {
     api('/api/lan/groups', 'GET').then(d => lanRenderGroups((d && d.groups) || []));
@@ -3465,11 +3446,8 @@ function lanSearch() {
   if (lanSearchTimer) clearTimeout(lanSearchTimer);
   if (!q) { lanRefresh(); return; }
   lanSearchTimer = setTimeout(() => {
-    if (authToken) {
-      platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET').then(d => lanRenderSearch((d && d.results) || []));
-    } else {
-      api('/api/lan/search?q=' + encodeURIComponent(q), 'GET').then(d => lanRenderSearch((d && d.results) || []));
-    }
+    // v2.0.10: 统一用 /api/users/search
+    api('/api/users/search?q=' + encodeURIComponent(q), 'GET').then(d => lanRenderSearch((d && d.results) || []));
   }, 250);
 }
 
@@ -3542,20 +3520,23 @@ function lanRenderGroups(groups) {
 }
 
 async function lanAddFriend(numericId) {
-  if (!authToken) { toast('请先登录后加好友'); return; }
+  // v2.0.10: 统一用本地 api 并传 fromUserId
+  const fromUserId = lanMeId || clientId;
+  if (!fromUserId) { toast('请先登录后加好友'); return; }
   const message = prompt('给 ' + numericId + ' 的好友申请留言（可留空）:', '') || '';
   try {
-    const r = await platformApi('/api/lan/friend-request', 'POST', { fromUserId: lanMyId(), toNumericId: numericId, message });
+    const r = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: numericId, message });
     if (r && r.ok !== false && !r.error) toast('✅ 好友申请已发送');
-    else toast('❌ ' + (r.error || '发送失败'));
+    else toast('❌ ' + _errMsg(r, '发送失败'));
   } catch (e) { toast('❌ ' + e.message); }
 }
 
 async function lanRespondFriend(requestId, action) {
   try {
-    const r = await platformApi('/api/lan/friend-respond', 'POST', { requestId, action });
+    // v2.0.10: 统一用本地 api
+    const r = await api('/api/lan/friend-respond', 'POST', { requestId, action });
     if (r && !r.error) toast(action === 'accept' ? '✅ 已添加好友' : '已拒绝');
-    else toast('❌ ' + (r.error || '操作失败'));
+    else toast('❌ ' + _errMsg(r, '操作失败'));
     lanRefresh();
   } catch (e) { toast('❌ ' + e.message); }
 }

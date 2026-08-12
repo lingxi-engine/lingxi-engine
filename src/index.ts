@@ -736,7 +736,9 @@ setSearchManager(searchManagerInstance);
           if (d.ok && d.results) {
             platformResults = d.results.map((u: any) => ({
               numericId: u.id, displayName: u.username, email: u.email || '',
-              userId: String(u.id), status: u.status || 'active', source: 'platform',
+              userId: String(u.id), status: u.status || 'active',
+              online: (u.status || 'active') !== 'offline' && (u.status || 'active') !== 'inactive',
+              source: 'platform',
               points: u.points || 0, createdAt: u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-',
             }));
           }
@@ -766,7 +768,7 @@ setSearchManager(searchManagerInstance);
       const platformIds = new Set(platformResults.map((r: any) => String(r.numericId)));
       const localFiltered = localResults
         .filter((r: any) => !platformIds.has(String(r.numeric_id)))
-        .map((r: any) => ({ numericId: r.numeric_id, displayName: r.display_name, email: r.email, userId: r.id, status: r.status, source: 'local', createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-' }));
+        .map((r: any) => ({ numericId: r.numeric_id, displayName: r.display_name, email: r.email, userId: r.id, status: r.status, online: r.status === 'online', source: 'local', createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-' }));
       res.json({ ok: true, results: [...platformResults, ...localFiltered, ...lanResults] });
     } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
   });

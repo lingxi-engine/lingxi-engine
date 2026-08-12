@@ -647,7 +647,13 @@ setSearchManager(searchManagerInstance);
   app.post('/api/auth/logout', jwtAuth({ required: true }), (req, res) => {
     try {
       const sid = (req as any).user?.sid;
+      const uid = (req as any).user?.sub;
       if (sid) auth.logout(sid);
+      // 登出时设置用户状态为 offline
+      if (uid) {
+        try { getDB().run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['offline', Date.now(), uid]); } catch {}
+        try { broadcast({ type: 'user.offline', userId: uid }); } catch {}
+      }
       res.json({ ok: true, message: '已注销' });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -2981,6 +2987,7 @@ setSearchManager(searchManagerInstance);
               email: u.email || '',
               userId: String(u.id),
               status: u.status || 'active',
+              online: (u.status || 'active') !== 'offline' && (u.status || 'active') !== 'inactive',
               source: 'platform',
               points: u.points || 0,
               createdAt: u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-',
@@ -3029,7 +3036,7 @@ setSearchManager(searchManagerInstance);
         .filter((r: any) => !platformIds.has(String(r.numeric_id)))
         .map((r: any) => ({
           numericId: r.numeric_id, displayName: r.display_name, email: r.email,
-          userId: r.id, status: r.status, source: 'local',
+          userId: r.id, status: r.status, online: r.status === 'online', source: 'local',
           createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-',
         }));
       const results = [...platformResults, ...localFiltered, ...lanResults];
@@ -3048,7 +3055,11 @@ setSearchManager(searchManagerInstance);
   });
 
   app.get('/api/lan/friend-requests', (req, res) => {
-    const userId = (req.query.userId as string) || '';
+    let userId = (req.query.userId as string) || '';
+    // v2.0.10: userId 为空时从 JWT 中获取（platformApi 不带 query param 的场景）
+    if (!userId && (req as any).user) {
+      userId = String((req as any).user.sub || '');
+    }
     res.json({ ok: true, ...lanSocial.friendRequests(userId) });
   });
 
@@ -3062,7 +3073,11 @@ setSearchManager(searchManagerInstance);
   });
 
   app.get('/api/lan/friends', (req, res) => {
-    const userId = (req.query.userId as string) || '';
+    let userId = (req.query.userId as string) || '';
+    // v2.0.10: userId 为空时从 JWT 中获取
+    if (!userId && (req as any).user) {
+      userId = String((req as any).user.sub || '');
+    }
     res.json({ ok: true, friends: lanSocial.friends(userId) });
   });
 

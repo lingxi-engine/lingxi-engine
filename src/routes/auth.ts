@@ -134,7 +134,13 @@ export function createAuthRoutes(ctx: ServerContext): Router {
   router.post('/logout', jwtAuth({ required: true }), (req, res) => {
     try {
       const sid = (req as any).user?.sid;
+      const uid = (req as any).user?.sub;
       if (sid) auth.logout(sid);
+      // 登出时设置用户状态为 offline
+      if (uid) {
+        try { ctx.db.raw.run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['offline', Date.now(), uid]); } catch {}
+        try { ctx.broadcast({ type: 'user.offline', userId: uid }); } catch {}
+      }
       res.json({ ok: true, message: '已注销' });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
