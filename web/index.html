@@ -465,6 +465,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <button onclick="toggleInbox()" data-nav="inbox" data-i18n="nav.inbox">收件箱</button>
       <button onclick="openWorkflowEditor()" data-nav="workflow" data-i18n="tb.workflow">工作流</button>
       <button onclick="openSettings()" data-nav="settings" data-i18n="tb.settings">设置</button>
+      <button onclick="openPlatformModal()" data-nav="platform">云平台</button>
     </div>
 
     <!-- 会话列表 -->
@@ -930,6 +931,16 @@ function switchTheme(name,btn){
     <div style="text-align:center;margin-top:8px;font-size:12px">
       <span id="authSwitchText" data-i18n="auth.noAccount">没有账号？</span> <a onclick="switchAuthMode()" style="color:var(--accent);cursor:pointer" id="authSwitchLink" data-i18n="auth.register">注册</a>
     </div>
+  </div>
+</div>
+
+
+<!-- ═══════ 云平台面板 ═══════ -->
+<div id="platformOverlay" class="panel-overlay" onclick="closePlatformModal()"></div>
+<div class="settings-panel" id="platformModal" style="right:50%;transform:translateX(50%);width:420px;border-radius:12px">
+  <div class="panel-header"><h2>云平台</h2><button onclick="closePlatformModal()">×</button></div>
+  <div style="padding:20px" id="platformContent">
+    <div id="platformLoading" style="text-align:center;color:var(--text3);padding:20px">加载中...</div>
   </div>
 </div>
 
