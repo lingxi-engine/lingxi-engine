@@ -201,7 +201,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
       const displayName = username || stored.username || email.split('@')[0];
       ctx.db.createUser(userId, displayName, email);
       // Bug #1 修复: 补 numeric_id
-      ctx.db.run('UPDATE users SET numeric_id = ? WHERE id = ?', [numericId, userId]);
+      (ctx.db as any).run('UPDATE users SET numeric_id = ? WHERE id = ?', [numericId, userId]);
       const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
       if (defaultModel) {
         try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch (_e) {}
@@ -221,7 +221,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
     const userId = String(numericId);
     const user = ctx.db.createUser(userId, name);
     // Bug #1 修复: 补 numeric_id
-    ctx.db.run('UPDATE users SET numeric_id = ? WHERE id = ?', [numericId, userId]);
+    (ctx.db as any).run('UPDATE users SET numeric_id = ? WHERE id = ?', [numericId, userId]);
     res.json({ ok: true, user: { id: userId, numericId, displayName: name } });
   });
 

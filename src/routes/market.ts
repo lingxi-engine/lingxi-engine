@@ -140,7 +140,7 @@ export function createMarketRoutes(_ctx: ServerContext): Router {
       // Bug #11: 检查买家积分
       const buyerCredits = getUserCredits(buyerId);
       const price = Number(listing.price) || 0;
-      if (buyerCredits < price) {
+      if (buyerCredits.credits < price) {
         return res.status(400).json({ error: `积分不足：需要 ${price}，当前 ${buyerCredits}` });
       }
       
@@ -162,7 +162,7 @@ export function createMarketRoutes(_ctx: ServerContext): Router {
       } catch (_e) { /* chat may already exist */ }
       
       // 插入 hire 记录
-      createHire(listingId, buyerId, listing.publisher_id, listing.agent_id, listing.title, price, chatId);
+      createHire({ id: 'hire-' + Date.now().toString(36), listingId, buyerId, sellerId: listing.publisher_id, agentId: listing.agent_id, title: listing.title, price, chatId });
       
       const orderId = 'mo-' + Date.now().toString(36);
       d.run('INSERT INTO market_orders (id,listing_id,buyer_id,status,created_at) VALUES (?,?,?,?,?)',

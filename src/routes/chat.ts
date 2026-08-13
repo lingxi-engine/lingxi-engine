@@ -17,7 +17,7 @@ export function createChatRoutes(ctx: ServerContext): Router {
       const chat = db.createChat(id, type || 'private');
       // 自动创建会话跟踪 (v2.0.7)
       if (sessionManager && req.body.userId) {
-        sessionManager.ensureSessionForChat(id, req.body.userId, chat.display_name || id);
+        sessionManager.ensureSessionForChat(id, req.body.userId, (chat as any).display_name || id);
       }
       res.json({ ok: true, chat });
     } catch (err: any) {
@@ -113,7 +113,7 @@ export function createChatRoutes(ctx: ServerContext): Router {
     try {
       // 加载消息时自动跟踪活跃会话 (v2.0.7)
       if (sessionManager && req.query.userId) {
-        sessionManager.ensureSessionForChat(req.params.id, req.query.userId);
+        sessionManager.ensureSessionForChat(req.params.id, String(req.query.userId));
         sessionManager.setActive('sess-' + req.params.id);
       }
       res.json({ ok: true, messages: db.listMessages(req.params.id) });

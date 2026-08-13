@@ -312,7 +312,7 @@ setSearchManager(searchManagerInstance);
     if (p.enabled !== false && !hubIds.has(p.id)) {
       try {
         aiHub.addProvider({
-          id: p.id, type: p.type as any, name: p.name,
+          id: p.id, type: p.type as any,
           apiKey: p.apiKey || '', baseUrl: p.baseUrl,
           models: p.models, isLocal: p.isLocal,
         });
@@ -956,7 +956,7 @@ setSearchManager(searchManagerInstance);
     try {
       const chatId = req.params.id as string;
       const content = req.body?.content;
-      const fromUserId = req.body?.fromUserId || req.user?.numeric_id || req.user?.id;
+      const fromUserId = req.body?.fromUserId || req.user?.numeric_id || (req.user as any)?.id;
       if (!chatId.startsWith('chat-platform-')) return res.status(400).json({ error: '不是跨平台好友聊天' });
       if (!content) return res.status(400).json({ error: 'content 必填' });
 
@@ -997,7 +997,7 @@ setSearchManager(searchManagerInstance);
         fromUserId: String(fromUserId),
         toUserId: friendNumericId,
         timestamp: Date.now(),
-      });
+      } as any);
 
       if (!ok) return res.status(500).json({ error: 'Mesh 未连接或目标不在线' });
 
@@ -1302,7 +1302,7 @@ setSearchManager(searchManagerInstance);
       if (!q) return res.status(400).json({ error: 'q 参数必填' });
       const chatId = req.query.chatId ? String(req.query.chatId) : undefined;
       const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
-      const results = db.searchMessages(q, { chatId, limit });
+      const results = (db as any).searchMessages(q, { chatId, limit });
       res.json({ ok: true, query: q, count: results.length, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1310,7 +1310,7 @@ setSearchManager(searchManagerInstance);
   // ── 数据导出 / 备份 API ──
   app.get('/api/export/backup', (req, res) => {
     try {
-      const data = db.exportBackup();
+      const data = (db as any).exportBackup();
       const filename = `lingxi-backup-${new Date().toISOString().slice(0, 10)}.json`;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -1452,7 +1452,7 @@ setSearchManager(searchManagerInstance);
       // 1. 扣买方积分
       const price = listing.price || 10;
       const spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
-      if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
+      if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
       
       // 2. 给卖方加分（90%，10%平台税）
       const sellerPayout = Math.floor(price * 0.9);
@@ -1488,9 +1488,9 @@ setSearchManager(searchManagerInstance);
         createHire({
           id: hireId, listingId, buyerId,
           sellerId: listing.publisher_id,
-          buyerAgentId: buyerAgentId,
-          sellerAgentId: usedAgentId,
-          chatId, creditsPaid: price,
+          agentId: usedAgentId,
+          title: listing.title || "AI雇佣",
+          chatId, price,
         });
       }
       
@@ -1504,7 +1504,7 @@ setSearchManager(searchManagerInstance);
       };
       d.addMessage(welcomeMsg);
       
-      res.json({ ok: true, orderId, hireId, chatId, balance: typeof spendResult === 'object' ? (spendResult.balance || 0) : 0 });
+      res.json({ ok: true, orderId, hireId, chatId, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
@@ -1542,7 +1542,7 @@ setSearchManager(searchManagerInstance);
       const asBuyer = typeof listHiresByBuyer === 'function' ? listHiresByBuyer(userId) : [];
       const asSeller = typeof listHiresBySeller === 'function' ? listHiresBySeller(userId) : [];
       // 补充listing信息
-      const enrich = (hires) => hires.map(h => {
+      const enrich = (hires: any[]) => hires.map((h: any) => {
         const lst = getDB().prepare('SELECT * FROM agent_market WHERE id = ?');
         lst.bind([h.listing_id]);
         const listing = lst.step() ? lst.getAsObject() : null;

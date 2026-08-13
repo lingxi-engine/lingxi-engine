@@ -18,6 +18,7 @@
     "node_modules",
     "dist",
     "workspace",
-    "src/core/index.ts"
+    "src/core/index.ts",
+    "src/router.ts"
   ]
 }

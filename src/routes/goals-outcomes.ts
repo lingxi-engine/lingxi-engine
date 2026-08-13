@@ -272,7 +272,7 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
    */
   router.delete('/outcomes/:id', (req, res) => {
     try {
-      const ok = outcomeTracker.deleteCard(req.params.id);
+      const ok = (outcomeTracker as any).deleteCard(req.params.id);
       if (!ok) return res.status(404).json({ error: '评分卡不存在' });
       res.json({ ok: true });
     } catch (err: any) {

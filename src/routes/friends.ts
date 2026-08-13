@@ -39,7 +39,7 @@ export function createFriendsRoutes(ctx: ServerContext): Router {
     try {
       const numericId = parseInt(req.query.numericId as string, 10);
       if (isNaN(numericId)) return res.status(400).json({ error: '无效的 numericId' });
-      const user = db.getUserByNumericId(numericId);
+      const user = (db as any).getUserByNumericId(numericId);
       if (!user) return res.status(404).json({ error: '用户不存在' });
       res.json({
         ok: true,

@@ -120,7 +120,7 @@ export function createProviderRoutes(ctx: ServerContext): Router {
         });
       } catch (e) { /* ignore */ }
       // 自动更新所有 Agent 的模型
-      try { manager?.syncAllModels?.(); } catch (e) { /* ignore */ }
+      try { (manager as any)?.syncAllModels?.(); } catch (e) { /* ignore */ }
       res.json({ ok: true, id });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

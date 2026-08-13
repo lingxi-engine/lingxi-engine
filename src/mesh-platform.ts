@@ -123,7 +123,8 @@ wss.on('connection', (ws: WebSocket, req) => {
           ws.close(4001, 'auth failed');
           return;
         }
-        instanceId = msg.instanceId;
+        instanceId = msg.instanceId as string;
+        if (!instanceId) { ws.close(4001, 'no instanceId'); return; }
         
         // 初始化实例记录
         instances.set(instanceId, {

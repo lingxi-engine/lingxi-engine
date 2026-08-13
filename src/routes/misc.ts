@@ -146,7 +146,7 @@ export function setupMesh(ctx: ServerContext, port: number) {
           senderId: fromUserId,
           content: msg.content,
           type: 'text',
-          replyTo: null,
+          replyTo: undefined,
           metadata: { fromInstance: msg.fromInstance },
           timestamp: Date.now(),
         });
