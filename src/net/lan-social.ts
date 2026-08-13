@@ -141,11 +141,16 @@ export class LanSocialHub {
   async sendFriendRequest(fromUserId: string, toNumericId: number, message: string): Promise<any> {
     const fromUser = this.localUsers().find((u) => u.id === fromUserId) || this.primaryLocalUser();
     if (!fromUser) throw new Error('本机没有可用用户');
-    if (fromUser.numericId === toNumericId) throw new Error('不能添加自己为好友');
+    // 修复（审查）：不能在此处用 fromUser.numericId === toNumericId 直接拒绝——
+    // 各引擎 numeric_id 均从 10000 起独立分配，跨引擎同号是常态（两台引擎的首个用户都是 10000），
+    // 同号的在线邻居是另一个人，必须允许走 LAN 转发。
+    // “不能添加自己”的判定推迟到确认没有同号在线邻居之后。
 
     // 先检查目标用户是否在本机数据库中（同实例用户互相添加好友）
     const localTarget = getUserByNumericId(toNumericId);
-    if (localTarget) {
+    // 本机命中自己时绝不能走本地路径（否则请求被本机吞掉，对方引擎永远收不到），
+    // 必须继续走 LAN 把请求转发给邻居引擎。
+    if (localTarget && localTarget.id !== fromUser.id) {
       // 目标用户在本机，直接创建好友关系，无需 LAN 传输
       const result = sendFriendRequest(fromUser.id, localTarget.id, message);
       if (result.error) return { ok: false, error: result.error };
@@ -159,9 +164,15 @@ export class LanSocialHub {
       return { ok: true, local: true, ...result };
     }
 
-    // 目标用户不在本机，尝试通过 LAN 发现找到对方
+    // 目标用户不在本机（或本机命中是自己——数字 ID 与邻居冲突），尝试通过 LAN 发现找到对方
     const found = findPeerByNumericId(toNumericId);
-    if (!found) throw new Error(`未找到数字 ID 为 ${toNumericId} 的在线邻居`);
+    if (!found) {
+      if (localTarget) {
+        // 无同号在线邻居且本机持有该数字 ID → 实际是在添加自己
+        throw new Error(`不能添加自己为好友（数字 ID ${toNumericId} 与本机用户「${localTarget.displayName}」相同）。若对方在另一台引擎上，请确认对方在线且处于同一网段后重试`);
+      }
+      throw new Error(`未找到数字 ID 为 ${toNumericId} 的在线邻居`);
+    }
 
     const fromInfo = {
       userId: fromUser.id, numericId: fromUser.numericId,
@@ -176,12 +187,19 @@ export class LanSocialHub {
     }
 
     // 发给对方引擎
-    const resp = await sendToPeer(found.peer, '/api/lan/peer/friend-request', {
-      from: fromInfo,
-      toNumericId,
-      message,
-    });
-    return { ok: true, ...resp };
+    // 修复（审查）：sendToPeer 失败（对方引擎拒绝/网络不通等）时必须回滚本地 pending，
+    // 否则残留的 remote-{id} 记录会永久阻塞重试（DB 查重短路为“好友申请已发送”）。
+    try {
+      const resp = await sendToPeer(found.peer, '/api/lan/peer/friend-request', {
+        from: fromInfo,
+        toNumericId,
+        message,
+      });
+      return { ok: true, ...resp };
+    } catch (e) {
+      deleteFriendshipByPair(fromUser.id, `remote-${toNumericId}`);
+      throw e;
+    }
   }
 
   /** 收到好友请求（对方引擎调用） */
@@ -197,6 +215,9 @@ export class LanSocialHub {
     const target = this.localUsers().find((u) => u.numericId === toNumericId) || this.primaryLocalUser();
     if (!target) return { error: '本机没有可接收好友请求的用户' };
     const result = sendFriendRequest(from.userId, target.id, message || '');
+    // 修复：写入失败（重复申请/已是好友等）时必须如实返回错误，
+    // 否则发送方看到"已发送"，但本机数据库根本没有记录，接收方永远查不到。
+    if (result.error) return { error: result.error };
     // 通知本机社交面板
     this.broadcast({
       type: 'lan.friend.request', chatId: LAN_SOCIAL_CHANNEL,

@@ -1511,12 +1511,13 @@ async function loadRequests() {
     if (authToken) {
       d = await platformApi('/api/lan/friend-requests', 'GET');
       // v2.0.11: platformApi 失败（401/token无效/空响应）时回退到本地 API
+      // 修复：回退查询必须用 lanMeId（本机真实 DB 用户 ID），clientId 与 friendships.to_user_id 不匹配会导致收不到请求
       if (!d || d.ok === false) {
         authToken = null; localStorage.removeItem('authToken');
-        d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
+        d = await api('/api/friends/requests?userId=' + encodeURIComponent(lanMeId || clientId));
       }
     } else {
-      d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
+      d = await api('/api/friends/requests?userId=' + encodeURIComponent(lanMeId || clientId));
     }
     incomingRequests = d.incoming||[];
     outgoingRequests = d.outgoing||[];
@@ -2181,7 +2182,7 @@ async function testTTS() {
 
 // ── 注册/登录 ──
 let authToken = null;
-const PLATFORM_URL = '';  // v2.0.6: 本地部署时不走云平台，直接用本地 API。如需云平台功能，改为 'http://47.93.157.83:8080'
+const PLATFORM_URL = 'http://47.93.157.83:8080';  // v2.0.12: 接回云平台，恢复中心化账号体系。如需纯本地模式，改为 ''
 
 // 通用 API：本地（不要带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
