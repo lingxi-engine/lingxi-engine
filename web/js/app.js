@@ -1409,12 +1409,9 @@ async function sendRequest(to) {
   if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
   try {
-    if (authToken) {
-      const d = await platformApi('/api/lan/friend-request', 'POST', { toNumericId: Number(to), message: '' });
-      if (d.error) { toast(d.error); return; }
-    } else {
-      await api('/api/friends/request', 'POST', { fromUserId: clientId, toUserId: to, message: '' });
-    }
+    const fromUserId = lanMeId || clientId;
+    const d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+    if (d.error) { toast(_errMsg(d, '发送失败')); return; }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
     outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || (t('profile.defaultUser') + uid), createdAt: Date.now() });
@@ -3782,9 +3779,12 @@ function handleLanMessage(msg) {
     }
   } else if (type === 'lan.friend.request') {
     toast(t('social.lanFriendRequest', {name: (msg.from && msg.from.displayName) || ''}));
+    loadRequests().catch(()=>{});   // 刷新主界面好友请求列表 + 红点
     if (lanTab === 'friends') lanRefresh();
   } else if (type === 'lan.friend.accepted') {
     toast(t('social.friendAccepted'));
+    loadFriends().catch(()=>{});     // 刷新主界面好友列表
+    loadRequests().catch(()=>{});   // 刷新主界面请求列表
     if (lanTab === 'friends') lanRefresh();
   } else if (type === 'lan.group.invited') {
     toast(t('social.groupInvited', {name: msg.name || ''}));

@@ -3045,16 +3045,17 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 前端用：好友 ──
-  app.post('/api/lan/friend-request', async (req, res) => {
+  app.post('/api/lan/friend-request', requireAuth, async (req, res) => {
     try {
-      const { fromUserId, toNumericId, message } = req.body || {};
+      const fromUserId = (req as any).user?.sub || (req.body || {}).fromUserId;
+      const { toNumericId, message } = req.body || {};
       if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
       const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '');
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.get('/api/lan/friend-requests', (req, res) => {
+  app.get('/api/lan/friend-requests', requireAuth, (req, res) => {
     let userId = (req.query.userId as string) || '';
     // v2.0.10: userId 为空时从 JWT 中获取（platformApi 不带 query param 的场景）
     if (!userId && (req as any).user) {
@@ -3063,7 +3064,7 @@ setSearchManager(searchManagerInstance);
     res.json({ ok: true, ...lanSocial.friendRequests(userId) });
   });
 
-  app.post('/api/lan/friend-respond', async (req, res) => {
+  app.post('/api/lan/friend-respond', requireAuth, async (req, res) => {
     try {
       const { requestId, action } = req.body || {};
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
@@ -3072,7 +3073,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.get('/api/lan/friends', (req, res) => {
+  app.get('/api/lan/friends', requireAuth, (req, res) => {
     let userId = (req.query.userId as string) || '';
     // v2.0.10: userId 为空时从 JWT 中获取
     if (!userId && (req as any).user) {
