@@ -29,6 +29,7 @@ import {
   deleteFriendshipByPair,
   deleteLanGroup,
   removeLanGroupMember,
+  makePrivateChatId,
 } from '../storage/db.js';
 import {
   getLanPeers, getLanPeer, findPeerByNumericId, getLanInstanceId,
@@ -300,7 +301,7 @@ export class LanSocialHub {
           agentId: localFriend.agent_id || f.friendAgentId,
           instanceId: getLanInstanceId(),
           online: localFriend.status === 'online',
-          chatId: `chat-${f.fromUserId}-${f.toUserId}`,
+          chatId: makePrivateChatId(f.fromUserId, f.toUserId),
           isLocal: true,
         };
       }
@@ -312,7 +313,7 @@ export class LanSocialHub {
         agentId: remote?.agentId || f.friendAgentId,
         instanceId: remote?.instanceId,
         online: remote ? !!getLanPeer(remote.instanceId) : false,
-        chatId: `chat-${f.fromUserId}-${f.toUserId}`,
+        chatId: makePrivateChatId(f.fromUserId, f.toUserId),
         isLocal: false,
       };
     });
@@ -531,7 +532,7 @@ export class LanSocialHub {
     if (!getChatById(aChat)) createChat(aChat, 'group');
     setChatMode(aChat, chatMode);
     for (const m of members) {
-      addLanGroupMember({ groupId, instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName });
+      addLanGroupMember(groupId, { instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName, agentId: m.agentId });
       // 人类聊天：加用户
       this.safeAddParticipant(`p-${hChat}-${m.userId}`, hChat, m.userId, undefined, 'member');
       // 智能体聊天：加该成员的 agent
@@ -644,7 +645,7 @@ export class LanSocialHub {
       console.error('[LAN] 智能体编排失败:', e.message);
       this.broadcast({ type: 'error', chatId, message: '智能体编排失败: ' + e.message });
     });
-    return { ok: true, msgId: topicMsgId, mode };
+    return { ok: true, msgId, mode };
   }
 
   // ════════════════════════════════════════════
@@ -988,7 +989,7 @@ export class LanSocialHub {
 
   /** 建/取私聊（双方用户 + 双方 agent） */
   private ensurePrivateChat(userA: string, userB: string, remoteAgentId?: string, forcedChatId?: string): string {
-    const chatId = forcedChatId || `chat-${userA}-${userB}`;
+    const chatId = forcedChatId || makePrivateChatId(userA, userB);
     if (!getChatById(chatId)) {
       createChat(chatId, 'private');
       this.safeAddParticipant(`p-${chatId}-1`, chatId, userA, undefined, 'member');

@@ -705,11 +705,28 @@ export function deleteVerificationCode(email: string) {
 }
 
 // ———— Friendships ————
+/**
+ * 统一生成私聊 chatId：按字典序排序两个 userId，保证 A→B 和 B→A 生成同一个 chatId。
+ * 这样无论发起方是谁，所有查询、创建、删除私聊的逻辑都能用同一个 key。
+ */
+export function makePrivateChatId(userA: string, userB: string): string {
+  const [a, b] = [userA, userB].sort();
+  return `chat-${a}-${b}`;
+}
+
 export function messageExists(msgId: string): boolean {
   const row = queryOne("SELECT 1 FROM messages WHERE id = ?", [msgId]);
   return !!row;
 }
 export function sendFriendRequest(fromUserId: string, toUserId: string, message: string = '') {
+  // DB 层兜底校验（所有调用方——API 层、LAN 层——都经过这里，无需各自重复校验）
+  if (fromUserId === toUserId) return { error: '不能添加自己为好友' };
+  // 对方必须是本地用户、或远程 LAN 用户（remote- 前缀 / lan_remote_identities 表中有记录）
+  const targetUser = getUser(toUserId);
+  if (!targetUser && !toUserId.startsWith('remote-') && !getLanRemoteIdentity(toUserId)) {
+    return { error: '对方用户不存在' };
+  }
+
   const now = Date.now();
   const id = 'friend-' + now + '-' + Math.random().toString(36).slice(2, 6);
   // Check if already exists (双向检查，防止反向重复)
@@ -741,7 +758,7 @@ export function respondFriendRequest(requestId: string, action: 'accept' | 'reje
   _db.run("UPDATE friendships SET status=?, updated_at=? WHERE id=?", [status, Date.now(), requestId]);
   // If accepted, create a private chat between them
   if (action === 'accept') {
-    const chatId = 'chat-' + row.from_user_id + '-' + row.to_user_id;
+    const chatId = makePrivateChatId(row.from_user_id, row.to_user_id);
     const existingChat = queryOne("SELECT id FROM chats WHERE id = ?", [chatId]);
     if (!existingChat) {
       createChat(chatId, 'private');
@@ -795,14 +812,14 @@ export function deleteFriendship(friendshipId: string): void {
   const row = queryObjects("SELECT * FROM friendships WHERE id = ?", [friendshipId])[0];
   if (row) {
     // Remove associated private chat participants
-    const chatId = "chat-" + row.from_user_id + "-" + row.to_user_id;
+    const chatId = makePrivateChatId(row.from_user_id, row.to_user_id);
     _db.run("DELETE FROM participants WHERE chat_id = ?", [chatId]);
     _db.run("DELETE FROM friendships WHERE id = ?", [friendshipId]);
   }
 }
 
 export function deleteFriendshipByPair(fromUserId: string, toUserId: string): void {
-  _db.run("DELETE FROM participants WHERE chat_id = ?", ["chat-" + fromUserId + "-" + toUserId]);
+  _db.run("DELETE FROM participants WHERE chat_id = ?", [makePrivateChatId(fromUserId, toUserId)]);
   _db.run("DELETE FROM friendships WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)", [fromUserId, toUserId, toUserId, fromUserId]);
 }
 // ———— LAN Remote Identities ————
@@ -927,17 +944,13 @@ export function getCreditHistory(userId: string, limit: number = 50): any[] {
 
 export function createHire(params: {
   id: string; listingId: string; buyerId: string; sellerId: string;
-  agentId?: string; title?: string; price?: number; chatId?: string;
-  buyerAgentId?: string; sellerAgentId?: string; creditsPaid?: number;
+  agentId: string; title: string; price: number; chatId?: string;
 }): void {
   const now = Date.now();
-  const agentId = params.agentId ?? params.sellerAgentId ?? params.buyerAgentId ?? '';
-  const title = params.title ?? '雇佣服务';
-  const price = params.price ?? params.creditsPaid ?? 0;
   _db.run(
     "INSERT INTO hires (id, listing_id, buyer_id, seller_id, agent_id, title, price, status, chat_id, hired_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
     [params.id, params.listingId, params.buyerId, params.sellerId,
-     agentId, title, price, params.chatId || null, now]
+     params.agentId, params.title, params.price, params.chatId || null, now]
   );
 }
 
@@ -1001,25 +1014,6 @@ export class DB {
   }
   addMessage(msg: DBMessage) { return addMessage(msg); }
   listMessages(chatId: string, limit = 100) { return listMessages(chatId, limit); }
-  /** 消息全文搜索（按内容 + 可选 chatId 过滤） */
-  searchMessages(q: string, opts?: { chatId?: string; limit?: number }): any[] {
-    const limit = opts?.limit ?? 50;
-    const like = `%${q}%`;
-    if (opts?.chatId) {
-      return queryObjects(
-        'SELECT * FROM messages WHERE chat_id = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?',
-        [opts.chatId, like, limit]
-      );
-    }
-    return queryObjects(
-      'SELECT * FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?',
-      [like, limit]
-    );
-  }
-  /** 导出整库备份（sql.js 原生 export，返回 Uint8Array） */
-  exportBackup(): Uint8Array {
-    return _db.export();
-  }
   saveVerificationCode(email: string, code: string, username?: string, expiresAtMs?: number) {
     return saveVerificationCode(email, code, username, expiresAtMs);
   }

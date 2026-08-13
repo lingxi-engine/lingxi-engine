@@ -124,7 +124,6 @@ wss.on('connection', (ws: WebSocket, req) => {
           return;
         }
         instanceId = msg.instanceId;
-        if (!instanceId) { ws.send(JSON.stringify({ type: 'error', message: '缺 instanceId' })); ws.close(4001, 'auth failed'); return; }
         
         // 初始化实例记录
         instances.set(instanceId, {

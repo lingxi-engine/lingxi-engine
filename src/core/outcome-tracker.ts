@@ -172,9 +172,4 @@ ${conversationSummary.slice(0, 2000)}
     const all = Array.from(this.cards.values());
     return chatId ? all.filter(c => c.chatId === chatId) : all;
   }
-
-  /** 删除评分卡（v1.7.3 补上） */
-  deleteCard(cardId: string): boolean {
-    return this.cards.delete(cardId);
-  }
 }

@@ -74,4 +74,7 @@ tsc_out.txt
 ecosystem.config.cjs
 
 workspace/
-docs/dev/*执�*.md
+docs/dev/*执*.md
+
+# 旧版死目录（根目录 index.ts 才是真正入口，src/src/ 是废弃副本）
+src/src/

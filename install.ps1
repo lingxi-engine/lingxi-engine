@@ -54,16 +54,34 @@ W-OK "Downloaded ($sz KB)"
 # --- 3. Extract ---
 W-Info "Stopping existing engine (if running)..."
 try {
-    # 杀掉占用 3456 端口的进程
-    $portConn = netstat -ano 2>$null | Select-String ":3456\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Where-Object { $_ -ne '0' } | Sort-Object -Unique
-    foreach ($pid in $portConn) {
-        try { Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue; W-Info "Killed PID $pid" } catch {}
+    # 1) 若引擎由 PM2 托管，先停掉（autorestart 会在几秒内自动拉起，必须先停，否则下面杀的进程会被重启）
+    $pm2Cmd = $null
+    if (Get-Command pm2 -ErrorAction SilentlyContinue) { $pm2Cmd = "pm2" }
+    elseif (Test-Path (Join-Path $InstallDir "node_modules\.bin\pm2.cmd")) { $pm2Cmd = Join-Path $InstallDir "node_modules\.bin\pm2.cmd" }
+    if ($pm2Cmd) {
+        try { & $pm2Cmd stop lingxi 2>&1 | Out-Null; W-Info "PM2 stopped 'lingxi'" } catch {}
+        try { & $pm2Cmd delete lingxi 2>&1 | Out-Null } catch {}
     }
-    # 兜底：杀掉 lingxi-engine 目录下的 node 进程
+    # 2) 杀掉占用 3456 端口的进程
+    $portConn = netstat -ano 2>$null | Select-String ":3456\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Where-Object { $_ -ne '0' } | Sort-Object -Unique
+    foreach ($procId in $portConn) {
+        try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue; W-Info "Killed PID $procId" } catch {}
+    }
+    # 3) 按命令行匹配引擎 node/tsx 进程（node.exe 的 Path 永远是 nodejs 目录，必须看 CommandLine）
+    $engineProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $cl = $_.CommandLine
+        ($_.Name -in @('node.exe','tsx.exe')) -and $cl -and ($cl -like '*lingxi-engine*' -or $cl -like '*tsx*index.ts*')
+    }
+    foreach ($p in $engineProcs) {
+        try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; W-Info "Killed PID $($p.ProcessId)" } catch {}
+    }
+    # 4) 杀掉 esbuild（会脱离父进程残留，锁住 esbuild 二进制导致 npm 补装 EBUSY）
+    Get-Process -Name "esbuild" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    # 5) 兜底：杀掉 lingxi-engine 目录下的 node/tsx 进程
     Get-Process -Name "node","tsx" -ErrorAction SilentlyContinue | Where-Object {
         try { $_.Path -like "*lingxi-engine*" -or $_.MainWindowTitle -like "*lingxi*" } catch { $false }
     } | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 1
+    Start-Sleep -Seconds 2
 } catch {}
 W-Info "Extracting to $InstallDir ..."
 if (Test-Path $InstallDir) {
@@ -156,7 +174,10 @@ try {
     $ErrorActionPreference = $prevEAP
 }
 # esbuild 需要平台二进制包，--omit=optional 会跳过它，这里补装
+# 注意：此处 ErrorActionPreference 已被 finally 恢复为 Stop，npm 的 stderr（如 EBUSY）会变成终止性错误导致脚本崩溃、走不到"是否启动"提示，故临时改为 Continue
+$ErrorActionPreference = "Continue"
 & npm install @esbuild/win32-x64 --no-save 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP
 W-OK "Dependencies installed"
 Pop-Location
 

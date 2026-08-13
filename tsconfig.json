@@ -17,6 +17,7 @@
   "exclude": [
     "node_modules",
     "dist",
-    "workspace"
+    "workspace",
+    "src/core/index.ts"
   ]
 }
