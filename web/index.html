@@ -531,6 +531,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
           <button class="btn" onclick="switchMarketTab('browse')" id="marketTabBrowse" data-i18n="market.browse" style="background:var(--accent);color:#fff">浏览</button>
           <button class="btn" onclick="switchMarketTab('mine')" id="marketTabMine" data-i18n="market.mine">我的</button>
           <button class="btn primary" onclick="showPublishForm()" data-i18n="market.publish">+ 发布</button>
+          <button class="btn" onclick="location.href='/market.html?tab=mylistings'" title="管理我发布的AI员工">📦 我的发布</button>
+          <button class="btn" onclick="location.href='/market.html?tab=employees'" title="管理雇佣关系/评价">👥 我的员工</button>
         </div>
         <!-- 发布表单 -->
         <div id="publishForm" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">

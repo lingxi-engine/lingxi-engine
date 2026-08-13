@@ -1428,12 +1428,20 @@ setSearchManager(searchManagerInstance);
   });
   app.post('/api/market/publish', (req, res) => {
     try {
-      const { agentId, publisherId, title, description, category, price, tags } = req.body || {};
+      const { agentId, publisherId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
       if (!agentId || !publisherId || !title) return res.status(400).json({ error: 'agentId/publisherId/title 必填' });
+      // v2.0.12 B1/B2: 价格校验（最低10积分避免抽成取整后卖方到账0，上限100000）
+      const priceNum = Math.floor(Number(price) || 0);
+      if (priceNum < 10) return res.status(400).json({ error: '发布价格最低 10 积分' });
+      if (priceNum > 100000) return res.status(400).json({ error: '价格不能超过 100000 积分' });
+      // v2.0.12: 自定义时长（0=永久买断）
+      const durNum = Math.max(0, Math.floor(Number(duration) || 0));
+      const unitOk = ['minute', 'hour', 'day'].includes(durationUnit) ? durationUnit : 'hour';
+      const unit = durNum > 0 ? unitOk : 'permanent';
       const d = getDB();
       const id = 'ml-' + Date.now().toString(36);
-      d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,tags,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-        [id, agentId, publisherId, title, description||'', category||'通用', price||0, JSON.stringify(tags||[]), Date.now()]);
+      d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,tags,created_at,duration,duration_unit) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+        [id, agentId, publisherId, title, description||'', category||'通用', priceNum, JSON.stringify(tags||[]), Date.now(), durNum, unit]);
       res.json({ ok: true, id });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1448,7 +1456,9 @@ setSearchManager(searchManagerInstance);
       const listing = stmt.step() ? stmt.getAsObject() : null;
       stmt.free();
       if (!listing) return res.status(404).json({ error: '商品不存在' });
-      
+      // v2.0.12 B3: 禁止自雇 + 检查上架状态
+      if (listing.status !== 'active') return res.status(400).json({ error: '该商品已下架或不可雇佣' });
+      if (String(listing.publisher_id) === String(buyerId)) return res.status(400).json({ error: '不能雇佣自己发布的员工' });
       // 1. 扣买方积分
       const price = listing.price || 10;
       const spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
@@ -1477,11 +1487,11 @@ setSearchManager(searchManagerInstance);
         addParticipant('hp-' + Date.now().toString(36) + '-4', chatId, undefined, usedAgentId, 'agent');
       }
       
-      // 5. 记订单 + 增hire计数
-      const orderId = 'mo-' + Date.now().toString(36);
-      d.run('INSERT INTO market_orders (id,listing_id,buyer_id,created_at) VALUES (?,?,?,?)', [orderId, listingId, buyerId, Date.now()]);
-      d.run('UPDATE agent_market SET hire_count = hire_count + 1 WHERE id = ?', [listingId]);
-      
+      // 5. v2.0.12: 计算到期时间（发布者自定义时长，0=永久买断）
+      const durMs: Record<string, number> = { minute: 60000, hour: 3600000, day: 86400000 };
+      const dur = Number(listing.duration) || 0;
+      const expiresAt = dur > 0 ? Date.now() + dur * (durMs[String(listing.duration_unit)] || 3600000) : 0;
+
       // 6. 记录雇佣关系
       const hireId = 'hire-' + Date.now().toString(36);
       if (typeof createHire === 'function') {
@@ -1490,11 +1500,16 @@ setSearchManager(searchManagerInstance);
           sellerId: listing.publisher_id,
           agentId: usedAgentId,
           title: listing.title || "AI雇佣",
-          chatId, price,
+          chatId, price, expiresAt,
         });
       }
+
+      // 7. 记订单（关联hireId）+ 增hire计数
+      const orderId = 'mo-' + Date.now().toString(36);
+      d.run('INSERT INTO market_orders (id,listing_id,buyer_id,hire_id,created_at) VALUES (?,?,?,?,?)', [orderId, listingId, buyerId, hireId, Date.now()]);
+      d.run('UPDATE agent_market SET hire_count = hire_count + 1 WHERE id = ?', [listingId]);
       
-      // 7. 发欢迎消息
+      // 8. 发欢迎消息
       const welcomeMsg = {
         id: 'msg-' + Date.now().toString(36),
         chatId, senderType: 'user',
@@ -1504,7 +1519,7 @@ setSearchManager(searchManagerInstance);
       };
       d.addMessage(welcomeMsg);
       
-      res.json({ ok: true, orderId, hireId, chatId, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
+      res.json({ ok: true, orderId, hireId, chatId, expiresAt, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
@@ -1534,6 +1549,17 @@ setSearchManager(searchManagerInstance);
       res.json({ ok: true, balance: newBal });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+  /** v2.0.12: 雇佣到期惰性检查——超过 expires_at 则标记 expired 并把被雇 agent 移出工作群（保留聊天记录） */
+  function checkHireExpired(hire: any): boolean {
+    if (!hire || hire.status !== 'active') return false;
+    const exp = Number(hire.expires_at) || 0;
+    if (exp <= 0 || Date.now() < exp) return false;
+    getDB().run("UPDATE hires SET status = 'expired', fired_at = ? WHERE id = ?", [Date.now(), hire.id]);
+    if (hire.chat_id && hire.agent_id && typeof removeParticipant === 'function') {
+      removeParticipant(hire.chat_id, '', hire.agent_id);
+    }
+    return true;
+  }
   /** 查看员工的雇佣关系 */
   app.get('/api/employees', (req, res) => {
     try {
@@ -1541,13 +1567,18 @@ setSearchManager(searchManagerInstance);
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
       const asBuyer = typeof listHiresByBuyer === 'function' ? listHiresByBuyer(userId) : [];
       const asSeller = typeof listHiresBySeller === 'function' ? listHiresBySeller(userId) : [];
-      // 补充listing信息
-      const enrich = (hires: any[]) => hires.map((h: any) => {
+      // 补充listing信息（并先做到期检查）+ 关联订单（供评价）
+      const enrich = (hires: any[]) => hires.map((h0: any) => {
+        const h = checkHireExpired(h0) && typeof getHire === 'function' ? (getHire(h0.id) || h0) : h0;
         const lst = getDB().prepare('SELECT * FROM agent_market WHERE id = ?');
         lst.bind([h.listing_id]);
         const listing = lst.step() ? lst.getAsObject() : null;
         lst.free();
-        return { ...h, listing };
+        const ordStmt = getDB().prepare('SELECT id, rating FROM market_orders WHERE hire_id = ?');
+        ordStmt.bind([h.id]);
+        const order = ordStmt.step() ? ordStmt.getAsObject() : null;
+        ordStmt.free();
+        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0) };
       });
       res.json({ ok: true, asBuyer: enrich(asBuyer), asSeller: enrich(asSeller) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1559,11 +1590,10 @@ setSearchManager(searchManagerInstance);
       if (!hireId) return res.status(400).json({ error: 'hireId 必填' });
       const ok = typeof fireHire === 'function' ? fireHire(hireId) : false;
       if (!ok) return res.status(404).json({ error: '未找到该雇佣关系或已解雇' });
-      // 清理工作群参与者（保留聊天记录）
+      // 清理工作群参与者（保留聊天记录）—— v2.0.12: 移除被雇 agent（原 buyer_agent_id/seller_agent_id 字段不存在导致从未生效）
       const hire = typeof getHire === 'function' ? getHire(hireId) : null;
-      if (hire && hire.chat_id && typeof removeParticipant === 'function') {
-        if (hire.buyer_agent_id) removeParticipant(hire.chat_id, '', hire.buyer_agent_id);
-        if (hire.seller_agent_id) removeParticipant(hire.chat_id, '', hire.seller_agent_id);
+      if (hire && hire.chat_id && hire.agent_id && typeof removeParticipant === 'function') {
+        removeParticipant(hire.chat_id, '', hire.agent_id);
       }
       res.json({ ok: true, message: '已解雇' });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1575,6 +1605,130 @@ setSearchManager(searchManagerInstance);
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
       const rows = getDB().queryObjects('SELECT * FROM agent_market WHERE publisher_id = ? ORDER BY created_at DESC', [userId]);
       res.json({ ok: true, listings: rows });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 下架商品 */
+  app.post('/api/market/unpublish', (req, res) => {
+    try {
+      const { listingId, userId } = req.body || {};
+      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
+      const d = getDB();
+      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
+      stmt.bind([listingId]);
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      if (!row) return res.status(404).json({ error: '商品不存在' });
+      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能下架自己的商品' });
+      d.run("UPDATE agent_market SET status = 'paused' WHERE id = ?", [listingId]);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 重新上架 */
+  app.post('/api/market/republish', (req, res) => {
+    try {
+      const { listingId, userId } = req.body || {};
+      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
+      const d = getDB();
+      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
+      stmt.bind([listingId]);
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      if (!row) return res.status(404).json({ error: '商品不存在' });
+      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能上架自己的商品' });
+      d.run("UPDATE agent_market SET status = 'active' WHERE id = ?", [listingId]);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 编辑商品 */
+  app.put('/api/market/:id', (req, res) => {
+    try {
+      const { userId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
+      const listingId = req.params.id;
+      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
+      const d = getDB();
+      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
+      stmt.bind([listingId]);
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      if (!row) return res.status(404).json({ error: '商品不存在' });
+      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能编辑自己的商品' });
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (title !== undefined) { sets.push('title = ?'); vals.push(title); }
+      if (description !== undefined) { sets.push('description = ?'); vals.push(description); }
+      if (category !== undefined) { sets.push('category = ?'); vals.push(category); }
+      if (price !== undefined) {
+        const p = Math.floor(Number(price) || 0);
+        if (p < 10) return res.status(400).json({ error: '发布价格最低 10 积分' });
+        if (p > 100000) return res.status(400).json({ error: '价格不能超过 100000 积分' });
+        sets.push('price = ?'); vals.push(p);
+      }
+      if (tags !== undefined) { sets.push('tags = ?'); vals.push(JSON.stringify(tags)); }
+      if (duration !== undefined) { sets.push('duration = ?'); vals.push(Math.max(0, Math.floor(Number(duration) || 0))); }
+      if (durationUnit !== undefined && ['minute', 'hour', 'day', 'permanent'].includes(durationUnit)) { sets.push('duration_unit = ?'); vals.push(durationUnit); }
+      if (sets.length === 0) return res.json({ ok: true, message: '无需更新' });
+      vals.push(listingId);
+      d.run(`UPDATE agent_market SET ${sets.join(', ')} WHERE id = ?`, vals);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 删除商品 */
+  app.delete('/api/market/:id', (req, res) => {
+    try {
+      const userId = req.body?.userId || req.query.userId;
+      const listingId = req.params.id;
+      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
+      const d = getDB();
+      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
+      stmt.bind([listingId]);
+      const row = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      if (!row) return res.status(404).json({ error: '商品不存在' });
+      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能删除自己的商品' });
+      d.run('DELETE FROM agent_market WHERE id = ?', [listingId]);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 评价雇佣 + rating 回写 listing */
+  app.post('/api/market/rate', (req, res) => {
+    try {
+      const { orderId, rating, review, userId } = req.body || {};
+      const r = Math.floor(Number(rating) || 0);
+      if (!orderId || !userId || r < 1 || r > 5) return res.status(400).json({ error: 'orderId/userId/rating(1-5) 必填' });
+      const d = getDB();
+      const stmt = d.prepare('SELECT * FROM market_orders WHERE id = ?');
+      stmt.bind([orderId]);
+      const order = stmt.step() ? stmt.getAsObject() : null;
+      stmt.free();
+      if (!order) return res.status(404).json({ error: '订单不存在' });
+      if (order.buyer_id !== userId) return res.status(403).json({ error: '只能评价自己的订单' });
+      d.run('UPDATE market_orders SET rating = ?, review = ?, completed_at = ?, status = ? WHERE id = ?',
+        [r, review || '', Date.now(), 'completed', orderId]);
+      // rating 回写：listing 评分 = 该商品所有订单评分的平均值
+      const avgStmt = d.prepare('SELECT AVG(rating) AS avg_r FROM market_orders WHERE listing_id = ? AND rating IS NOT NULL AND rating > 0');
+      avgStmt.bind([order.listing_id]);
+      if (avgStmt.step()) {
+        const avgRow: any = avgStmt.getAsObject();
+        d.run('UPDATE agent_market SET rating = ? WHERE id = ?', [Math.round((Number(avgRow.avg_r) || 0) * 10) / 10, order.listing_id]);
+      }
+      avgStmt.free();
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** v2.0.12: 我的订单 */
+  app.get('/api/market/my-orders', (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || '';
+      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      const rows: any[] = getDB().queryObjects('SELECT * FROM market_orders WHERE buyer_id = ? ORDER BY created_at DESC', [userId]);
+      const orders = rows.map((o: any) => {
+        const lst = getDB().prepare('SELECT title, category FROM agent_market WHERE id = ?');
+        lst.bind([o.listing_id]);
+        const listing = lst.step() ? lst.getAsObject() : null;
+        lst.free();
+        return { ...o, listing };
+      });
+      res.json({ ok: true, orders });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 

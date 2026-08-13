@@ -115,7 +115,7 @@ async function publishAgent() {
   const title = document.getElementById('pubTitle').value.trim();
   const desc = document.getElementById('pubDesc').value.trim();
   const category = document.getElementById('pubCategory').value;
-  const price = parseInt(document.getElementById('pubPrice').value) || 0;
+  const price = parseInt(document.getElementById('pubPrice').value) || 10;
   const tags = (document.getElementById('pubTags')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);
   if (!title) return toast(t('toast.enterName'));
   try {

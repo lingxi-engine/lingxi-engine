@@ -463,6 +463,31 @@ function _dbInit(db: any) {
   } catch (e: any) {
     console.warn('[DB] v1.7.2 migration warning:', e.message);
   }
+
+  // —— v2.0.12: 迁移：AI员工市场自定义时长 + 雇佣到期时间 + 订单关联hire ——
+  try {
+    const mkCols = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!mkCols.includes('duration')) {
+      db.run(`ALTER TABLE agent_market ADD COLUMN duration INTEGER NOT NULL DEFAULT 0`);
+      console.log('[DB] v2.0.12 migration: added duration to agent_market');
+    }
+    if (!mkCols.includes('duration_unit')) {
+      db.run(`ALTER TABLE agent_market ADD COLUMN duration_unit TEXT NOT NULL DEFAULT 'permanent'`);
+      console.log('[DB] v2.0.12 migration: added duration_unit to agent_market');
+    }
+    const hireCols = db.exec(`PRAGMA table_info(hires)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!hireCols.includes('expires_at')) {
+      db.run(`ALTER TABLE hires ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`);
+      console.log('[DB] v2.0.12 migration: added expires_at to hires');
+    }
+    const orderCols = db.exec(`PRAGMA table_info(market_orders)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!orderCols.includes('hire_id')) {
+      db.run(`ALTER TABLE market_orders ADD COLUMN hire_id TEXT`);
+      console.log('[DB] v2.0.12 migration: added hire_id to market_orders');
+    }
+  } catch (e: any) {
+    console.warn('[DB] v2.0.12 migration warning:', e.message);
+  }
 }
 
 // —— 辅助：带参数的 SELECT 查询（sql.js exec 不支持参数绑定）
@@ -944,13 +969,13 @@ export function getCreditHistory(userId: string, limit: number = 50): any[] {
 
 export function createHire(params: {
   id: string; listingId: string; buyerId: string; sellerId: string;
-  agentId: string; title: string; price: number; chatId?: string;
+  agentId: string; title: string; price: number; chatId?: string; expiresAt?: number;
 }): void {
   const now = Date.now();
   _db.run(
-    "INSERT INTO hires (id, listing_id, buyer_id, seller_id, agent_id, title, price, status, chat_id, hired_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
+    "INSERT INTO hires (id, listing_id, buyer_id, seller_id, agent_id, title, price, status, chat_id, hired_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)",
     [params.id, params.listingId, params.buyerId, params.sellerId,
-     params.agentId, params.title, params.price, params.chatId || null, now]
+     params.agentId, params.title, params.price, params.chatId || null, now, params.expiresAt || 0]
   );
 }
 
