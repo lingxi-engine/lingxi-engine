@@ -515,7 +515,7 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.7',
+        version: (process.env.npm_package_version) || '2.0.12',
         agents: manager.list().length,
         time: Date.now(),
         uptime: Math.floor(process.uptime()),

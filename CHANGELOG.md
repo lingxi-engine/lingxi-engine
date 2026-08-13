@@ -2,6 +2,16 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.12] - 2026-08-14
+
+### 版本号统一
+- 全量对齐至 2.0.12：package.json、package-lock.json、version.txt、src/version.txt、docs/dev/version.txt
+- `/api/health` 版本号 fallback 由 2.0.7 对齐为 2.0.12
+
+### 修复汇总（自 2.0.8 以来）
+- 好友系统（v2.0.10）：3 个搜索入口统一 `/api/users/search`；`platformApi('/api/lan/*')` 迁移为 `api()` 并传 userId；`/api/user/me` → `/api/auth/me`；deleteFriend 改用 `POST /api/lan/remove-friend`；后端 `/api/lan/friends`、`/api/lan/friend-requests` 增加 JWT fallback 获取 userId
+- 前端 platformApi 全量本地回退（v2.0.11）：平台不可达时自动降级本地模式，切换安全可逆
+
 ## [2.0.8] - 2026-08-09
 
 ### 功能修复（前端）
