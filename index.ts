@@ -3047,8 +3047,14 @@ setSearchManager(searchManagerInstance);
   // ── 前端用：好友 ──
   app.post('/api/lan/friend-request', requireAuth, async (req, res) => {
     try {
-      const fromUserId = (req as any).user?.sub || (req.body || {}).fromUserId;
-      const { toNumericId, message } = req.body || {};
+      // v2.0.11: 优先使用 body 中的 fromUserId（前端传的是本地用户ID），
+      // 仅在 body 没有时才从 JWT 中取。之前优先取 JWT sub 导致 auto-admin
+      // 模式下 fromUserId 恒为 'admin'，好友申请记错发送者，接收方看不到申请。
+      const { fromUserId: bodyFromUserId, toNumericId, message } = req.body || {};
+      const jwtSub = (req as any).user?.sub;
+      // 如果 JWT 是 auto-admin 回退模式（sid=admin-auto/admin-token），不用 admin 作为 fromUserId
+      const isAutoAdmin = (req as any).user?.sid === 'admin-auto' || (req as any).user?.sid === 'admin-token' || jwtSub === 'admin';
+      const fromUserId = bodyFromUserId || (!isAutoAdmin ? jwtSub : '');
       if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
       const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '');
       res.json(r);

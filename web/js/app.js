@@ -354,7 +354,9 @@ function connect() {
         if (authToken) {
           platformApi('/api/user/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.id || d.user.sub || null; } }).catch(()=>{});
         } else {
-          api('/api/auth/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.numeric_id || d.user.numericId || null; } }).catch(()=>{});
+          // v2.0.11: 未登录时不调 /api/auth/me（会返回 admin-auto 的 'admin'，不是真实用户ID）
+          // 直接用 clientId 作为 fromUserId，因为本地模式下 clientId 就是 DB 中的用户ID
+          // lanMeId 保持 null，sendRequest 中 fromUserId = lanMeId || clientId = clientId
         }
       }
       // 订阅局域网社交通知频道
@@ -1410,7 +1412,14 @@ async function sendRequest(to) {
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
   try {
     const fromUserId = lanMeId || clientId;
-    const d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+    // v2.0.11: 有 authToken 时优先走 platformApi，失败回退本地 api
+    let d;
+    if (authToken) {
+      d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' }); }
+    } else {
+      d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+    }
     if (d.error) { toast(_errMsg(d, '发送失败')); return; }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
@@ -1424,6 +1433,11 @@ async function loadFriends() {
     let d;
     if (authToken) {
       d = await platformApi('/api/lan/friends', 'GET');
+      // v2.0.11: platformApi 失败时回退到本地 API
+      if (!d || d.ok === false) {
+        authToken = null; localStorage.removeItem('authToken');
+        d = await api('/api/friends/list?userId=' + encodeURIComponent(clientId));
+      }
     } else {
       d = await api('/api/friends/list?userId=' + encodeURIComponent(clientId));
     }
@@ -1479,6 +1493,12 @@ async function deleteFriend(fid) {
   try {
     if (authToken) {
       const d = await platformApi('/api/lan/friends/' + fid, 'DELETE');
+      // v2.0.11: platformApi 失败时回退本地 API
+      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE'); }
+      else if (d.error) { toast(d.error); return; }
+    } else {
+      // v2.0.11: 本地 API 删除好友（后端用 DELETE /api/friends/:id?userId=xxx）
+      const d = await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE');
       if (d.error) { toast(d.error); return; }
     }
     toast(t('friends.deleted')); loadFriends();
@@ -1490,6 +1510,11 @@ async function loadRequests() {
     let d;
     if (authToken) {
       d = await platformApi('/api/lan/friend-requests', 'GET');
+      // v2.0.11: platformApi 失败（401/token无效/空响应）时回退到本地 API
+      if (!d || d.ok === false) {
+        authToken = null; localStorage.removeItem('authToken');
+        d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
+      }
     } else {
       d = await api('/api/friends/requests?userId=' + encodeURIComponent(clientId));
     }
@@ -1547,11 +1572,15 @@ function renderRequests() {
 }
 async function respondReq(rid, action) {
   try {
+    let d;
     if (authToken) {
-      const d = await platformApi('/api/lan/friend-respond', 'POST', { requestId: rid, action });
+      d = await platformApi('/api/lan/friend-respond', 'POST', { requestId: rid, action });
+      // v2.0.11: platformApi 失败时回退本地 API
+      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); d = await api('/api/friends/respond', 'POST', { requestId: rid, action }); }
       if (d.error) { toast(d.error); return; }
     } else {
-      await api('/api/friends/respond', 'POST', { requestId: rid, action });
+      d = await api('/api/friends/respond', 'POST', { requestId: rid, action });
+      if (d.error) { toast(d.error); return; }
     }
     toast(action==='accept'?t('friends.accepted'):t('friends.rejected'));
     loadFriends(); loadRequests();
