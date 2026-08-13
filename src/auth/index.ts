@@ -49,6 +49,7 @@ export interface LoginResult {
 
 export interface JwtPayload {
   sub: string;          // user-10003
+  id?: string;          // 兼容旧 token（无 sub 时回退用）
   numeric_id: number;  // 10003
   sid: string;         // session id
   iat: number;

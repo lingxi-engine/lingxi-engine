@@ -27,6 +27,8 @@ export interface PeerMessage {
   chatId?: string;
   content?: string;
   fromAgent?: string;
+  fromUserId?: string;
+  toUserId?: number | string;
   goal?: string;        // for task
   context?: string;     // for task
   replyTo?: string;     // for response

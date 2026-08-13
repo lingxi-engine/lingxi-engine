@@ -72,3 +72,6 @@ _agent_list.*
 tsc_out.txt
 .smoke-test.js
 ecosystem.config.cjs
+
+workspace/
+docs/dev/*æ‰§è*.md

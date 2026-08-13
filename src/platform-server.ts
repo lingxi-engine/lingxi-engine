@@ -76,7 +76,7 @@ function genToken(userId: string): string {
   // 简单 token: ouid + 随机串，正式可用 JWT
   return randomBytes(24).toString('hex') + '.' + userId;
 }
-function parseToken(tok: string): string | null {
+function parseToken(tok: string | undefined): string | null {
   if (!tok) return null;
   const parts = tok.split('.');
   if (parts.length !== 2) return null;
@@ -314,6 +314,7 @@ wss.on('connection', (ws: WebSocket) => {
       if (msg.type === 'auth') {
         if (msg.token !== MESH_TOKEN) { ws.send(JSON.stringify({ type: 'error', message: '鉴权失败' })); ws.close(4001, 'auth failed'); return; }
         instanceId = msg.instanceId;
+        if (!instanceId) { ws.send(JSON.stringify({ type: 'error', message: '缺 instanceId' })); ws.close(4001, 'auth failed'); return; }
         instances.set(instanceId, { id: instanceId, ws, hostname: msg.hostname || '', lanIp: msg.lanIp || '', port: msg.port || 0, agents: msg.agents || [], version: msg.version || '0.0.0', lastHeartbeat: Date.now(), online: true });
         ws.send(JSON.stringify({ type: 'auth_ok', instanceId }));
         console.log(`[Mesh] 实例上线: ${instanceId}`);

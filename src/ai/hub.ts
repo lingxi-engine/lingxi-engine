@@ -9,6 +9,7 @@ import OpenAI from "openai";
 
 export interface AIProviderConfig {
   id: string;
+  name?: string;
   type: "nvidia" | "openai" | "ollama" | "anthropic" | "custom" | "deepseek" | "google" | "minimax" | "moonshot" | "zhipu" | "qwen" | "stepfun" | "siliconflow" | "groq" | "openrouter" | "llama-cpp" | "vllm" | "lm-studio" | "tgi" | "text-gen-webui" | "baidu" | "yi" | "baichuan" | "zero-one" | "mistral" | "cohere" | "together" | "fireworks" | "perplexity" | "01ai" | "sensetime" | "kunlun" | "iflytek" | "volcengine" | "tencent" | "huawei" | "xai" | "mistral-large" | "cloudflare";
   apiKey?: string;
   baseUrl?: string;

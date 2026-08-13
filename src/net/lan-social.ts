@@ -531,7 +531,7 @@ export class LanSocialHub {
     if (!getChatById(aChat)) createChat(aChat, 'group');
     setChatMode(aChat, chatMode);
     for (const m of members) {
-      addLanGroupMember(groupId, { instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName, agentId: m.agentId });
+      addLanGroupMember({ groupId, instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName });
       // 人类聊天：加用户
       this.safeAddParticipant(`p-${hChat}-${m.userId}`, hChat, m.userId, undefined, 'member');
       // 智能体聊天：加该成员的 agent
@@ -644,7 +644,7 @@ export class LanSocialHub {
       console.error('[LAN] 智能体编排失败:', e.message);
       this.broadcast({ type: 'error', chatId, message: '智能体编排失败: ' + e.message });
     });
-    return { ok: true, msgId, mode };
+    return { ok: true, msgId: topicMsgId, mode };
   }
 
   // ════════════════════════════════════════════

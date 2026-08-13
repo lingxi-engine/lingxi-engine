@@ -1452,7 +1452,7 @@ setSearchManager(searchManagerInstance);
       // 1. 扣买方积分
       const price = listing.price || 10;
       const spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
-      if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
+      if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as any).balance });
       
       // 2. 给卖方加分（90%，10%平台税）
       const sellerPayout = Math.floor(price * 0.9);
@@ -1504,7 +1504,7 @@ setSearchManager(searchManagerInstance);
       };
       d.addMessage(welcomeMsg);
       
-      res.json({ ok: true, orderId, hireId, chatId, balance: typeof spendResult === 'object' ? (spendResult.balance || 0) : 0 });
+      res.json({ ok: true, orderId, hireId, chatId, balance: typeof spendResult === 'object' ? ((spendResult as any).balance || 0) : 0 });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
@@ -1542,7 +1542,7 @@ setSearchManager(searchManagerInstance);
       const asBuyer = typeof listHiresByBuyer === 'function' ? listHiresByBuyer(userId) : [];
       const asSeller = typeof listHiresBySeller === 'function' ? listHiresBySeller(userId) : [];
       // 补充listing信息
-      const enrich = (hires) => hires.map(h => {
+      const enrich = (hires: any[]) => hires.map((h: any) => {
         const lst = getDB().prepare('SELECT * FROM agent_market WHERE id = ?');
         lst.bind([h.listing_id]);
         const listing = lst.step() ? lst.getAsObject() : null;

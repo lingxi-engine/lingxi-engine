@@ -927,13 +927,17 @@ export function getCreditHistory(userId: string, limit: number = 50): any[] {
 
 export function createHire(params: {
   id: string; listingId: string; buyerId: string; sellerId: string;
-  agentId: string; title: string; price: number; chatId?: string;
+  agentId?: string; title?: string; price?: number; chatId?: string;
+  buyerAgentId?: string; sellerAgentId?: string; creditsPaid?: number;
 }): void {
   const now = Date.now();
+  const agentId = params.agentId ?? params.sellerAgentId ?? params.buyerAgentId ?? '';
+  const title = params.title ?? '雇佣服务';
+  const price = params.price ?? params.creditsPaid ?? 0;
   _db.run(
     "INSERT INTO hires (id, listing_id, buyer_id, seller_id, agent_id, title, price, status, chat_id, hired_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)",
     [params.id, params.listingId, params.buyerId, params.sellerId,
-     params.agentId, params.title, params.price, params.chatId || null, now]
+     agentId, title, price, params.chatId || null, now]
   );
 }
 
@@ -997,6 +1001,25 @@ export class DB {
   }
   addMessage(msg: DBMessage) { return addMessage(msg); }
   listMessages(chatId: string, limit = 100) { return listMessages(chatId, limit); }
+  /** 消息全文搜索（按内容 + 可选 chatId 过滤） */
+  searchMessages(q: string, opts?: { chatId?: string; limit?: number }): any[] {
+    const limit = opts?.limit ?? 50;
+    const like = `%${q}%`;
+    if (opts?.chatId) {
+      return queryObjects(
+        'SELECT * FROM messages WHERE chat_id = ? AND content LIKE ? ORDER BY timestamp DESC LIMIT ?',
+        [opts.chatId, like, limit]
+      );
+    }
+    return queryObjects(
+      'SELECT * FROM messages WHERE content LIKE ? ORDER BY timestamp DESC LIMIT ?',
+      [like, limit]
+    );
+  }
+  /** 导出整库备份（sql.js 原生 export，返回 Uint8Array） */
+  exportBackup(): Uint8Array {
+    return _db.export();
+  }
   saveVerificationCode(email: string, code: string, username?: string, expiresAtMs?: number) {
     return saveVerificationCode(email, code, username, expiresAtMs);
   }
