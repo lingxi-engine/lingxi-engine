@@ -21,19 +21,26 @@ W-Info "Checking Node.js..."
 $needNode = $true
 try {
     $nv = [int]((node -v) -replace 'v','' -replace '\..*','')
-    if ($nv -ge 18 -and $nv -le 22) { W-OK "Node.js $(node -v) found"; $needNode = $false }
-    elseif ($nv -gt 22) { W-Warn "Node.js $(node -v) too new (need 18-22), will install v22 LTS" }
+    if ($nv -ge 18) { W-OK "Node.js $(node -v) found"; $needNode = $false }
     else { W-Warn "Node.js too old ($(node -v)), need 18+" }
 } catch { W-Info "Node.js not found" }
 
 if ($needNode) {
     W-Info "Installing Node.js 22 LTS..."
     $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
-    $url = "https://nodejs.org/dist/v22.16.0/node-v22.16.0-$arch.msi"
+    $urls = @(
+        "https://cdn.npmmirror.com/binaries/node/v22.16.0/node-v22.16.0-$arch.msi",
+        "https://nodejs.org/dist/v22.16.0/node-v22.16.0-$arch.msi"
+    )
     $msi = "$env:TEMP\node-setup.msi"
     W-Info "Downloading Node.js 22.16.0 ($arch)..."
     try {
-        Invoke-WebRequest -Uri $url -OutFile $msi -UseBasicParsing
+        $downloaded = $false
+        foreach ($u in $urls) {
+            try { Invoke-WebRequest -Uri $u -OutFile $msi -UseBasicParsing; $downloaded = $true; break }
+            catch { W-Warn "Download failed: $u, trying next..." }
+        }
+        if (-not $downloaded) { throw "All Node.js download sources failed" }
         W-Info "Installing (may need admin)..."
         Start-Process msiexec.exe -ArgumentList "/i",$msi,"/quiet","/norestart" -Wait -NoNewWindow
         Remove-Item $msi -Force -EA SilentlyContinue
