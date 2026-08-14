@@ -78,6 +78,8 @@ export class LanSocialHub {
     this.manager = deps.manager;
     this.broadcast = deps.broadcast;
     this.getLocalUsers = deps.getLocalUsers;
+    // P1-6: 启动时从数据库恢复离线队列
+    this.loadOutboxFromDB();
     // 每 10 秒尝试把离线队列补发给已上线的邻居
     this.outboxTimer = setInterval(() => { this.flushOutbox().catch(() => {}); }, 10000);
     if (this.outboxTimer && typeof (this.outboxTimer as any).unref === 'function') (this.outboxTimer as any).unref();
@@ -429,22 +431,43 @@ export class LanSocialHub {
       }
     }
 
-    // 自动接受：立即本地建群（前端监听 lan.group.invited 事件刷新群列表）
-    this.materializeGroupLocally(
-      group.id, group.name, group.ownerInstance || '',
-      group.chatMode || 'free', members
-    );
+    // P0-3 修复: 不再自动接受，保存邀请并通知前端让用户确认
+    // 找到本机被邀请的用户
+    const localUsers = this.localUsers();
+    const invitedUser = localUsers.find(u =>
+      members.some((m: any) => m.numericId === u.numericId)
+    ) || localUsers[0];
 
-    // 广播给前端：群已创建/已加入
+    if (invitedUser) {
+      try {
+        saveLanGroupInvite({
+          id: 'invite-' + group.id + '-' + invitedUser.id,
+          groupId: group.id,
+          groupName: group.name,
+          ownerInstance: group.ownerInstance || '',
+          ownerUserId: members.find((m: any) => m.instanceId === (group.ownerInstance || ''))?.userId || '',
+          invitedUserId: invitedUser.id,
+          invitedUserNumericId: invitedUser.numericId,
+          inviterName: members.find((m: any) => m.instanceId === (group.ownerInstance || ''))?.displayName || '未知',
+          groupDef: { group, members },
+        });
+      } catch (e: any) {
+        console.warn('[LAN] 保存群邀请失败:', e.message);
+      }
+    }
+
+    // 广播给前端：有新的群邀请待确认
     this.broadcast({
-      type: 'lan.group.invited',
+      type: 'lan.group.invite.pending',
       chatId: LAN_SOCIAL_CHANNEL,
       groupId: group.id,
       groupName: group.name,
+      inviterName: members.find((m: any) => m.instanceId === (group.ownerInstance || ''))?.displayName || '未知',
+      memberCount: members.length,
       timestamp: Date.now(),
     });
 
-    return { ok: true };
+    return { ok: true, pending: true };
   }
 
   /** 用户主动接受群邀请（方案C - 保留但主流程已改为自动接受） */
@@ -767,7 +790,11 @@ export class LanSocialHub {
   /** 编排各成员 Agent（per-chatId 串行锁包装）。
    *  同一群的并发话题排队执行，避免回复交错、latestAgentMessage 回读串号、跨引擎重复同步。 */
   private orchestrateAgents(groupId: string, chatId: string, mode: string, triggerMsgId: string, topic: string): Promise<void> {
-    const run = () => this.orchestrateAgentsCore(groupId, chatId, mode, triggerMsgId, topic);
+    const ORCH_TIMEOUT = 120_000;  // P1-11: 120秒超时，防止 Promise 永不 resolve 卡死队列
+    const run = () => Promise.race([
+      this.orchestrateAgentsCore(groupId, chatId, mode, triggerMsgId, topic),
+      new Promise<void>((_, reject) => setTimeout(() => reject(new Error('编排超时(' + ORCH_TIMEOUT/1000 + 's)')), ORCH_TIMEOUT)),
+    ]);
     const prev = this.orchLocks.get(chatId) ?? Promise.resolve();
     // 前一个无论成败，后续都继续（, run 兜底），失败的编排不会卡死队列
     const tail = prev.then(run, run);
@@ -904,6 +931,21 @@ export class LanSocialHub {
     if (!invokeMembers.some((m: any) => (m.agent_id || m.agentId) === agentId)) {
       return { error: '该 Agent 不在此群组中' };
     }
+    // P0-1 修复: 来源 IP 校验 — 请求必须来自群成员的已知引擎
+    const reqIp = String((body as any)._requestIp || '').replace(/^::ffff:/, ''); // P0-1: from body
+    if (reqIp) {
+      const memberIps = new Set<string>();
+      for (const m of invokeMembers) {
+        if (m.instanceId !== getLanInstanceId()) {
+          const peer = getLanPeer(m.instanceId);
+          if (peer?.lanIp) memberIps.add(String(peer.lanIp).replace(/^::ffff:/, ''));
+        }
+      }
+      if (memberIps.size > 0 && !memberIps.has(reqIp)) {
+        console.warn('[LAN][Security] Agent invoke from unknown IP:', reqIp, 'expected:', [...memberIps]);
+        return { error: '请求来源不在群组成员中' };
+      }
+    }
     const entry: AgentRosterEntry = {
       userId: agent.userId || agent.user_id, displayName: agent.displayName || agent.display_name, agentId: agent.id,
       instanceId: getLanInstanceId(), isLocal: true,
@@ -972,6 +1014,55 @@ export class LanSocialHub {
     //  pruning: 过期 + 限量
     const pruned = dedup.filter((it) => now - it.ts < 3600_000).slice(-200);
     this.outbox.set(instanceId, pruned);
+    this.persistOutbox();
+  }
+
+  /** P1-6: 从数据库加载离线队列 */
+  private loadOutboxFromDB(): void {
+    try {
+      const db = getDB();
+      if (!db) return;
+      // 确保表存在
+      db.run(`CREATE TABLE IF NOT EXISTS lan_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        instance_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        body TEXT NOT NULL,
+        ts INTEGER NOT NULL
+      )`);
+      const stmt = db.prepare('SELECT instance_id, path, body, ts FROM lan_outbox ORDER BY ts ASC');
+      stmt.bind();
+      while (stmt.step()) {
+        const row = stmt.getAsObject() as any;
+        let q = this.outbox.get(row.instance_id);
+        if (!q) { q = []; this.outbox.set(row.instance_id, q); }
+        try {
+          q.push({ path: row.path, body: JSON.parse(row.body), ts: row.ts });
+        } catch { /* 损坏的 JSON 跳过 */ }
+      }
+      stmt.free();
+      const total = [...this.outbox.values()].reduce((s, q) => s + q.length, 0);
+      if (total > 0) console.log(`[LAN] 离线队列已加载: ${this.outbox.size} 个邻居, ${total} 条待补发`);
+    } catch (e: any) {
+      console.warn('[LAN] 加载离线队列失败:', e.message);
+    }
+  }
+
+  /** P1-6: 持久化离线队列到数据库 */
+  private persistOutbox(): void {
+    try {
+      const db = getDB();
+      if (!db) return;
+      db.run('DELETE FROM lan_outbox');
+      for (const [instanceId, queue] of this.outbox.entries()) {
+        for (const item of queue) {
+          db.run('INSERT INTO lan_outbox (instance_id, path, body, ts) VALUES (?, ?, ?, ?)',
+            [instanceId, item.path, JSON.stringify(item.body), item.ts]);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[LAN] 持久化离线队列失败:', e.message);
+    }
   }
 
   /** 把离线队列补发给已上线的邻居；成功即移除，失败保留待下次。 */

@@ -286,6 +286,10 @@ const DEFAULT_PROVIDERS: AIProviderConfig[] = [
 
 export class AIHub {
   private providers: Map<string, { client: OpenAI; config: AIProviderConfig }> = new Map();
+  // P1-7: 简单熔断器
+  private circuitBreaker = new Map<string, { failures: number; lastFail: number }>();
+  private readonly CB_THRESHOLD = 5;
+  private readonly CB_COOLDOWN = 60_000;
 
   constructor() {
     for (const cfg of DEFAULT_PROVIDERS) {
@@ -588,6 +592,18 @@ export class AIHub {
     }
     const { client, resolvedModel } = result;
 
+    // P1-7: 熔断器检查 — 连续失败过多时快速失败
+    const cbKey = resolvedModel;
+    const cbState = this.circuitBreaker.get(cbKey);
+    if (cbState && cbState.failures >= this.CB_THRESHOLD) {
+      const elapsed = Date.now() - cbState.lastFail;
+      if (elapsed < this.CB_COOLDOWN) {
+        throw new Error(`熔断器开启: ${resolvedModel} 连续失败 ${cbState.failures} 次，冷却中(${Math.ceil((this.CB_COOLDOWN - elapsed) / 1000)}s)`);
+      }
+      // 冷却期已过，半开放：允许一次尝试
+      cbState.failures = this.CB_THRESHOLD - 1;
+    }
+
     // 指数退避 + 熔断器
     const MAX_RETRIES = 3;
     let lastError: any;
@@ -606,6 +622,8 @@ export class AIHub {
         });
 
         const choice = response.choices[0];
+        // P1-7: 成功 → 重置熔断器
+        this.circuitBreaker.delete(cbKey);
         return {
           content: choice.message.content || "",
           usage: response.usage
@@ -617,6 +635,11 @@ export class AIHub {
         };
       } catch (error: any) {
         lastError = error;
+        // P1-7: 记录失败到熔断器
+        const cb = this.circuitBreaker.get(cbKey) || { failures: 0, lastFail: 0 };
+        cb.failures++;
+        cb.lastFail = Date.now();
+        this.circuitBreaker.set(cbKey, cb);
         // 不可重试的错误直接抛
         if (error.status === 401 || error.status === 403 || error.status === 404) {
           console.error(`[AI Hub] 不可重试的错误 (${request.model}):`, error.message);

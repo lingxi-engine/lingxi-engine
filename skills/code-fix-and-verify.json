@@ -1,0 +1,13 @@
+{
+  "name": "code-fix-and-verify",
+  "displayName": "代码修复与测试验证",
+  "description": "审查源码定位问题，实施代码修复与重构，清理脏数据并运行完整测试验证。",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到代码排查、修复或重构任务时：1. 使用 read_file 审查相关源码、配置和已有报告，推理完整业务流程与架构。2. 定位 Bug、性能瓶颈或设计缺陷，使用 write_file 实施修复或重构（如优化查询、修复边界条件、升级存储或认证方案）。3. 若存在因 Bug 产生的脏数据，编写脚本进行清理。4. 使用 shell_exec 运行完整测试脚本，验证所有修复项，确保测试全部通过后输出结构化的修复与验证报告。",
+  "autoCreated": true,
+  "createdAt": 1786701102359
+}

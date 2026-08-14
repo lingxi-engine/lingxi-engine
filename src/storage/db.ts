@@ -8,6 +8,7 @@ import bcrypt from 'bcryptjs';
 let _db: any = null;
 let _dbPath: string = "";
 let _saveTimer: ReturnType<typeof setInterval> | null = null;
+let _dirty = false;  // P1-4: 脏标记，仅在有写入时才触发磁盘保存
 
 /**
  * ?30 
@@ -15,6 +16,8 @@ let _saveTimer: ReturnType<typeof setInterval> | null = null;
 export function startAutoSave(intervalMs = 30000) {
   if (_saveTimer) clearInterval(_saveTimer);
   _saveTimer = setInterval(() => {
+    if (!_dirty) return;  // P1-4: 无写入跳过
+    _dirty = false;
     saveToDisk().catch((e: any) => console.error("[DB] auto-save error:", e.message));
   }, intervalMs);
   // ?
@@ -62,6 +65,9 @@ export async function initDB(dbPath: string) {
 }
 
 export function getDB() { return _db; }
+
+/** P1-4: 标记数据库有变更，下次自动保存时写入磁盘 */
+export function markDirty() { _dirty = true; }
 
 /**  DB ?*/
 export const db = {
@@ -545,6 +551,15 @@ export function listUsers() {
   return queryObjects("SELECT * FROM users");
 }
 
+// SQL LIKE 搜索用户（替代全量扫描 + JS 过滤，性能优化）
+export function searchUsers(keyword: string, limit: number = 50): any[] {
+  const like = '%' + keyword + '%';
+  return queryObjects(
+    "SELECT id, numeric_id, display_name FROM users WHERE display_name LIKE ? OR CAST(numeric_id AS TEXT) LIKE ? LIMIT ?",
+    [like, like, limit]
+  );
+}
+
 // ———— Agents ————
 export function createAgent(id: string, userId: string, displayName: string, personality: string, autonomy: string, model?: string) {
   const now = Date.now();
@@ -836,15 +851,27 @@ export function getFriendshipByPair(fromUserId: string, toUserId: string) {
 export function deleteFriendship(friendshipId: string): void {
   const row = queryObjects("SELECT * FROM friendships WHERE id = ?", [friendshipId])[0];
   if (row) {
-    // Remove associated private chat participants
     const chatId = makePrivateChatId(row.from_user_id, row.to_user_id);
+    // 删除好友时同时清理所有关联数据（隐私保护）
+    _db.run("DELETE FROM messages WHERE chat_id = ?", [chatId]);
+    _db.run("DELETE FROM chat_memories WHERE chat_id = ?", [chatId]);
+    _db.run("DELETE FROM entities WHERE chat_id = ?", [chatId]);
+    _db.run("DELETE FROM chat_read_state WHERE chat_id = ?", [chatId]);
     _db.run("DELETE FROM participants WHERE chat_id = ?", [chatId]);
+    _db.run("DELETE FROM chats WHERE id = ?", [chatId]);
     _db.run("DELETE FROM friendships WHERE id = ?", [friendshipId]);
   }
 }
 
 export function deleteFriendshipByPair(fromUserId: string, toUserId: string): void {
-  _db.run("DELETE FROM participants WHERE chat_id = ?", [makePrivateChatId(fromUserId, toUserId)]);
+  const chatId = makePrivateChatId(fromUserId, toUserId);
+  // 删除好友时同时清理所有关联数据（隐私保护）
+  _db.run("DELETE FROM messages WHERE chat_id = ?", [chatId]);
+  _db.run("DELETE FROM chat_memories WHERE chat_id = ?", [chatId]);
+  _db.run("DELETE FROM entities WHERE chat_id = ?", [chatId]);
+  _db.run("DELETE FROM chat_read_state WHERE chat_id = ?", [chatId]);
+  _db.run("DELETE FROM participants WHERE chat_id = ?", [chatId]);
+  _db.run("DELETE FROM chats WHERE id = ?", [chatId]);
   _db.run("DELETE FROM friendships WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)", [fromUserId, toUserId, toUserId, fromUserId]);
 }
 // ———— LAN Remote Identities ————
@@ -879,6 +906,30 @@ export function getAgentByUserId(userId: string) {
   if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
   stmt.free();
   return null;
+}
+
+// 将用户的 agent 补到所有已有私聊（agent 延迟创建时调用）
+export function syncAgentToPrivateChats(userId: string): number {
+  const agent = getAgentByUserId(userId);
+  if (!agent) return 0;
+  const friendships = queryObjects(
+    "SELECT from_user_id, to_user_id FROM friendships WHERE (from_user_id = ? OR to_user_id = ?) AND status = 'accepted'",
+    [userId, userId]
+  );
+  let added = 0;
+  for (const f of friendships) {
+    const friendId = f.from_user_id === userId ? f.to_user_id : f.from_user_id;
+    const chatId = makePrivateChatId(userId, friendId);
+    const existing = queryOne("SELECT id FROM participants WHERE chat_id = ? AND agent_id = ?", [chatId, agent.id]);
+    if (!existing) {
+      const chatExists = queryOne("SELECT id FROM chats WHERE id = ?", [chatId]);
+      if (chatExists) {
+        addParticipant('p-' + chatId + '-sync-' + Date.now().toString(36), chatId, undefined, agent.id, 'agent');
+        added++;
+      }
+    }
+  }
+  return added;
 }
 
 // ———— Types ————
@@ -1010,6 +1061,7 @@ export class DB {
   getUser(id: string) { return getUser(id); }
   getUserByEmail(email: string) { return getUserByEmail(email); }
   listUsers() { return listUsers(); }
+  searchUsers(keyword: string, limit?: number) { return searchUsers(keyword, limit); }
   createAgent(id: string, userId: string, displayName: string, personality: string, autonomy: string, model?: string) {
     return createAgent(id, userId, displayName, personality, autonomy, model);
   }
@@ -1061,6 +1113,7 @@ export class DB {
   listFriends(userId: string) { return listFriends(userId); }
   /** 让 manager.update 这种 `db.db.prepare(...)` 风格也能工作 */
   getAgentByUserId(userId: string) { return getAgentByUserId(userId); }
+  syncAgentToPrivateChats(userId: string) { return syncAgentToPrivateChats(userId); }
   markChatRead(userId: string, chatId: string) { return markChatRead(userId, chatId); }
   getUnreadCount(userId: string) { return getUnreadCount(userId); }
   getChatUnreadCounts(userId: string) { return getChatUnreadCounts(userId); }

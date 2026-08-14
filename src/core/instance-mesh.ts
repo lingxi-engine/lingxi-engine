@@ -19,6 +19,8 @@ let onPeerMessage: ((msg: PeerMessage) => void) | null = null;
 let onPeerTask: ((msg: PeerMessage) => void) | null = null;
 let meshVersion: string = '0.0.0';
 let meshPlatformUrl: string = '';
+let reconnectAttempt: number = 0;
+const MAX_RECONNECT_DELAY = 60_000;
 
 export interface PeerMessage {
   type: 'peer.message' | 'peer.task' | 'peer.response' | 'peer.broadcast';
@@ -120,6 +122,7 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
     if (msg.type === 'mesh.handshake_ack') {
+      reconnectAttempt = 0;
       console.log('[Mesh] 握手完成 ✅');
       // 握手成功后立即发一次心跳
       const platformUrl = platformWsUrl.replace('/mesh', '').replace('ws://', 'http://').replace('wss://', 'https://');
@@ -143,9 +146,11 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
   });
 
   wsSocket.on('close', (code, reason) => {
-    console.log(`[Mesh] WebSocket 断开 (${code}), 5秒后重连...`);
+    reconnectAttempt++;
+    const delay = Math.min(5000 * Math.pow(2, reconnectAttempt - 1), MAX_RECONNECT_DELAY);
+    console.log(`[Mesh] WebSocket 断开 (${code}), ${delay / 1000}秒后重连 (第${reconnectAttempt}次)...`);
     wsSocket = null;
-    setTimeout(() => connectMesh(platformWsUrl, token, port, agents), 5000);
+    setTimeout(() => connectMesh(platformWsUrl, token, port, agents), delay);
   });
 
   wsSocket.on('error', (err) => {

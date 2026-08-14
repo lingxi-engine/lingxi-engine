@@ -18,7 +18,7 @@ function getJwtSecret(): string {
   return s;
 }
 
-const JWT_EXPIRES_IN = '365d';
+const JWT_EXPIRES_IN = '7d';
 const VERIFY_TOKEN_EXPIRES = 24 * 60 * 60 * 1000;   // 24h
 const RESET_TOKEN_EXPIRES = 60 * 60 * 1000;           // 1h
 const BCRYPT_ROUNDS = 12;
@@ -212,8 +212,8 @@ export function loginWithNumericId(numericId: number, password: string): LoginRe
 export function forgotPassword(email: string): { sent: boolean } {
   const user = db.getUserByEmail(email);
   if (!user) {
-    // 防枚举：返回 200 但不发 token
-    console.log(`[AUTH] forgot-password: ${email} 未注册，静默忽略`);
+    // 防枚举：返回 200 但不发 token，日志脱敏邮箱
+    console.log(`[AUTH] forgot-password: ${email.slice(0, 3)}*** 未注册，静默忽略`);
     return { sent: false };
   }
 
@@ -288,7 +288,7 @@ function _createSession(user: any): LoginResult {
   const sessionId = `session-${crypto.randomUUID()}`;
   const refreshToken = crypto.randomBytes(48).toString('base64url');
   const refreshTokenHash = bcrypt.hashSync(refreshToken, 4);
-  const expiresAt = Date.now() + 365 * 24 * 60 * 60 * 1000; // 365 天
+  const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 天
 
   db.createUserSession({
     id: sessionId,

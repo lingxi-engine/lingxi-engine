@@ -56,7 +56,15 @@ export async function sendToPeer<T = any>(
     [FROM_HEADER]: getLanInstanceId(),
   };
   const secret = getLanSecret();
-  if (secret) headers[SECRET_HEADER] = secret;
+  if (secret) {
+    // P1-4: HMAC signature instead of plaintext secret
+    const { createHmac } = await import('crypto');
+    const timestamp = Date.now().toString();
+    const payload = JSON.stringify(body);
+    const sig = createHmac('sha256', secret).update(timestamp + ':' + path + ':' + payload).digest('hex');
+    headers[SECRET_HEADER] = sig;
+    headers['x-lingxi-ts'] = timestamp;
+  }
 
   const retries = opts.retries ?? 2;
   let lastNetErr: any;

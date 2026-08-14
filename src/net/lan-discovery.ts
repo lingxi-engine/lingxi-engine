@@ -42,6 +42,7 @@ export interface LanBeacon {
   port: number;             // 引擎 HTTP 端口（传输层用）
   version: string;          // 引擎版本
   users: LanUser[];         // 本机用户列表
+  userCount: number;        // P1-5: user count summary
   ts: number;               // 发送时间戳
 }
 
@@ -121,6 +122,7 @@ function buildBeacon(): LanBeacon {
     port: config!.port,
     version: config!.version,
     users: config!.getUsers(),
+    userCount: config!.getUsers().length,
     ts: Date.now(),
   };
 }

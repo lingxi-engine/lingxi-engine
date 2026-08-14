@@ -12,7 +12,7 @@ import { randomInt, timingSafeEqual } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
@@ -98,6 +98,10 @@ interface VerificationCode {
 }
 
 const verificationCodes = new Map<string, VerificationCode>();
+// P0-4 修复: 验证码尝试次数限制（防暴力枚举）
+const verificationAttempts = new Map<string, { count: number; firstAttempt: number }>();
+const MAX_CODE_ATTEMPTS = 10;  // 5分钟内最多尝试10次
+const ATTEMPT_WINDOW = 5 * 60 * 1000;
 
 
 // ── v1.7 RBAC 角色控制 ──
@@ -184,7 +188,7 @@ async function main() {
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   const dbPath = join(dataDir, 'main.db');
   await initDB(dbPath);
-  startAutoSave(5000);  // 每30秒自动保存到磁盘
+  startAutoSave(5000);  // 每5秒自动保存到磁盘
   initNumericIdSeq();    // V7: 初始化数字 ID 自增起点
   cleanupExpiredTokens(); // V7: 清理过期验证 token
   // 迁移：给缺少 numeric_id 的旧用户补分配
@@ -236,7 +240,7 @@ async function main() {
       console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
     }
   }
-  // 缓存到全局，供 jwt-auth 中间件使用
+  // P1-7: 缓存到全局，供 jwt-auth 中间件使用（deprecated: 后续应迁移到 app.locals）
   (globalThis as any).__platformAdminUser = platformAdminUser;
   (globalThis as any).__platformApiUrl = PLATFORM_API_URL;
   (globalThis as any).__platformAdminToken = PLATFORM_ADMIN_TOKEN;
@@ -543,7 +547,7 @@ setSearchManager(searchManagerInstance);
   // ════════════════════════════════════════════════
 
   // ── V7: 注册（邮箱 + 密码 + 数字 ID） ──
-  app.post('/api/auth/register', async (req, res) => {
+  app.post('/api/auth/register', authRateLimit, async (req, res) => {
     try {
       const { email, password, display_name, invite_code, agent_binding } = req.body;
       const result = auth.register({
@@ -809,7 +813,19 @@ setSearchManager(searchManagerInstance);
         verificationCodes.delete(email);
         return res.status(400).json({ error: '验证码已过期，请重新获取' });
       }
+      // P0-4 修复: 验证码尝试次数检查
+      const attempts = verificationAttempts.get(email);
+      if (attempts && Date.now() - attempts.firstAttempt < ATTEMPT_WINDOW) {
+        if (attempts.count >= MAX_CODE_ATTEMPTS) {
+          return res.status(429).json({ error: '验证码尝试次数过多，请稍后再试' });
+        }
+        attempts.count++;
+      } else {
+        verificationAttempts.set(email, { count: 1, firstAttempt: Date.now() });
+      }
       if (stored.code !== code) return res.status(400).json({ error: '验证码错误' });
+      // 验证成功，清除尝试计数
+      verificationAttempts.delete(email);
       verificationCodes.delete(email);
       const localPart = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
       const numericId = nextNumericId(); const userId = String(numericId);
@@ -826,7 +842,8 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 旧版用户名注册（兼容） ──
-  app.post('/api/users/register', (req, res) => {
+  // P0-3 修复: 添加 requireAuth，防止无鉴权无限创建用户
+  app.post('/api/users/register', requireAuth, (req, res) => {
     const { displayName, username } = req.body;
     const name = username || displayName;
     if (!name) return res.status(400).json({ error: '用户名不能为空' });
@@ -839,7 +856,19 @@ setSearchManager(searchManagerInstance);
     try {
       const { userId, displayName, personality, autonomy } = req.body;
       if (!userId || !displayName) return res.status(400).json({ error: 'userId 和 displayName 必填' });
+      // P0-5 修复: 越权防护 — 校验 userId 是否为 JWT 持有者
+      const jwtUser = (req as any).user;
+      const jwtUserId = jwtUser?.sub || jwtUser?.id || '';
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      if (jwtUserId && jwtUserId !== userId && jwtNumericId !== userId) {
+        return res.status(403).json({ error: '无权为他人创建 agent' });
+      }
       const agent = manager.register(userId, displayName, personality || '你是一个友好的 AI 助手', autonomy || 'semi');
+      // 新 agent 补到已有私聊
+      try {
+        const synced = syncAgentToPrivateChats(userId);
+        if (synced > 0) console.log('[Friends] agent synced to', synced, 'private chats');
+      } catch(_e) {}
       res.json({ ok: true, agent });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
@@ -850,11 +879,12 @@ setSearchManager(searchManagerInstance);
   app.get('/api/users', requireAuth, (req, res) => {
     try {
       const keyword = (req.query.q as string) || '';
-      const users = db.listUsers();
-      const filtered = keyword
-        ? users.filter((u: any) => (u.display_name || '').toLowerCase().includes(keyword.toLowerCase()) || String(u.numeric_id || '').includes(keyword))
-        : users;
-      res.json({ ok: true, users: filtered.map((u: any) => ({ id: u.id, numericId: u.numeric_id, displayName: u.display_name })) }); // v2.0.9: 补充 numericId 供前端加好友使用
+      // P1-1: require query param to prevent user enumeration
+      if (!keyword || keyword.trim().length < 2) {
+        return res.status(400).json({ error: '请提供至少2个字符的搜索关键词' });
+      }
+      const users = db.searchUsers(keyword, 50);
+      res.json({ ok: true, users: users.map((u: any) => ({ id: u.id, numericId: u.numeric_id, displayName: u.display_name })) });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -883,6 +913,13 @@ setSearchManager(searchManagerInstance);
       const { fromUserId, toUserId, message } = req.body;
       if (!fromUserId || !toUserId) return res.status(400).json({ error: 'fromUserId 和 toUserId 必填' });
       if (fromUserId === toUserId) return res.status(400).json({ error: '不能添加自己为好友' });
+      // P0-4: verify sender is JWT holder
+      const jwtUser = (req as any).user;
+      const jwtUserId = jwtUser?.sub || jwtUser?.id || '';
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      if (jwtUserId && jwtUserId !== fromUserId && jwtNumericId !== fromUserId) {
+        return res.status(403).json({ error: '无权替他人发送好友请求' });
+      }
       const result = db.sendFriendRequest(fromUserId, toUserId, message || '');
       if (result.error) return res.status(400).json(result);
       res.json({ ok: true, ...result });
@@ -896,6 +933,23 @@ setSearchManager(searchManagerInstance);
       const { requestId, action } = req.body;
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
       if (!['accept', 'reject'].includes(action)) return res.status(400).json({ error: 'action 只能是 accept 或 reject' });
+      // P0-5: verify current user is the receiver
+      const jwtUser5 = (req as any).user;
+      const jwtUserId5 = jwtUser5?.sub || jwtUser5?.id || '';
+      const jwtNumericId5 = String(jwtUser5?.numeric_id || '');
+      if (jwtUserId5) {
+        try {
+          const raw5 = getDB();
+          const stmt5 = raw5.prepare('SELECT to_user_id FROM friendships WHERE id = ?');
+          stmt5.bind([requestId]);
+          let toId5 = '';
+          if (stmt5.step()) { const r5 = stmt5.getAsObject() as any; toId5 = r5.to_user_id; }
+          stmt5.free();
+          if (toId5 && toId5 !== jwtUserId5 && toId5 !== jwtNumericId5) {
+            return res.status(403).json({ error: '无权处理他人的好友请求' });
+          }
+        } catch(_e5) { /* query error: allow */ }
+      }
       const result = db.respondFriendRequest(requestId, action);
       if (result.error) return res.status(400).json(result);
       res.json({ ok: true, ...result });
@@ -908,6 +962,13 @@ setSearchManager(searchManagerInstance);
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      // P1-2: verify userId is JWT holder
+      const jwtUser2 = (req as any).user;
+      const jwtUserId2 = jwtUser2?.sub || jwtUser2?.id || '';
+      const jwtNumericId2 = String(jwtUser2?.numeric_id || '');
+      if (jwtUserId2 && jwtUserId2 !== userId && jwtNumericId2 !== userId) {
+        return res.status(403).json({ error: '无权查看他人的好友请求' });
+      }
       res.json({ ok: true, ...db.getFriendRequests(userId) });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -918,7 +979,35 @@ setSearchManager(searchManagerInstance);
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      // P1-2: verify userId is JWT holder
+      const jwtUser3 = (req as any).user;
+      const jwtUserId3 = jwtUser3?.sub || jwtUser3?.id || '';
+      const jwtNumericId3 = String(jwtUser3?.numeric_id || '');
+      if (jwtUserId3 && jwtUserId3 !== userId && jwtNumericId3 !== userId) {
+        return res.status(403).json({ error: '无权查看他人的好友列表' });
+      }
       res.json({ ok: true, friends: db.listFriends(userId) });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── 删除好友 ──
+  app.delete('/api/friends/:id', requireAuth, (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || '';
+      const friendId = String(req.params.id || '');
+      if (!userId || !friendId) return res.status(400).json({ error: 'userId 和 friendId 必填' });
+      // P0-1 修复: 越权防护 — 校验 userId 是否为 JWT 持有者
+      const jwtUser = (req as any).user;
+      const jwtUserId = jwtUser?.sub || jwtUser?.id || '';
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      if (jwtUserId && jwtUserId !== userId && jwtNumericId !== userId) {
+        return res.status(403).json({ error: '无权操作他人好友关系' });
+      }
+      // 使用 DB 封装函数，自动处理 chatId 排序一致性
+      deleteFriendshipByPair(userId, friendId);
+      res.json({ ok: true, message: '好友已删除' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -957,10 +1046,30 @@ setSearchManager(searchManagerInstance);
       const chatId = req.params.id as string;
       const content = req.body?.content;
       const fromUserId = req.body?.fromUserId || req.user?.numeric_id || (req.user as any)?.id;
-      if (!chatId.startsWith('chat-platform-')) return res.status(400).json({ error: '不是跨平台好友聊天' });
+      // P0-2 修复: 身份伪造防护 — 校验 fromUserId 是否为 JWT 持有者
+      if (req.body?.fromUserId) {
+        const jwtUser = (req as any).user;
+        const jwtUserId = String(jwtUser?.sub || jwtUser?.id || '');
+        const jwtNumericId = String(jwtUser?.numeric_id || '');
+        const reqFromId = String(req.body.fromUserId);
+        if (jwtUserId && jwtUserId !== reqFromId && jwtNumericId !== reqFromId) {
+          return res.status(403).json({ error: '无权以他人身份发送消息' });
+        }
+      }
+      // Fix 3: 去掉 chat-platform- 前缀限制，支持所有好友私聊
       if (!content) return res.status(400).json({ error: 'content 必填' });
 
+      // P1-3: verify current user is chat participant
+      const jwtUser4 = (req as any).user;
+      const jwtUserId4 = String(jwtUser4?.sub || jwtUser4?.id || '');
+      const jwtNumericId4 = String(jwtUser4?.numeric_id || '');
       const parts = db.getChatParticipants(chatId);
+      if (jwtUserId4 && parts.length > 0) {
+        const isMember = parts.some((p: any) => String(p.user_id) === jwtUserId4 || String(p.user_id) === jwtNumericId4);
+        if (!isMember) {
+          return res.status(403).json({ error: '无权向此聊天发送消息' });
+        }
+      }
       const friendParticipant = parts.find((p: any) => String(p.user_id) !== String(fromUserId));
       if (!friendParticipant) return res.status(400).json({ error: '无法确定好友' });
 
@@ -2939,7 +3048,7 @@ setSearchManager(searchManagerInstance);
       try {
         if (!msg.content) return;
         // 跨平台好友聊天 peer.message
-        if (msg.chatId && String(msg.chatId).startsWith('chat-platform-') && (msg as any).fromUserId !== undefined) {
+        if (msg.chatId && String(msg.chatId).startsWith('chat-') && (msg as any).fromUserId !== undefined) {
           const chatId = msg.chatId;
           const fromUserId = String((msg as any).fromUserId);
           const toUserId = String((msg as any).toUserId || '');
@@ -3321,6 +3430,8 @@ setSearchManager(searchManagerInstance);
   app.post('/api/lan/peer/agent-invoke', async (req, res) => {
     if (verifyLanRequest(req, res) === null) return;
     try {
+      // P0-1: pass request IP for source validation
+      (req.body as any)._requestIp = String((req as any).ip || (req as any).socket?.remoteAddress || '').replace(/^::ffff:/, '');
       sendPeerResult(res, await lanSocial.handleAgentInvoke(req.body));
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });

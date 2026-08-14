@@ -1,0 +1,14 @@
+{
+  "name": "code-security-audit-and-fix",
+  "displayName": "代码安全审查与修复",
+  "description": "全量扫描项目代码，识别安全漏洞并按优先级进行修复与验证。",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到代码安全审查或漏洞修复任务时：1. 使用 list_dir 和 read_file 遍历并阅读项目核心代码。2. 重点排查越权访问、身份伪造、缺乏限流、注入等安全隐患。3. 按严重程度（P0/P1/P2）输出结构化的审查报告。4. 使用 write_file 逐一修复高优先级漏洞，并用 shell_exec 运行测试或启动服务验证修复效果。5. 输出包含修复方案和验证状态的最终总结报告。",
+  "autoCreated": true,
+  "createdAt": 1786726423809
+}

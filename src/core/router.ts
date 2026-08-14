@@ -232,7 +232,7 @@ export class MessageRouter {
       console.log(`[Router] Agent ${agent.displayName} 有 ${agentTools.length} 个可用工具，启动工具调用循环`);
       try {
       // 总超时控制：2 分钟兜底，防止 AI 响应慢或工具卡住导致前端无响应
-      const TOTAL_TIMEOUT = 600000;
+      const TOTAL_TIMEOUT = 120000;  // P1-5: 2分钟超时（原600秒过长，前端WS可能已断开）
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TOTAL_TIMEOUT);
       // ⭐ 停止生成：外部信号 abort 时同步中断内部 controller
