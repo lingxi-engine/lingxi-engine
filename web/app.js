@@ -717,6 +717,10 @@ function handleMessage(msg) {
       }
       break;
 
+    case 'task.progress':
+      renderTaskProgress(msg);
+      break;
+
     default: break;
   }
 }
@@ -727,6 +731,77 @@ function updateBadge() {
   if (requestNotifyCount > 0) { b.style.display = ''; b.textContent = requestNotifyCount; }
   else { b.style.display = 'none'; }
 }
+
+// ── 任务拆解进度渲染 ──
+var taskDecompState = { steps: [], total: 0, phase: '' };
+function renderTaskProgress(msg) {
+  var panel = document.getElementById('taskDecompPanel');
+  var stepsEl = document.getElementById('taskDecompSteps');
+  var summaryEl = document.getElementById('taskDecompSummary');
+  var titleEl = document.getElementById('taskDecompTitle');
+  if (!panel || !stepsEl) return;
+  var phase = msg.phase || '';
+  taskDecompState.phase = phase;
+  if (phase === 'planning') {
+    panel.style.display = 'block';
+    if (titleEl) titleEl.textContent = '\u{1F9E0} 正在分析任务...';
+    stepsEl.innerHTML = '<span style="color:var(--text3)">' + esc(msg.message || '分析中...') + '</span>';
+    if (summaryEl) summaryEl.textContent = '';
+    return;
+  }
+  if (phase === 'plan_ready') {
+    panel.style.display = 'block';
+    var steps = msg.steps || [];
+    taskDecompState.steps = steps.map(function(s) { return { id: s.id, name: s.name, status: 'pending' }; });
+    taskDecompState.total = msg.total || steps.length;
+    if (titleEl) titleEl.textContent = '\u{1F4CB} 任务已拆分 (' + taskDecompState.total + ' 步)';
+    renderDecompSteps();
+    if (summaryEl) summaryEl.textContent = msg.message || '';
+    return;
+  }
+  if (phase === 'step_start') {
+    var sid = msg.stepId;
+    for (var i = 0; i < taskDecompState.steps.length; i++) { if (taskDecompState.steps[i].id === sid) taskDecompState.steps[i].status = 'running'; }
+    renderDecompSteps();
+    if (summaryEl) summaryEl.textContent = msg.message || '';
+    return;
+  }
+  if (phase === 'step_done') {
+    var did = msg.stepId;
+    for (var j = 0; j < taskDecompState.steps.length; j++) { if (taskDecompState.steps[j].id === did) taskDecompState.steps[j].status = 'done'; }
+    renderDecompSteps();
+    if (summaryEl) summaryEl.textContent = msg.message || '';
+    return;
+  }
+  if (phase === 'completed') {
+    for (var k = 0; k < taskDecompState.steps.length; k++) { if (taskDecompState.steps[k].status !== 'done') taskDecompState.steps[k].status = 'done'; }
+    if (titleEl) titleEl.textContent = msg.success ? '\u2705 任务全部完成' : '\u26A0\uFE0F 任务部分失败';
+    renderDecompSteps();
+    if (summaryEl) { var dur = msg.duration ? (Math.round(msg.duration / 100) / 10) + 's' : ''; summaryEl.textContent = (msg.message || '') + (dur ? ' \u00b7 ' + dur : ''); }
+    setTimeout(function() { if (taskDecompState.phase === 'completed') { panel.style.transition = 'opacity 1s'; panel.style.opacity = '0.5'; } }, 5000);
+    return;
+  }
+  if (phase === 'failed') {
+    if (titleEl) titleEl.textContent = '\u274C 任务失败';
+    stepsEl.innerHTML = '<span style="color:var(--red)">' + esc(msg.message || '执行失败') + '</span>';
+    if (summaryEl) summaryEl.textContent = '';
+    return;
+  }
+}
+function renderDecompSteps() {
+  var stepsEl = document.getElementById('taskDecompSteps');
+  if (!stepsEl) return;
+  var icons = { pending: '\u23F3', running: '\u{1F504}', done: '\u2705' };
+  var colors = { pending: 'var(--text3)', running: 'var(--accent)', done: 'var(--green)' };
+  var html = taskDecompState.steps.map(function(s, i) {
+    var icon = icons[s.status] || '\u23F3';
+    var color = colors[s.status] || 'var(--text3)';
+    var anim = s.status === 'running' ? ' <span class="typing-dot" style="display:inline;width:4px;height:4px;background:var(--accent);border-radius:50%;animation:blink 1s infinite"></span>' : '';
+    return '<div style="color:' + color + '">' + icon + ' ' + (i+1) + '/' + taskDecompState.total + ' ' + esc(s.name) + anim + '</div>';
+  }).join('');
+  stepsEl.innerHTML = html;
+}
+
 
 // ── Chat List ──
 async function loadChatList() {

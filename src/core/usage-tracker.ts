@@ -131,7 +131,7 @@ function loadUsage(): { records: UsageRecord[]; totals: [string, any][] } {
 
 function saveUsage(records: UsageRecord[], totals: Map<string, any>): void {
   try {
-    const dir = join(process.cwd(), 'data');
+    const dir = join(getDataDir());
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(USAGE_FILE, JSON.stringify({
       records: records.slice(-10000),

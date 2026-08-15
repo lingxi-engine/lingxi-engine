@@ -686,6 +686,12 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="right-body" id="tab-tasks" style="display:block">
       <div id="taskMonitorList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
     </div>
+    <!-- 实时任务拆解监控 -->
+    <div id="taskDecompPanel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px" id="taskDecompTitle">📋 任务拆解</div>
+      <div id="taskDecompSteps" style="font-size:11px;line-height:1.8"></div>
+      <div id="taskDecompSummary" style="font-size:10px;color:var(--text3);margin-top:4px"></div>
+    </div>
     <div class="right-body" id="tab-goals" style="display:none">
       <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
       <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()" data-i18n="right.addGoal">＋ 添加目标任务</button>

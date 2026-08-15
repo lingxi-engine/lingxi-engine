@@ -1,0 +1,14 @@
+{
+  "name": "batch-code-modification",
+  "displayName": "分批代码修改与验证",
+  "description": "针对大型代码修改任务，采用分批修改、脚本执行和最终验证的策略避免生成中断。",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec",
+    "list_dir"
+  ],
+  "prompt": "当遇到涉及多个文件或多处修改的大型代码任务时，不要一次性生成所有修改，以免生成中断。请采取以下策略：1. 先阅读相关代码，分析现状。2. 将修改任务拆分为多个批次，编写修改脚本或分步使用 write_file。3. 使用 shell_exec 执行修改脚本。4. 修改完成后，重新读取修改过的文件，全面检查验证修改是否正确且无遗漏。",
+  "autoCreated": true,
+  "createdAt": 1786835735420
+}

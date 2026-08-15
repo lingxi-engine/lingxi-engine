@@ -8,7 +8,8 @@
  * - 关键操作审计标记
  */
 
-import { appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync } from 'fs';
+import { appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, statSync, readFileSync, renameSync } from 'fs';
+import * as fs from 'fs';
 import { join } from 'path';
 import { stdout as _stdout, stderr as _stderr } from 'process';
 
@@ -17,11 +18,39 @@ import { stdout as _stdout, stderr as _stderr } from 'process';
 const LOG_DIR = join(process.cwd(), process.env.DATA_DIR || 'data', 'logs');
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
 const MAX_LOG_AGE_DAYS = 7;
+const MAX_LOG_SIZE_MB = 100; // P1-2: 单个日志文件最大 100MB
+const MAX_LOG_SIZE_BYTES = MAX_LOG_SIZE_MB * 1024 * 1024;
 type LogLevel = keyof typeof LOG_LEVELS;
 
 let minLevel: LogLevel = 'info';
 let fileLogging = true;
 let _consoleHijacked = false;
+
+// P1-1: 异步写入缓冲区
+let _logBuffer: string[] = [];
+let _currentLogSize = 0;
+
+function flushBuffer() {
+  if (_logBuffer.length === 0) return;
+  const lines = _logBuffer.join('\n') + '\n';
+  _logBuffer = [];
+  try {
+    const file = getLogFile();
+    try { _currentLogSize = statSync(file).size; } catch { _currentLogSize = 0; }
+    if (_currentLogSize > MAX_LOG_SIZE_BYTES) {
+      try {
+        const oldFile = file.replace('.log', '.old.log');
+        try { unlinkSync(oldFile); } catch {}
+        try { renameSync(file, oldFile); } catch {}
+      } catch {}
+    }
+    appendFileSync(file, lines, 'utf8');
+    _currentLogSize += Buffer.byteLength(lines, 'utf8');
+  } catch { /* 写文件失败不中断 */ }
+}
+
+setInterval(() => { flushBuffer(); }, 1000);
+process.on('beforeExit', () => { flushBuffer(); });
 
 // 保存原始 console 引用，防止 attachToConsole 后无限递归
 const _origConsole = {
@@ -47,6 +76,12 @@ function getLogFile(): string {
   return join(LOG_DIR, `lingxi-${ds}.log`);
 }
 
+// P0-2: 敏感字段脱敏
+const SENSITIVE_KEYS = /(?:password|passwd|token|secret|apiKey|api_key|adminToken|admin_token|verifyCode|verify_code|resetToken|reset_token|credential)/gi;
+function redactMessage(msg: string): string {
+  return msg.replace(SENSITIVE_KEYS, (match) => match + '=***');
+}
+
 // ─── 核心 ───
 
 function write(level: LogLevel, module: string, message: string, audit?: string) {
@@ -61,11 +96,12 @@ function write(level: LogLevel, module: string, message: string, audit?: string)
   else if (level === 'warn') _origConsole.warn(line);
   else _origConsole.log(line);
 
-  // 文件
+  // P0-2: 敏感字段脱敏
+  const safeLine = redactMessage(line);
+
+  // 文件 — P1-1: 异步缓冲写入
   if (fileLogging) {
-    try {
-      appendFileSync(getLogFile(), line + '\n', 'utf8');
-    } catch { /* 写文件失败不中断 */ }
+    _logBuffer.push(safeLine);
   }
 }
 

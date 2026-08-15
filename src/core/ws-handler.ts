@@ -258,22 +258,31 @@ export function handleWSMessage(
               }
             }
 
-            const stepResult = await router.generateReply(
-              chatId, agentId, taskMsgId,
-              (chunk) => {
-                broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
-              },
-              undefined,
-              fullPrompt
-            );
+            let stepResult = '';
+            let stepSuccess = true;
+            try {
+              stepResult = await router.generateReply(
+                chatId, agentId, taskMsgId,
+                (chunk) => {
+                  broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
+                },
+                undefined,
+                fullPrompt
+              );
+            } catch (stepErr: any) {
+              stepSuccess = false;
+              stepResult = "步骤执行失败：" + (stepErr.message || '未知错误');
+              console.error('[WS] step ' + task.id + ' failed:', stepErr);
+            }
 
             broadcast({
               type: "task.progress",
               chatId, from: agentSenderId, msgId: taskMsgId,
               phase: "step_done",
-              message: "步骤 " + (stepIdx + 1) + " 完成：" + task.name,
+              message: (stepSuccess ? "步骤 " : "步骤失败 ") + (stepIdx + 1) + "：" + task.name,
               step: stepIdx + 1, total: steps.length,
               stepId: task.id, stepName: task.name,
+              success: stepSuccess,
               output: (stepResult || "").slice(0, 500),
               timestamp: Date.now(),
             });
@@ -342,11 +351,37 @@ export function handleWSMessage(
             timestamp: Date.now(),
           });
 
+          // ⭐ Bug fix: 必须发送 streaming.end，否则前端 generatingChats 永不递减，聊天卡死
+
+
           broadcast({
+
+
+            type: "agent.streaming.end",
+
+
+            chatId, from: agentSenderId, msgId: taskMsgId,
+
+
+          });
+
+
+
+          broadcast({
+
+
             type: "message.new", chatId,
+
+
             from: agentSenderId, senderType: "agent",
+
+
             content: finalResult,
+
+
             msgId: taskMsgId, timestamp: Date.now(),
+
+
           });
 
           // cleanup after 5 min
@@ -420,6 +455,29 @@ export function handleWSMessage(
  *   3. 触发各 AI 回复（链式串行 / 其他并行+delayMs 错开）
  *   4. 后续轮次：辩论汇总 / 圆桌多轮 / 投票开票
  */
+// ── 复杂度判断：决定是否自动触发任务拆解 ──
+const COMPLEX_KEYWORDS = [
+  '全部修复', '批量', '所有', '全面', '整体', '系统性', '全量',
+  '重构', '审计', '扫描全部', '逐个', '依次', '分步骤', '多步骤',
+  'all fix', 'batch', 'comprehensive', 'full scan', 'refactor all'
+];
+function shouldAutoDecompose(content: string): boolean {
+  if (!content) return false;
+  const lower = content.toLowerCase();
+  // 关键词匹配
+  for (const kw of COMPLEX_KEYWORDS) {
+    if (lower.includes(kw.toLowerCase())) return true;
+  }
+  // 长消息（>200字）+ 包含多个操作动词
+  if (content.length > 200) {
+    const actionCount = ['修复', '修改', '添加', '删除', '更新', '检查', '实现', '创建', '配置', '部署',
+                         'fix', 'add', 'remove', 'update', 'check', 'implement', 'create', 'config', 'deploy']
+      .filter(v => lower.includes(v)).length;
+    if (actionCount >= 3) return true;
+  }
+  return false;
+}
+
 export function processUserMessage(
   chatId: string,
   senderId: string,
@@ -428,6 +486,51 @@ export function processUserMessage(
   router: MessageRouter,
   broadcast: (event: any) => void
 ): void {
+  // ── 复杂度判断：如果消息看起来需要多步骤，自动触发任务拆解 ──
+  if (shouldAutoDecompose(content)) {
+    router.handleIncoming({
+      chatId,
+      senderType: "user",
+      senderId,
+      content,
+      replyTo,
+    }).then(async (result) => {
+      // 广播用户消息
+      broadcast({
+        type: "message.new",
+        chatId,
+        from: senderId,
+        senderId,
+        senderType: "user",
+        content,
+        replyTo,
+        timestamp: Date.now(),
+      });
+
+      const agents = result.agentsInChat || [];
+      if (agents.length > 0) {
+        const agent = agents[0];
+        const agentId = agent.id || (agent as any).agent_id || (agent as any).agentId;
+        if (agentId) {
+          // 自动触发任务拆解（复用 agent.task 逻辑）
+          const taskEvent = JSON.stringify({ type: "agent.task", chatId, agentId, goal: content });
+          handleWSMessage(taskEvent, senderId, router, broadcast);
+          return;
+        }
+      }
+      // 没有 Agent，回退到普通回复
+      const nameOf = (agentId: string) =>
+        agents.find((a: any) => a.id === agentId)?.displayName || agentId;
+      const collected = await runResponses(
+        chatId, result.responses, broadcast, router, nameOf, false
+      );
+    }).catch((err: any) => {
+      console.error('[WS] auto-decompose error:', err);
+      try { broadcast({ type: 'error', message: err?.message || '处理失败' }); } catch (_) {}
+    });
+    return;
+  }
+
   router.handleIncoming({
     chatId,
     senderType: "user",

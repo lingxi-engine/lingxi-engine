@@ -2,6 +2,9 @@
  * 系统路由 — 健康检查、版本、用量、模型路由配置、搜索
  */
 import { Router } from 'express';
+import { adminAuth } from '../middleware/admin-auth.js';
+import { jwtAuth } from '../middleware/jwt-auth.js';
+const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
 import { UsageTracker } from '../core/usage-tracker.js';
 import type { ServerContext } from '../server/context.js';
 
@@ -29,7 +32,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     res.json({ version: APP_VERSION });
   });
 
-  router.get('/search/providers', (_req, res) => {
+  router.get('/search/providers', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, providers: searchManager.listProviders() });
     } catch (err: any) {
@@ -37,7 +40,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     }
   });
 
-  router.get('/usage', (_req, res) => {
+  router.get('/usage', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, stats: UsageTracker.getStats(), recent: UsageTracker.getRecentRecords(50) });
     } catch (err: any) {
@@ -45,7 +48,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     }
   });
 
-  router.post('/usage/reset', (_req, res) => {
+  router.post('/usage/reset', adminAuth, (_req, res) => {
     try {
       UsageTracker.reset();
       res.json({ ok: true });
@@ -55,7 +58,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
   });
 
   // ── 模型路由配置 ──
-  router.get('/model-route', (_req, res) => {
+  router.get('/model-route', requireAuth, (_req, res) => {
     res.json({
       ok: true,
       toolModel: process.env.TOOL_MODEL || '',
@@ -65,7 +68,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     });
   });
 
-  router.put('/model-route', (req, res) => {
+  router.put('/model-route', adminAuth, (req, res) => {
     try {
       const { toolModel, replyModel, enabled } = req.body;
       if (toolModel !== undefined) process.env.TOOL_MODEL = toolModel;

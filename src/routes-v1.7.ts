@@ -83,13 +83,5 @@ export function registerV17Routes(app: Express, _deps: any) {
     res.json({ok:true, cards: o?.list(req.query.chatId as string)||[]});
   });
 
-  app.get('/api/logs', (_req, res) => {
-    try {
-      const today = logger.getTodayLog();
-      const lines = today.split('\n').filter(Boolean);
-      res.json({ok:true, lines:lines.slice(-200), total:lines.length});
-    } catch(e: any) { res.json({ok:false,error:e.message}); }
-  });
-
-  console.log('[v1.7] 路由已注册: /api/dream, /api/entities, /api/outcomes, /api/logs');
+  console.log('[v1.7] 路由已注册: /api/dream, /api/entities, /api/outcomes');
 }

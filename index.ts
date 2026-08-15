@@ -38,6 +38,7 @@ import { BrowserManager } from './src/tools/browser.js';
 import { PluginManager } from './src/plugins/plugin-manager.js';
 import { CronScheduler, createCronJob, type JobPayload } from './src/core/cron-scheduler.js';
 import { logger } from './src/core/logger.js';
+import { errorHandler, notFoundHandler } from './src/http/error.js';
 import { registerV17Routes } from './src/routes-v1.7.js';
 import { SessionManager } from './src/core/session-manager.js';
 import { SubAgentManager } from './src/core/subagent-manager.js';
@@ -163,6 +164,8 @@ async function main() {
   }
   logger.attachToConsole();        // 所有 console 输出同步写入日志文件
   logger.rotate();                 // 清理7天前的旧日志
+  // P1-3: 每小时执行一次日志轮转，避免长期运行时旧日志堆积
+  setInterval(() => { try { logger.rotate(); } catch {} }, 3600_000);
   logger.info('Boot', `Node ${process.version}, PID ${process.pid}`);
 
   // ═══ 单机多实例：命令行参数 ═══
@@ -1307,7 +1310,7 @@ setSearchManager(searchManagerInstance);
     res.json({ version: APP_VERSION });
   });
 
-  app.get('/api/search/providers', (_req, res) => {
+  app.get('/api/search/providers', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, providers: searchManagerInstance.listProviders() });
     } catch (err: any) {
@@ -1315,7 +1318,7 @@ setSearchManager(searchManagerInstance);
     }
   });
 
-  app.get('/api/usage', (_req, res) => {
+  app.get('/api/usage', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, stats: UsageTracker.getStats(), recent: UsageTracker.getRecentRecords(50) });
     } catch (err: any) {
@@ -1323,7 +1326,7 @@ setSearchManager(searchManagerInstance);
     }
   });
 
-  app.post('/api/usage/reset', requireAuth, (_req, res) => {
+  app.post('/api/usage/reset', adminAuth, (_req, res) => {
     try {
       UsageTracker.reset();
       res.json({ ok: true });
@@ -1333,7 +1336,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 模型路由配置 ──
-  app.get('/api/model-route', (_req, res) => {
+  app.get('/api/model-route', requireAuth, (_req, res) => {
     res.json({
       ok: true,
       toolModel: process.env.TOOL_MODEL || '',
@@ -1343,7 +1346,7 @@ setSearchManager(searchManagerInstance);
     });
   });
 
-  app.put('/api/model-route', requireAuth, (req, res) => {
+  app.put('/api/model-route', adminAuth, (req, res) => {
     try {
       const { toolModel, replyModel, enabled } = req.body;
       if (toolModel !== undefined) process.env.TOOL_MODEL = toolModel;
@@ -2634,7 +2637,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P7: 开发者模式 API ──
-  app.get('/api/dev/status', (_req, res) => {
+  app.get('/api/dev/status', adminAuth, (_req, res) => {
     try { res.json({ ok: true, ...debugPanel.getStats() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2647,7 +2650,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/dev/logs', (req, res) => {
+  app.get('/api/dev/logs', adminAuth, (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 100;
       const type = req.query.type as string;
@@ -2676,13 +2679,13 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P3: 语音 API ──
-  app.get('/api/voice/status', (_req, res) => {
+  app.get('/api/voice/status', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, tts: ttsManager.getStatus(), stt: sttManager.getStatus() });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/voice/tts', async (req, res) => {
+  app.post('/api/voice/tts', requireAuth, async (req, res) => {
     try {
       const { text } = req.body;
       if (!text) return res.status(400).json({ error: 'text 必填' });
@@ -2692,7 +2695,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/voice/stt', async (req, res) => {
+  app.post('/api/voice/stt', requireAuth, async (req, res) => {
     try {
       const { audio, mimeType } = req.body;
       if (!audio) return res.status(400).json({ error: 'audio 必填' });
@@ -3822,6 +3825,20 @@ setSearchManager(searchManagerInstance);
     }
     throw err;
   });
+
+  // P1-6: 请求 ID 中间件 — 为每个请求分配唯一 ID，便于链路追踪
+  app.use((req: any, _res: any, next: any) => {
+    req.requestId = 'req_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+    next();
+  });
+
+  // P1-4: 挂载 404 fallback + 全局错误 handler
+  app.use(notFoundHandler);
+  app.use(errorHandler({
+    logger: (err: unknown, ctx: any) => {
+      logger.error('Express', 'Unhandled error: ' + ((err as Error)?.message || String(err)) + ' | ctx=' + JSON.stringify(ctx));
+    },
+  }));
 
   server.listen(port, '0.0.0.0', () => {
     console.log('');

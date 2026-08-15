@@ -1,13 +1,14 @@
 {
   "name": "code-security-audit-and-fix",
-  "displayName": "代码安全审计与修复",
-  "description": "扫描项目核心代码文件，生成安全审计报告，并根据报告修复发现的漏洞。",
+  "displayName": "代码库安全审计与修复",
+  "description": "对代码库进行深度安全审计，拆解任务并显示进度，修复发现的漏洞并验证。",
   "tools": [
     "read_file",
-    "edit_file",
+    "list_dir",
+    "shell_exec",
     "write_file"
   ],
-  "prompt": "当用户要求对项目进行代码审查或安全审计时，按以下步骤执行：\n1. 使用 read_file 读取相关的核心代码文件。\n2. 分析代码中的安全漏洞（如P0、P1级别）和功能缺陷，生成详细的审计报告（包含文件、漏洞描述、修复方案）。\n3. 当用户确认修复时，使用 edit_file 或 write_file 按照报告中的方案逐一修复代码。\n4. 修复完成后，进行验证并输出修复总结表格。",
+  "prompt": "遇到代码库安全审计与修复任务时，首先使用 list_dir 和 read_file 扫描核心文件，进行深度安全审计并输出报告。当用户要求修复时，必须将修复任务拆解为多个子任务，并在每次操作前显示当前任务进度（如 [1/10] 修复 xxx），避免长任务无响应。使用 write_file 修改代码，使用 shell_exec 执行测试或验证命令。确保长任务有明确的步骤分解和进度反馈。",
   "autoCreated": true,
-  "createdAt": 1786824373165
+  "createdAt": 1786833625434
 }

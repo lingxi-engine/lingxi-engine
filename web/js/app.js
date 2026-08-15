@@ -651,6 +651,9 @@ function handleMessage(msg) {
         }
       }
       break;
+    case 'task.progress':
+      handleTaskProgress(msg);
+      break;
     case 'agent.streaming.end':
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
       if (streamingMsgs[msg.msgId]) {
@@ -3833,6 +3836,112 @@ function handleLanMessage(msg) {
 }
 
 // ── 右侧栏：任务监控（Cron 定时任务）──
+// ── 实时任务拆解进度渲染 ──
+var _taskDecompState = {}; // msgId -> { steps: [], status, total }
+function handleTaskProgress(msg) {
+  if (!msg.msgId) return;
+  var panel = document.getElementById('taskDecompPanel');
+  if (!panel) return;
+  
+  var state = _taskDecompState[msg.msgId] || { steps: [], status: 'planning', total: 0 };
+  
+  switch (msg.phase) {
+    case 'planning':
+      panel.style.display = 'block';
+      state.status = 'planning';
+      state.total = 0;
+      document.getElementById('taskDecompTitle').textContent = '\u{1F4CB} ' + (msg.message || '正在分析任务...');
+      document.getElementById('taskDecompSteps').innerHTML = '<div style="color:var(--text3)">\u23F3 ' + esc(msg.message || '正在分析任务...') + '</div>';
+      document.getElementById('taskDecompSummary').textContent = '';
+      break;
+    
+    case 'plan_ready':
+      panel.style.display = 'block';
+      state.status = 'executing';
+      state.total = msg.total || 0;
+      state.steps = (msg.steps || []).map(function(s) {
+        return { id: s.id, name: s.name, status: 'pending' };
+      });
+      document.getElementById('taskDecompTitle').textContent = '\u{1F4CB} ' + esc(msg.message || ('任务已拆分为 ' + state.total + ' 个步骤'));
+      renderTaskDecompSteps(msg.msgId);
+      break;
+    
+    case 'step_start':
+      state.status = 'executing';
+      for (var i = 0; i < state.steps.length; i++) {
+        if (state.steps[i].id === msg.stepId) {
+          state.steps[i].status = 'running';
+          break;
+        }
+      }
+      renderTaskDecompSteps(msg.msgId);
+      break;
+    
+    case 'step_done':
+      for (var i = 0; i < state.steps.length; i++) {
+        if (state.steps[i].id === msg.stepId) {
+          state.steps[i].status = (msg.success === false) ? 'failed' : 'done';
+          break;
+        }
+      }
+      renderTaskDecompSteps(msg.msgId);
+      break;
+    
+    case 'completed':
+      state.status = 'completed';
+      var finalStatus = (msg.success === false) ? 'failed' : 'done';
+      for (var i = 0; i < state.steps.length; i++) {
+        if (state.steps[i].status === 'running') state.steps[i].status = finalStatus;
+      }
+      renderTaskDecompSteps(msg.msgId);
+      var dur = msg.duration ? (msg.duration / 1000).toFixed(1) + 's' : '';
+      document.getElementById('taskDecompSummary').textContent = 
+        (msg.success ? '\u2705 全部完成' : '\u26A0\uFE0F 部分失败') + (dur ? ' · 耗时 ' + dur : '');
+      (function(mid) {
+        setTimeout(function() {
+          if (_taskDecompState[mid] && _taskDecompState[mid].status === 'completed') {
+            var p = document.getElementById('taskDecompPanel');
+            if (p) p.style.display = 'none';
+            delete _taskDecompState[mid];
+          }
+        }, 10000);
+      })(msg.msgId);
+      break;
+    
+    case 'failed':
+      state.status = 'failed';
+      renderTaskDecompSteps(msg.msgId);
+      document.getElementById('taskDecompSummary').textContent = '\u274C ' + esc(msg.message || '任务失败');
+      break;
+  }
+  
+  _taskDecompState[msg.msgId] = state;
+}
+
+function renderTaskDecompSteps(msgId) {
+  var state = _taskDecompState[msgId];
+  if (!state) return;
+  var el = document.getElementById('taskDecompSteps');
+  if (!el) return;
+  
+  var icons = { pending: '\u23F3', running: '\u{1F504}', done: '\u2705', failed: '\u274C' };
+  var colors = { pending: 'var(--text3)', running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)' };
+  
+  if (state.status === 'planning' || state.steps.length === 0) {
+    el.innerHTML = '<div style="color:var(--text3)">\u23F3 正在分析任务...</div>';
+    return;
+  }
+  
+  var html = state.steps.map(function(s, i) {
+    var icon = icons[s.status] || '\u23F3';
+    var color = colors[s.status] || 'var(--text3)';
+    var anim = s.status === 'running' ? ' style="animation:blink 1s infinite"' : '';
+    return '<div' + anim + ' style="color:' + color + '">' + icon + ' 步骤 ' + (i + 1) + '/' + state.total + ': ' + esc(s.name) + '</div>';
+  }).join('');
+  
+  el.innerHTML = html;
+}
+
 async function loadTaskMonitor() {
   const el = document.getElementById('taskMonitorList');
   if (!el) return;

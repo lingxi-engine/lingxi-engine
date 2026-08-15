@@ -22,6 +22,24 @@ export class DebugPanel {
   private enabled = false;
   private wsLogEnabled = false;
 
+  // P1-5: 敏感字段脱敏
+  private sensitiveFields = ['password', 'passwd', 'token', 'secret', 'apiKey', 'api_key', 'adminToken', 'admin_token', 'credential', 'verifyCode', 'resetToken'];
+
+  private redactSensitive(obj: any): any {
+    if (!obj || typeof obj !== 'object') return obj;
+    try {
+      const cloned = Array.isArray(obj) ? [...obj] : { ...obj };
+      for (const key in cloned) {
+        if (this.sensitiveFields.some(f => key.toLowerCase().includes(f.toLowerCase()))) {
+          cloned[key] = '***';
+        } else if (typeof cloned[key] === 'object' && cloned[key] !== null) {
+          cloned[key] = this.redactSensitive(cloned[key]);
+        }
+      }
+      return cloned;
+    } catch { return obj; }
+  }
+
   /**
    * 启用/禁用调试模式
    */
@@ -54,7 +72,7 @@ export class DebugPanel {
       type: 'request',
       method,
       url,
-      request: body,
+      request: this.redactSensitive(body),
     });
   }
 
@@ -92,8 +110,8 @@ export class DebugPanel {
     this.add({
       type: 'tool',
       message: `${tool} (${duration}ms)`,
-      request: this.truncate(args),
-      response: this.truncate(result),
+      request: this.truncate(this.redactSensitive(args)),
+      response: this.truncate(this.redactSensitive(result)),
     });
   }
 
