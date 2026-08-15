@@ -122,13 +122,18 @@ export class MemorySearch {
   }
 
   addDocument(doc: SearchableDocument) {
-    this.documents.push(doc);
+    // P1-2: 按 id 去重 —— 同 id 覆盖而非追加，避免反思/重建重复产生重复文档
+    const idx = this.documents.findIndex(d => d.id === doc.id);
+    if (idx >= 0) {
+      this.documents[idx] = doc;
+    } else {
+      this.documents.push(doc);
+    }
     this.built = false;
   }
 
   addDocuments(docs: SearchableDocument[]) {
-    this.documents.push(...docs);
-    this.built = false;
+    for (const doc of docs) this.addDocument(doc);
   }
 
   /**

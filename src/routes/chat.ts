@@ -151,13 +151,16 @@ export function createChatRoutes(ctx: ServerContext): Router {
     }
   });
 
-  // ── 记忆搜索 ──
+  // ── 记忆搜索（P1-1: 强制 agentId/chatId 过滤，路由挂载处已有 requireAuth）──
   router.get('/memory/search', (req, res) => {
     try {
       const q = (req.query.q as string) || '';
       const topK = parseInt(req.query.topK as string) || 5;
+      const agentId = (req.query.agentId as string) || '';
+      const chatId = (req.query.chatId as string) || '';
       if (!q) return res.status(400).json({ error: 'q 参数必填' });
-      const hits = msgRouter.searchMemory(q, topK);
+      if (!agentId && !chatId) return res.status(400).json({ error: 'agentId 或 chatId 至少提供一个' });
+      const hits = msgRouter.searchMemory(q, topK, { agentId: agentId || undefined, chatId: chatId || undefined });
       res.json({ ok: true, query: q, hits });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

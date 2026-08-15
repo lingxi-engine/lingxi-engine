@@ -86,8 +86,8 @@ ${rawSummary}
         };
       }
 
-      // JSON 解析失败，降级：直接截取前 500 字作为 summary
-      const truncated = rawSummary.length > 500 ? rawSummary.slice(-500) : rawSummary;
+      // JSON 解析失败，降级：直接截取前 500 字作为 summary（保留最早的核心记忆）
+      const truncated = rawSummary.length > 500 ? rawSummary.slice(0, 500) : rawSummary;
       return {
         summary: truncated,
         facts: existingFacts,
@@ -96,8 +96,8 @@ ${rawSummary}
       };
     } catch (err: any) {
       console.error('[MemoryReflector] 反思失败:', err.message);
-      // 降级：保留最近 500 字
-      const truncated = rawSummary.length > 500 ? rawSummary.slice(-500) : rawSummary;
+      // 降级：保留开头 500 字（最早的核心记忆，避免丢掉长期偏好）
+      const truncated = rawSummary.length > 500 ? rawSummary.slice(0, 500) : rawSummary;
       return {
         summary: truncated,
         facts: existingFacts,

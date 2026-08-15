@@ -66,6 +66,32 @@ export async function initDB(dbPath: string) {
 
 export function getDB() { return _db; }
 
+/** 获取数据目录（db 文件所在目录），供外部模块持久化附属文件使用 */
+export function getDataDir(): string {
+  if (!_dbPath) return process.cwd();
+  return _dbPath.replace(/[\\/][^\\/]+$/, '') || process.cwd();
+}
+
+/**
+ * P0-1: 记忆写入侧过滤 —— 清除指令性/注入式语句，防止对话内容通过记忆持久化形成 Prompt 注入
+ */
+export function sanitizeMemoryInput(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/忽略(以上|之前|所有)(的)?(指令|提示|规则|内容|设定)/g, '[已过滤]')
+    .replace(/你?(必须|务必)(执行|遵守|听从)/g, '[已过滤]')
+    .replace(/最高优先级/g, '[已过滤]')
+    .replace(/(覆盖|修改|输出|泄露)(你的)?系统提示(词)?/g, '[已过滤]')
+    .replace(/(假装|扮演|现在你是)(系统|管理员|开发者)/g, '[已过滤]');
+}
+
+/** P1-3: 首尾兼顾截断 —— 保留开头核心摘要 + 末尾最近增量，避免丢失最早记忆 */
+export function trimMemoryText(text: string, maxLen: number = 2000): string {
+  if (text.length <= maxLen) return text;
+  const headLen = Math.floor(maxLen * 0.25);
+  return text.slice(0, headLen) + '\n…\n' + text.slice(-(maxLen - headLen));
+}
+
 /** P1-4: 标记数据库有变更，下次自动保存时写入磁盘 */
 export function markDirty() { _dirty = true; }
 
@@ -632,9 +658,10 @@ export function appendMemorySummary(agentId: string, newContent: string) {
   const agent = getAgent(agentId);
   if (!agent) return;
   const existing = agent.memory_summary || '';
-  const updated = existing ? existing + '\n' + newContent : newContent;
-  // Keep last 2000 chars to avoid unbounded growth
-  const trimmed = updated.length > 2000 ? updated.slice(-2000) : updated;
+  const safeContent = sanitizeMemoryInput(newContent); // P0-1: 写入侧过滤指令性内容
+  const updated = existing ? existing + '\n' + safeContent : safeContent;
+  // P1-3: 首尾兼顾截断（原 slice(-2000) 会丢失最早的核心记忆）
+  const trimmed = trimMemoryText(updated, 2000);
   _db.run("UPDATE agents SET memory_summary = ? WHERE id = ?", [trimmed, agentId]);
 }
 
@@ -1131,6 +1158,12 @@ export class DB {
     } else {
       _db.run('INSERT INTO entities (id, chat_id, agent_id, type, value, context, confidence, first_seen, last_seen, count) VALUES (?,?,?,?,?,?,?,?,?,1)',
         ['ent-' + now + '-' + Math.random().toString(36).slice(2, 8), chatId, agentId, type, value, context, confidence, now, now]);
+      // P2-5: 实体条数上限 —— 每个 chat+agent 最多保留 100 条，超限删除最久未出现的
+      _db.run(
+        `DELETE FROM entities WHERE chat_id = ? AND agent_id = ? AND id NOT IN
+         (SELECT id FROM entities WHERE chat_id = ? AND agent_id = ? ORDER BY last_seen DESC LIMIT 100)`,
+        [chatId, agentId, chatId, agentId]
+      );
     }
   }
   clearEntities(chatId: string, agentId: string): void {

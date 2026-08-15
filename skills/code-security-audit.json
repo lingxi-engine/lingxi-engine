@@ -1,0 +1,14 @@
+{
+  "name": "code-security-audit",
+  "displayName": "代码安全审计与修复",
+  "description": "对代码库进行系统性安全审计，识别漏洞并执行修复",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到代码安全审计或漏洞修复任务时：1) 先用 list_dir 或 shell_exec 扫描项目结构，识别核心文件；2) 用 read_file 读取关键源文件（路由、存储、认证、API端点等）；3) 分析常见漏洞类型：注入、越权、敏感数据泄露、输入校验缺失等；4) 输出结构化审计报告，标注严重级别（P0/P1等）和具体位置；5) 根据用户指示用 write_file 应用修复；6) 修复后给出验证总结。注意诚实报告工具可用性，不虚构操作。",
+  "autoCreated": true,
+  "createdAt": 1786818069163
+}

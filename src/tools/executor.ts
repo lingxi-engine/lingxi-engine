@@ -144,6 +144,20 @@ interface ParsedToolCall {
 }
 
 /**
+ * 剥离 DSML 工具调用标记块，保留正常文本
+ * 兼容两种变体：单｜ <｜DSML｜｜...> 和 双｜ <｜｜DSML｜｜...>（DeepSeek 系模型偶发输出）
+ */
+export function stripDsmlMarkup(text: string): string {
+  if (!text || !text.includes("DSML")) return text;
+  return text
+    .replace(/<｜{1,2}DSML｜{1,2}tool_calls>[\s\S]*?<\/｜{1,2}DSML｜{1,2}tool_calls>/g, "")
+    .replace(/<｜{1,2}DSML｜{1,2}invoke[\s\S]*?<\/｜{1,2}DSML｜{1,2}invoke>/g, "")
+    .replace(/<\/?｜{1,2}DSML｜{1,2}[^>]*>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
  * 从 AI 的 content 文本里提取工具调用
  * 支持格式：[{"name":"x","arguments":{...}}]
  */
@@ -195,15 +209,16 @@ function extractToolCallsFromText(content: string): ParsedToolCall[] {
     } catch { /* ignore */ }
   }
 
-  // DSML 标记格式（DeepSeek V4 偶尔输出）：<｜｜DSML｜｜tool_calls> <｜｜DSML｜｜invoke name="xxx"> ...
-  const dsmlRegex = /<｜｜DSML｜｜invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/｜｜DSML｜｜invoke>/g;
+    // DSML 标记格式（DeepSeek V4 偶尔输出）：<｜｜DSML｜｜tool_calls> <｜｜DSML｜｜invoke name="xxx"> ...
+  // 兼容单｜/双｜两种变体
+  const dsmlRegex = /<｜{1,2}DSML｜{1,2}invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/｜{1,2}DSML｜{1,2}invoke>/g;
   let dsmlMatch: RegExpExecArray | null;
   while ((dsmlMatch = dsmlRegex.exec(trimmed)) !== null) {
     const toolName = dsmlMatch[1];
     const inner = dsmlMatch[2];
     const args: Record<string, unknown> = {};
-    // 提取 <｜｜DSML｜｜parameter name="xxx" string="true">value</...>
-    const paramRegex = /<｜｜DSML｜｜parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/｜｜DSML｜｜parameter>/g;
+        // 提取 <｜｜DSML｜｜parameter name="xxx" string="true">value</...>（兼容单｜/双｜变体）
+    const paramRegex = /<｜{1,2}DSML｜{1,2}parameter\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/｜{1,2}DSML｜{1,2}parameter>/g;
     let pMatch: RegExpExecArray | null;
     while ((pMatch = paramRegex.exec(inner)) !== null) {
       args[pMatch[1]] = pMatch[2].trim();
@@ -396,13 +411,18 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
               arguments: JSON.stringify(tc.arguments),
             },
           }));
+        // ⭐ 剥离 DSML 标记后再写入历史，避免模型下一轮看到自己的标记持续模仿
+        if (assistantMsg.content.includes("DSML")) {
+          assistantEntry.content = stripDsmlMarkup(assistantMsg.content);
+        }
       }
     }
 
     // 没有工具调用，AI 给出了最终回复
     if (toolCalls.length === 0) {
       result.messages.push(assistantEntry);
-      result.finalContent = assistantMsg.content || "";
+      // ⭐ 最终回复若混入 DSML 标记则剥离（剥离后为空会走下方兜底重问）
+      result.finalContent = stripDsmlMarkup(assistantMsg.content || "");
       break;
     }
 
@@ -523,7 +543,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         temperature,
         max_tokens: maxTokens,
       }) as OpenAIChatResponse;
-      result.finalContent = finalResp.choices[0]?.message?.content || "[AI 生成中，未产生最终回复]";
+      result.finalContent = stripDsmlMarkup(finalResp.choices[0]?.message?.content || "[AI 生成中，未产生最终回复]");
       if (finalResp.usage) {
         UsageTracker.record({
           model,
@@ -534,7 +554,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       }
     } catch {
       const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant");
-      result.finalContent = lastAssistant?.content || "[AI 生成中，未产生最终回复]";
+      result.finalContent = stripDsmlMarkup(lastAssistant?.content || "[AI 生成中，未产生最终回复]");
     }
   }
 

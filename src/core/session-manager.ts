@@ -7,7 +7,7 @@
  * v2.0.6: 增加 getAllForRestore 方法，完整恢复数据
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, renameSync, copyFileSync } from 'fs';
 import { join, resolve } from 'path';
 
 export interface SessionInfo {
@@ -72,24 +72,38 @@ export class SessionManager {
     }
   }
 
-  /** 保存到磁盘 */
+  /** 保存到磁盘（P2-3: 原子写入 —— 先写临时文件再 rename 覆盖，覆盖前备份 .bak） */
   save(): void {
     try {
-      writeFileSync(this.storePath, JSON.stringify(this.store, null, 2), 'utf8');
+      const tmpPath = this.storePath + '.tmp';
+      const bakPath = this.storePath + '.bak';
+      writeFileSync(tmpPath, JSON.stringify(this.store, null, 2), 'utf8');
+      if (existsSync(this.storePath)) {
+        try { copyFileSync(this.storePath, bakPath); } catch { /* 备份失败不影响主保存 */ }
+      }
+      renameSync(tmpPath, this.storePath);
     } catch (err: any) {
       console.error('[SessionManager] 保存失败:', err.message);
     }
   }
 
-  /** 从磁盘加载 */
+  /** 从磁盘加载（P2-3: 主文件损坏时回退 .bak 备份） */
   private load(): SessionStore {
-    try {
-      if (existsSync(this.storePath)) {
+    const bakPath = this.storePath + '.bak';
+    if (existsSync(this.storePath)) {
+      try {
         const raw = readFileSync(this.storePath, 'utf8');
         return JSON.parse(raw);
+      } catch (err: any) {
+        console.error('[SessionManager] 主文件加载失败，尝试 .bak 备份:', err.message);
       }
-    } catch (err: any) {
-      console.error('[SessionManager] 加载失败:', err.message);
+    }
+    if (existsSync(bakPath)) {
+      try {
+        return JSON.parse(readFileSync(bakPath, 'utf8'));
+      } catch (err: any) {
+        console.error('[SessionManager] 备份文件也加载失败:', err.message);
+      }
     }
     return { sessions: [], activeSessionId: null, lastUserId: null };
   }

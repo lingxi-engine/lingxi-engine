@@ -1590,9 +1590,11 @@ async function loadMemoryContent() {
 async function searchMemory() {
   const q = document.getElementById('memorySearchInput').value.trim();
   if (!q) { toast(t('search.enterQuery')); return; }
+  const agentId = document.getElementById('memoryMeta').textContent.trim();
+  if (!agentId) { toast(t('chat.selectChat')); return; }
   try {
-    const d = await api('/api/memory/search?q=' + encodeURIComponent(q));
-    const results = d.results || [];
+    const d = await api('/api/memory/search?q=' + encodeURIComponent(q) + '&agentId=' + encodeURIComponent(agentId));
+    const results = d.hits || d.results || [];
     document.getElementById('memorySearchResults').innerHTML = results.length ?
       results.map(r => '<div style="padding:6px;border-bottom:1px solid #222;font-size:12px;color:#ccc">' + esc(r.text||r.content||JSON.stringify(r)).slice(0,100) + '<span style="color:#666;font-size:10px"> ('+((r.score||0)*100).toFixed(0)+'%)</span></div>').join('') :
       '<div style="color:#555;font-size:11px">'+t('search.noMatch')+'</div>';

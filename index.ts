@@ -1427,13 +1427,16 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 记忆搜索 API ──
-  app.get('/api/memory/search', (req, res) => {
+  // ── 记忆搜索 API（P1-1: 需鉴权 + 强制 agentId/chatId 过滤，防止跨 agent 越权访问）──
+  app.get('/api/memory/search', requireAuth, (req, res) => {
     try {
       const q = (req.query.q as string) || '';
       const topK = parseInt(req.query.topK as string) || 5;
+      const agentId = (req.query.agentId as string) || '';
+      const chatId = (req.query.chatId as string) || '';
       if (!q) return res.status(400).json({ error: 'q 参数必填' });
-      const hits = router.searchMemory(q, topK);
+      if (!agentId && !chatId) return res.status(400).json({ error: 'agentId 或 chatId 至少提供一个' });
+      const hits = router.searchMemory(q, topK, { agentId: agentId || undefined, chatId: chatId || undefined });
       res.json({ ok: true, query: q, hits });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
