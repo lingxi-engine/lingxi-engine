@@ -368,6 +368,18 @@ export class MessageRouter {
       finalContent = response.choices[0].message.content || '';
     }
 
+    // ⭐ A方案兜底：DSML 标记泄漏检测 —— DeepSeek 系模型偶尔在无工具场景输出 DSML 工具调用标记，
+    //    发现则剥离标记并重问一次，前端 message.new 会用干净回复替换打字气泡
+    if (finalContent && finalContent.includes('｜DSML｜')) {
+      console.warn(`[Router] 检测到 DSML 标记泄漏 (agent=${agentId})，自动重问`);
+      const cleaned = this.stripDsml(finalContent);
+      const retried = await this.retryWithoutToolMarkup(messagesFinal, replyClient, cleaned, signal).catch(err => {
+        console.error('[Router] DSML 重问失败:', err?.message);
+        return '';
+      });
+      finalContent = retried || cleaned;
+    }
+
     // 保存回复消息
     const replyId = 'msg-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8);
     this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
@@ -427,11 +439,54 @@ export class MessageRouter {
     return finalContent;
   }
 
+  /**
+   * 剥离 DSML 工具调用标记块，保留正常文本内容
+   * 格式示例：<｜DSML｜｜tool_calls> ... <｜DSML｜｜invoke name="...">...</｜DSML｜｜invoke> ... </｜DSML｜｜tool_calls>
+   */
+  private stripDsml(text: string): string {
+    return text
+      .replace(/<｜DSML｜｜tool_calls>[\s\S]*?<\/｜DSML｜｜tool_calls>/g, '')
+      .replace(/<｜DSML｜｜invoke[\s\S]*?<\/｜DSML｜｜invoke>/g, '')
+      .replace(/<｜DSML｜｜[^>]*>/g, '')
+      .trim();
+  }
+
+  /**
+   * DSML 泄漏兜底：不带 tools、附加明确禁令重问一次
+   * @param cleaned 已剥离标记的原文（重问失败时作为兜底返回）
+   */
+  private async retryWithoutToolMarkup(
+    messages: ChatMessage[],
+    replyClient: { client: any; resolvedModel: string },
+    cleaned: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const retryMessages = [
+      ...messages,
+      { role: 'assistant', content: cleaned || '（无有效内容）' },
+      { role: 'user', content: '你刚才的回复里包含了工具调用标记（DSML 格式），这是无效输出。当前会话没有可用工具，请不要输出任何工具调用标记（如 <｜DSML｜｜...>、<tool_call>、<function_call> 等），直接用自然语言文字重新回答上面的问题。' },
+    ];
+    const response = await replyClient.client.chat.completions.create({
+      model: replyClient.resolvedModel,
+      messages: retryMessages as any,
+      temperature: 0.7,
+      max_tokens: 16384,
+    }, signal ? { signal } : undefined);
+    if (response.usage) UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: response.usage.prompt_tokens, completionTokens: response.usage.completion_tokens, type: 'reply' });
+    let result = response.choices[0].message.content || '';
+    // 重问结果仍含标记时直接剥离，避免再次泄漏
+    if (result.includes('｜DSML｜')) result = this.stripDsml(result);
+    return result;
+  }
+
   private buildSystemPrompt(agent: Agent, taskGoal?: string, chatId?: string): string {
     // 获取当前模型信息
     const toolModel = process.env.TOOL_MODEL || process.env.DEFAULT_MODEL || '默认';
     const replyModel = process.env.REPLY_MODEL || process.env.DEFAULT_MODEL || '默认';
     const allModels = this.aiHub.listModels().map((m: any) => m.id).join(', ');
+    // ⭐ B方案：提前查询 Agent 工具列表，用于决定提示词模式（纯对话 / 工具模式）
+    const agentTools = this.toolRegistry ? this.toolRegistry.listToolsForAgent(agent.id) : [];
+    const hasTools = agentTools.length > 0;
     
     const lines: string[] = [
       '你是「灵犀引擎」上的 AI 助手，名叫 ' + agent.displayName + '。',
@@ -445,16 +500,28 @@ export class MessageRouter {
       '',
       '## 核心原则',
       '- 先思考再回答。复杂问题分步推理，不要急着给结论。',
-      '- 有工具就主动用。需要查信息就搜索，需要算就算，需要读文件就读。不要自己瞎猜。',
+      hasTools
+        ? '- 有工具就主动用。需要查信息就搜索，需要算就算，需要读文件就读。不要自己瞎猜。'
+        : '- 当前未绑定任何工具，无法执行搜索/读写文件等操作，请直接基于已有知识用文字回答。',
       '- 回答要有信息密度。不要说废话、不要重复用户的问题、不要"好的我来帮你"这种废话。直接给答案。',
       '- 诚实。不确定就说不确定，做不了就说做不了。不要编造。',
       '- 用中文回答，除非用户用其他语言提问。',
       '',
-      '## 工具使用规则',
-      '- 当用户要求查询时间、计算、搜索网络、读写文件、列目录、执行命令时，必须调用对应工具，不要自己写代码模拟。',
-      '- 工具调用失败时，分析失败原因，换一种方式重试，或者如实告诉用户失败原因。',
-      '- 文件操作可以访问任意路径（C盘、D盘等）。',
-      '- shell_exec 只执行无害查询类命令，不要执行破坏性操作。',
+      ...(hasTools ? [
+        '## 工具使用规则',
+        '- 当用户要求查询时间、计算、搜索网络、读写文件、列目录、执行命令时，必须调用对应工具，不要自己写代码模拟。',
+        '- 工具调用失败时，分析失败原因，换一种方式重试，或者如实告诉用户失败原因。',
+        '- 文件操作可以访问任意路径（C盘、D盘等）。',
+        '- shell_exec 只执行无害查询类命令，不要执行破坏性操作。',
+      ] : [
+        '## 输出规范（重要）',
+        '- 当前会话没有可用工具，严禁输出任何工具调用标记，包括 <｜DSML｜｜tool_calls>、<｜DSML｜｜invoke>、<｜DSML｜｜parameter>、<tool_call>、<function_call> 等任何格式。',
+        '- 需要搜索、读写文件等能力时，直接用文字告诉用户无法执行及原因，不要假装调用工具。',
+        '- 始终用自然语言文字直接回答用户。',
+      ]),
+      '',
+      '## 通用输出约束',
+      '- 工具调用必须通过系统内置接口发起；回复正文中严禁出现任何工具调用标记（如 <｜DSML｜｜...> 等格式）。',
       '',
     ];
 
@@ -464,7 +531,9 @@ export class MessageRouter {
         '你正在执行一个自主任务：「' + taskGoal + '」',
         '',
         '- 把目标拆成小步骤，一步一步做',
-        '- 主动调用工具：web_search 搜索、scrape_url 抓网页、code_execute 写代码、write_file 存结果、read_file 读文件',
+        ...(hasTools
+          ? ['- 主动调用工具：web_search 搜索、scrape_url 抓网页、code_execute 写代码、write_file 存结果、read_file 读文件']
+          : ['- 当前没有可用工具，只能用文字规划与说明，严禁输出工具调用标记']),
         '- 每完成一步，简短汇报进展',
         '- 遇到困难换种方式再试，不要停',
         '- 强制执行：不要停下来问用户问题，不要等待用户确认，自主判断并继续执行',
@@ -479,24 +548,23 @@ export class MessageRouter {
         '- 简洁有力，像一个很聪明的真人在聊天。',
         '- 有观点、有判断，不要什么都"你说得对"。',
         '- 可以主动开启话题或提出建议。',
-        '- 需要工具时直接调用，不用问用户"要不要我帮你查"。',
+        ...(hasTools
+          ? ['- 需要工具时直接调用，不用问用户"要不要我帮你查"。']
+          : []),
         '',
       );
     }
 
-    // 工具列表
-    if (this.toolRegistry) {
-      const tools = this.toolRegistry.listToolsForAgent(agent.id);
-      if (tools.length > 0) {
-        lines.push('## 可用工具');
-        for (const t of tools) {
+    // 工具列表（上方已查询 agentTools，直接复用）
+    if (hasTools) {
+      lines.push('## 可用工具');
+      for (const t of agentTools) {
           const params = Object.entries(t.parameters.properties || {})
             .map(([k, v]: any) => `${k}(${v.type})`)
             .join(', ');
           lines.push(`- **${t.name}**: ${t.description.slice(0, 80)} [${params}]`);
         }
         lines.push('');
-      }
     }
 
     // 记忆注入
