@@ -107,9 +107,10 @@ ${oldText.slice(0, 8000)}
     const summary = response.choices[0].message.content || '';
 
     // 构建压缩后的消息列表
+    // P1-4 修复：摘要用 assistant 角色，避免多个 system 消息导致部分模型混乱
     const compactedMessages = [
       ...systemMsgs,
-      { role: 'system', content: `[对话摘要] ${summary}` },
+      { role: 'assistant', content: `[对话摘要] ${summary}` },
       ...recentMsgs,
     ];
 
@@ -127,8 +128,9 @@ ${oldText.slice(0, 8000)}
       .map((m: ChatMessage) => (m.content || '').split(/[\n。！？]/)[0].slice(0, 80))
       .filter((s: string) => s.length > 5)
       .slice(0, 15);
+    // P1-4 修复：降级摘要也用 assistant 角色
     const summaryMsg: ChatMessage = {
-      role: 'system',
+      role: 'assistant',
       content: `[历史对话摘要（压缩失败，保留关键句）]\n${oldSummaryLines.join('\n')}`,
     };
     const truncated = [...systemMsgs, summaryMsg, ...recentMsgs];

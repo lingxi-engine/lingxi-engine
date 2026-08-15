@@ -1,0 +1,14 @@
+{
+  "name": "complex-code-fix-task-splitting",
+  "displayName": "复杂代码修复任务拆分与分步执行",
+  "description": "遇到复杂代码修复或重构任务时，先拆分为多个子任务，分步执行并验证，避免一次性处理导致卡死或超时。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求修复复杂代码或进行大规模重构时，不要直接开始大段修改。首先分析代码库，将任务拆分为多个小的、可独立验证的子任务。按顺序执行每个子任务：先读取相关文件，进行修改（write_file），然后执行测试或验证（shell_exec）。每完成一个子任务，简短汇报进度，然后再进行下一个。如果遇到执行卡顿或失败，尝试换一种方法或进一步拆分任务，不要陷入死循环。",
+  "autoCreated": true,
+  "createdAt": 1786827466626
+}

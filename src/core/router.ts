@@ -254,6 +254,7 @@ export class MessageRouter {
     if (agentTools.length > 0) {
       // 有工具：走工具调用循环，最终回复支持流式
       console.log(`[Router] Agent ${agent.displayName} 有 ${agentTools.length} 个可用工具，启动工具调用循环`);
+      let result: any = null;
       try {
       // 总超时控制：2 分钟兜底，防止 AI 响应慢或工具卡住导致前端无响应
       const TOTAL_TIMEOUT = 120000;  // P1-5: 2分钟超时（原600秒过长，前端WS可能已断开）
@@ -266,7 +267,7 @@ export class MessageRouter {
         else signal.addEventListener('abort', onExternalAbort);
       }
 
-      const result = await runToolsLoop({
+      result = await runToolsLoop({
         client: toolClient.client,
         model: toolClient.resolvedModel,
         messages: messagesFinal as any,
@@ -299,7 +300,7 @@ export class MessageRouter {
             .replace(/<\/?｜{1,2}DSML｜{1,2}[^>]*>/g, '').trim() || finalContent;
         }
         if (result.toolResults.length > 0) {
-          const toolNames = result.toolResults.map(r => r.toolName).join(', ');
+          const toolNames = result.toolResults.map((r: any) => r.toolName).join(', ');
           console.log(`[Router] 工具调用完成: ${toolNames}, ${result.iterations} 轮`);
           // ── 自动技能创建：复杂任务完成后自动总结经验 ──
           if (shouldCreateSkill(result.toolResults, messagesFinal as any)) {
@@ -320,9 +321,11 @@ export class MessageRouter {
         // ⭐ 用户停止：不回退重新生成，直接抛给上层按"已停止"处理
         if (signal?.aborted) throw err;
         console.error(`[Router] 工具调用循环失败，回退普通回复:`, err.message);
+        // P0-3 修复：使用工具循环中已累积的消息（含工具结果），而非循环前的 messagesFinal
+        const fallbackMessages = (result?.messages || messagesFinal) as any;
         const response = await replyClient.client.chat.completions.create({
           model: replyClient.resolvedModel,
-          messages: messagesFinal as any,
+          messages: fallbackMessages,
           temperature: 0.7,
           max_tokens: 16384,
         });

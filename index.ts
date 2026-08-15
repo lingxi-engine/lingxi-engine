@@ -29,7 +29,7 @@ import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLa
 import { verifyLanRequest } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
 import { ToolRegistry } from './src/tools/registry.js';
-import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager } from './src/tools/builtin.js';
+import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager, setSubAgentManager } from './src/tools/builtin.js';
 import { SearchManager } from './src/tools/search-providers.js';
 import { UsageTracker } from './src/core/usage-tracker.js';
 import { MCPManager } from './src/mcp/adapter.js';
@@ -412,6 +412,9 @@ setSearchManager(searchManagerInstance);
   subAgentManager.setResultHandler((task: any) => {
     console.log(`[SubAgent] ${task.id} 完成: status=${task.status}, result=${(task.result || '').slice(0, 80)}`);
   });
+  // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
+  setSubAgentManager(subAgentManager);
+  console.log('[SubAgent] 已注入工具系统，delegate_task 可用');
 
   // ── V5 P1: 审批管理器 ──
   const approvalManager = new ApprovalManager(300000);

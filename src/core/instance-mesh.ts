@@ -79,7 +79,9 @@ async function sendHeartbeat(
         port,
         agents,
         version: meshVersion,
-        users: users || [],
+        // P2-2 修复：心跳只发送用户数量摘要，不发送完整用户列表
+        userCount: (users || []).length,
+        users: [],  // 完整用户信息在建立连接后按需交换
       }),
     });
     const data = await res.json() as any;

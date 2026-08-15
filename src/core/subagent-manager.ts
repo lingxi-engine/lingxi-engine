@@ -9,6 +9,9 @@
  * 对标 OpenClaw 的 sessions_spawn + sessions_yield
  */
 
+import { runToolsLoop } from "../tools/executor.js";
+import type { ToolRegistry } from "../tools/registry.js";
+
 export interface SubAgentTask {
   id: string;
   parentAgentId: string;
@@ -22,6 +25,9 @@ export interface SubAgentTask {
   startedAt?: number;
   completedAt?: number;
   timeoutSeconds: number;     // 超时时间
+  toolRegistry?: any;         // 工具注册中心（可选，有则子代理可调用工具）
+  agentIdForTools?: string;  // 用于工具权限查询的 Agent ID
+  onProgress?: (step: string, status: string, output?: string) => void;
 }
 
 export interface SpawnOptions {
@@ -31,6 +37,9 @@ export interface SpawnOptions {
   model?: string;             // 模型覆盖
   timeoutSeconds?: number;    // 超时（默认 120 秒）
   taskName?: string;          // 稳定标识（可选）
+  toolRegistry?: any;         // 工具注册中心（传入则子代理可调用工具）
+  agentIdForTools?: string;  // 用于工具权限查询的 Agent ID
+  onProgress?: (step: string, status: string, output?: string) => void;
 }
 
 /**
@@ -69,6 +78,9 @@ export class SubAgentManager {
       model: opts.model || this.aiModel,
       createdAt: Date.now(),
       timeoutSeconds: opts.timeoutSeconds || 120,
+      toolRegistry: opts.toolRegistry,
+      agentIdForTools: opts.agentIdForTools || opts.parentId,
+      onProgress: opts.onProgress,
     };
 
     this.tasks.set(taskId, task);
@@ -184,6 +196,43 @@ export class SubAgentManager {
     }, task.timeoutSeconds * 1000);
 
     try {
+      if (task.onProgress) task.onProgress('execute', 'running');
+
+      // ── 有工具注册中心时走 runToolsLoop（子代理可以搜索/读写文件/执行代码）──
+      if (task.toolRegistry && task.agentIdForTools) {
+        const tools = task.toolRegistry.listToolsForAgent(task.agentIdForTools);
+        if (tools && tools.length > 0) {
+          if (task.onProgress) task.onProgress('execute', 'running', '使用 ' + tools.length + ' 个工具');
+
+          const toolPrompt = '你是一个独立子任务执行器，拥有工具调用能力。请完成以下任务。\n\n任务目标：' + task.objective + '\n\n规则：\n- 主动调用工具完成任务（搜索、读写文件、执行代码等）\n- 完成后给出简洁的结果总结\n- 不要有多余解释';
+
+          const result = await runToolsLoop({
+            client: this.aiClient,
+            model: task.model || this.aiModel,
+            messages: [
+              { role: 'system', content: '你是灵犀引擎的子任务执行器，拥有工具调用能力。' },
+              { role: 'user', content: toolPrompt },
+            ],
+            registry: task.toolRegistry,
+            agentId: task.agentIdForTools,
+            chatId: task.parentChatId,
+            maxIterations: 20,
+            temperature: 0.5,
+            maxTokens: 8192,
+            signal: controller.signal,
+            onToolCall: task.onProgress ? (e: any) => task.onProgress!('tool_call', 'running', e.toolName) : undefined,
+            onToolResult: task.onProgress ? (e: any) => task.onProgress!('tool_result', e.success ? 'done' : 'failed', e.toolName) : undefined,
+          });
+
+          task.result = result.finalContent || '(无结果)';
+          task.status = 'completed';
+          task.completedAt = Date.now();
+          if (task.onProgress) task.onProgress('execute', 'done', (task.result || '').slice(0, 200));
+          return;
+        }
+      }
+
+      // ── 无工具时走原始纯文本模式 ──
       const prompt = `你是一个独立子任务执行器。请完成以下任务，直接给出结果，不要有多余解释。
 
 任务目标：${task.objective}
@@ -194,13 +243,14 @@ export class SubAgentManager {
         model: task.model || this.aiModel,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
-        max_tokens: 2048,
+        max_tokens: 8192,  // P1-5: 从 2048 提升到 8192
         signal: controller.signal,
       });
 
       task.result = response.choices[0]?.message?.content || '(无结果)';
       task.status = 'completed';
       task.completedAt = Date.now();
+      if (task.onProgress) task.onProgress('execute', 'done', (task.result || '').slice(0, 200));
     } catch (err: any) {
       if (err.name === 'AbortError') return; // 已处理
       task.status = 'failed';

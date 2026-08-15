@@ -14,7 +14,7 @@ import {
   hasToolCalls,
   safeJsonParse,
 } from "./types.js";
-import { setDelegateContext } from "../core/builtin.js";
+import { setDelegateContext } from "./builtin.js";
 import { UsageTracker } from "../core/usage-tracker.js";
 import type { ToolRegistry } from "./registry.js";
 
@@ -93,6 +93,8 @@ export interface RunToolsOptions {
   temperature?: number;
   maxTokens?: number;
   signal?: AbortSignal;
+  /** P1-6: 摘要专用模型（轻量），未设置时用主 model */
+  summaryModel?: string;
   onToolCall?: (e: ToolCallEvent) => void;
   onToolResult?: (e: ToolResultEvent) => void;
   onThink?: (thinkChunk: string) => void;
@@ -439,7 +441,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     // ── 执行所有工具调用 ──
     // v1.5.0: 注入上下文给子程序
-    if (chatId) setDelegateContext(agentId, chatId);
+    if (chatId) setDelegateContext(agentId, chatId, registry);
 
     for (const tc of toolCalls) {
       const toolName = tc.function.name;
@@ -490,10 +492,13 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       let resultContent = JSON.stringify(resultPayload);
 
       // 如果结果超 2000 字符，用 AI 摘要（但 read_file 除外——文件内容必须原样返回）
-      if (resultContent.length > 8000 && callResult.success && toolName !== 'read_file' && toolName !== 'list_dir' && toolName !== 'shell_exec' && toolName !== 'patch_file') {
+      // P2-5: 统一截断阈值 6000，更早介入摘要避免大结果占满上下文
+    if (resultContent.length > 6000 && callResult.success && toolName !== 'read_file' && toolName !== 'list_dir' && toolName !== 'shell_exec' && toolName !== 'patch_file') {
         try {
+          // P1-6: 摘要优先用轻量 summaryModel
+          const summaryModelName = options.summaryModel || model;
           const summaryResp = await client.chat.completions.create({
-            model,
+            model: summaryModelName,
             messages: [{
               role: "user",
               content: `请把以下工具返回的数据压缩成简洁摘要，保留关键信息（标题、URL、核心数据），去掉重复和冗余。限 800 字以内。\n\n工具: ${toolName}\n结果:\n${resultContent.slice(0, 4000)}`,

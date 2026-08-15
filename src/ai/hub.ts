@@ -469,7 +469,8 @@ export class AIHub {
 
     // 2. 模糊匹配（优先匹配 provider id 与模型前缀一致的，避免 deepseek-ai/ 抢 deepseek 的模型）
     // 先尝试：模型名去掉 "xxx-ai/" 前缀后精确匹配
-    const strippedModel = model.replace(/^[a-z]+-ai\//, "");
+    // P0-4 修复：同时剥离 "xxx-ai/" 和 "xxx/" 前缀（如 openai/gpt-oss-120b → gpt-oss-120b）
+    const strippedModel = model.replace(/^[a-z]+(?:-ai)?\//, "");
     for (const [, entry] of this.providers) {
       if (entry.config.models.some(m => strippedModel === m)) {
         return { client: entry.client, resolvedModel: strippedModel };
@@ -528,8 +529,36 @@ export class AIHub {
       return this.getClient('');
     }
     const envKey = role === 'tool' ? 'TOOL_MODEL' : role === 'reply' ? 'REPLY_MODEL' : '';
-    const model = envKey ? (process.env[envKey] || this.getDefaultModel()) : this.getDefaultModel();
-    return this.getClient(model);
+    let model: string;
+    if (envKey && process.env[envKey]) {
+      model = process.env[envKey];
+    } else if (role === 'tool') {
+      // P1-1 修复：未设置 TOOL_MODEL 时，自动选择轻量模型
+      model = this.getLightweightModel();
+    } else {
+      model = this.getDefaultModel();
+    }
+    const result = this.getClient(model);
+    if (result && result.resolvedModel !== model) {
+      console.log(`[AIHub] getRoleClient(${role}): 请求 ${model} → 实际 ${result.resolvedModel}`);
+    }
+    return result;
+  }
+
+  /**
+   * P1-1: 获取轻量模型（用于工具调用/摘要/压缩）
+   */
+  private getLightweightModel(): string {
+    const allModels = this.listModels();
+    const lightKeywords = ['flash', 'mini', 'small', 'lite', 'turbo', 'haiku', '8b', '9b', '20b'];
+    for (const kw of lightKeywords) {
+      const found = allModels.find(m => m.id.toLowerCase().includes(kw));
+      if (found) {
+        console.log(`[AIHub] 自动选择轻量工具模型: ${found.id} (匹配 ${kw})`);
+        return found.id;
+      }
+    }
+    return this.getDefaultModel();
   }
 
   /**
@@ -635,11 +664,13 @@ export class AIHub {
         };
       } catch (error: any) {
         lastError = error;
-        // P1-7: 记录失败到熔断器
-        const cb = this.circuitBreaker.get(cbKey) || { failures: 0, lastFail: 0 };
-        cb.failures++;
-        cb.lastFail = Date.now();
-        this.circuitBreaker.set(cbKey, cb);
+        // P1-2 修复：429 限流是临时错误，不计入熔断器
+        if (error.status !== 429) {
+          const cb = this.circuitBreaker.get(cbKey) || { failures: 0, lastFail: 0 };
+          cb.failures++;
+          cb.lastFail = Date.now();
+          this.circuitBreaker.set(cbKey, cb);
+        }
         // 不可重试的错误直接抛
         if (error.status === 401 || error.status === 403 || error.status === 404) {
           console.error(`[AI Hub] 不可重试的错误 (${request.model}):`, error.message);

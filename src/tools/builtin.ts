@@ -1013,9 +1013,11 @@ const TOOL_DELEGATE_TASK: ToolDefinition = {
 // v1.5.0: 上下文注入（由 executor 在调用前设置）
 let _currentAgentId = '';
 let _currentChatId = '';
-export function setDelegateContext(agentId: string, chatId: string) {
+let _currentToolRegistry: any = null;
+export function setDelegateContext(agentId: string, chatId: string, registry?: any) {
   _currentAgentId = agentId;
   _currentChatId = chatId;
+  _currentToolRegistry = registry || null;
 }
 
 async function handleDelegateTask(args: Record<string, any>) {
@@ -1027,6 +1029,8 @@ async function handleDelegateTask(args: Record<string, any>) {
       parentId: _currentAgentId || 'delegate-caller',
       chatId: _currentChatId || 'delegate-chat',
       timeoutSeconds: Math.min(timeout, 180),
+      toolRegistry: _currentToolRegistry || undefined,
+      agentIdForTools: _currentAgentId || undefined,
     });
     const result = await _subAgentManager.awaitResult(taskId, Math.min(timeout, 180) * 1000);
     if (!result) return { error: '子任务未返回结果' };

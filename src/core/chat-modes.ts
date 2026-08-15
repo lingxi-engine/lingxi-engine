@@ -125,9 +125,6 @@ async function dispatchRoute(
   chatId: string, senderId: string, content: string,
   agents: any[], _agentManager: any, db: any, aiHub?: any
 ): Promise<ModeDispatchResult> {
-  // 场景1：用户发消息 → 让路由 Agent 分析
-  // 场景2：即使没有专属路由 Agent，用第一个 full 模式的 agent 做路由
-
   const routerAgent = agents.find((a: any) => 
     a.displayName?.toLowerCase().includes('路由') || 
     a.displayName?.toLowerCase().includes('router') ||
@@ -136,25 +133,68 @@ async function dispatchRoute(
 
   if (!routerAgent) return { responses: [] };
 
-  // 构造路由分析 prompt
   const otherAgents = agents.filter((a: any) => a.id !== routerAgent.id);
-  const agentList = otherAgents.map((a: any) => 
-    `- @${a.displayName} (${a.id}) ${a.personality ? '：' + a.personality.slice(0,80) : ''}`
-  ).join('\n');
-
-  const routePrompt = `你是一个路由助手。用户发的消息需要被分派给最合适的 AI 处理。
+  
+  // P0-2 修复：真正调用 AI 做路由分析，而非假装路由
+  if (aiHub && otherAgents.length > 0) {
+    try {
+      const agentList = otherAgents.map((a: any) => 
+        `- @${a.displayName}: ${a.personality ? a.personality.slice(0,80) : '通用助手'}`
+      ).join('\n');
+      
+      const routePrompt = `你是一个路由助手。用户发的消息需要被分派给最合适的 AI 处理。
 
 【用户消息】${content}
 
 【可用的 AI】
 ${agentList}
 
-请直接回复你要 @ 的 AI 名字（可以多个，用逗号分隔），不要任何解释。`;
+请直接回复你要 @ 的 AI 名字（可以多个，用逗号分隔），不要任何解释。如果都不合适，回复"none"。`;
 
-  // 同步执行路由分析（用 generateReply 太复杂，先简化：回复 @xxx）
+      const clientResult = aiHub.getClient(aiHub.getDefaultModel?.() || '');
+      if (clientResult) {
+        const resp = await clientResult.client.chat.completions.create({
+          model: clientResult.resolvedModel,
+          messages: [{ role: 'user', content: routePrompt }],
+          temperature: 0.1,
+          max_tokens: 200,
+        });
+        const routeResult = (resp.choices[0]?.message?.content || '').trim();
+        console.log(`[ChatModes] 路由分析结果: ${routeResult}`);
+        
+        // 解析 AI 回复，提取被 @ 的 Agent 名字
+        const selectedNames = routeResult
+          .split(/[,，、\s]+/)
+          .map((s: any) => s.replace(/^@/, '').trim())
+          .filter(Boolean);
+        
+        // 匹配被选中的 Agent
+        const selectedAgents = otherAgents.filter(a => 
+          selectedNames.some((name: string) => 
+            a.displayName === name || a.id === name || 
+            a.displayName?.includes(name) || name.includes(a.displayName)
+          )
+        );
+        
+        if (selectedAgents.length > 0) {
+          // 只触发被选中的 Agent
+          const responses: ModeDispatchResult['responses'] = selectedAgents.map((agent, i) => ({
+            chatId,
+            agentId: agent.id,
+            triggerMessage: { id: 'route-' + Date.now(), content, senderId },
+            delayMs: i * 1500,
+          }));
+          return { responses };
+        }
+        // AI 回复 none 或无法匹配 → fallback 到 routerAgent + all full
+      }
+    } catch (err: any) {
+      console.warn('[ChatModes] 路由 AI 分析失败，fallback:', err.message);
+    }
+  }
+
+  // Fallback：路由 Agent 先回复 + 所有 full 模式 Agent 延迟触发
   const responses: ModeDispatchResult['responses'] = [];
-  
-  // 简单版：把路由 Agent 加入回复列表，让它先回
   responses.push({
     chatId,
     agentId: routerAgent.id,
@@ -164,15 +204,13 @@ ${agentList}
 请用 '@AI名字' 的格式告知需要呼叫的 AI，并简要说明原因。`,
   });
 
-  // 让所有 full 模式的非路由 agent 也收到通知
   for (const agent of otherAgents) {
     if (agent.autonomy === 'full') {
       responses.push({
         chatId,
         agentId: agent.id,
         triggerMessage: { id: 'route-' + Date.now(), content, senderId },
-        // full agent 也会看到路由 Agent 的回复后自动处理
-        delayMs: 2000, // 等路由 Agent 先说完
+        delayMs: 2000,
       });
     }
   }
@@ -261,6 +299,8 @@ function dispatchChain(
     });
   }
 
+  // P1-3: 链式串行由 ws-handler.ts 的 runResponses(sequential=true) 保证
+  // 上一步落库后下一步才开始读，不再依赖固定延迟
   return { responses, followUpContext: { type: 'chain', step: 0 } };
 }
 
@@ -315,7 +355,7 @@ function dispatchVote(
   // 尝试从消息中提取选项（逗号分隔或数字编号）
   const optionMatch = content.match(/[选项方案][：:]\s*(.+)/);
   const options = optionMatch
-    ? optionMatch[1].split(/[,，、\n]/).filter(Boolean).map(s => s.trim())
+    ? optionMatch[1].split(/[,，、\n]/).filter(Boolean).map((s: any) => s.trim())
     : ['方案A', '方案B'];
 
   const responses: ModeDispatchResult['responses'] = [];

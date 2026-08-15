@@ -1,6 +1,30 @@
 import type { MessageRouter } from "./router.js";
 import type { WebSocket } from "ws";
 import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary } from "./chat-modes.js";
+import { Orchestrator, type TaskNode } from "./orchestrator.js";
+
+// === 长任务状态追踪（支持断点续做）===
+interface TaskPlan {
+  taskId: string;
+  chatId: string;
+  agentId: string;
+  goal: string;
+  steps: TaskStep[];
+  currentStep: number;
+  status: 'planning' | 'executing' | 'completed' | 'failed';
+  createdAt: number;
+  result?: string;
+}
+interface TaskStep {
+  id: string;
+  name: string;
+  prompt: string;
+  dependsOn: string[];
+  status: 'pending' | 'running' | 'done' | 'failed' | 'skipped';
+  output?: string;
+}
+// 活跃任务计划（内存中，进程重启丢失但不会半途中断当前执行）
+const activeTaskPlans = new Map<string, TaskPlan>();
 
 export interface WSResponse {
   type: string;
@@ -126,76 +150,255 @@ export function handleWSMessage(
     }
 
     case "agent.task": {
-      // ═══ 自主任务模式 ═══
-      // 给 Agent 一个目标，Agent 循环执行工具直到完成
+      // === 自主任务模式 v2 (Orchestrator + DAG + progress broadcast) ===
       const { chatId, agentId, goal } = event;
       if (!chatId || !agentId || !goal) {
-        broadcast({ type: "error", message: "agent.task 需要 chatId/agentId/goal" });
+        broadcast({ type: "error", message: "agent.task needs chatId/agentId/goal" });
         break;
       }
 
       const taskMsgId = 'task-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      
-      // 1. 广播任务开始
+      const agentSenderId = 'agent:' + agentId;
+
+      // 1. broadcast task start
       broadcast({
         type: "agent.streaming.start",
         chatId,
-        from: `agent:${agentId}`,
+        from: agentSenderId,
         senderType: "agent",
         msgId: taskMsgId,
         goal,
         timestamp: Date.now(),
       });
 
-      // 2. 进入自主循环（最多 10 轮）
+      // 2. async: plan -> orchestrate -> progress
       (async () => {
-        let result = '';
-        let round = 0;
-        const maxRounds = 10;
-        
-        while (round < maxRounds) {
-          round++;
-          
+        try {
+          // Phase 1: task decomposition
           broadcast({
-            type: "agent.streaming.chunk",
-            chatId, from: `agent:${agentId}`,
-            msgId: taskMsgId,
-            chunk: `\n🔧 第${round}轮思考... `,
+            type: "task.progress",
+            chatId, from: agentSenderId, msgId: taskMsgId,
+            phase: "planning",
+            message: "正在分析任务并制定执行计划...",
+            step: 0, total: 0,
+            timestamp: Date.now(),
           });
 
-          const reply = await router.generateReply(
+          const planPrompt = "你是灵犀引擎的任务规划器。请将以下任务拆分为 2-6 个可执行的子步骤。\n\n任务目标：" + goal + "\n\n要求：\n- 返回纯 JSON 数组，不要有其他文字\n- 每个步骤包含：id（step-1, step-2...）、name（简短名称）、prompt（具体执行指令）、dependsOn（依赖的前置步骤 id 数组，无依赖则为空数组）\n- 步骤之间可以有依赖关系（DAG），无依赖的步骤将并行执行\n- 第一步通常无依赖，最后一步通常是汇总\n\n示例格式：\n[{\"id\":\"step-1\",\"name\":\"搜索\",\"prompt\":\"搜索XX\",\"dependsOn\":[]},{\"id\":\"step-2\",\"name\":\"分析\",\"prompt\":\"分析结果\",\"dependsOn\":[\"step-1\"]}]\n\n请返回 JSON：";
+
+          const planResponse = await router.generateReply(
             chatId, agentId, taskMsgId,
-            (chunk: string) => {
-              broadcast({
-                type: "agent.streaming.chunk",
-                chatId, from: `agent:${agentId}`,
-                msgId: taskMsgId, chunk,
-              });
+            (chunk) => {
+              broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
             },
-            undefined, // onThink (optional)
-            goal
+            undefined,
+            planPrompt
           );
 
-          result += reply;
-          
-          if (reply.includes('任务完成') || reply.includes('DONE') || round >= maxRounds) {
-            break;
-          }
-        }
+          // parse JSON plan (tolerant: extract first JSON array)
+          let steps: any[] = [];
+          try {
+            const jsonMatch = planResponse.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+              steps = JSON.parse(jsonMatch[0]);
+            }
+          } catch { /* parse error */ }
 
-        broadcast({
-          type: "message.new", chatId,
-          from: `agent:${agentId}`, senderType: "agent",
-          content: result || '任务已处理',
-          msgId: taskMsgId, timestamp: Date.now(),
-        });
-        })().catch((err: any) => {
-          broadcast({ type: "agent.streaming.end", chatId, from: `agent:${agentId}`, msgId: taskMsgId, error: err.message });
-        });
+          // fallback: single step if parse failed
+          if (!steps || steps.length === 0) {
+            steps = [{ id: 'step-1', name: '执行任务', prompt: goal, dependsOn: [] }];
+          }
+
+          // safety limit
+          if (steps.length > 10) steps = steps.slice(0, 10);
+
+          // save task plan (for resume support)
+          const plan: TaskPlan = {
+            taskId: taskMsgId,
+            chatId, agentId, goal,
+            steps: steps.map((s: any) => ({ ...s, status: 'pending' })),
+            currentStep: 0,
+            status: 'executing',
+            createdAt: Date.now(),
+          };
+          activeTaskPlans.set(taskMsgId, plan);
+
+          // Phase 2: broadcast plan
+          broadcast({
+            type: "task.progress",
+            chatId, from: agentSenderId, msgId: taskMsgId,
+            phase: "plan_ready",
+            message: "任务已拆分为 " + steps.length + " 个步骤",
+            step: 0, total: steps.length,
+            steps: steps.map((s: any) => ({ id: s.id, name: s.name, dependsOn: s.dependsOn })),
+            timestamp: Date.now(),
+          });
+
+          // Phase 3: execute DAG via Orchestrator
+          const executor = async (task: TaskNode, context: Record<string, string>) => {
+            const stepIdx = steps.findIndex((s: any) => s.id === task.id);
+            broadcast({
+              type: "task.progress",
+              chatId, from: agentSenderId, msgId: taskMsgId,
+              phase: "step_start",
+              message: "执行步骤 " + (stepIdx + 1) + "/" + steps.length + "：" + task.name,
+              step: stepIdx + 1, total: steps.length,
+              stepId: task.id, stepName: task.name,
+              timestamp: Date.now(),
+            });
+
+            // build prompt with dependency outputs
+            let fullPrompt = task.prompt;
+            const depOutputs = Object.entries(context);
+            if (depOutputs.length > 0) {
+              fullPrompt += "\n\n## 前置步骤结果\n";
+              for (const [depId, depOutput] of depOutputs) {
+                const depStep = steps.find((s: any) => s.id === depId);
+                fullPrompt += "### " + (depStep?.name || depId) + "\n" + depOutput.slice(0, 3000) + "\n\n";
+              }
+            }
+
+            const stepResult = await router.generateReply(
+              chatId, agentId, taskMsgId,
+              (chunk) => {
+                broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
+              },
+              undefined,
+              fullPrompt
+            );
+
+            broadcast({
+              type: "task.progress",
+              chatId, from: agentSenderId, msgId: taskMsgId,
+              phase: "step_done",
+              message: "步骤 " + (stepIdx + 1) + " 完成：" + task.name,
+              step: stepIdx + 1, total: steps.length,
+              stepId: task.id, stepName: task.name,
+              output: (stepResult || "").slice(0, 500),
+              timestamp: Date.now(),
+            });
+
+            // update plan state
+            const p = activeTaskPlans.get(taskMsgId);
+            if (p) {
+              const st = p.steps.find(s => s.id === task.id);
+              if (st) { st.status = 'done'; st.output = stepResult; }
+              p.currentStep = stepIdx + 1;
+            }
+
+            return stepResult || '';
+          };
+
+          const orchestrator = new Orchestrator(executor);
+          for (const step of steps) {
+            orchestrator.addTask({
+              id: step.id,
+              name: step.name,
+              prompt: step.prompt,
+              dependsOn: step.dependsOn || [],
+              timeout: 120000,
+            });
+          }
+
+          const orchResult = await orchestrator.run();
+
+          // Phase 4: summarize results
+          let finalResult = '';
+          const allResults = orchestrator.getResults();
+          if (steps.length === 1) {
+            finalResult = allResults[0]?.output || '任务已执行';
+          } else {
+            const completed = allResults.filter(r => r.status === 'done');
+            if (completed.length === allResults.length) {
+              const lastStep = steps[steps.length - 1];
+              const lastResult = allResults.find(r => r.id === lastStep.id);
+              finalResult = lastResult?.output || '所有步骤已完成';
+            } else {
+              const failed = allResults.filter(r => r.status === 'failed');
+              const skipped = allResults.filter(r => r.status === 'skipped');
+              finalResult = "任务部分完成。成功 " + completed.length + "/" + allResults.length + "，失败 " + failed.length + "，跳过 " + skipped.length + "。";
+              if (failed.length > 0) {
+                finalResult += "\n失败步骤：" + failed.map(f => f.id + "(" + (f.error || "") + ")").join(", ");
+              }
+            }
+          }
+
+          // update plan status
+          const p = activeTaskPlans.get(taskMsgId);
+          if (p) {
+            p.status = orchResult.success ? 'completed' : 'failed';
+            p.result = finalResult;
+          }
+
+          // broadcast completion
+          broadcast({
+            type: "task.progress",
+            chatId, from: agentSenderId, msgId: taskMsgId,
+            phase: "completed",
+            message: orchResult.success ? '任务全部完成' : '任务部分失败',
+            step: steps.length, total: steps.length,
+            success: orchResult.success,
+            duration: orchResult.duration,
+            timestamp: Date.now(),
+          });
+
+          broadcast({
+            type: "message.new", chatId,
+            from: agentSenderId, senderType: "agent",
+            content: finalResult,
+            msgId: taskMsgId, timestamp: Date.now(),
+          });
+
+          // cleanup after 5 min
+          setTimeout(() => activeTaskPlans.delete(taskMsgId), 5 * 60 * 1000);
+        } catch (err: any) {
+          console.error('[WS] agent.task error:', err);
+          broadcast({
+            type: "task.progress",
+            chatId, from: agentSenderId, msgId: taskMsgId,
+            phase: "failed",
+            message: "任务执行失败：" + (err.message || '未知错误'),
+            timestamp: Date.now(),
+          });
+          broadcast({ type: "agent.streaming.end", chatId, from: agentSenderId, msgId: taskMsgId, error: err.message });
+        }
+      })();
       break;
     }
 
-    
+    case "task.list": {
+      const plans = Array.from(activeTaskPlans.values()).map(p => ({
+        taskId: p.taskId, chatId: p.chatId, agentId: p.agentId,
+        goal: p.goal, status: p.status,
+        currentStep: p.currentStep, totalSteps: p.steps.length,
+        steps: p.steps.map(s => ({ id: s.id, name: s.name, status: s.status })),
+        createdAt: p.createdAt,
+      }));
+      broadcast({ type: "task.list.result", plans, clientId });
+      break;
+    }
+
+    case "task.status": {
+      const { taskId } = event;
+      if (!taskId) { broadcast({ type: "error", message: "task.status needs taskId" }); break; }
+      const p = activeTaskPlans.get(taskId);
+      if (!p) {
+        broadcast({ type: "task.status.result", taskId, found: false });
+      } else {
+        broadcast({
+          type: "task.status.result", taskId, found: true,
+          plan: {
+            taskId: p.taskId, chatId: p.chatId, agentId: p.agentId,
+            goal: p.goal, status: p.status,
+            currentStep: p.currentStep, totalSteps: p.steps.length,
+            steps: p.steps.map(s => ({ id: s.id, name: s.name, status: s.status, output: s.output?.slice(0, 500) })),
+            result: p.result, createdAt: p.createdAt,
+          },
+        });
+      }
+      break;
+    }
+
     case "sessions.list": {
       // 前端请求会话列表
       const { userId } = event;

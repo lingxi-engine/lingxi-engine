@@ -86,8 +86,10 @@ ${rawSummary}
         };
       }
 
-      // JSON 解析失败，降级：直接截取前 500 字作为 summary（保留最早的核心记忆）
-      const truncated = rawSummary.length > 500 ? rawSummary.slice(0, 500) : rawSummary;
+      // P2-3 修复：首尾兼顾截断，保留最早和最近的记忆
+      const truncated = rawSummary.length > 500 
+        ? rawSummary.slice(0, 250) + '\n...[中间部分已省略]...\n' + rawSummary.slice(-250) 
+        : rawSummary;
       return {
         summary: truncated,
         facts: existingFacts,
@@ -96,8 +98,10 @@ ${rawSummary}
       };
     } catch (err: any) {
       console.error('[MemoryReflector] 反思失败:', err.message);
-      // 降级：保留开头 500 字（最早的核心记忆，避免丢掉长期偏好）
-      const truncated = rawSummary.length > 500 ? rawSummary.slice(0, 500) : rawSummary;
+      // P2-3 修复：首尾兼顾截断
+      const truncated = rawSummary.length > 500 
+        ? rawSummary.slice(0, 250) + '\n...[中间部分已省略]...\n' + rawSummary.slice(-250) 
+        : rawSummary;
       return {
         summary: truncated,
         facts: existingFacts,

@@ -115,7 +115,9 @@ class UsageTrackerClass {
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
 
-const USAGE_FILE = join(process.cwd(), 'data', 'usage.json');
+// P2-4 修复：使用 getDataDir() 保持路径一致
+import { getDataDir } from '../storage/db.js';
+const USAGE_FILE = join(getDataDir(), 'usage.json');
 
 function loadUsage(): { records: UsageRecord[]; totals: [string, any][] } {
   try {

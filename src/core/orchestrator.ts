@@ -29,6 +29,7 @@ export interface OrchestratorResult {
 }
 
 const MAX_CONCURRENT = parseInt(process.env.ORCHESTRATOR_MAX_CONCURRENT || '5', 10);
+const MAX_TASKS = parseInt(process.env.ORCHESTRATOR_MAX_TASKS || '50', 10);  // P1-7: 任务总数上限
 const DEFAULT_TIMEOUT = 60_000;
 
 export class Orchestrator {
@@ -42,6 +43,10 @@ export class Orchestrator {
 
   /** 添加任务 */
   addTask(task: TaskNode): void {
+    // P1-7: 任务总数上限检查
+    if (this.tasks.size >= MAX_TASKS) {
+      throw new Error(`任务数量已达上限 ${MAX_TASKS}，请先清理已完成任务`);
+    }
     this.tasks.set(task.id, task);
     this.results.set(task.id, { id: task.id, status: 'pending' });
   }
