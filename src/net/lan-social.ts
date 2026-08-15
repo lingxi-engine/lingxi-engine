@@ -1089,6 +1089,8 @@ export class LanSocialHub {
       }
       if (remaining.length) this.outbox.set(instanceId, remaining); else this.outbox.delete(instanceId);
     }
+    // P1-6d: 同步内存变化到数据库，防止进程重启后重复补发
+    this.persistOutbox();
   }
 
   /** 群成员编排视图 */

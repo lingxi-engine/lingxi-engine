@@ -117,7 +117,14 @@ export async function getFromPeer<T = any>(
     [FROM_HEADER]: getLanInstanceId(),
   };
   const secret = getLanSecret();
-  if (secret) headers[SECRET_HEADER] = secret;
+  if (secret) {
+    // P1-4: HMAC signature for GET requests (no body, use empty string)
+    const { createHmac } = await import('crypto');
+    const timestamp = Date.now().toString();
+    const sig = createHmac('sha256', secret).update(timestamp + ':' + path + ':').digest('hex');
+    headers[SECRET_HEADER] = sig;
+    headers['x-lingxi-ts'] = timestamp;
+  }
 
   const resp = await fetch(url, {
     method: 'GET',
@@ -150,9 +157,26 @@ export function verifyLanRequest(req: any, res: any): string | null {
   }
   const secret = getLanSecret();
   if (secret) {
+    // P1-4: HMAC signature verification instead of plaintext comparison
     const provided = req.headers[SECRET_HEADER];
-    if (provided !== secret) {
-      res.status(403).json({ error: '局域网密钥错误' });
+    const timestamp = req.headers['x-lingxi-ts'];
+    if (!provided || !timestamp) {
+      res.status(403).json({ error: '缺少签名或时间戳' });
+      return null;
+    }
+    // Replay protection: reject timestamps older than 5 minutes
+    const tsNum = Number(timestamp);
+    if (!Number.isFinite(tsNum) || Math.abs(Date.now() - tsNum) > 300_000) {
+      res.status(403).json({ error: '时间戳过期' });
+      return null;
+    }
+    // Reconstruct the signed payload from the request
+    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    const reqPath = req.path || req.url || '';
+    const { createHmac } = require('crypto');
+    const expectedSig = createHmac('sha256', secret).update(timestamp + ':' + reqPath + ':' + body).digest('hex');
+    if (provided !== expectedSig) {
+      res.status(403).json({ error: '局域网签名校验失败' });
       return null;
     }
   }
