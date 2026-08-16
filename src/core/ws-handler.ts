@@ -306,7 +306,7 @@ export function handleWSMessage(
               name: step.name,
               prompt: step.prompt,
               dependsOn: step.dependsOn || [],
-              timeout: 120000,
+              timeout: (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '120', 10)) * 1000,
             });
           }
 

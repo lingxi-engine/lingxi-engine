@@ -257,9 +257,77 @@ function markdownToHtml(text) {
     const langAttr = safeLang ? ' class="language-' + safeLang + '"' : '';
     return '<pre><code' + langAttr + '>' + code.trim() + '</code></pre>';
   });
+  // 转换 Markdown 表格
+  html = parseMarkdownTable(html);
   // 转换行内代码 `code`
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
   return html;
+}
+
+// ── Markdown 表格解析 ──
+function parseMarkdownTable(html) {
+  // 匹配连续含 | 的行块（兼容有/无首尾管道符两种格式）
+  const tableRegex = /((?:^|\n)((?:[^\n]*\|[^\n]*(?:\r?\n|$))+))/g;
+  return html.replace(tableRegex, function(block) {
+    var lines = block.trim().split(/\r?\n/).filter(function(l) { return l.trim(); });
+    if (lines.length < 2) return block;
+
+    // 第一行必须含 |
+    if (!lines[0].includes('|')) return block;
+
+    // 第二行必须是分隔行：只含 | - : 和空格
+    var sepLine = lines[1].trim();
+    if (!sepLine.includes('|')) return block;
+    var sepClean = sepLine.replace(/\|/g, '').replace(/-/g, '').replace(/:/g, '').replace(/ /g, '').trim();
+    if (sepClean !== '') return block;
+
+    // 解析对齐方式
+    var aligns = sepLine.split('|').map(function(cell) {
+      cell = cell.trim();
+      if (cell.startsWith(':') && cell.endsWith(':')) return 'center';
+      if (cell.endsWith(':')) return 'right';
+      if (cell.startsWith(':')) return 'left';
+      return 'left';
+    });
+
+    function parseRow(line) {
+      var s = line.trim();
+      if (s.startsWith('|')) s = s.slice(1);
+      if (s.endsWith('|')) s = s.slice(0, -1);
+      return s.split('|').map(function(c) { return c.trim(); });
+    }
+
+    var headerCells = parseRow(lines[0]);
+    if (headerCells.length < 2) return block; // 不是真正的表格
+
+    var bodyRows = [];
+    for (var i = 2; i < lines.length; i++) {
+      if (!lines[i].includes('|')) break; // 遇到不含 | 的行，表格结束
+      bodyRows.push(parseRow(lines[i]));
+    }
+
+    var out = '<div class="md-table-wrap"><table class="md-table">';
+    // thead
+    out += '<thead><tr>';
+    headerCells.forEach(function(cell, idx) {
+      var align = aligns[idx] || 'left';
+      out += '<th style="text-align:' + align + '">' + cell + '</th>';
+    });
+    out += '</tr></thead>';
+    // tbody
+    out += '<tbody>';
+    bodyRows.forEach(function(row) {
+      out += '<tr>';
+      row.forEach(function(cell, idx) {
+        var align = aligns[idx] || 'left';
+        out += '<td style="text-align:' + align + '">' + cell + '</td>';
+      });
+      out += '</tr>';
+    });
+    out += '</tbody></table></div>';
+
+    return '\n' + out + '\n';
+  });
 }
 
 function highlightBlocks(container) {
@@ -627,6 +695,18 @@ function handleMessage(msg) {
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
       updateGenUI();
       appendStreamingMsg(msg);
+      // ── Safety Net: 120s 超时自动清理，防止 end 事件丢失导致永久排队 ──
+      (function(cid, mid){
+        setTimeout(function(){
+          if (streamingMsgs[mid]) {
+            console.warn('[SafetyNet] streaming ' + mid + ' 超时(120s)，强制清理');
+            delete streamingMsgs[mid];
+            if (generatingChats[cid] > 0) generatingChats[cid] = 0;
+            updateGenUI();
+            maybeFlushQueue(cid);
+          }
+        }, 120000);
+      })(msg.chatId, msg.msgId);
       break;
     case 'tool.call':
       if (msg.chatId === currentChat) {
@@ -1142,6 +1222,19 @@ function updateCtxInfo() {
 
 function isChatGenerating(chatId) {
   return (generatingChats[chatId] || 0) > 0;
+}
+// 强制重置某聊天的生成状态（安全网 / 手动恢复）
+function forceResetGenerating(chatId) {
+  if (generatingChats[chatId]) {
+    console.warn('[ForceReset] chatId=' + chatId + ' generating=' + generatingChats[chatId] + ' → 0');
+    generatingChats[chatId] = 0;
+    // 清理该聊天所有残留的 streaming msg
+    for (const mid in streamingMsgs) {
+      if (streamingMsgs[mid] && streamingMsgs[mid].chatId === chatId) delete streamingMsgs[mid];
+    }
+    updateGenUI();
+    maybeFlushQueue(chatId);
+  }
 }
 // 根据"当前聊天是否生成中 / 队列是否有消息"刷新停止按钮和排队提示
 function updateGenUI() {
@@ -1960,6 +2053,15 @@ async function loadProviders() {
             '</div>' +
           '</div>' +
           (p.models||[]).map(m => '<span class="model-tag" style="display:inline-flex;align-items:center;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:3px 4px 3px 8px;border-radius:3px;font-size:11px;margin:2px">' + esc(m) + '<button onclick="removeModel(\''+esc(p.id)+'\',\''+esc(m)+'\')" title="'+t('settings.removeModel')+'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;margin-left:4px;padding:0 4px" class="model-del-btn">×</button></span>').join('') +
+          '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" title="添加模型" style="display:inline-flex;align-items:center;background:var(--bg2);border:1px dashed var(--accent);color:var(--accent);padding:3px 8px;border-radius:3px;font-size:11px;margin:2px;cursor:pointer">➕ 模型</button>' +
+          '<div id="addModelBox-' + esc(p.id) + '" style="display:none;margin-top:6px">' +
+            '<div style="display:flex;gap:4px;align-items:center">' +
+              '<input id="addModelInput-' + esc(p.id) + '" placeholder="输入模型名称，逗号分隔多个" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px">' +
+              '<button onclick="addModelToProvider(\''+esc(p.id)+'\')" class="btn" style="font-size:11px;padding:4px 10px">添加</button>' +
+              '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">✕</button>' +
+            '</div>' +
+            '<div id="addModelMsg-' + esc(p.id) + '" style="font-size:10px;margin-top:4px;min-height:14px"></div>' +
+          '</div>' +
           '<div style="font-size:10px;color:var(--text3);margin-top:4px;word-break:break-all">' + esc(p.baseUrl||'') + '</div>' +
           '<div id="editKey-' + esc(p.id) + '" style="display:none;margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">' +
             '<div style="display:flex;gap:4px;align-items:center">' +
@@ -1999,6 +2101,45 @@ async function saveProviderKey(id) {
     if (msgEl) { msgEl.textContent = '❌ ' + t('err.networkError'); msgEl.style.color = '#ef4444'; }
   }
 }
+function toggleAddModel(id) {
+  var el = document.getElementById('addModelBox-' + id);
+  if (!el) return;
+  var showing = el.style.display !== 'none';
+  el.style.display = showing ? 'none' : 'block';
+  if (!showing) { var inp = document.getElementById('addModelInput-' + id); if (inp) inp.focus(); }
+}
+
+async function addModelToProvider(id) {
+  var inp = document.getElementById('addModelInput-' + id);
+  var msgEl = document.getElementById('addModelMsg-' + id);
+  if (!inp) return;
+  var modelsStr = inp.value.trim();
+  if (!modelsStr) { if (msgEl) { msgEl.textContent = '请输入模型名称'; msgEl.style.color = '#ef4444'; } return; }
+  var newModels = modelsStr.split(',').map(function(x){return x.trim()}).filter(Boolean);
+  if (msgEl) { msgEl.textContent = '添加中...'; msgEl.style.color = '#faad14'; }
+  try {
+    // 先获取当前 provider 信息（拿到已有 models）
+    var provData = await api('/api/providers');
+    var prov = (provData.providers || []).find(function(p){return p.id === id});
+    var existingModels = (prov && prov.models) ? prov.models : [];
+    // 合并去重
+    var merged = existingModels.slice();
+    newModels.forEach(function(m){ if (merged.indexOf(m) === -1) merged.push(m); });
+    // PUT 更新
+    var d = await api('/api/providers/' + encodeURIComponent(id), 'PUT', { models: merged });
+    if (d.ok) {
+      if (msgEl) { msgEl.textContent = '✅ 已添加'; msgEl.style.color = '#4ade80'; }
+      toast('模型已添加');
+      inp.value = '';
+      setTimeout(function(){ loadProviders(); loadModels(); }, 500);
+    } else {
+      if (msgEl) { msgEl.textContent = '❌ ' + _errMsg(d, '添加失败'); msgEl.style.color = '#ef4444'; }
+    }
+  } catch(e) {
+    if (msgEl) { msgEl.textContent = '❌ ' + t('err.networkError'); msgEl.style.color = '#ef4444'; }
+  }
+}
+
 async function deleteProvider(id) {
   if (!confirm(t('settings.confirmDeleteProvider', { id: id }))) return;
   try {
@@ -2016,21 +2157,22 @@ async function removeModel(providerId, modelName) {
   } catch(e) { toast(t('err.deleteFail')); }
 }
 async function addProvider() {
-  const type = document.getElementById('newProviderType').value;
-  const name = document.getElementById('newProviderName').value.trim();
+  var selectType = document.getElementById('newProviderType').value;
+  const type = selectType === '__custom_type__' ? (document.getElementById('newProviderCustomType').value.trim() || 'custom') : selectType;
   const apiKey = document.getElementById('newProviderKey').value.trim();
   const baseUrl = document.getElementById('newProviderUrl').value.trim();
   const modelsStr = document.getElementById('newProviderModels').value.trim();
   const _msgEl = document.getElementById('addProviderMsg');
   const setMsg = (txt, color) => { if (_msgEl) { _msgEl.textContent = txt; _msgEl.style.color = color; } else toast(txt); };
-  const isLocalType = ['ollama','custom','llama-cpp','vllm','lm-studio','tgi'].includes(type);
+  const isLocalType = ['ollama','custom','llama-cpp','vllm','lm-studio','tgi','text-gen-webui','__custom_type__'].includes(type) || selectType === '__custom_type__';
   if (!apiKey && !isLocalType) { setMsg(t('settings.errKeyRequired'), '#ef4444'); return; }
   if (!modelsStr) { setMsg(t('settings.errModelRequired'), '#ef4444'); return; }
+  const name = document.getElementById('newProviderName').value.trim() || type;
   const id = type + '-' + Date.now();
   const models = modelsStr.split(',').map(s=>s.trim()).filter(Boolean);
   const urls = { openai:'https://api.openai.com/v1', anthropic:'https://api.anthropic.com/v1', google:'https://generativelanguage.googleapis.com/v1beta/openai', deepseek:'https://api.deepseek.com/v1', openrouter:'https://openrouter.ai/api/v1' };
   try {
-    const d = await api('/api/providers', 'POST', { id, type, name:name||type, apiKey, baseUrl: baseUrl||urls[type]||'', models, isLocal: false });
+    const d = await api('/api/providers', 'POST', { id, type, name, apiKey, baseUrl: baseUrl||urls[type]||'', models, isLocal: false });
     if (d.ok) { setMsg(t('settings.addSuccess'), '#4ade80'); loadProviders(); loadModels(); document.getElementById('newProviderKey').value=''; document.getElementById('newProviderModels').value=''; }
     else { setMsg('❌ '+_errMsg(d, t('err.fail')), '#ef4444'); }
   } catch(e) { setMsg('❌ ' + t('err.networkError'), '#ef4444'); }
@@ -2066,6 +2208,20 @@ const PROVIDER_PRESETS = {
 };
 function onProviderTypeChange() {
   var type = document.getElementById('newProviderType').value;
+  // 显示/隐藏自定义类型输入框
+  var customTypeInput = document.getElementById('newProviderCustomType');
+  if (customTypeInput) {
+    customTypeInput.style.display = (type === '__custom_type__') ? 'block' : 'none';
+  }
+  if (type === '__custom_type__') {
+    // 完全自定义：清空预设，让用户手动填写所有字段
+    document.getElementById('newProviderName').value = '';
+    document.getElementById('newProviderUrl').value = '';
+    document.getElementById('newProviderModels').value = '';
+    document.getElementById('newProviderKey').placeholder = 'API Key（本地可留空）';
+    if (customTypeInput) customTypeInput.focus();
+    return;
+  }
   var p = PROVIDER_PRESETS[type];
   if (!p) return;
   var presetName = p.name === '__custom__' ? t('misc.custom') : (p.nk ? t(p.nk) : p.name);
@@ -4107,4 +4263,40 @@ async function deleteRightGoal(id) {
     if (d.ok) { toast(t('common.deleted')); loadRightGoals(); }
     else toast('❌ ' + _errMsg(d, t('err.deleteFail')));
   } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ── 运行日志面板 ──
+async function loadLogBody() {
+  var el = document.getElementById('logBody');
+  if (!el) return;
+  try {
+    var d = await api('/api/logs?limit=100');
+    var logs = d.logs || d || [];
+    if (!Array.isArray(logs)) logs = [];
+    el.innerHTML = logs.map(function(l) {
+      var level = (l.level || 'info').toLowerCase();
+      var color = level === 'error' ? 'var(--red)' : level === 'warn' ? 'var(--yellow)' : 'var(--green)';
+      var time = l.timestamp ? new Date(l.timestamp).toLocaleTimeString() : '';
+      return '<div class="log-line"><span style="color:' + color + '">[' + level.toUpperCase() + ']</span> <span style="color:var(--text3)">' + time + '</span> ' + esc(l.message || l.msg || '') + '</div>';
+    }).join('');
+    el.scrollTop = el.scrollHeight;
+  } catch(e) {
+    el.innerHTML = '<div class="log-line"><span style="color:var(--red)">❌ ' + esc(e.message || '') + '</span></div>';
+  }
+}
+var _autoLogTimer = null;
+function toggleAutoLog() {
+  if (_autoLogTimer) {
+    clearInterval(_autoLogTimer);
+    _autoLogTimer = null;
+    toast('自动刷新已关闭');
+  } else {
+    loadLogBody();
+    _autoLogTimer = setInterval(loadLogBody, 3000);
+    toast('自动刷新已开启 · 3s');
+  }
+}
+function clearLogBody() {
+  var el = document.getElementById('logBody');
+  if (el) el.innerHTML = '<div class="log-line"><span class="info">日志已清空</span></div>';
 }

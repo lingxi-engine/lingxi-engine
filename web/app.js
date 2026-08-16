@@ -251,14 +251,63 @@ function toast(msg) {
 function markdownToHtml(text) {
   // 转义 HTML
   let html = esc(text);
-  // 转换 ``` 代码块
+  // 转换 ``` 代码块（先提取，避免表格正则误匹配代码块内容）
+  const codeBlocks = [];
   html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
     const safeLang = lang ? lang.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const langAttr = safeLang ? ' class="language-' + safeLang + '"' : '';
-    return '<pre><code' + langAttr + '>' + code.trim() + '</code></pre>';
+    const placeholder = '\x00CODEBLOCK' + (codeBlocks.length) + '\x00';
+    codeBlocks.push('<pre><code' + langAttr + '>' + code.trim() + '</code></pre>');
+    return placeholder;
   });
-  // 转换行内代码 `code`
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // 转换行内代码 `code`（也先提取）
+  const inlineCodes = [];
+  html = html.replace(/`([^`]+)`/g, function(match, code) {
+    const placeholder = '\x00INLINECODE' + (inlineCodes.length) + '\x00';
+    inlineCodes.push('<code>' + code + '</code>');
+    return placeholder;
+  });
+
+  // ── Markdown 表格渲染 ──
+  // 匹配 GFM 风格表格：表头行 | 分隔行 | 数据行
+  html = html.replace(/^((?:\|\s*[^\n|]+\s*)+\|)\n((?:\|\s*:?[-]+:?\s*\|)+)\n((?:(?:\|\s*[^\n|]+\s*)+\|\n?)+)/gm, function(match, headerRow, sepRow, bodyRows) {
+    // 解析表头
+    var headers = headerRow.split('|').map(function(h){return h.trim();}).filter(function(h){return h!=='';});
+    // 解析对齐方式
+    var aligns = sepRow.split('|').map(function(s){
+      s = s.trim();
+      if (s.startsWith(':') && s.endsWith(':')) return 'center';
+      if (s.endsWith(':')) return 'right';
+      return 'left';
+    }).filter(function(s){return s!=='';});
+    // 解析数据行
+    var rows = bodyRows.trim().split('\n').filter(function(r){return r.trim();});
+    var tbody = '';
+    for (var ri = 0; ri < rows.length; ri++) {
+      var cells = rows[ri].split('|').map(function(c){return c.trim();});
+      // 去掉首尾空 cell（由首尾 | 产生）
+      if (cells.length > 0 && cells[0] === '') cells.shift();
+      if (cells.length > 0 && cells[cells.length-1] === '') cells.pop();
+      tbody += '<tr>';
+      for (var ci = 0; ci < headers.length; ci++) {
+        tbody += '<td>' + (cells[ci] || '') + '</td>';
+      }
+      tbody += '</tr>';
+    }
+    // 构建表格 HTML
+    var thead = '<tr>';
+    for (var hi = 0; hi < headers.length; hi++) {
+      var style = aligns[hi] ? ' style="text-align:' + aligns[hi] + '"' : '';
+      thead += '<th' + style + '>' + headers[hi] + '</th>';
+    }
+    thead += '</tr>';
+    return '<div class="md-table-wrap"><table class="md-table"><thead>' + thead + '</thead><tbody>' + tbody + '</tbody></table></div>';
+  });
+
+  // 还原代码块
+  html = html.replace(/\x00CODEBLOCK(\d+)\x00/g, function(m, idx) { return codeBlocks[parseInt(idx)]; });
+  // 还原行内代码
+  html = html.replace(/\x00INLINECODE(\d+)\x00/g, function(m, idx) { return inlineCodes[parseInt(idx)]; });
   return html;
 }
 
@@ -1214,6 +1263,20 @@ function updateGenUI() {
   }
 }
 // 停止当前聊天的生成（服务端会真正 abort 掉正在进行的回复）
+// 强制重置生成状态（当任务卡住时用户可手动触发）
+function forceResetGenerating(chatId) {
+  var cid = chatId || currentChat;
+  if (cid) {
+    generatingChats[cid] = 0;
+    for (var mid in streamingMsgs) {
+      delete streamingMsgs[mid];
+    }
+    updateGenUI();
+    maybeFlushQueue(cid);
+    toast('已强制重置生成状态');
+  }
+}
+
 function stopGeneration() {
   if (!currentChat || !ws || ws.readyState !== 1) return;
   ws.send(JSON.stringify({ type: 'stop', chatId: currentChat }));
@@ -2963,6 +3026,54 @@ async function adminHealth() {
     const d = await api('/api/health');
     document.getElementById('adminHealthOut').textContent = JSON.stringify(d, null, 2);
   } catch(e) { document.getElementById('adminHealthOut').textContent = '❌ ' + e.message; }
+}
+
+
+// ── 侧栏运行日志面板 ──
+var _autoLogTimer = null;
+var _autoLogOn = false;
+
+async function loadLogBody() {
+  var body = document.getElementById('logBody');
+  if (!body) return;
+  body.innerHTML = '<div class="log-line"><span class="info">加载中...</span></div>';
+  try {
+    var d = await api('/api/logs?limit=100');
+    if (!d.ok) { body.innerHTML = '<div class="log-line"><span class="err">加载失败: ' + (d.error && d.error.message || d.error || '未知错误') + '</span></div>'; return; }
+    var lines = d.lines || [];
+    if (!lines.length) { body.innerHTML = '<div class="log-line"><span class="info">(暂无日志)</span></div>'; return; }
+    var html = '';
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var cls = 'info';
+      // 根据日志级别着色
+      if (/\b(error|err|fail|错误)\b/i.test(line)) cls = 'err';
+      else if (/\b(warn|警告)\b/i.test(line)) cls = 'warn';
+      else if (/\b(ok|success|done|完成|成功)\b/i.test(line)) cls = 'ok';
+      html += '<div class="log-line"><span class="' + cls + '">' + esc(line) + '</span></div>';
+    }
+    body.innerHTML = html;
+    body.scrollTop = body.scrollHeight;
+  } catch(e) {
+    body.innerHTML = '<div class="log-line"><span class="err">网络错误: ' + (e.message || '') + '</span></div>';
+  }
+}
+
+function toggleAutoLog() {
+  _autoLogOn = !_autoLogOn;
+  if (_autoLogOn) {
+    loadLogBody();
+    _autoLogTimer = setInterval(loadLogBody, 3000);
+    toast('自动刷新已开启');
+  } else {
+    if (_autoLogTimer) { clearInterval(_autoLogTimer); _autoLogTimer = null; }
+    toast('自动刷新已关闭');
+  }
+}
+
+function clearLogBody() {
+  var body = document.getElementById('logBody');
+  if (body) body.innerHTML = '<div class="log-line"><span class="info">(已清空)</span></div>';
 }
 
 async function loadLogs() {

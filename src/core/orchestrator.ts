@@ -30,7 +30,7 @@ export interface OrchestratorResult {
 
 const MAX_CONCURRENT = parseInt(process.env.ORCHESTRATOR_MAX_CONCURRENT || '5', 10);
 const MAX_TASKS = parseInt(process.env.ORCHESTRATOR_MAX_TASKS || '50', 10);  // P1-7: 任务总数上限
-const DEFAULT_TIMEOUT = 60_000;
+const DEFAULT_TIMEOUT = (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '60', 10)) * 1000;
 
 export class Orchestrator {
   private tasks: Map<string, TaskNode> = new Map();

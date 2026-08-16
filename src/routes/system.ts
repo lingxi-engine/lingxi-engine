@@ -105,6 +105,46 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     }
   });
 
+  // ── 超时时限配置 ──
+  router.get('/timeout-config', requireAuth, (_req, res) => {
+    res.json({
+      ok: true,
+      taskTimeoutSeconds: parseInt(process.env.TASK_TIMEOUT_SECONDS || '600', 10),
+      chatTimeoutSeconds: parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10),
+      orchestratorTimeoutSeconds: parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '60', 10),
+      subagentTimeoutSeconds: parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '120', 10),
+    });
+  });
+
+  router.put('/timeout-config', requireAuth, (req, res) => {
+    try {
+      const { taskTimeoutSeconds, chatTimeoutSeconds, orchestratorTimeoutSeconds, subagentTimeoutSeconds } = req.body;
+      const defaults = { taskTimeoutSeconds: 600, chatTimeoutSeconds: 120, orchestratorTimeoutSeconds: 60, subagentTimeoutSeconds: 120 };
+      const maxValues = { taskTimeoutSeconds: 7200, chatTimeoutSeconds: 3600, orchestratorTimeoutSeconds: 3600, subagentTimeoutSeconds: 3600 };
+      const updates: Record<string, number> = {};
+      for (const [key, def] of Object.entries(defaults)) {
+        const val = (req.body as any)[key];
+        if (val !== undefined) {
+          const n = parseInt(val, 10);
+          if (isNaN(n) || n < 10) return res.status(400).json({ error: key + ' 最小 10 秒' });
+          if (n > (maxValues as any)[key]) return res.status(400).json({ error: key + ' 最大 ' + (maxValues as any)[key] + ' 秒' });
+          const envKey = key.replace(/([A-Z])/g, '_$1').toUpperCase();
+          process.env[envKey] = String(n);
+          persistEnvVar(envKey, String(n));
+          updates[key] = n;
+        }
+      }
+      res.json({
+        ok: true,
+        taskTimeoutSeconds: parseInt(process.env.TASK_TIMEOUT_SECONDS || '600', 10),
+        chatTimeoutSeconds: parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10),
+        orchestratorTimeoutSeconds: parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '60', 10),
+        subagentTimeoutSeconds: parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '120', 10),
+        updated: updates,
+      });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   router.get('/models', (_req, res) => {
     try {
       res.json({ ok: true, models: aiHub.listModels() });

@@ -77,7 +77,7 @@ export class SubAgentManager {
       status: 'pending',
       model: opts.model || this.aiModel,
       createdAt: Date.now(),
-      timeoutSeconds: opts.timeoutSeconds || 120,
+      timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '120', 10),
       toolRegistry: opts.toolRegistry,
       agentIdForTools: opts.agentIdForTools || opts.parentId,
       onProgress: opts.onProgress,
