@@ -197,7 +197,8 @@ export class MessageRouter {
     taskGoal?: string,
     onBroadcast?: (event: any) => void,
     customPrompt?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    options?: { skipPersist?: boolean }
   ): Promise<string> {
     const agent = this.agentManager.get(agentId);
     if (!agent) throw new Error('Agent not found: ' + agentId);
@@ -418,8 +419,11 @@ export class MessageRouter {
       finalContent = retried || cleaned;
     }
 
-    // 保存回复消息
+    // 保存回复消息（skipPersist：任务拆解中间步骤等场景跳过落库/记忆/索引，避免污染聊天历史）
     const replyId = 'msg-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8);
+    if (options?.skipPersist) {
+      return finalContent;
+    }
     this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
 
     // 更新记忆（P0-1: 写入前过滤指令性内容，防止对话中的 Prompt 注入持久化为记忆）
@@ -481,6 +485,44 @@ export class MessageRouter {
     });
 
     return finalContent;
+  }
+
+  /**
+   * 无工具一次性调用 —— 不落库、不更新记忆、不进工具循环
+   * 用于任务规划等纯文本生成场景（规划只需 JSON/文本，不应触发工具执行）
+   */
+  async generateOneShot(
+    agentId: string,
+    prompt: string,
+    opts?: { temperature?: number; maxTokens?: number; timeoutMs?: number; systemPrompt?: string }
+  ): Promise<string> {
+    const agent = this.agentManager.get(agentId);
+    if (!agent) throw new Error('Agent not found: ' + agentId);
+    const requestedModel = agent.model || this.aiHub.getDefaultModel?.() || '';
+    const clientResult = this.aiHub.getClient(requestedModel);
+    if (!clientResult) throw new Error('找不到模型 ' + agent.model + '，且无可用 fallback');
+    const { client, resolvedModel } = clientResult;
+
+    const timeoutMs = opts?.timeoutMs ?? 90000;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const resp = await client.chat.completions.create({
+        model: resolvedModel,
+        messages: [
+          { role: 'system', content: opts?.systemPrompt || '你是灵犀引擎的任务规划器。严格按用户要求输出内容，不要输出任何工具调用标记（如 <｜DSML｜｜...>），不要多余解释。' },
+          { role: 'user', content: prompt },
+        ],
+        temperature: opts?.temperature ?? 0.3,
+        max_tokens: opts?.maxTokens ?? 4096,
+      }, { signal: controller.signal });
+      if (resp.usage) UsageTracker.record({ model: resolvedModel, promptTokens: resp.usage.prompt_tokens, completionTokens: resp.usage.completion_tokens, type: 'reply' });
+      let content = resp.choices[0]?.message?.content || '';
+      if (content.includes('｜DSML｜')) content = this.stripDsml(content);
+      return content.trim();
+    } finally {
+      clearTimeout(timeoutId);
+    }
   }
 
   /**

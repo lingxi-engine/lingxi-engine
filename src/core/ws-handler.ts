@@ -186,14 +186,9 @@ export function handleWSMessage(
 
           const planPrompt = "你是灵犀引擎的任务规划器。请将以下任务拆分为 2-6 个可执行的子步骤。\n\n任务目标：" + goal + "\n\n要求：\n- 返回纯 JSON 数组，不要有其他文字\n- 每个步骤包含：id（step-1, step-2...）、name（简短名称）、prompt（具体执行指令）、dependsOn（依赖的前置步骤 id 数组，无依赖则为空数组）\n- 步骤之间可以有依赖关系（DAG），无依赖的步骤将并行执行\n- 第一步通常无依赖，最后一步通常是汇总\n\n示例格式：\n[{\"id\":\"step-1\",\"name\":\"搜索\",\"prompt\":\"搜索XX\",\"dependsOn\":[]},{\"id\":\"step-2\",\"name\":\"分析\",\"prompt\":\"分析结果\",\"dependsOn\":[\"step-1\"]}]\n\n请返回 JSON：";
 
-          const planResponse = await router.generateReply(
-            chatId, agentId, taskMsgId,
-            (chunk) => {
-              broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
-            },
-            undefined,
-            planPrompt
-          );
+          // 规划阶段：无工具一次性调用（修复：原先把 planPrompt 传到 generateReply 的 taskGoal 参数位，
+          // 被包成“自主执行任务”模式与“只返回 JSON”指令冲突，且会误触发工具循环）
+          const planResponse = await router.generateOneShot(agentId, planPrompt, { temperature: 0.2, timeoutMs: 90000 });
 
           // parse JSON plan (tolerant: extract first JSON array)
           let steps: any[] = [];
@@ -261,13 +256,19 @@ export function handleWSMessage(
             let stepResult = '';
             let stepSuccess = true;
             try {
+              // 修复：fullPrompt 传到 customPrompt（第8参）而非 taskGoal（第6参）；
+              // skipPersist 避免中间步骤污染聊天历史
               stepResult = await router.generateReply(
                 chatId, agentId, taskMsgId,
                 (chunk) => {
                   broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
                 },
                 undefined,
-                fullPrompt
+                undefined,
+                undefined,
+                fullPrompt,
+                undefined,
+                { skipPersist: true }
               );
             } catch (stepErr: any) {
               stepSuccess = false;

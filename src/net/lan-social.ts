@@ -931,20 +931,22 @@ export class LanSocialHub {
     if (!invokeMembers.some((m: any) => (m.agent_id || m.agentId) === agentId)) {
       return { error: '该 Agent 不在此群组中' };
     }
-    // P0-1 修复: 来源 IP 校验 — 请求必须来自群成员的已知引擎
+    // v5-P0-B 修复: 来源 IP 校验 fail-closed — 无来源 IP 或无法匹配群成员引擎 IP 时一律拒绝
     const reqIp = String((body as any)._requestIp || '').replace(/^::ffff:/, ''); // P0-1: from body
-    if (reqIp) {
-      const memberIps = new Set<string>();
-      for (const m of invokeMembers) {
-        if (m.instanceId !== getLanInstanceId()) {
-          const peer = getLanPeer(m.instanceId);
-          if (peer?.lanIp) memberIps.add(String(peer.lanIp).replace(/^::ffff:/, ''));
-        }
+    if (!reqIp) {
+      console.warn('[LAN][Security] Agent invoke rejected: 缺少来源IP');
+      return { error: '请求来源缺失，拒绝执行' };
+    }
+    const memberIps = new Set<string>();
+    for (const m of invokeMembers) {
+      if (m.instanceId !== getLanInstanceId()) {
+        const peer = getLanPeer(m.instanceId);
+        if (peer?.lanIp) memberIps.add(String(peer.lanIp).replace(/^::ffff:/, ''));
       }
-      if (memberIps.size > 0 && !memberIps.has(reqIp)) {
-        console.warn('[LAN][Security] Agent invoke from unknown IP:', reqIp, 'expected:', [...memberIps]);
-        return { error: '请求来源不在群组成员中' };
-      }
+    }
+    if (memberIps.size === 0 || !memberIps.has(reqIp)) {
+      console.warn('[LAN][Security] Agent invoke rejected:', reqIp, 'expected:', [...memberIps]);
+      return { error: '请求来源不在群组成员中' };
     }
     const entry: AgentRosterEntry = {
       userId: agent.userId || agent.user_id, displayName: agent.displayName || agent.display_name, agentId: agent.id,

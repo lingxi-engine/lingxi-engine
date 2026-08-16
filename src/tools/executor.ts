@@ -548,7 +548,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         temperature,
         max_tokens: maxTokens,
       }) as OpenAIChatResponse;
-      result.finalContent = stripDsmlMarkup(finalResp.choices[0]?.message?.content || "[AI 生成中，未产生最终回复]");
+      result.finalContent = stripDsmlMarkup(finalResp.choices[0]?.message?.content || "");
       if (finalResp.usage) {
         UsageTracker.record({
           model,
@@ -559,7 +559,13 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       }
     } catch {
       const lastAssistant = [...result.messages].reverse().find((m) => m.role === "assistant");
-      result.finalContent = stripDsmlMarkup(lastAssistant?.content || "[AI 生成中，未产生最终回复]");
+      result.finalContent = stripDsmlMarkup(lastAssistant?.content || "");
+    }
+    // 最终兜底：仍为空时给有意义的文案（而非占位符），区分超时中断与空回复
+    if (!result.finalContent) {
+      result.finalContent = result.aborted
+        ? "任务执行超出时限被中断，已完成的工具结果已保留。建议把任务拆小一点再试。"
+        : "AI 本次未返回有效内容（可能是上下文过长或模型异常），请稍后重试或简化任务后再试。";
     }
   }
 

@@ -38,11 +38,19 @@ export function isTrustedLocalSource(req: Request): boolean {
   const raw = req.socket?.remoteAddress || '';
   const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   if (!ip) return false; // 无法确定来源时一律不可信（fail-closed）
-  if (ip === '::1' || ip === 'localhost') return true;
-  if (ip.startsWith('127.')) return true;
-  if (ip.startsWith('192.168.')) return true;
-  if (ip.startsWith('10.')) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(ip)) return true;
+  const isLocal = (addr: string): boolean =>
+    addr === '::1' || addr === 'localhost' || addr.startsWith('127.') ||
+    addr.startsWith('192.168.') || addr.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(addr);
+  // v5-P0-C 修复: 反代场景（socket=本机/内网但带 XFF）时按真实客户端 IP 判断，防止公网攻击者经反代被“洗白”成本地免登录
+  if (isLocal(ip)) {
+    const xff = req.headers['x-forwarded-for'];
+    const trustProxy = req.app?.get?.('trust proxy');
+    if (xff && trustProxy) {
+      const clientIp = String(xff).split(',')[0].trim().replace(/^::ffff:/, '');
+      if (clientIp && !isLocal(clientIp)) return false; // 真实客户端来自公网 → 不视为可信本地来源
+    }
+    return true;
+  }
   return false;
 }
 

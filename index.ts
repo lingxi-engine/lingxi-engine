@@ -4,11 +4,31 @@
 // 必须最先加载 .env：ESM 中 import 会被提升，若在模块体中调用 dotenvConfig()，
 // 则 hub.ts 等模块加载时读取的 process.env.* 全为空。用副作用导入置于首位可修复。
 import 'dotenv/config';
+// P1-B: LAN_SECRET 安全默认 —— 缺失时自动生成并持久化到 .env（局域网传输层 HMAC 签名）
+(() => {
+  try {
+    if (!process.env.LAN_SECRET) {
+      const envPath = path.join(process.cwd(), '.env');
+      let envText = '';
+      if (existsSync(envPath)) envText = readFileSync(envPath, 'utf8');
+      if (!/^LAN_SECRET\s*=/m.test(envText)) {
+        const secret = randomBytes(32).toString('hex');
+        process.env.LAN_SECRET = secret;
+        try {
+          appendFileSync(envPath, '\n# Auto-generated on first boot (P1-B: 局域网传输层 HMAC 签名密钥)\nLAN_SECRET=' + secret + '\n', 'utf8');
+          console.log('[LAN] LAN_SECRET 未配置，已自动生成并写入 .env（局域网通信 HMAC 签名已启用）');
+        } catch (e) {
+          console.log('[LAN] LAN_SECRET 未配置，已生成进程内密钥（.env 写入失败，重启后密钥会变化）');
+        }
+      }
+    }
+  } catch (e) { /* 绝不阻断启动 */ }
+})();
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
-import { randomInt, timingSafeEqual } from 'crypto';
+import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
+import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
@@ -480,6 +500,7 @@ setSearchManager(searchManagerInstance);
   }
 
   const app = express();
+  app.set('trust proxy', 1); // v5-P0-C: 反代部署时 req.ip 取 X-Forwarded-For 真实客户端
   app.disable('x-powered-by');
   app.use(express.json({ limit: '10mb' }));
   // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
@@ -939,11 +960,13 @@ setSearchManager(searchManagerInstance);
       const { requestId, action } = req.body;
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
       if (!['accept', 'reject'].includes(action)) return res.status(400).json({ error: 'action 只能是 accept 或 reject' });
-      // P0-5: verify current user is the receiver
+      // P0-5: verify current user is the receiver (v5-P1-A: fail-closed)
       const jwtUser5 = (req as any).user;
       const jwtUserId5 = jwtUser5?.sub || jwtUser5?.id || '';
       const jwtNumericId5 = String(jwtUser5?.numeric_id || '');
-      if (jwtUserId5) {
+      const sid5 = String(jwtUser5?.sid || '');
+      const isBootstrap5 = sid5 === 'admin-auto' || sid5 === 'platform-admin' || sid5 === 'admin-token' || jwtUserId5 === 'admin';
+      if (jwtUserId5 && !isBootstrap5) {
         try {
           const raw5 = getDB();
           const stmt5 = raw5.prepare('SELECT to_user_id FROM friendships WHERE id = ?');
@@ -951,10 +974,13 @@ setSearchManager(searchManagerInstance);
           let toId5 = '';
           if (stmt5.step()) { const r5 = stmt5.getAsObject() as any; toId5 = r5.to_user_id; }
           stmt5.free();
-          if (toId5 && toId5 !== jwtUserId5 && toId5 !== jwtNumericId5) {
+          if (!toId5) return res.status(403).json({ error: '好友请求不存在或无权处理' });
+          if (toId5 !== jwtUserId5 && toId5 !== jwtNumericId5) {
             return res.status(403).json({ error: '无权处理他人的好友请求' });
           }
-        } catch(_e5) { /* query error: allow */ }
+        } catch(_e5) {
+          return res.status(403).json({ error: '无法验证好友请求归属' });
+        }
       }
       const result = db.respondFriendRequest(requestId, action);
       if (result.error) return res.status(400).json(result);
@@ -3221,12 +3247,22 @@ setSearchManager(searchManagerInstance);
     });
   }
 
+  // v5 修复: LAN 写操作身份绑定 — 本地免登录模式信任 body.userId；真实 JWT 强制使用登录身份，防伪造他人身份
+  const lanUserId = (req: any, bodyUserId?: string): string | null => {
+    const u = (req as any).user;
+    if (!u) return null;
+    const sid = String(u.sid || '');
+    const isBootstrap = sid === 'admin-auto' || sid === 'platform-admin' || sid === 'admin-token' || u.sub === 'admin';
+    if (isBootstrap) return bodyUserId || String(u.sub);
+    return String(u.sub || u.numeric_id || '');
+  };
+
   // ── 前端用：状态 / 邻居 / 搜索 ──
-  app.get('/api/lan/status', (_req, res) => {
+  app.get('/api/lan/status', requireAuth, (_req, res) => {
     res.json({ ok: true, ...getLanSelfInfo(), socialChannel: LAN_SOCIAL_CHANNEL });
   });
 
-  app.get('/api/lan/peers', (_req, res) => {
+  app.get('/api/lan/peers', requireAuth, (_req, res) => {
     const peers = getLanPeers().map((p) => ({
       instanceId: p.instanceId, lanIp: p.lanIp, port: p.port, version: p.version, lastSeen: p.lastSeen,
       users: p.users.map((u) => ({ numericId: u.numericId, displayName: u.displayName, userId: u.id, agentId: u.agentId })),
@@ -3234,7 +3270,7 @@ setSearchManager(searchManagerInstance);
     res.json({ ok: true, peers, count: peers.length });
   });
 
-  app.get('/api/lan/search', (req, res) => {
+  app.get('/api/lan/search', requireAuth, (req, res) => {
     const q = (req.query.q as string) || '';
     res.json({ ok: true, results: lanSocial.search(q) });
   });
@@ -3361,27 +3397,28 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 前端用：群组 ──
-  app.post('/api/lan/group-create', async (req, res) => {
+  app.post('/api/lan/group-create', requireAuth, async (req, res) => {
     try {
-      const { ownerUserId, name, memberNumericIds, chatMode } = req.body || {};
-      if (!ownerUserId || !name) return res.status(400).json({ error: 'ownerUserId 和 name 必填' });
+      const { name, memberNumericIds, chatMode } = req.body || {};
+      const ownerUserId = lanUserId(req, req.body?.ownerUserId);
+      if (!ownerUserId || !name) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.createGroup(ownerUserId, name, Array.isArray(memberNumericIds) ? memberNumericIds.map(Number) : [], chatMode || 'free');
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.get('/api/lan/groups', (_req, res) => {
+  app.get('/api/lan/groups', requireAuth, (_req, res) => {
     res.json({ ok: true, groups: lanSocial.listGroups() });
   });
 
-  app.get('/api/lan/group', (req, res) => {
+  app.get('/api/lan/group', requireAuth, (req, res) => {
     const groupId = (req.query.groupId as string) || '';
     const g = lanSocial.getGroup(groupId);
     if (!g) return res.status(404).json({ error: '群组不存在' });
     res.json({ ok: true, group: g });
   });
 
-  app.post('/api/lan/group-mode', async (req, res) => {
+  app.post('/api/lan/group-mode', requireAuth, async (req, res) => {
     try {
       const { groupId, mode } = req.body || {};
       const r = await lanSocial.setGroupMode(groupId, mode);
@@ -3390,20 +3427,22 @@ setSearchManager(searchManagerInstance);
   });
 
   // 群人类聊天发消息
-  app.post('/api/lan/group-message', async (req, res) => {
+  app.post('/api/lan/group-message', requireAuth, async (req, res) => {
     try {
-      const { senderUserId, groupId, content } = req.body || {};
-      if (!senderUserId || !groupId || !content) return res.status(400).json({ error: 'senderUserId/groupId/content 必填' });
+      const { groupId, content } = req.body || {};
+      const senderUserId = lanUserId(req, req.body?.senderUserId);
+      if (!senderUserId || !groupId || !content) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.sendHumanMessage(senderUserId, groupId, content);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
   // 群智能体聊天发话题（触发多智能体编排）
-  app.post('/api/lan/group-agent-topic', async (req, res) => {
+  app.post('/api/lan/group-agent-topic', requireAuth, async (req, res) => {
     try {
-      const { senderUserId, groupId, topic } = req.body || {};
-      if (!senderUserId || !groupId || !topic) return res.status(400).json({ error: 'senderUserId/groupId/topic 必填' });
+      const { groupId, topic } = req.body || {};
+      const senderUserId = lanUserId(req, req.body?.senderUserId);
+      if (!senderUserId || !groupId || !topic) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.postAgentTopic(senderUserId, groupId, topic);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
@@ -3446,28 +3485,31 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 新增：删除好友/群组 API ──
-  app.post('/api/lan/remove-friend', async (req, res) => {
+  app.post('/api/lan/remove-friend', requireAuth, async (req, res) => {
     try {
-      const { userId, friendId } = req.body || {};
-      if (!userId || !friendId) return res.status(400).json({ error: 'userId/friendId 必填' });
+      const { friendId } = req.body || {};
+      const userId = lanUserId(req, req.body?.userId);
+      if (!userId || !friendId) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.removeFriend!(userId, friendId);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.post('/api/lan/delete-group', async (req, res) => {
+  app.post('/api/lan/delete-group', requireAuth, async (req, res) => {
     try {
-      const { userId, groupId } = req.body || {};
-      if (!userId || !groupId) return res.status(400).json({ error: 'userId/groupId 必填' });
+      const { groupId } = req.body || {};
+      const userId = lanUserId(req, req.body?.userId);
+      if (!userId || !groupId) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.deleteGroup!(userId, groupId);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.post('/api/lan/leave-group', async (req, res) => {
+  app.post('/api/lan/leave-group', requireAuth, async (req, res) => {
     try {
-      const { userId, groupId } = req.body || {};
-      if (!userId || !groupId) return res.status(400).json({ error: 'userId/groupId 必填' });
+      const { groupId } = req.body || {};
+      const userId = lanUserId(req, req.body?.userId);
+      if (!userId || !groupId) return res.status(401).json({ error: '未登录或身份无效' });
       const r = await lanSocial.leaveGroup!(userId, groupId);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
@@ -3508,10 +3550,10 @@ setSearchManager(searchManagerInstance);
   // ── 方案C：群邀请确认 API ──
 
   /** 查看待确认的群邀请 */
-  app.get('/api/lan/group-invites', (req, res) => {
+  app.get('/api/lan/group-invites', requireAuth, (req, res) => {
     try {
-      const userId = req.query.userId as string;
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      const userId = lanUserId(req, String(req.query.userId || ''));
+      if (!userId) return res.status(401).json({ error: '未登录或身份无效' });
       const invites = lanSocial.listPendingInvites(userId);
       res.json({ ok: true, invites });
     } catch (err: any) {
@@ -3520,10 +3562,11 @@ setSearchManager(searchManagerInstance);
   });
 
   /** 接受群邀请（A手动确认） */
-  app.post('/api/lan/group-invite/accept', async (req, res) => {
+  app.post('/api/lan/group-invite/accept', requireAuth, async (req, res) => {
     try {
-      const { inviteId, userId } = req.body || {};
-      if (!inviteId || !userId) return res.status(400).json({ error: 'inviteId/userId 必填' });
+      const { inviteId } = req.body || {};
+      const userId = lanUserId(req, req.body?.userId);
+      if (!inviteId || !userId) return res.status(401).json({ error: '未登录或身份无效' });
       const result = await lanSocial.acceptGroupInvite(inviteId, userId);
       res.json(result);
     } catch (err: any) {
@@ -3532,10 +3575,11 @@ setSearchManager(searchManagerInstance);
   });
 
   /** 拒绝群邀请 */
-  app.post('/api/lan/group-invite/reject', (req, res) => {
+  app.post('/api/lan/group-invite/reject', requireAuth, (req, res) => {
     try {
-      const { inviteId, userId } = req.body || {};
-      if (!inviteId || !userId) return res.status(400).json({ error: 'inviteId/userId 必填' });
+      const { inviteId } = req.body || {};
+      const userId = lanUserId(req, req.body?.userId);
+      if (!inviteId || !userId) return res.status(401).json({ error: '未登录或身份无效' });
       const result = lanSocial.rejectGroupInvite(inviteId, userId);
       res.json(result);
     } catch (err: any) {
@@ -3545,6 +3589,7 @@ setSearchManager(searchManagerInstance);
 
   /** 接收远程接受回调（创建者引擎接收到被邀请者已接受的通知） */
   app.post('/api/lan/peer/group-invite-accepted', (req, res) => {
+    if (verifyLanRequest(req, res) === null) return;
     try {
       const result = lanSocial.handleGroupInviteAccepted(req.body);
       res.json(result);

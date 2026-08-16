@@ -17,11 +17,16 @@ const PROTO_HEADER = 'x-lingxi-lan-proto';
 const PROTO_VERSION = '1';
 const FROM_HEADER = 'x-lingxi-from';
 const SECRET_HEADER = 'x-lingxi-secret';
+const NONCE_HEADER = 'x-lingxi-nonce';
 
 /** 可选的局域网共享密钥（默认空 = 仅靠协议头识别） */
 function getLanSecret(): string {
   return process.env.LAN_SECRET || '';
 }
+
+/** P2-B: nonce 防重放缓存（nonce -> 首次使用时间戳），TTL 与时间戳容忍一致 */
+const seenNonces = new Map<string, number>();
+const NONCE_TTL = 300_000;
 
 export interface LanSendOptions {
   timeoutMs?: number;
@@ -55,20 +60,21 @@ export async function sendToPeer<T = any>(
     [PROTO_HEADER]: PROTO_VERSION,
     [FROM_HEADER]: getLanInstanceId(),
   };
-  const secret = getLanSecret();
-  if (secret) {
-    // P1-4: HMAC signature instead of plaintext secret
-    const { createHmac } = await import('crypto');
-    const timestamp = Date.now().toString();
-    const payload = JSON.stringify(body);
-    const sig = createHmac('sha256', secret).update(timestamp + ':' + path + ':' + payload).digest('hex');
-    headers[SECRET_HEADER] = sig;
-    headers['x-lingxi-ts'] = timestamp;
-  }
-
   const retries = opts.retries ?? 2;
   let lastNetErr: any;
   for (let attempt = 0; attempt <= retries; attempt++) {
+    const secret = getLanSecret();
+    if (secret) {
+      // P1-4: HMAC signature instead of plaintext secret (P2-B: 每次尝试重新生成 nonce 防重放)
+      const { createHmac, randomBytes } = await import('crypto');
+      const timestamp = Date.now().toString();
+      const nonce = randomBytes(16).toString('hex');
+      const payload = JSON.stringify(body);
+      const sig = createHmac('sha256', secret).update(timestamp + ':' + nonce + ':' + path + ':' + payload).digest('hex');
+      headers[SECRET_HEADER] = sig;
+      headers['x-lingxi-ts'] = timestamp;
+      headers[NONCE_HEADER] = nonce;
+    }
     let resp: Response;
     try {
       resp = await fetch(url, {
@@ -118,12 +124,14 @@ export async function getFromPeer<T = any>(
   };
   const secret = getLanSecret();
   if (secret) {
-    // P1-4: HMAC signature for GET requests (no body, use empty string)
-    const { createHmac } = await import('crypto');
+    // P1-4: HMAC signature for GET requests (no body, use empty string) (P2-B: nonce 防重放)
+    const { createHmac, randomBytes } = await import('crypto');
     const timestamp = Date.now().toString();
-    const sig = createHmac('sha256', secret).update(timestamp + ':' + path + ':').digest('hex');
+    const nonce = randomBytes(16).toString('hex');
+    const sig = createHmac('sha256', secret).update(timestamp + ':' + nonce + ':' + path + ':').digest('hex');
     headers[SECRET_HEADER] = sig;
     headers['x-lingxi-ts'] = timestamp;
+    headers[NONCE_HEADER] = nonce;
   }
 
   const resp = await fetch(url, {
@@ -160,8 +168,9 @@ export function verifyLanRequest(req: any, res: any): string | null {
     // P1-4: HMAC signature verification instead of plaintext comparison
     const provided = req.headers[SECRET_HEADER];
     const timestamp = req.headers['x-lingxi-ts'];
-    if (!provided || !timestamp) {
-      res.status(403).json({ error: '缺少签名或时间戳' });
+    const nonce = req.headers[NONCE_HEADER];
+    if (!provided || !timestamp || !nonce) {
+      res.status(403).json({ error: '缺少签名、时间戳或 nonce' });
       return null;
     }
     // Replay protection: reject timestamps older than 5 minutes
@@ -170,15 +179,23 @@ export function verifyLanRequest(req: any, res: any): string | null {
       res.status(403).json({ error: '时间戳过期' });
       return null;
     }
+    // P2-B: nonce 一次性校验（重放攻击拦截，未验签的请求不登记，避免污染缓存）
+    if (seenNonces.has(nonce as string)) {
+      res.status(403).json({ error: 'nonce 已使用（疑似重放攻击）' });
+      return null;
+    }
     // Reconstruct the signed payload from the request
-    const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {});
+    // v5-P1-D 修复: GET 请求无 body，发送方签空串，接收方必须同样签空串（JSON.stringify({}) 会得到 '{}' 导致签名不匹配）
+    const body = req.method === 'GET' ? '' : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
     const reqPath = req.path || req.url || '';
     const { createHmac } = require('crypto');
-    const expectedSig = createHmac('sha256', secret).update(timestamp + ':' + reqPath + ':' + body).digest('hex');
+    const expectedSig = createHmac('sha256', secret).update(timestamp + ':' + nonce + ':' + reqPath + ':' + body).digest('hex');
     if (provided !== expectedSig) {
       res.status(403).json({ error: '局域网签名校验失败' });
       return null;
     }
+    // 签名通过后登记 nonce
+    seenNonces.set(nonce as string, Date.now());
   }
   return (req.headers[FROM_HEADER] as string) || 'unknown';
 }
