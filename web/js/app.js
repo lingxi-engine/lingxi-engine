@@ -609,10 +609,13 @@ function handleMessage(msg) {
           s.el.querySelector('.msg-content') && s.el.querySelector('.msg-content').textContent === msg.content
         );
         // 乐观渲染去重：如果是服务端回传的用户自己消息，且已立即渲染过，跳过
-        const _echoKey = (msg.chatId || '') + '|' + (msg.content || '') + '|' + (msg.from || msg.senderId || '');
-        const isOptimisticDuplicate = _optimisticSent.has(_echoKey);
+        // 归一化：回传 from 可能是数字ID/带前缀ID，发送时已把多种自身 ID 形态都加入去重集合
+        const _echoFromRaw = String(msg.from || msg.senderId || '');
+        const _echoKey = (msg.chatId || '') + '|' + (msg.content || '') + '|' + _echoFromRaw;
+        const _echoKeyAlt = (msg.chatId || '') + '|' + (msg.content || '') + '|' + _echoFromRaw.replace(/^user-/, '');
+        const isOptimisticDuplicate = _optimisticSent.has(_echoKey) || _optimisticSent.has(_echoKeyAlt);
         if (isOptimisticDuplicate) {
-          _optimisticSent.delete(_echoKey); // 命中后立即清理
+          _optimisticSent.delete(_echoKey); _optimisticSent.delete(_echoKeyAlt); // 命中后立即清理
         }
         if (!isStreamingDuplicate && !isOptimisticDuplicate) {
           appendMessage(msg);
@@ -858,7 +861,11 @@ function appendMessage(msg) {
   const empty = container.querySelector('.empty'); if (empty) empty.remove();
   
   const isAgent = (msg.senderType || msg.sender_type) === 'agent' || senderId.startsWith('agent-');
-  const isMe = senderId === clientId || (isAgent && senderId.startsWith('agent-' + (clientId||'').replace(/^user-/,'') + '-'));
+  // isMe 兼容多种自身 ID 形态：clientId（u-xxx）、真实登录 id（lanMeId）、去前缀形态
+  const _isMeId = senderId === clientId
+    || (typeof lanMeId !== 'undefined' && lanMeId && (senderId === String(lanMeId) || senderId === 'user-' + String(lanMeId).replace(/^user-/, '')))
+    || senderId === (typeof lanMyId === 'function' ? String(lanMyId()) : '');
+  const isMe = _isMeId || (isAgent && senderId.startsWith('agent-' + (clientId||'').replace(/^user-/,'') + '-'));
   const time = new Date(msg.timestamp || Date.now()).toLocaleTimeString('zh-CN', {hour:'2-digit',minute:'2-digit'});
   
   // 时间分割线（超过5分钟间隔）
@@ -1108,7 +1115,13 @@ function updateCtxInfo() {
   const cnChars = (totalText.match(/[一-鿿]/g) || []).length;
   const enWords = (totalText.match(/[a-zA-Z]+/g) || []).length;
   const estTokens = Math.ceil(cnChars * 1.5 + enWords * 1.3);
-  const model = document.getElementById('headerModelSelect')?.value || t('misc.default');
+  // 路由开启时实际生效的是回复模型，显示真实生效模型而非顶部下拉框的静态值
+  let model;
+  if (document.getElementById('routeEnabled')?.checked && document.getElementById('replyModelSelect')?.value) {
+    model = document.getElementById('replyModelSelect').value;
+  } else {
+    model = document.getElementById('headerModelSelect')?.value || t('misc.default');
+  }
   const el = document.getElementById('ctxInfo');
   if (msgCount > 0) {
     el.textContent = t('chat.ctxInfo', { count: msgCount, tokens: estTokens.toLocaleString(), model: model });
@@ -1185,7 +1198,14 @@ async function send() {
   if (String(chatId).startsWith('chat-platform-')) {
     if (!ws || ws.readyState !== 1) { toast(t('chat.engineNotConnected')); return; }
     input.value = '';
-    appendMessage({ chatId, senderId: String(lanMeId || clientId || 'user'), senderType: 'user', content, timestamp: Date.now() });
+    const _uid = String(lanMeId || clientId || 'user');
+    appendMessage({ chatId, senderId: _uid, senderType: 'user', content, timestamp: Date.now() });
+    // 乐观渲染去重：把多种自身 ID 形态都加入去重集合，服务端回传时命中即跳过（修复重复消息）
+    [_uid, String(lanMeId || ''), String(clientId || ''), String(lanMeId || '').replace(/^user-/, '')].filter(Boolean).forEach(function(uid) {
+      const _k = chatId + '|' + content + '|' + uid;
+      _optimisticSent.add(_k);
+      setTimeout(function() { _optimisticSent.delete(_k); }, 8000);
+    });
     try {
       const d = await api('/api/chats/' + encodeURIComponent(chatId) + '/send-friend', 'POST', { content, fromUserId: lanMeId || clientId });
       if (!d.ok) toast(d.error?.message || d.error || t('err.sendFail'));
@@ -1794,7 +1814,14 @@ async function loadModels() {
     const opts = models.map(m => '<option value="'+esc(m.id)+'">' + esc(m.providerName||m.provider||'') + ' / ' + esc(m.id) + '</option>').join('');
     if (hSel) {
       hSel.innerHTML = opts || '<option value="">'+t('settings.noModel')+'</option>';
-      if (d.defaultModel && hSel.querySelector('option[value="'+d.defaultModel+'"]')) hSel.value = d.defaultModel;
+      // 修复模型名显示写死：优先恢复用户上次手动选择的模型（localStorage），
+      // 其次才用服务端 defaultModel，避免每次 loadModels 都被重置
+      const savedModel = localStorage.getItem('lingxi-selected-model');
+      if (savedModel && hSel.querySelector('option[value="'+savedModel+'"]')) {
+        hSel.value = savedModel;
+      } else if (d.defaultModel && hSel.querySelector('option[value="'+d.defaultModel+'"]')) {
+        hSel.value = d.defaultModel;
+      }
     }
     document.getElementById('modelInfo').textContent = models.length === 0 ? t('settings.noModelWarn') : t('settings.modelCountAvail', { n: models.length });
     const mcEl = document.getElementById('modelCount'); if (mcEl) mcEl.textContent = models.length;
@@ -1810,6 +1837,8 @@ async function loadModels() {
 }
 async function switchHeaderModel(mid) {
   if (!mid) return;
+  // 持久化用户选择，刷新/重载后仍显示用户选中的模型（修复模型名显示写死）
+  try { localStorage.setItem('lingxi-selected-model', mid); } catch(e) {}
   // 检查路由是否开启
   const routeEnabled = document.getElementById('routeEnabled')?.checked;
   if (routeEnabled) {
@@ -1890,7 +1919,7 @@ async function loadModelRoute() {
     const chk = document.getElementById('routeEnabled');
     if (d.toolModel) toolSel.value = d.toolModel;
     if (d.replyModel) replySel.value = d.replyModel;
-    const enabled = d.enabled !== 'false';
+    const enabled = d.enabled !== 'false' && d.enabled !== false;
     if (chk) chk.checked = enabled;
     const info = document.getElementById('routeInfo');
     if (enabled && (d.toolModel || d.replyModel)) {
@@ -2980,7 +3009,11 @@ async function refreshStatusBar() {
     const models = d.models || [];
     const mcEl = document.getElementById('modelCount'); if (mcEl) mcEl.textContent = models.length || '-';
     const hSel = document.getElementById('headerModelSelect');
-    const curModel = hSel && hSel.value ? hSel.value : (models[0]?.id || '');
+    // 路由开启时显示实际生效的回复模型，避免显示写死的默认模型
+    let curModel = hSel && hSel.value ? hSel.value : (models[0]?.id || '');
+    if (document.getElementById('routeEnabled')?.checked && document.getElementById('replyModelSelect')?.value) {
+      curModel = document.getElementById('replyModelSelect').value;
+    }
     const cmdEl = document.getElementById('currentModelDisplay'); if (cmdEl) cmdEl.textContent = curModel ? '⚡' + (curModel.split('/').pop() || curModel) : '';
   } catch(e){}
   const wsEl = document.getElementById('wsState');

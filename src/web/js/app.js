@@ -1721,7 +1721,7 @@ async function loadModelRoute() {
     const chk = document.getElementById('routeEnabled');
     if (d.toolModel) toolSel.value = d.toolModel;
     if (d.replyModel) replySel.value = d.replyModel;
-    const enabled = d.enabled !== 'false';
+    const enabled = d.enabled !== 'false' && d.enabled !== false;
     if (chk) chk.checked = enabled;
     const info = document.getElementById('routeInfo');
     if (enabled && (d.toolModel || d.replyModel)) {

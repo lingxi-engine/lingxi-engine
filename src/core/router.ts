@@ -257,8 +257,9 @@ export class MessageRouter {
       console.log(`[Router] Agent ${agent.displayName} 有 ${agentTools.length} 个可用工具，启动工具调用循环`);
       let result: any = null;
       try {
-      // 总超时控制：2 分钟兜底，防止 AI 响应慢或工具卡住导致前端无响应
-      const TOTAL_TIMEOUT = 120000;  // P1-5: 2分钟超时（原600秒过长，前端WS可能已断开）
+      // 总超时控制：普通对话 2 分钟兜底；任务模式（taskGoal/customPrompt）给 10 分钟，
+      // 避免长任务（多轮工具调用）干到一半被中断（用户反馈"活干到一半就停了"的根因）
+      const TOTAL_TIMEOUT = (taskGoal || customPrompt) ? 600000 : 120000;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TOTAL_TIMEOUT);
       // ⭐ 停止生成：外部信号 abort 时同步中断内部 controller

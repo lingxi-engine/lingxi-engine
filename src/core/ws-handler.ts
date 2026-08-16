@@ -460,6 +460,7 @@ export function handleWSMessage(
 const COMPLEX_KEYWORDS = [
   '全部修复', '批量', '所有', '全面', '整体', '系统性', '全量',
   '重构', '审计', '扫描全部', '逐个', '依次', '分步骤', '多步骤',
+  '打包上传', '打包并', '上传服务器', '部署到', '发布到', '还要', '然后再',
   'all fix', 'batch', 'comprehensive', 'full scan', 'refactor all'
 ];
 function shouldAutoDecompose(content: string): boolean {
@@ -469,12 +470,12 @@ function shouldAutoDecompose(content: string): boolean {
   for (const kw of COMPLEX_KEYWORDS) {
     if (lower.includes(kw.toLowerCase())) return true;
   }
-  // 长消息（>200字）+ 包含多个操作动词
-  if (content.length > 200) {
-    const actionCount = ['修复', '修改', '添加', '删除', '更新', '检查', '实现', '创建', '配置', '部署',
-                         'fix', 'add', 'remove', 'update', 'check', 'implement', 'create', 'config', 'deploy']
+  // 较长消息（>80字）+ 包含多个操作动词 → 多步骤任务
+  if (content.length > 80) {
+    const actionCount = ['修复', '修改', '添加', '删除', '更新', '检查', '实现', '创建', '配置', '部署', '打包', '上传', '验证',
+                         'fix', 'add', 'remove', 'update', 'check', 'implement', 'create', 'config', 'deploy', 'package', 'upload']
       .filter(v => lower.includes(v)).length;
-    if (actionCount >= 3) return true;
+    if (actionCount >= 2) return true;
   }
   return false;
 }

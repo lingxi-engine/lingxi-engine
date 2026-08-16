@@ -27,7 +27,7 @@ import 'dotenv/config';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync, appendFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs';
 import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
@@ -1361,6 +1361,24 @@ setSearchManager(searchManagerInstance);
     }
   });
 
+  // 模型路由配置持久化：写回 .env（read-modify-write，保留原内容与注释）
+  function persistEnvVar(key: string, value: string): void {
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let text = '';
+      if (existsSync(envPath)) text = readFileSync(envPath, 'utf8');
+      const re = new RegExp('^(' + key + '\\s*=).*$', 'm');
+      if (re.test(text)) {
+        text = text.replace(re, '$1' + value);
+      } else {
+        text += (text.endsWith('\n') || text === '' ? '' : '\n') + key + '=' + value + '\n';
+      }
+      writeFileSync(envPath, text, 'utf8');
+    } catch (e: any) {
+      console.warn('[Config] 写入 .env 失败:', e.message);
+    }
+  }
+
   // ── 模型路由配置 ──
   app.get('/api/model-route', requireAuth, (_req, res) => {
     res.json({
@@ -1372,12 +1390,12 @@ setSearchManager(searchManagerInstance);
     });
   });
 
-  app.put('/api/model-route', adminAuth, (req, res) => {
+  app.put('/api/model-route', requireAuth, (req, res) => {
     try {
       const { toolModel, replyModel, enabled } = req.body;
-      if (toolModel !== undefined) process.env.TOOL_MODEL = toolModel;
-      if (replyModel !== undefined) process.env.REPLY_MODEL = replyModel;
-      if (enabled !== undefined) process.env.ROUTE_ENABLED = enabled;
+      if (toolModel !== undefined) { process.env.TOOL_MODEL = toolModel; persistEnvVar('TOOL_MODEL', toolModel); }
+      if (replyModel !== undefined) { process.env.REPLY_MODEL = replyModel; persistEnvVar('REPLY_MODEL', replyModel); }
+      if (enabled !== undefined) { process.env.ROUTE_ENABLED = String(enabled); persistEnvVar('ROUTE_ENABLED', String(enabled)); }
       res.json({ ok: true, toolModel: process.env.TOOL_MODEL, replyModel: process.env.REPLY_MODEL, enabled: process.env.ROUTE_ENABLED !== 'false' ? 'true' : 'false' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

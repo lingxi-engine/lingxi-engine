@@ -2,6 +2,8 @@
  * 系统路由 — 健康检查、版本、用量、模型路由配置、搜索
  */
 import { Router } from 'express';
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import * as path from 'path';
 import { adminAuth } from '../middleware/admin-auth.js';
 import { jwtAuth } from '../middleware/jwt-auth.js';
 const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
@@ -57,6 +59,24 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     }
   });
 
+  // 模型路由配置持久化：写回 .env（read-modify-write，保留原内容与注释）
+  function persistEnvVar(key: string, value: string): void {
+    try {
+      const envPath = path.join(process.cwd(), '.env');
+      let text = '';
+      if (existsSync(envPath)) text = readFileSync(envPath, 'utf8');
+      const re = new RegExp('^(' + key + '\\s*=).*$', 'm');
+      if (re.test(text)) {
+        text = text.replace(re, '$1' + value);
+      } else {
+        text += (text.endsWith('\n') || text === '' ? '' : '\n') + key + '=' + value + '\n';
+      }
+      writeFileSync(envPath, text, 'utf8');
+    } catch (e: any) {
+      console.warn('[Config] 写入 .env 失败:', e.message);
+    }
+  }
+
   // ── 模型路由配置 ──
   router.get('/model-route', requireAuth, (_req, res) => {
     res.json({
@@ -68,12 +88,12 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     });
   });
 
-  router.put('/model-route', adminAuth, (req, res) => {
+  router.put('/model-route', requireAuth, (req, res) => {
     try {
       const { toolModel, replyModel, enabled } = req.body;
-      if (toolModel !== undefined) process.env.TOOL_MODEL = toolModel;
-      if (replyModel !== undefined) process.env.REPLY_MODEL = replyModel;
-      if (enabled !== undefined) process.env.ROUTE_ENABLED = enabled;
+      if (toolModel !== undefined) { process.env.TOOL_MODEL = toolModel; persistEnvVar('TOOL_MODEL', toolModel); }
+      if (replyModel !== undefined) { process.env.REPLY_MODEL = replyModel; persistEnvVar('REPLY_MODEL', replyModel); }
+      if (enabled !== undefined) { process.env.ROUTE_ENABLED = String(enabled); persistEnvVar('ROUTE_ENABLED', String(enabled)); }
       res.json({
         ok: true,
         toolModel: process.env.TOOL_MODEL,
