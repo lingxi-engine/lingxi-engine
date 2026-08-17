@@ -120,7 +120,7 @@ export function createSystemRoutes(ctx: ServerContext): Router {
     try {
       const { taskTimeoutSeconds, chatTimeoutSeconds, orchestratorTimeoutSeconds, subagentTimeoutSeconds } = req.body;
       const defaults = { taskTimeoutSeconds: 600, chatTimeoutSeconds: 120, orchestratorTimeoutSeconds: 60, subagentTimeoutSeconds: 120 };
-      const maxValues = { taskTimeoutSeconds: 7200, chatTimeoutSeconds: 3600, orchestratorTimeoutSeconds: 3600, subagentTimeoutSeconds: 3600 };
+      const maxValues = { taskTimeoutSeconds: 86400, chatTimeoutSeconds: 86400, orchestratorTimeoutSeconds: 86400, subagentTimeoutSeconds: 86400 };
       const updates: Record<string, number> = {};
       for (const [key, def] of Object.entries(defaults)) {
         const val = (req.body as any)[key];

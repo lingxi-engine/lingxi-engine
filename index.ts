@@ -2706,15 +2706,18 @@ setSearchManager(searchManagerInstance);
   app.post('/api/settings', requireAuth, (req, res) => {
     try {
       const body = req.body || {};
-      // 仅允许修改运行时读取的数值，不持久化到 .env（避免破坏配置）
-      if (typeof body.orchestratorTimeoutSeconds === 'number' && body.orchestratorTimeoutSeconds >= 10 && body.orchestratorTimeoutSeconds <= 3600) {
+      // 超时设置：范围 10 秒 – 24 小时，保存时同步写入 .env 持久化（重启不丢失）
+      if (typeof body.orchestratorTimeoutSeconds === 'number' && body.orchestratorTimeoutSeconds >= 10 && body.orchestratorTimeoutSeconds <= 86400) {
         process.env.ORCHESTRATOR_TIMEOUT_SECONDS = String(body.orchestratorTimeoutSeconds);
+        persistEnvVar('ORCHESTRATOR_TIMEOUT_SECONDS', String(body.orchestratorTimeoutSeconds));
       }
-      if (typeof body.taskTimeoutSeconds === 'number' && body.taskTimeoutSeconds >= 10 && body.taskTimeoutSeconds <= 3600) {
+      if (typeof body.taskTimeoutSeconds === 'number' && body.taskTimeoutSeconds >= 10 && body.taskTimeoutSeconds <= 86400) {
         process.env.TASK_TIMEOUT_SECONDS = String(body.taskTimeoutSeconds);
+        persistEnvVar('TASK_TIMEOUT_SECONDS', String(body.taskTimeoutSeconds));
       }
-      if (typeof body.chatTimeoutSeconds === 'number' && body.chatTimeoutSeconds >= 10 && body.chatTimeoutSeconds <= 3600) {
+      if (typeof body.chatTimeoutSeconds === 'number' && body.chatTimeoutSeconds >= 10 && body.chatTimeoutSeconds <= 86400) {
         process.env.CHAT_TIMEOUT_SECONDS = String(body.chatTimeoutSeconds);
+        persistEnvVar('CHAT_TIMEOUT_SECONDS', String(body.chatTimeoutSeconds));
       }
       if (['debug','info','warn','error'].includes(body.logLevel)) {
         process.env.LOG_LEVEL = body.logLevel;

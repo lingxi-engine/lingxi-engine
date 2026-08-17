@@ -831,18 +831,18 @@ function switchTheme(name,btn){
     </div>
     <div class="section">
       <h3>⚡ 超时与日志</h3>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">运行时参数（修改后立即生效，重启后从 .env 读取）</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">超时范围 10 秒 – 24 小时（保存后写入 .env，重启不丢失）</div>
       <div class="row" style="margin-bottom:6px">
         <label style="font-size:12px;min-width:130px">编排器超时(秒)</label>
-        <input id="setOrchestratorTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+        <input id="setOrchestratorTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
       </div>
       <div class="row" style="margin-bottom:6px">
         <label style="font-size:12px;min-width:130px">任务超时(秒)</label>
-        <input id="setTaskTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+        <input id="setTaskTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
       </div>
       <div class="row" style="margin-bottom:6px">
         <label style="font-size:12px;min-width:130px">聊天超时(秒)</label>
-        <input id="setChatTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+        <input id="setChatTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
       </div>
       <div class="row" style="margin-bottom:6px">
         <label style="font-size:12px;min-width:130px">日志级别</label>
