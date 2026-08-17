@@ -121,9 +121,8 @@ function buildBeacon(): LanBeacon {
     lanIp: getLanIp(),
     port: config!.port,
     version: config!.version,
-    // P1-5: 不再广播完整用户列表，仅发送数量摘要
-    // 用户信息在建立好友/群组关系后按需交换
-    users: [],
+    // P0-1 fix: 恢复 users 字段但只含 numericId + displayName（不含 agentId 等敏感信息）
+    users: config!.getUsers().map((u: any) => ({ id: u.id, numericId: u.numericId, displayName: u.displayName })),
     userCount: config!.getUsers().length,
     ts: Date.now(),
   };

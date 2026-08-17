@@ -655,12 +655,25 @@ async function saveRuntimeSettings() {
 // ════════════════════════════════════════════
 // 数据导出 / 备份
 // ════════════════════════════════════════════
-function exportBackup() {
+async function exportBackup() {
   try {
+    // P1 修复: 备份接口需管理员权限，改用 fetch 携带 auth token
+    const token = localStorage.getItem('authToken');
+    const r = await fetch('/api/export/backup', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {}
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      toast('❌ ' + (d.error?.message || d.error || t('err.operationFail')));
+      return;
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = '/api/export/backup';
+    a.href = url;
     a.download = 'lingxi-backup-' + Date.now() + '.json';
     document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
     toast(t('settings.exportStarted'));
   } catch (e) { toast(t('err.operationFail')); }
 }
@@ -738,6 +751,9 @@ function handleMessage(msg) {
         }
       }
       break;
+    case 'agent.streaming.heartbeat':
+        // 心跳保活：AI 仍在处理中，不做任何 UI 变更，仅防止连接超时
+        break;
     case 'agent.streaming.end':
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
       if (streamingMsgs[msg.msgId]) {

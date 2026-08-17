@@ -125,32 +125,8 @@ const MAX_CODE_ATTEMPTS = 10;  // 5分钟内最多尝试10次
 const ATTEMPT_WINDOW = 5 * 60 * 1000;
 
 
-// ── v1.7 RBAC 角色控制 ──
-type Role = 'owner' | 'admin' | 'member' | 'viewer';
-const ROLE_HIERARCHY: Record<Role, number> = { owner: 4, admin: 3, member: 2, viewer: 1 };
-
-function getParticipantRole(chatId: string, userId: string): Role | null {
-  try {
-    const d = getDB();
-    const participants = d.listParticipants(chatId);
-    const p = participants.find((x: any) => x.userId === userId || x.agentId === userId);
-    return (p?.role as Role) || null;
-  } catch { return null; }
-}
-
-function rbac(requiredRole: Role) {
-  return (req: any, res: any, next: any) => {
-    const chatId = req.params.id || req.params.chatId || req.body?.chatId;
-    const userId = (req.user?.id || '') as string;
-    if (!chatId || !userId) return res.status(403).json({ error: '缺少 chatId/userId' });
-    const role = getParticipantRole(chatId, userId);
-    if (!role) return res.status(403).json({ error: '不在群聊中' });
-    if (ROLE_HIERARCHY[role] < ROLE_HIERARCHY[requiredRole]) {
-      return res.status(403).json({ error: `需要 ${requiredRole} 权限，当前角色: ${role}` });
-    }
-    next();
-  };
-}
+// ── v1.7 RBAC 角色控制（使用 src/server/rbac.ts 修复版）──
+import { rbac, getParticipantRole, type Role } from './src/server/rbac.js';
 
 async function main() {
   // ═══ 启动检测 ═══
@@ -438,6 +414,44 @@ setSearchManager(searchManagerInstance);
   // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
   setSubAgentManager(subAgentManager);
   console.log('[SubAgent] 已注入工具系统，delegate_task 可用');
+
+  // v2.0: 注册 Agent 间消息处理器 — Agent 收到其他 Agent 的消息时，用 generateOneShot 生成回复
+  // 对标 CrewAI delegation + AutoGen GroupChat
+  function registerAgentMessageHandlerForAgent(agentId: string) {
+    try {
+      const agent = manager.get(agentId);
+      if (!agent) return;
+      subAgentManager.registerAgentMessageHandler(agentId, async (msg: any) => {
+        const fromAgent = manager.get(msg.fromAgentId);
+        const fromName = fromAgent?.displayName || msg.fromAgentId;
+        const prompt = `你收到了来自另一个 Agent（${fromName}）的协助请求消息。请根据你的角色和能力，给出有帮助的回复。\n\n来自 ${fromName} 的消息：\n${msg.content}\n\n你的回复：`;
+        const reply = await router.generateOneShot(agentId, prompt, {
+          temperature: 0.5,
+          timeoutMs: 120000,
+          systemPrompt: `你是 ${agent.displayName || agentId}。另一个 Agent 向你请求协助，请根据你的专长给出简洁有用的回复。`,
+        });
+        return reply || '(无回复)';
+      });
+      console.log(`[SubAgent] Agent ${agentId} 消息处理器已注册`);
+    } catch (e: any) {
+      console.error(`[SubAgent] 注册 Agent ${agentId} 消息处理器失败:`, e.message);
+    }
+  }
+
+  // 为所有现有 Agent 注册消息处理器
+  try {
+    const allAgents = manager.list();
+    for (const agent of allAgents) {
+      const agentId = agent.id;
+      if (agentId) registerAgentMessageHandlerForAgent(agentId);
+    }
+    console.log(`[SubAgent] 已为 ${allAgents.length} 个现有 Agent 注册消息处理器`);
+  } catch (e: any) {
+    console.error('[SubAgent] 批量注册 Agent 消息处理器失败:', e.message);
+  }
+
+  // 导出供后续创建 Agent 时调用
+  (globalThis as any).__registerAgentMessageHandler = registerAgentMessageHandlerForAgent;
 
   // ── V5 P1: 审批管理器 ──
   const approvalManager = new ApprovalManager(300000);
@@ -1062,7 +1076,20 @@ setSearchManager(searchManagerInstance);
     try {
       const { id, chatId, userId, agentId, role } = req.body;
       if (!id || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
-      db.addParticipant(id, chatId, userId, agentId, role || 'member');
+      // P1-4 修复: 身份伪造防护 — userId 必须为 JWT 持有者
+      const jwtUser = (req as any).user;
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      if (userId) {
+        const reqUid = String(userId);
+        if (jwtSub && reqUid !== jwtSub && reqUid !== jwtNumericId) {
+          return res.status(403).json({ error: '无权以他人身份加入群聊' });
+        }
+      }
+      // 角色白名单: 只允许 member/owner
+      const allowedRoles = ['member', 'owner'];
+      const finalRole = allowedRoles.includes(role) ? role : 'member';
+      db.addParticipant(id, chatId, userId, agentId, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) return res.json({ ok: true, exists: true });
@@ -1193,7 +1220,7 @@ setSearchManager(searchManagerInstance);
 
 
   // ── 工作流编排 API ──
-  app.get('/api/workflows', (req, res) => {
+  app.get('/api/workflows', requireAuth, (req, res) => {
     try {
       const stmt = getDB().prepare('SELECT id, name, created_at, updated_at FROM workflows ORDER BY updated_at DESC');
       const rows: any[] = [];
@@ -1203,7 +1230,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/workflows/:id', (req, res) => {
+  app.get('/api/workflows/:id', requireAuth, (req, res) => {
     try {
       const stmt = getDB().prepare('SELECT * FROM workflows WHERE id = ?');
       stmt.bind([req.params.id]);
@@ -1254,7 +1281,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // 清理协作模式缓存
-  app.delete('/api/collab-cache/:chatId', (req, res) => {
+  app.delete('/api/collab-cache/:chatId', requireAuth, (req, res) => {
     (globalThis as any).__chatModes?.delete(req.params.chatId);
     (globalThis as any).__roundRobinIdx?.delete(req.params.chatId);
     res.json({ ok: true });
@@ -1402,9 +1429,9 @@ setSearchManager(searchManagerInstance);
     }
   });
 
-  app.get('/api/agents/:id/memory', (req, res) => {
+  app.get('/api/agents/:id/memory', requireAuth, (req, res) => {
     try {
-      const agent = db.getAgent(req.params.id);
+      const agent = db.getAgent(String(req.params.id));
       if (!agent) return res.status(404).json({ error: 'Agent not found' });
       res.json({ ok: true, memory: agent.memory_summary || '', personality: agent.personality || '' });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -1418,7 +1445,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/agents', (_req, res) => {
+  app.get('/api/agents', requireAuth, (_req, res) => {
     try { res.json({ ok: true, agents: manager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1434,7 +1461,7 @@ setSearchManager(searchManagerInstance);
         });
         // 如果该用户没有参与任何会话，返回全部列表（个人单机使用兜底）
         if (!userChats.length) {
-          res.json({ ok: true, chats: allChats });
+          res.json({ ok: true, chats: [] });
         } else {
           res.json({ ok: true, chats: userChats });
         }
@@ -1444,30 +1471,52 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/models', (_req, res) => {
+  app.get('/api/models', requireAuth, (_req, res) => {
     try { res.json({ ok: true, models: aiHub.listModels() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.get('/api/chats/:id/messages', requireAuth, (req, res) => {
-    try { res.json({ ok: true, messages: db.listMessages(req.params.id as string) }); }
+    try {
+      // P1-2 修复: 校验调用者是否为该会话参与者
+      const chatId = req.params.id as string;
+      const jwtUser = (req as any).user;
+      const uid = String(jwtUser?.sub || jwtUser?.numeric_id || '');
+      const participants = db.getChatParticipants(chatId) || [];
+      const isParticipant = participants.some((p: any) => String(p.user_id) === uid || String(p.agent_id) === uid);
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (!isParticipant && !isAdmin) return res.status(403).json({ error: '无权访问此会话消息' });
+      res.json({ ok: true, messages: db.listMessages(chatId) });
+    }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── 消息搜索 API ──
-  app.get('/api/search/messages', (req, res) => {
+  app.get('/api/search/messages', requireAuth, (req, res) => {
     try {
       const q = String(req.query.q || '').trim();
       if (!q) return res.status(400).json({ error: 'q 参数必填' });
       const chatId = req.query.chatId ? String(req.query.chatId) : undefined;
       const limit = req.query.limit ? parseInt(String(req.query.limit)) : 50;
+      // P1-2 修复: 若指定 chatId，校验调用者是否为该会话参与者
+      const jwtUser = (req as any).user;
+      const uid = String(jwtUser?.sub || jwtUser?.numeric_id || '');
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (chatId && !isAdmin) {
+        const participants = db.getChatParticipants(chatId) || [];
+        const isParticipant = participants.some((p: any) => String(p.user_id) === uid || String(p.agent_id) === uid);
+        if (!isParticipant) return res.status(403).json({ error: '无权搜索此会话消息' });
+      }
       const results = (db as any).searchMessages(q, { chatId, limit });
       res.json({ ok: true, query: q, count: results.length, results });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── 数据导出 / 备份 API ──
-  app.get('/api/export/backup', (req, res) => {
+  app.get('/api/export/backup', requireAuth, (req, res) => {
+    // P1-2 修复: 全量备份仅管理员可用
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可导出全量备份' });
     try {
       const data = (db as any).exportBackup();
       const filename = `lingxi-backup-${new Date().toISOString().slice(0, 10)}.json`;
@@ -1496,7 +1545,7 @@ setSearchManager(searchManagerInstance);
 
   // ── RAG 知识库 API ──
   // 上传/添加文档
-  app.post('/api/rag/documents', async (req, res) => {
+  app.post('/api/rag/documents', requireAuth, async (req, res) => {
     try {
       const { title, source, mimeType, content, metadata } = req.body;
       if (!title || !content) return res.status(400).json({ error: 'title 和 content 必填' });
@@ -1515,7 +1564,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // 列出文档
-  app.get('/api/rag/documents', (req, res) => {
+  app.get('/api/rag/documents', requireAuth, (req, res) => {
     try {
       const docs = router.listRagDocuments();
       res.json({ ok: true, count: docs.length, documents: docs });
@@ -1523,16 +1572,16 @@ setSearchManager(searchManagerInstance);
   });
 
   // 删除文档
-  app.delete('/api/rag/documents/:id', (req, res) => {
+  app.delete('/api/rag/documents/:id', requireAuth, (req, res) => {
     try {
-      const removed = router.removeRagDocument(req.params.id);
+      const removed = router.removeRagDocument(String(req.params.id));
       if (!removed) return res.status(404).json({ error: '文档不存在' });
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // 知识库（无 LLM 生成，纯检索）
-  app.get('/api/rag/search', async (req, res) => {
+  app.get('/api/rag/search', requireAuth, async (req, res) => {
     try {
       const q = (req.query.q as string) || '';
       const topK = parseInt(req.query.topK as string) || 5;
@@ -1543,7 +1592,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // 用知识库生成问答（RAG 生成）
-  app.post('/api/rag/generate', async (req, res) => {
+  app.post('/api/rag/generate', requireAuth, async (req, res) => {
     try {
       const { query, topK, systemPrompt } = req.body;
       if (!query) return res.status(400).json({ error: 'query 必填' });
@@ -1553,10 +1602,10 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── Agent 更新 API ──
-  app.patch('/api/agents/:id', (req, res) => {
+  app.patch('/api/agents/:id', requireAuth, (req, res) => {
     try {
       const updates = req.body;
-      const agent = manager.update(req.params.id, updates);
+      const agent = manager.update(String(req.params.id), updates);
       res.json({ ok: true, agent });
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -1572,13 +1621,13 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 工具列表 API ──
-  app.get('/api/tools', (_req, res) => {
+  app.get('/api/tools', requireAuth, (_req, res) => {
     try { res.json({ ok: true, tools: toolRegistry.listTools(), skills: toolRegistry.listSkills() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── AI 员工市场 + 雇佣系统 API ──
-  app.get('/api/market/list', (_req, res) => {
+  app.get('/api/market/list', requireAuth, (_req, res) => {
     try {
       const stmt = getDB().prepare('SELECT * FROM agent_market WHERE status = ? ORDER BY rating DESC, hire_count DESC');
       stmt.bind(['active']);
@@ -1588,7 +1637,7 @@ setSearchManager(searchManagerInstance);
       res.json({ ok: true, listings: rows });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
-  app.post('/api/market/publish', (req, res) => {
+  app.post('/api/market/publish', requireAuth, (req, res) => {
     try {
       const { agentId, publisherId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
       if (!agentId || !publisherId || !title) return res.status(400).json({ error: 'agentId/publisherId/title 必填' });
@@ -1608,7 +1657,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 雇佣AI员工：扣积分 → 创建工作群 → 双方agent入群 → 记录雇佣关系 */
-  app.post('/api/market/hire', (req, res) => {
+  app.post('/api/market/hire', requireAuth, (req, res) => {
     try {
       const { listingId, buyerId } = req.body || {};
       if (!listingId || !buyerId) return res.status(400).json({ error: 'listingId/buyerId 必填' });
@@ -1685,7 +1734,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
-  app.get('/api/credits/balance', (req, res) => {
+  app.get('/api/credits/balance', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1694,7 +1743,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 积分变动历史 */
-  app.get('/api/credits/history', (req, res) => {
+  app.get('/api/credits/history', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1703,7 +1752,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 管理员加积分 */
-  app.post('/api/credits/grant', (req, res) => {
+  app.post('/api/credits/grant', adminAuth, (req, res) => {
     try {
       const { userId, amount } = req.body || {};
       if (!userId || !amount) return res.status(400).json({ error: 'userId/amount 必填' });
@@ -1723,7 +1772,7 @@ setSearchManager(searchManagerInstance);
     return true;
   }
   /** 查看员工的雇佣关系 */
-  app.get('/api/employees', (req, res) => {
+  app.get('/api/employees', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1746,7 +1795,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 解雇员工 */
-  app.post('/api/employees/fire', (req, res) => {
+  app.post('/api/employees/fire', requireAuth, (req, res) => {
     try {
       const { hireId } = req.body || {};
       if (!hireId) return res.status(400).json({ error: 'hireId 必填' });
@@ -1761,7 +1810,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 我的市场发布 */
-  app.get('/api/market/my-listings', (req, res) => {
+  app.get('/api/market/my-listings', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1770,7 +1819,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 下架商品 */
-  app.post('/api/market/unpublish', (req, res) => {
+  app.post('/api/market/unpublish', requireAuth, (req, res) => {
     try {
       const { listingId, userId } = req.body || {};
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
@@ -1786,7 +1835,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 重新上架 */
-  app.post('/api/market/republish', (req, res) => {
+  app.post('/api/market/republish', requireAuth, (req, res) => {
     try {
       const { listingId, userId } = req.body || {};
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
@@ -1802,7 +1851,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 编辑商品 */
-  app.put('/api/market/:id', (req, res) => {
+  app.put('/api/market/:id', requireAuth, (req, res) => {
     try {
       const { userId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
       const listingId = req.params.id;
@@ -1835,7 +1884,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 删除商品 */
-  app.delete('/api/market/:id', (req, res) => {
+  app.delete('/api/market/:id', requireAuth, (req, res) => {
     try {
       const userId = req.body?.userId || req.query.userId;
       const listingId = req.params.id;
@@ -1852,7 +1901,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 评价雇佣 + rating 回写 listing */
-  app.post('/api/market/rate', (req, res) => {
+  app.post('/api/market/rate', requireAuth, (req, res) => {
     try {
       const { orderId, rating, review, userId } = req.body || {};
       const r = Math.floor(Number(rating) || 0);
@@ -1878,7 +1927,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 我的订单 */
-  app.get('/api/market/my-orders', (req, res) => {
+  app.get('/api/market/my-orders', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1896,7 +1945,7 @@ setSearchManager(searchManagerInstance);
 
   // ── P2-3: Provider 管理 API ──
   // 模型管理前端调用的别名（/api/ai/* → /api/providers/*）
-  app.get('/api/ai/config', (_req, res) => {
+  app.get('/api/ai/config', requireAuth, (_req, res) => {
     try {
       const seen = new Set<string>();
       const providers: any[] = [];
@@ -1950,15 +1999,15 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/ai/providers/:id', (req, res) => {
+  app.delete('/api/ai/providers/:id', requireAuth, (req, res) => {
     try {
-      providerRegistry.unregister(req.params.id);
-      aiHub.removeProvider(req.params.id);
+      providerRegistry.unregister(String(req.params.id));
+      aiHub.removeProvider(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/providers', (_req, res) => {
+  app.get('/api/providers', requireAuth, (_req, res) => {
     try {
       const seen = new Set<string>();
       const providers: any[] = [];
@@ -2130,12 +2179,12 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── P2-1: MCP 管理 API ──
-  app.get('/api/mcp/servers', (_req, res) => {
+  app.get('/api/mcp/servers', requireAuth, (_req, res) => {
     try { res.json({ ok: true, servers: mcpManager.listServers(), tools: mcpManager.getAllToolDefinitions() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/mcp/servers', async (req, res) => {
+  app.post('/api/mcp/servers', requireAuth, async (req, res) => {
     try {
       const config = req.body;
       const client = await mcpManager.addServer(config);
@@ -2154,30 +2203,30 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/mcp/servers/:id', async (req, res) => {
+  app.delete('/api/mcp/servers/:id', requireAuth, async (req, res) => {
     try {
-      await mcpManager.removeServer(req.params.id);
+      await mcpManager.removeServer(String(req.params.id));
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── P2-4: 插件管理 API ──
-  app.get('/api/plugins', (_req, res) => {
+  app.get('/api/plugins', requireAuth, (_req, res) => {
     try { res.json({ ok: true, plugins: pluginManager.listPlugins() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/plugins/:id/enable', (req, res) => {
-    try { pluginManager.setEnabled(req.params.id, true); res.json({ ok: true }); }
+  app.post('/api/plugins/:id/enable', requireAuth, (req, res) => {
+    try { pluginManager.setEnabled(String(req.params.id), true); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/plugins/:id/disable', (req, res) => {
-    try { pluginManager.setEnabled(req.params.id, false); res.json({ ok: true }); }
+  app.post('/api/plugins/:id/disable', requireAuth, (req, res) => {
+    try { pluginManager.setEnabled(String(req.params.id), false); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/plugins/reload', async (_req, res) => {
+  app.post('/api/plugins/reload', requireAuth, async (_req, res) => {
     try {
       const result = await pluginManager.loadAll();
       res.json({ ok: true, ...result });
@@ -2185,7 +2234,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── P2-2: 浏览器状态 API ──
-  app.get('/api/browser/status', (_req, res) => {
+  app.get('/api/browser/status', requireAuth, (_req, res) => {
     try { res.json({ ok: true, available: browserManager.isAvailable() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2195,7 +2244,7 @@ setSearchManager(searchManagerInstance);
   // ────────────────────────────────────────
 
   // ── P1-1: Cron 定时任务 API ──
-  app.get('/api/cron', (_req, res) => {
+  app.get('/api/cron', requireAuth, (_req, res) => {
     try { res.json({ ok: true, jobs: cronScheduler.listJobs() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2219,7 +2268,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/standing-orders', (_req, res) => {
+  app.get('/api/standing-orders', requireAuth, (_req, res) => {
     try {
       const jobs = cronScheduler.listJobs().filter((j: any) => j.id?.startsWith('so-'));
       res.json({ ok: true, jobs });
@@ -2265,7 +2314,7 @@ setSearchManager(searchManagerInstance);
 
   // ── v1.8.4: 目标系统 (GoalTracker) ──
   // project 参数缺省为 'default'（单项目场景），支持 ?project= 查询多项目
-  app.get('/api/goals', (_req, res) => {
+  app.get('/api/goals', requireAuth, (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       const goals = GoalTracker.list(project);
@@ -2274,7 +2323,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/goals/summary', (_req, res) => {
+  app.get('/api/goals/summary', requireAuth, (_req, res) => {
     try {
       const project = String(_req.query.project || 'default');
       res.json({ ok: true, summary: GoalTracker.getProgressSummary(project) });
@@ -2368,7 +2417,7 @@ setSearchManager(searchManagerInstance);
   };
 
   // ── P1-2: 会话管理 API ──
-  app.get('/api/sessions', (req, res) => {
+  app.get('/api/sessions', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       const sessions = userId ? sessionManager.listByUser(userId) : sessionManager.listAll();
@@ -2376,7 +2425,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/sessions', (req, res) => {
+  app.post('/api/sessions', requireAuth, (req, res) => {
     try {
       const { id, label, chatId, userId, agentIds } = req.body;
       if (!id || !chatId || !userId) return res.status(400).json({ error: 'id/chatId/userId 必填' });
@@ -2385,37 +2434,37 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.patch('/api/sessions/:id', (req, res) => {
+  app.patch('/api/sessions/:id', requireAuth, (req, res) => {
     try {
-      const session = sessionManager.update(req.params.id, req.body);
+      const session = sessionManager.update(String(req.params.id), req.body);
       if (!session) return res.status(404).json({ error: '会话不存在' });
       res.json({ ok: true, session });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/sessions/:id', (req, res) => {
+  app.delete('/api/sessions/:id', requireAuth, (req, res) => {
     try {
-      const ok = sessionManager.delete(req.params.id);
+      const ok = sessionManager.delete(String(req.params.id));
       res.json({ ok });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/sessions/:id/activate', (req, res) => {
+  app.post('/api/sessions/:id/activate', requireAuth, (req, res) => {
     try {
-      sessionManager.setActive(req.params.id);
-      res.json({ ok: true, activeId: req.params.id });
+      sessionManager.setActive(String(req.params.id));
+      res.json({ ok: true, activeId: String(req.params.id) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── P1-3: 子代理 API ──
-  app.get('/api/subagents', (req, res) => {
+  app.get('/api/subagents', requireAuth, (req, res) => {
     try {
       const parentId = (req.query.parentId as string) || '';
       res.json({ ok: true, tasks: subAgentManager.list(parentId || undefined) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/subagents/spawn', async (req, res) => {
+  app.post('/api/subagents/spawn', requireAuth, async (req, res) => {
     try {
       const { objective, parentId, chatId, model, timeoutSeconds } = req.body;
       if (!objective || !parentId) return res.status(400).json({ error: 'objective/parentId 必填' });
@@ -2430,22 +2479,22 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
-  app.post('/api/subagents/:id/steer', (req, res) => {
+  app.post('/api/subagents/:id/steer', requireAuth, (req, res) => {
     try {
-      const ok = subAgentManager.steer(req.params.id, req.body.message);
+      const ok = subAgentManager.steer(String(req.params.id), req.body.message);
       res.json({ ok });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/subagents/:id', (req, res) => {
+  app.delete('/api/subagents/:id', requireAuth, (req, res) => {
     try {
-      const ok = subAgentManager.kill(req.params.id);
+      const ok = subAgentManager.kill(String(req.params.id));
       res.json({ ok });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── P1-4: Telegram 状态 API ──
-  app.get('/api/telegram/status', (_req, res) => {
+  app.get('/api/telegram/status', requireAuth, (_req, res) => {
     try {
       res.json({ ok: true, connected: !!telegramAdapter, token: process.env.TELEGRAM_BOT_TOKEN ? '***configured' : 'not set' });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -2456,7 +2505,7 @@ setSearchManager(searchManagerInstance);
   // ────────────────────────────────────────
 
   // ── V5 P1: 收件箱 API ──
-  app.get('/api/inbox', (req, res) => {
+  app.get('/api/inbox', requireAuth, (req, res) => {
     try {
       const unreadOnly = req.query.unread === 'true';
       const limit = parseInt(req.query.limit as string) || 50;
@@ -2464,42 +2513,51 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/inbox/:id', (req, res) => {
+  app.get('/api/inbox/:id', requireAuth, (req, res) => {
     try {
-      const item = inboxManager.get(req.params.id);
+      const item = inboxManager.get(String(req.params.id));
       if (!item) return res.status(404).json({ error: '不存在' });
-      const fullContent = inboxManager.getFullContent(req.params.id);
+      const fullContent = inboxManager.getFullContent(String(req.params.id));
       res.json({ ok: true, item, fullContent });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/inbox/:id/read', (req, res) => {
-    try { inboxManager.markRead(req.params.id); res.json({ ok: true }); }
+  app.post('/api/inbox/:id/read', requireAuth, (req, res) => {
+    try { inboxManager.markRead(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/inbox/:id', (req, res) => {
-    try { inboxManager.delete(req.params.id); res.json({ ok: true }); }
+  app.delete('/api/inbox/:id', requireAuth, (req, res) => {
+    try { inboxManager.delete(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── V5 P1: 审批 API ──
-  app.get('/api/approval/pending', (_req, res) => {
+  app.get('/api/approval/pending', requireAuth, (req, res) => {
+    // P1 修复: 审批列表仅管理员可查看
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批列表' });
     try { res.json({ ok: true, pending: approvalManager.getPending() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/approval/:id', (req, res) => {
+  app.post('/api/approval/:id', requireAuth, (req, res) => {
+    // P1 修复: 审批操作仅管理员可执行
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可执行审批操作' });
     try {
       const { action, by } = req.body;
-      if (action === 'approve') approvalManager.approve(req.params.id, by);
-      else if (action === 'reject') approvalManager.reject(req.params.id, by, req.body.reason);
+      if (action === 'approve') approvalManager.approve(String(req.params.id), by);
+      else if (action === 'reject') approvalManager.reject(String(req.params.id), by, req.body.reason);
       else return res.status(400).json({ error: 'action 只能是 approve 或 reject' });
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/approval/history', (req, res) => {
+  app.get('/api/approval/history', requireAuth, (req, res) => {
+    // P1 修复: 审批历史仅管理员可查看
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批历史' });
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       res.json({ ok: true, history: approvalManager.getHistory(limit) });
@@ -2507,7 +2565,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P1: Hook API ──
-  app.get('/api/hooks', (_req, res) => {
+  app.get('/api/hooks', requireAuth, (_req, res) => {
     try { res.json({ ok: true, hooks: hookManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2532,7 +2590,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P4: 技能 API ──
-  app.get('/api/skills', (_req, res) => {
+  app.get('/api/skills', requireAuth, (_req, res) => {
     try { res.json({ ok: true, skills: skillManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -2566,7 +2624,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/skills/market', async (_req, res) => {
+  app.get('/api/skills/market', requireAuth, async (_req, res) => {
     try {
       const items = await skillManager.browseMarket();
       res.json({ ok: true, items });
@@ -2583,17 +2641,17 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P6: 自定义 Provider API ──
-  app.get('/api/custom-providers/backends', (_req, res) => {
+  app.get('/api/custom-providers/backends', requireAuth, (_req, res) => {
     try { res.json({ ok: true, backends: INFERENCE_BACKENDS }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/custom-providers', (_req, res) => {
+  app.get('/api/custom-providers', requireAuth, (_req, res) => {
     try { res.json({ ok: true, providers: customProviderManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/custom-providers', (req, res) => {
+  app.post('/api/custom-providers', requireAuth, (req, res) => {
     try {
       const { id, name, baseURL, apiKey, models, autoDetect } = req.body;
       if (!id || !baseURL) return res.status(400).json({ error: 'id/baseURL 必填' });
@@ -2602,12 +2660,12 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/custom-providers/:id', (req, res) => {
-    try { customProviderManager.remove(req.params.id); res.json({ ok: true }); }
+  app.delete('/api/custom-providers/:id', requireAuth, (req, res) => {
+    try { customProviderManager.remove(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/custom-providers/test', async (req, res) => {
+  app.post('/api/custom-providers/test', requireAuth, async (req, res) => {
     try {
       const { baseURL, apiKey, models } = req.body;
       const result = await customProviderManager.testConnection({ id: 'test', name: 'test', baseURL, apiKey, models });
@@ -2615,9 +2673,9 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/custom-providers/:id/detect', async (req, res) => {
+  app.post('/api/custom-providers/:id/detect', requireAuth, async (req, res) => {
     try {
-      const p = customProviderManager.get(req.params.id);
+      const p = customProviderManager.get(String(req.params.id));
       if (!p) return res.status(404).json({ error: '不存在' });
       const models = await customProviderManager.detectModels(p.baseURL, p.apiKey);
       res.json({ ok: true, models });
@@ -2628,12 +2686,12 @@ setSearchManager(searchManagerInstance);
   // (已有上面的路由)
 
   // ── V5 P3: Vision 图片理解 API ──
-  app.get('/api/vision/status', (_req, res) => {
+  app.get('/api/vision/status', requireAuth, (_req, res) => {
     try { res.json({ ok: true, ...visionManager.getStatus() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/vision/analyze', async (req, res) => {
+  app.post('/api/vision/analyze', requireAuth, async (req, res) => {
     try {
       const { image, mimeType, question } = req.body;
       if (!image) return res.status(400).json({ error: 'image 必填' });
@@ -2644,12 +2702,12 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P2: 推送通知 API ──
-  app.get('/api/push/status', (_req, res) => {
+  app.get('/api/push/status', requireAuth, (_req, res) => {
     try { res.json({ ok: true, ...pushManager.getStatus() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/push/vapid-key', (_req, res) => {
+  app.get('/api/push/vapid-key', requireAuth, (_req, res) => {
     try {
       const key = pushManager.getVapidPublicKey();
       if (!key) return res.json({ ok: true, available: false });
@@ -2657,7 +2715,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/push/subscribe', (req, res) => {
+  app.post('/api/push/subscribe', requireAuth, (req, res) => {
     try {
       const { userId, endpoint, keys, platform } = req.body;
       if (!userId || !endpoint || !platform) return res.status(400).json({ error: 'userId/endpoint/platform 必填' });
@@ -2666,12 +2724,12 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/push/:id', (req, res) => {
-    try { pushManager.unsubscribe(req.params.id); res.json({ ok: true }); }
+  app.delete('/api/push/:id', requireAuth, (req, res) => {
+    try { pushManager.unsubscribe(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/push/send', async (req, res) => {
+  app.post('/api/push/send', requireAuth, async (req, res) => {
     try {
       const { userId, title, body, data } = req.body;
       if (!userId || !title) return res.status(400).json({ error: 'userId/title 必填' });
@@ -2806,12 +2864,12 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P5: 渠道管理 API ──
-  app.get('/api/channels', (_req, res) => {
+  app.get('/api/channels', requireAuth, (_req, res) => {
     try { res.json({ ok: true, definitions: channelManager.getDefinitions(), channels: channelManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/channels', (req, res) => {
+  app.post('/api/channels', requireAuth, (req, res) => {
     try {
       const { id, type, config } = req.body;
       if (!id || !type) return res.status(400).json({ error: 'id/type 必填' });
@@ -2820,13 +2878,13 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/channels/:id/enable', async (req, res) => {
-    try { channelManager.setEnabled(req.params.id, req.body.enabled ?? true); const ch = channelManager.get(req.params.id); if (ch && ch.enabled) await startChannelAdapter(ch); res.json({ ok: true }); }
+  app.post('/api/channels/:id/enable', requireAuth, async (req, res) => {
+    try { channelManager.setEnabled(String(req.params.id), req.body.enabled ?? true); const ch = channelManager.get(String(req.params.id)); if (ch && ch.enabled) await startChannelAdapter(ch); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.delete('/api/channels/:id', (req, res) => {
-    try { channelManager.remove(req.params.id); res.json({ ok: true }); }
+  app.delete('/api/channels/:id', requireAuth, (req, res) => {
+    try { channelManager.remove(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -3250,12 +3308,12 @@ setSearchManager(searchManagerInstance);
     }
 
     // ── Mesh REST API ──
-    app.get('/api/mesh/status', (_req, res) => {
+    app.get('/api/mesh/status', requireAuth, (_req, res) => {
       res.json({ ok: true, ...getMeshInfo() });
     });
 
     // 在线实例列表（代理平台 /api/instances/list）
-    app.get('/api/mesh/peers', async (_req, res) => {
+    app.get('/api/mesh/peers', requireAuth, async (_req, res) => {
       try {
         if (!meshPlatformUrl || !meshToken) return res.json({ ok: true, instances: [], count: 0, disabled: true });
         const r = await fetch(meshPlatformUrl.replace(/\/$/, '') + '/api/instances/list', {
@@ -3270,7 +3328,7 @@ setSearchManager(searchManagerInstance);
     });
 
     // 向某个 peer 实例发消息（会触发对方本地 AI 处理）
-    app.post('/api/mesh/send', (req, res) => {
+    app.post('/api/mesh/send', requireAuth, (req, res) => {
       const { toInstance, content, chatId } = req.body || {};
       if (!toInstance || !content) return res.status(400).json({ error: '需要 toInstance 和 content' });
       const ok = sendPeerMessage({ type: 'peer.message', fromInstance: getInstanceId(), toInstance, content, chatId, timestamp: Date.now() });
@@ -3278,7 +3336,7 @@ setSearchManager(searchManagerInstance);
     });
 
     // 向某个 peer 实例派发任务（对方 Agent 自主完成后回传）
-    app.post('/api/mesh/task', (req, res) => {
+    app.post('/api/mesh/task', requireAuth, (req, res) => {
       const { toInstance, goal, agentId } = req.body || {};
       if (!toInstance || !goal) return res.status(400).json({ error: '需要 toInstance 和 goal' });
       const taskId = 'task-' + Date.now().toString(36);
@@ -3350,7 +3408,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── 全局用户搜索：按数字 ID 或用户名搜索 ──
-  app.get('/api/users/search', async (req, res) => {
+  app.get('/api/users/search', requireAuth, async (req, res) => {
     try {
       const q = (req.query.q as string || '').trim();
       if (!q) return res.json({ ok: true, results: [] });
@@ -3673,9 +3731,38 @@ setSearchManager(searchManagerInstance);
   });
 
 
-  app.get('/api/profile', async (req, res) => {
+  app.get('/api/profile', requireAuth, async (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
+      // P1-2 修复: 查看他人资料需校验关系（本人/好友/同群成员/管理员）
+      const jwtUser = (req as any).user;
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (userId && !isAdmin) {
+        const isSelf = userId === jwtSub || userId === jwtNumericId;
+        if (!isSelf) {
+          let isFriend = false, isSameChat = false;
+          try {
+            const friends = db.listFriends ? db.listFriends(jwtSub || jwtNumericId) : [];
+            isFriend = friends.some((f: any) => String(f.user_id || f.id) === userId);
+          } catch {}
+          if (!isFriend) {
+            try {
+              const chats = db.listChats ? db.listChats() : [];
+              for (const c of chats) {
+                const parts = db.getChatParticipants(c.id) || [];
+                const meIn = parts.some((p: any) => String(p.user_id) === jwtSub || String(p.user_id) === jwtNumericId);
+                const targetIn = parts.some((p: any) => String(p.user_id) === userId);
+                if (meIn && targetIn) { isSameChat = true; break; }
+              }
+            } catch {}
+          }
+          if (!isFriend && !isSameChat) {
+            return res.status(403).json({ error: '无权查看此用户资料' });
+          }
+        }
+      }
       const platformApiUrl = (globalThis as any).__platformApiUrl || '';
       const platformAdminToken = (globalThis as any).__platformAdminToken || '';
 
@@ -3775,6 +3862,9 @@ setSearchManager(searchManagerInstance);
   });
 
   app.post('/api/credits/award', requireAuth, (req, res) => {
+    // P1-3 修复: 积分发放仅管理员可用
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可发放积分' });
     try {
       const { userId, amount, reason } = req.body || {};
       const amt = Number(amount);
@@ -3787,7 +3877,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.post('/api/ratings', (req, res) => {
+  app.post('/api/ratings', requireAuth, (req, res) => {
     try {
       const { messageId, userId, rating, comment } = req.body || {};
       if (!messageId || !userId || !rating) return res.status(400).json({ error: 'messageId/userId/rating 必填' });
@@ -3800,7 +3890,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/ratings', (req, res) => {
+  app.get('/api/ratings', requireAuth, (req, res) => {
     try {
       const userId = req.query.userId as string;
       const stmt = getDB().prepare('SELECT * FROM message_ratings WHERE user_id = ? ORDER BY created_at DESC LIMIT 50');
@@ -3826,7 +3916,7 @@ setSearchManager(searchManagerInstance);
     next();
   }
 
-  app.post('/api/federation/register', federationAuth, (req, res) => {
+  app.post('/api/federation/register', requireAuth, federationAuth, (req, res) => {
     try {
       const { instanceId, baseUrl, name } = req.body || {};
       if (!instanceId || !baseUrl) return res.status(400).json({ error: 'instanceId/baseUrl 必填' });
@@ -3838,14 +3928,14 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/federation/peers', (_req, res) => {
+  app.get('/api/federation/peers', requireAuth, (_req, res) => {
     const peers = (globalThis as any).__federationPeers;
     if (!peers) return res.json({ ok: true, peers: [] });
     res.json({ ok: true, peers: Array.from(peers.values()) });
   });
 
   // 接收远程实例转发的消息
-  app.post('/api/federation/message', federationAuth, async (req, res) => {
+  app.post('/api/federation/message', requireAuth, federationAuth, async (req, res) => {
     try {
       const { chatId, content, senderId, senderName, fromInstance } = req.body || {};
       if (!chatId || !content) return res.status(400).json({ error: 'chatId/content 必填' });
@@ -3868,7 +3958,7 @@ setSearchManager(searchManagerInstance);
   });
 
   // 前端：发送消息到远程实例
-  app.post('/api/federation/send', federationAuth, async (req, res) => {
+  app.post('/api/federation/send', requireAuth, federationAuth, async (req, res) => {
     try {
       const { targetInstance, chatId, content, senderId, senderName } = req.body || {};
       const peers = (globalThis as any).__federationPeers;
@@ -3903,12 +3993,12 @@ setSearchManager(searchManagerInstance);
   });
 
   // v1.4 工作区模式兼容 API
-  app.get('/api/workspace-mode', (req, res) => {
+  app.get('/api/workspace-mode', requireAuth, (req, res) => {
     const mode = (globalThis as any).__workspaceMode || 'personal';
     const root = (globalThis as any).__workspaceRoot || process.cwd();
     res.json({ mode, collabMode: mode === 'collab', workspaceRoot: root });
   });
-  app.post('/api/workspace-mode', (req, res) => {
+  app.post('/api/workspace-mode', requireAuth, (req, res) => {
     const { mode, workspaceRoot } = req.body || {};
     const newMode = mode === 'collab' ? 'collab' : 'personal';
     const newRoot = workspaceRoot || process.cwd();
@@ -3919,7 +4009,7 @@ setSearchManager(searchManagerInstance);
 
 
   // 标签 API
-  app.get('/api/tags', (req, res) => {
+  app.get('/api/tags', requireAuth, (req, res) => {
     res.json({
       ok: true,
       tags: ['技术', '产品', '设计', '运营', 'SRE', 'AI', '工具', '游戏', '音乐', '写作', '翻译', '法律', '教育', '金融', '医疗', '其他']

@@ -213,14 +213,6 @@ export class MessageRouter {
     } catch (e: unknown) { console.warn('[Router] Non-critical error:', (e as Error)?.message || e); }
     // 协作模式指令（辩论立场/链式步骤/圆桌轮次/投票选项/路由裁决等）注入 system prompt
     const modePrompt = customPrompt ? '\n\n## 当前协作模式指令（必须遵守）\n' + customPrompt : '';
-    const messages: ChatMessage[] = [
-      { role: 'system', content: this.buildSystemPrompt(agent, taskGoal, chatId) + ragContext + modePrompt },
-      ...recentMessages.map(m => ({
-        role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: m.content,
-      })),
-    ];
-
     // 获取 AI 客户端（model 为空时用默认模型）
     const requestedModel = agent.model || this.aiHub.getDefaultModel?.() || '';
     const clientResult = this.aiHub.getClient(requestedModel);
@@ -232,6 +224,15 @@ export class MessageRouter {
     // ── 多模型协作：工具用轻量模型，回复用强模型 ──
     const toolClient = this.aiHub.getRoleClient('tool') || clientResult;
     const replyClient = this.aiHub.getRoleClient('reply') || clientResult;
+
+    // ⭐ 用实际 resolved 的模型名构建 system prompt，而非 env 变量原始值
+    const messages: ChatMessage[] = [
+      { role: 'system', content: this.buildSystemPrompt(agent, taskGoal, chatId, { tool: toolClient.resolvedModel, reply: replyClient.resolvedModel }) + ragContext + modePrompt },
+      ...recentMessages.map(m => ({
+        role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.content,
+      })),
+    ];
 
     // ── 上下文压缩：超限时用工具模型摘要旧消息 ──
     const compactResult = await compactMessages(messages, {
@@ -259,8 +260,8 @@ export class MessageRouter {
       try {
       // 总超时控制：普通对话 2 分钟兜底；任务模式（taskGoal/customPrompt）给 10 分钟，
       // 避免长任务（多轮工具调用）干到一半被中断（用户反馈"活干到一半就停了"的根因）
-      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '120', 10)) * 1000;
-      const CHAT_TIMEOUT_MS = (parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10)) * 1000;
+      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '600', 10)) * 1000;
+      const CHAT_TIMEOUT_MS = (parseInt(process.env.CHAT_TIMEOUT_SECONDS || '300', 10)) * 1000;
       const TOTAL_TIMEOUT = (taskGoal || customPrompt) ? TASK_TIMEOUT_MS : CHAT_TIMEOUT_MS;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TOTAL_TIMEOUT);
@@ -278,7 +279,7 @@ export class MessageRouter {
         registry: this.toolRegistry!,
         agentId,
         chatId,
-        maxIterations: 50,
+        maxIterations: (taskGoal || customPrompt) ? 30 : 15,
         temperature: 0.7,
         maxTokens: 16384,
         signal: controller.signal,
@@ -296,6 +297,31 @@ export class MessageRouter {
         throw abortErr;
       }
         finalContent = result.finalContent;
+        // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
+        // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作
+        if (replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {
+          try {
+            const replyResp = await replyClient.client.chat.completions.create({
+              model: replyClient.resolvedModel,
+              messages: [
+                ...result.messages.filter((m: any) => m.role !== 'assistant' || !m.content?.includes('｜DSML｜')),
+                { role: 'user', content: '请根据以上所有工具调用和结果，用自然语言给出最终回复。不要输出任何工具调用标记。' }
+              ],
+              temperature: 0.7,
+              max_tokens: 16384,
+            });
+            const replyContent = replyResp.choices[0]?.message?.content || '';
+            if (replyContent && replyContent.trim().length > 10) {
+              finalContent = replyContent.includes('｜DSML｜') ? this.stripDsml(replyContent) : replyContent;
+            }
+            if (replyResp.usage) {
+              UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: replyResp.usage.prompt_tokens, completionTokens: replyResp.usage.completion_tokens, type: 'reply' });
+            }
+            console.log(`[Router] 回复模型 ${replyClient.resolvedModel} 重生成最终回复 (${finalContent.length} 字)`);
+          } catch (err: any) {
+            console.warn('[Router] 回复模型重生成失败，使用工具模型回复:', err.message);
+          }
+        }
         // ⭐ 工具循环兜底：DeepSeek 系模型偶尔在最终回复里混入 DSML 标记，先剥离再流式推给前端
         if (finalContent && finalContent.includes('｜DSML｜')) {
           console.warn('[Router] 工具回复含 DSML 标记，已剥离');
@@ -569,9 +595,9 @@ export class MessageRouter {
     return result;
   }
 
-  private buildSystemPrompt(agent: Agent, taskGoal?: string, chatId?: string): string {
+  private buildSystemPrompt(agent: Agent, taskGoal?: string, chatId?: string, resolvedModels?: { tool: string; reply: string }): string {
     // 获取当前模型信息
-    const toolModel = process.env.TOOL_MODEL || process.env.DEFAULT_MODEL || '默认';
+    const toolModel = resolvedModels?.tool || process.env.TOOL_MODEL || process.env.DEFAULT_MODEL || '默认';
     const replyModel = process.env.REPLY_MODEL || process.env.DEFAULT_MODEL || '默认';
     const allModels = this.aiHub.listModels().map((m: any) => m.id).join(', ');
     // ⭐ B方案：提前查询 Agent 工具列表，用于决定提示词模式（纯对话 / 工具模式）
@@ -630,6 +656,13 @@ export class MessageRouter {
         '- 一旦开始就必须持续工作直到目标完全达成，中途不可暂停或中断',
         '- 全部完成后说「任务完成」',
         '- 确实做不了就诚实说明原因',
+        '',
+        '## 执行策略（防止超时）',
+        '- 每次只改一个文件，改完立即用 write_file 落盘，不要攒到最后一起写',
+        '- 不要写中间脚本（.cjs/.py）来做批量替换，直接用 write_file 工具逐个修改',
+        '- 读文件时用 max_bytes 参数限制读取大小，避免一次读完 200KB 的大文件',
+        '- 每完成一个文件就简短汇报进度，不要一次性输出所有修改',
+        '- 如果需要验证，改完所有文件后再统一跑 tsc 或测试',
         '',
       );
     } else {

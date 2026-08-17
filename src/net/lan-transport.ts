@@ -27,6 +27,13 @@ function getLanSecret(): string {
 /** P2-B: nonce 防重放缓存（nonce -> 首次使用时间戳），TTL 与时间戳容忍一致 */
 const seenNonces = new Map<string, number>();
 const NONCE_TTL = 300_000;
+// P0-5 fix: 定期清理过期 nonce 防止内存泄漏
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, ts] of seenNonces) {
+    if (now - ts > NONCE_TTL) seenNonces.delete(k);
+  }
+}, 60_000);
 
 export interface LanSendOptions {
   timeoutMs?: number;

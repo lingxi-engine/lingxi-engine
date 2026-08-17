@@ -98,6 +98,15 @@ export function createProfileRoutes(ctx: ServerContext): Router {
       const { userId, displayName, bio, avatarUrl } = req.body;
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
 
+      // P1 修复: 只能修改自己的资料（管理员除外）
+      const jwtUser = (req as any).user;
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (!isAdmin && userId !== jwtSub && userId !== jwtNumericId) {
+        return res.status(403).json({ error: '无权修改他人资料' });
+      }
+
       const user = db.getUser(userId);
       if (!user) return res.status(404).json({ error: '用户不存在' });
 
@@ -147,6 +156,15 @@ export function createProfileRoutes(ctx: ServerContext): Router {
     try {
       const userId = req.body?.userId || req.query.userId as string;
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
+
+      // P1 修复: 只能修改自己的头像（管理员除外）
+      const jwtUser = (req as any).user;
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (!isAdmin && userId !== jwtSub && userId !== jwtNumericId) {
+        return res.status(403).json({ error: '无权修改他人头像' });
+      }
 
       const user = db.getUser(userId);
       if (!user) return res.status(404).json({ error: '用户不存在' });

@@ -456,10 +456,32 @@ export class AIHub {
   }
 
   /**
+   * 规范化模型名：剥离 :cloud / :local 后缀，以及 xxx-ai/ / xxx/ 前缀
+   * 这样用户在 UI 里选 "glm-5.2:cloud" 也能正确匹配到 zhipu provider 的 "glm-5.2"
+   */
+  private normalizeModelName(model: string): string {
+    // 剥离后缀：:cloud, :local, :latest 等
+    let normalized = model.replace(/:(cloud|local|latest)$/i, "");
+    // 剥离前缀：xxx-ai/ 或 xxx/
+    normalized = normalized.replace(/^[a-z]+(?:-ai)?\//, "");
+    return normalized;
+  }
+
+  /**
    * 获取可用的 AI 客户端
-   * 匹配顺序：精确 → 模糊 → fallback
+   * 匹配顺序：精确 → 规范化后精确 → 模糊 → fallback
    */
   getClient(model: string): { client: OpenAI; resolvedModel: string } | null {
+    // 0. 空模型名兜底
+    if (!model) {
+      const defaultModel = this.getDefaultModel();
+      if (defaultModel) {
+        return this.getClient(defaultModel);
+      }
+      const first = this.providers.values().next().value;
+      return first ? { client: first.client, resolvedModel: first.config.models[0] || "" } : null;
+    }
+
     // 1. 精确匹配
     for (const [, entry] of this.providers) {
       if (entry.config.models.some(m => model === m)) {
@@ -467,32 +489,43 @@ export class AIHub {
       }
     }
 
-    // 2. 模糊匹配（优先匹配 provider id 与模型前缀一致的，避免 deepseek-ai/ 抢 deepseek 的模型）
-    // 先尝试：模型名去掉 "xxx-ai/" 前缀后精确匹配
-    // P0-4 修复：同时剥离 "xxx-ai/" 和 "xxx/" 前缀（如 openai/gpt-oss-120b → gpt-oss-120b）
-    const strippedModel = model.replace(/^[a-z]+(?:-ai)?\//, "");
-    for (const [, entry] of this.providers) {
-      if (entry.config.models.some(m => strippedModel === m)) {
-        return { client: entry.client, resolvedModel: strippedModel };
+    // 2. 规范化后精确匹配（剥离 :cloud/:local 后缀 + xxx/ 前缀）
+    // 修复：原代码使用了不存在的变量 matchModel，导致 ReferenceError 崩溃
+    const strippedModel = this.normalizeModelName(model);
+    if (strippedModel !== model) {
+      for (const [, entry] of this.providers) {
+        if (entry.config.models.some(m => strippedModel === m)) {
+          return { client: entry.client, resolvedModel: strippedModel };
+        }
       }
-    }
-    // 再尝试：provider id 与模型名有共同前缀的优先
-    for (const [pid, entry] of this.providers) {
-      if (entry.config.models.some(m => model.includes(m) || m.includes(model))) {
-        // 如果模型名包含 provider id（如 deepseek-v4-flash 包含 deepseek），优先走这个
-        if (model.toLowerCase().includes(pid.toLowerCase()) || pid.toLowerCase().includes(model.split("-")[0])) {
-          return { client: entry.client, resolvedModel: model.includes(pid) ? model : entry.config.models.find(m => model.includes(m) || m.includes(model)) || model };
+      // 也尝试用规范化后的名字做模糊匹配
+      for (const [, entry] of this.providers) {
+        if (entry.config.models.some(m => strippedModel.includes(m) || m.includes(strippedModel))) {
+          const matchedModel = entry.config.models.find(m => strippedModel.includes(m) || m.includes(strippedModel));
+          return { client: entry.client, resolvedModel: matchedModel || strippedModel };
         }
       }
     }
-    // 最后模糊匹配兜底
-    for (const [, entry] of this.providers) {
+
+    // 3. provider id 与模型名有共同前缀的优先（避免 deepseek-ai/ 抢 deepseek 的模型）
+    for (const [pid, entry] of this.providers) {
       if (entry.config.models.some(m => model.includes(m) || m.includes(model))) {
-        return { client: entry.client, resolvedModel: model };
+        if (model.toLowerCase().includes(pid.toLowerCase()) || pid.toLowerCase().includes(model.split("-")[0])) {
+          const matchedModel = entry.config.models.find(m => model.includes(m) || m.includes(model));
+          return { client: entry.client, resolvedModel: matchedModel || model };
+        }
       }
     }
 
-    // 3. fallback: 英伟达 → Ollama → 第一个 provider
+    // 4. 最后模糊匹配兜底
+    for (const [, entry] of this.providers) {
+      const matchedModel = entry.config.models.find(m => model.includes(m) || m.includes(model));
+      if (matchedModel) {
+        return { client: entry.client, resolvedModel: matchedModel };
+      }
+    }
+
+    // 5. fallback: 英伟达 → Ollama → 第一个 provider
     for (const [, entry] of this.providers) {
       if (entry.config.type === "nvidia" && entry.config.models.length > 0) {
         const fallbackModel = entry.config.models[0];
@@ -508,7 +541,7 @@ export class AIHub {
       }
     }
 
-    // 4. 最后兜底
+    // 6. 最后兜底
     const first = this.providers.values().next().value;
     return first ? { client: first.client, resolvedModel: first.config.models[0] || model } : null;
   }
@@ -540,7 +573,9 @@ export class AIHub {
     }
     const result = this.getClient(model);
     if (result && result.resolvedModel !== model) {
-      console.log(`[AIHub] getRoleClient(${role}): 请求 ${model} → 实际 ${result.resolvedModel}`);
+      console.warn(`[AIHub] getRoleClient(${role}): 请求 ${model} → 实际 ${result.resolvedModel} (模型名不匹配，可能是 provider 未配置 API Key 或模型名不在列表中)`);
+    } else if (!result) {
+      console.error(`[AIHub] getRoleClient(${role}): 模型 ${model} 完全不可用，无 fallback`);
     }
     return result;
   }

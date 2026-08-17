@@ -1,13 +1,14 @@
 {
   "name": "code-security-audit-and-fix",
-  "displayName": "代码安全审计与修复",
-  "description": "对指定项目代码进行全量安全扫描，按优先级分步修复漏洞并验证。",
+  "displayName": "代码安全审查与修复",
+  "description": "对代码库进行安全审查，备份后精确修复漏洞，并验证不引入新错误。",
   "tools": [
+    "list_dir",
     "read_file",
     "shell_exec",
     "write_file"
   ],
-  "prompt": "遇到代码审查或安全修复任务时，按以下步骤执行：1. 使用 read_file 读取目标项目的核心代码文件。2. 进行深度安全审计，按严重程度（如 P0, P1）列出漏洞。3. 根据用户指示（如“全部修复”或“继续修”），使用 write_file 和 shell_exec 逐个修复漏洞。4. 修复后进行验证，确保不引入新问题。5. 输出修复总结表格，包含漏洞描述、修复方案、文件路径和状态。注意：如果任务拆分执行，需确保所有步骤完成后再输出最终总结，避免中途卡住导致状态不一致。",
+  "prompt": "遇到代码审查和修复任务时，按以下步骤进行：\n1. 侦察：使用 list_dir 和 read_file 读取相关代码，确认漏洞位置、字段名和依赖关系。\n2. 备份：使用 shell_exec 创建备份目录，备份待修改文件。\n3. 修复：使用 write_file 或 shell_exec 修改文件。注意处理 CRLF 和 LF 换行符差异，匹配前先统一换行符以防 patch 失败。\n4. 验证：使用 shell_exec 运行类型检查或测试，对比修改前后的错误数量，确保未引入新错误。",
   "autoCreated": true,
-  "createdAt": 1786912986749
+  "createdAt": 1786986367609
 }

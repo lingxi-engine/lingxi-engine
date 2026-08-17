@@ -690,12 +690,15 @@ async function handleShellExec(args: Record<string, any>) {
   }
 
   // v1.9.2: 黑名单模式（对标 OpenClaw 默认全开，只禁止真正危险的操作）
+  // P1-6 修复: 用 path.basename 规范化命令名，防止 /bin/rm 等路径前缀绕过
+  const path = await import('path');
   const parts = command.trim().split(/\s+/);
-  const cmdName = parts[0]?.toLowerCase() || '';
+  const rawCmd = parts[0]?.toLowerCase() || '';
+  const cmdName = path.basename(rawCmd).toLowerCase();
   // 只禁止破坏性极大的命令
   const blockedCmds = new Set([
     'format','fdisk','diskpart','regedit','reg','bcdedit','shutdown','restart','halt','poweroff','init',
-    'mkfs','dd','rm','-rf','del /f /s /q',  // 强制批量删除
+    'mkfs','dd','rm','del',  // 强制批量删除
   ]);
   if (blockedCmds.has(cmdName)) return { error: `命令 "${cmdName}" 属于高危破坏性操作，已禁止。`, exitCode: -1 };
   for (const p of parts.slice(1)) {
@@ -1040,6 +1043,46 @@ async function handleDelegateTask(args: Record<string, any>) {
     return { taskId, status: result.status, error: result.error || '未知错误' };
   } catch (err: any) {
     return { error: `delegate_task 失败: ${err.message}` };
+  }
+}
+
+
+// ================================================================
+// 工具 16b: request_agent_help — Agent 间协作通信 (v2.0)
+// 对标 CrewAI delegation + AutoGen GroupChat
+// ================================================================
+
+const TOOL_REQUEST_AGENT_HELP: ToolDefinition = {
+  name: "request_agent_help",
+  description: "Request help from another Agent in the same chat. Use this when you need a different perspective, specialized knowledge, or want to delegate a sub-question to another agent. The target agent will receive your message and respond.",
+  parameters: {
+    type: "object",
+    properties: {
+      target_agent_id: { type: "string", description: "The agent ID to ask for help (e.g. agent-xxx)" },
+      message: { type: "string", description: "Your question or request to the target agent" },
+      timeout: { type: "number", description: "Response timeout in seconds (default 120)", default: 120 },
+    },
+    required: ["target_agent_id", "message"],
+  },
+};
+
+async function handleRequestAgentHelp(args: Record<string, any>) {
+  const { target_agent_id, message, timeout = 120 } = args;
+  if (!_subAgentManager) return { error: 'SubAgent 系统未就绪' };
+  if (!_currentAgentId) return { error: '当前 Agent 上下文未设置' };
+  try {
+    const result = await _subAgentManager.sendAgentMessage(
+      _currentAgentId,
+      target_agent_id,
+      message,
+      { type: 'request', timeoutMs: Math.min(timeout, 300) * 1000 }
+    );
+    if (result.ok) {
+      return { ok: true, reply: result.reply, messageId: result.messageId, fromAgent: target_agent_id };
+    }
+    return { ok: false, error: result.error || '目标 Agent 未响应', messageId: result.messageId };
+  } catch (err: any) {
+    return { error: 'request_agent_help 失败: ' + err.message };
   }
 }
 
@@ -1409,6 +1452,7 @@ export const BUILTIN_TOOLS: { tool: ToolDefinition; handler: (args: Record<strin
   { tool: TOOL_WEB_FETCH, handler: handleWebFetch },
   { tool: TOOL_JSON_PARSE, handler: handleJsonParse },
   { tool: TOOL_DELEGATE_TASK, handler: handleDelegateTask },
+  { tool: TOOL_REQUEST_AGENT_HELP, handler: handleRequestAgentHelp },  // v2.0: Agent 间协作
   { tool: TOOL_MARK_GOAL_DONE, handler: handleMarkGoalDone },
   { tool: TOOL_CODE_EXECUTE, handler: handleCodeExecute },
   { tool: TOOL_WRITE_FILE, handler: handleWriteFile },

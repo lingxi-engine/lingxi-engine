@@ -72,6 +72,7 @@ export function handleWSMessage(
   ws?: WebSocket
 ) {
   let event: any;
+  let heartbeatId: ReturnType<typeof setInterval> | undefined;
   try {
     event = JSON.parse(raw.toString());
   } catch {
@@ -187,6 +188,7 @@ export function handleWSMessage(
         // ⭐ 停止生成：注册后用户点"停止"可中断整个任务（否则任务无法被停止）
         const taskCtrl = new AbortController();
         registerGeneration(chatId, taskCtrl);
+        let taskHeartbeatId: ReturnType<typeof setInterval> | undefined;
         try {
           // Phase 1: task decomposition
           broadcast({
@@ -197,6 +199,16 @@ export function handleWSMessage(
             step: 0, total: 0,
             timestamp: Date.now(),
           });
+
+          // ⭐ 心跳保活：任务执行期间每 5 秒发一次心跳
+          taskHeartbeatId = setInterval(() => {
+            broadcast({
+              type: "agent.streaming.heartbeat",
+              chatId, from: agentSenderId, msgId: taskMsgId,
+              timestamp: Date.now(),
+            });
+          }, 3000);
+          if (taskHeartbeatId.unref) taskHeartbeatId.unref();
 
           const planPrompt = "你是灵犀引擎的任务规划器。请将以下任务拆分为 2-6 个可执行的子步骤。\n\n任务目标：" + goal + "\n\n要求：\n- 返回纯 JSON 数组，不要有其他文字\n- 每个步骤包含：id（step-1, step-2...）、name（简短名称）、prompt（具体执行指令）、dependsOn（依赖的前置步骤 id 数组，无依赖则为空数组）\n- 步骤之间可以有依赖关系（DAG），无依赖的步骤将并行执行\n- 第一步通常无依赖，最后一步通常是汇总\n\n示例格式：\n[{\"id\":\"step-1\",\"name\":\"搜索\",\"prompt\":\"搜索XX\",\"dependsOn\":[]},{\"id\":\"step-2\",\"name\":\"分析\",\"prompt\":\"分析结果\",\"dependsOn\":[\"step-1\"]}]\n\n请返回 JSON：";
 
@@ -437,6 +449,7 @@ export function handleWSMessage(
           });
           broadcast({ type: "agent.streaming.end", chatId, from: agentSenderId, msgId: taskMsgId, error: err.message });
         } finally {
+          if (taskHeartbeatId) clearInterval(taskHeartbeatId);
           unregisterGeneration(chatId, taskCtrl);
         }
       })();
@@ -658,6 +671,7 @@ async function triggerAgentReply(
   const ctrl = new AbortController();
   registerGeneration(chatId, ctrl);
 
+  let heartbeatId: ReturnType<typeof setInterval> | undefined;
   try {
     // 先通知前端：Agent 开始回复（打字机效果）
     broadcast({
@@ -670,6 +684,18 @@ async function triggerAgentReply(
       replyTo: triggerMsgId,
       timestamp: Date.now(),
     });
+
+    // ⭐ 心跳保活：AI 处理期间每 5 秒发一次心跳，防止 WS 连接超时断开
+    heartbeatId = setInterval(() => {
+      broadcast({
+        type: "agent.streaming.heartbeat",
+        chatId,
+        from: agentSenderId,
+        msgId,
+        timestamp: Date.now(),
+      });
+    }, 3000);
+    if (heartbeatId.unref) heartbeatId.unref();
 
     const reply = await router.generateReply(
       chatId,
@@ -787,6 +813,7 @@ async function triggerAgentReply(
     });
     return '';
   } finally {
+    if (heartbeatId) clearInterval(heartbeatId);
     unregisterGeneration(chatId, ctrl);
   }
 }

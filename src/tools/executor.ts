@@ -303,6 +303,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     aborted: false,
   };
 
+  // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
+  let consecutiveToolFailures = 0;
+
   const availableTools = buildToolsForAgent(registry, agentId);
   const openaiTools = availableTools.length > 0 ? buildOpenAITools(availableTools) : undefined;
 
@@ -472,6 +475,19 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
       const callResult: ToolCallResult = await registry.execute(toolRequest);
       result.toolResults.push(callResult);
+
+      // ⭐ 连续工具失败检测：工具连续失败 3 次则停止循环，避免死循环卡住
+      if (!callResult.success) {
+        consecutiveToolFailures++;
+        if (consecutiveToolFailures >= 3) {
+          console.warn(`[Executor] 工具连续失败 ${consecutiveToolFailures} 次，停止循环`);
+          result.finalContent = `工具连续失败 ${consecutiveToolFailures} 次，已停止执行。最后错误: ${callResult.error || '未知'}。建议换一种方式或拆小任务重试。`;
+          i = maxIterations; // 强制退出外层循环
+          break; // 退出内层循环
+        }
+      } else {
+        consecutiveToolFailures = 0;
+      }
 
       if (onToolResult) onToolResult({
         chatId: chatId || "",

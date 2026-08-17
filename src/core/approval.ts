@@ -163,7 +163,7 @@ export class ApprovalManager {
    * 判断操作是否需要审批
    */
   needsApproval(tool: string, args: Record<string, any>): boolean {
-    const dangerousTools = ['write_file', 'code_execute', 'browser_navigate'];
+    const dangerousTools = ['write_file', 'code_execute', 'browser_navigate', 'shell_exec'];
     if (dangerousTools.includes(tool)) return true;
     
     // 写系统目录需审批
