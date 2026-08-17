@@ -328,7 +328,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     let aiResponse: OpenAIChatResponse;
     try {
-      aiResponse = await client.chat.completions.create(requestParams) as OpenAIChatResponse;
+      aiResponse = await client.chat.completions.create(requestParams, signal ? { signal } : undefined) as OpenAIChatResponse;
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
@@ -505,7 +505,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
             }],
             temperature: 0.2,
             max_tokens: 1000,
-          }) as OpenAIChatResponse;
+          }, signal ? { signal } : undefined) as OpenAIChatResponse;
           const summarized = summaryResp.choices[0]?.message?.content || resultContent;
           resultContent = `[摘要] ${summarized}`;
           if (summaryResp.usage) {

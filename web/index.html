@@ -830,6 +830,36 @@ function switchTheme(name,btn){
       <button onclick="exportBackup()" class="btn primary" style="font-size:12px;width:100%" data-i18n="settings.exportBackup">导出备份 (JSON)</button>
     </div>
     <div class="section">
+      <h3>⚡ 超时与日志</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">运行时参数（修改后立即生效，重启后从 .env 读取）</div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">编排器超时(秒)</label>
+        <input id="setOrchestratorTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">任务超时(秒)</label>
+        <input id="setTaskTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">聊天超时(秒)</label>
+        <input id="setChatTimeout" type="number" min="10" max="3600" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">日志级别</label>
+        <select id="setLogLevel" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+          <option value="debug">debug</option><option value="info">info</option><option value="warn">warn</option><option value="error">error</option>
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="setFileLogging" checked>
+          <span style="font-size:12px;color:var(--text2)">文件日志</span>
+        </label>
+      </div>
+      <button onclick="saveRuntimeSettings()" class="btn primary" style="font-size:12px">💾 保存设置</button>
+      <span id="settingsSaveMsg" style="font-size:11px;margin-left:8px"></span>
+    </div>
+        <div class="section">
       <h3 data-i18n="settings.language">🌐 语言 / Language</h3>
       <div class="row"><select id="langSelect" onchange="applyLanguage(this.value)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:13px"></select></div>
     </div>

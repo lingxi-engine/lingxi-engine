@@ -35,9 +35,9 @@ const DEFAULT_TIMEOUT = (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '6
 export class Orchestrator {
   private tasks: Map<string, TaskNode> = new Map();
   private results: Map<string, TaskResult> = new Map();
-  private executor: (task: TaskNode, context: Record<string, string>) => Promise<string>;
+  private executor: (task: TaskNode, context: Record<string, string>, signal?: AbortSignal) => Promise<string>;
 
-  constructor(executor: (task: TaskNode, context: Record<string, string>) => Promise<string>) {
+  constructor(executor: (task: TaskNode, context: Record<string, string>, signal?: AbortSignal) => Promise<string>) {
     this.executor = executor;
   }
 
@@ -117,6 +117,7 @@ export class Orchestrator {
           }
 
           const timeout = task.timeout || DEFAULT_TIMEOUT;
+          const abortCtrl = new AbortController();
           const timeoutId = setTimeout(() => {
             if (result.status === 'running') {
               result.status = 'failed';
@@ -124,13 +125,15 @@ export class Orchestrator {
               result.finishedAt = Date.now();
               failed.add(id);
               running--;
+              abortCtrl.abort();
               tryStart();
             }
           }, timeout);
 
-          this.executor(task, context)
+          this.executor(task, context, abortCtrl.signal)
             .then(output => {
               clearTimeout(timeoutId);
+              if (result.status !== 'running') return; // 已超时/失败，不覆盖状态
               result.status = 'done';
               result.output = output;
               result.finishedAt = Date.now();
@@ -141,6 +144,7 @@ export class Orchestrator {
             })
             .catch(err => {
               clearTimeout(timeoutId);
+              if (result.status !== 'running') return; // 已超时/失败，不覆盖状态
               result.status = 'failed';
               result.error = err.message || String(err);
               result.finishedAt = Date.now();

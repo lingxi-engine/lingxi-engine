@@ -53,6 +53,17 @@ export function stopGeneration(chatId: string): boolean {
   return true;
 }
 
+// ── AbortSignal 合并：把「超时信号」和「用户停止信号」合成一个传给 AI 调用 ──
+function mergeAbort(...signals: (AbortSignal | undefined)[]): AbortController {
+  const ctrl = new AbortController();
+  for (const s of signals) {
+    if (!s) continue;
+    if (s.aborted) { ctrl.abort(); break; }
+    s.addEventListener('abort', () => ctrl.abort(), { once: true });
+  }
+  return ctrl;
+}
+
 export function handleWSMessage(
   raw: any,
   clientId: string,
@@ -173,6 +184,9 @@ export function handleWSMessage(
 
       // 2. async: plan -> orchestrate -> progress
       (async () => {
+        // ⭐ 停止生成：注册后用户点"停止"可中断整个任务（否则任务无法被停止）
+        const taskCtrl = new AbortController();
+        registerGeneration(chatId, taskCtrl);
         try {
           // Phase 1: task decomposition
           broadcast({
@@ -200,12 +214,35 @@ export function handleWSMessage(
           } catch { /* parse error */ }
 
           // fallback: single step if parse failed
-          if (!steps || steps.length === 0) {
+          if (!steps || !Array.isArray(steps) || steps.length === 0) {
             steps = [{ id: 'step-1', name: '执行任务', prompt: goal, dependsOn: [] }];
           }
 
-          // safety limit
+          // ⭐ 计划清洗（修复拆分瑕疵）：
+          // 1) 丢弃无 prompt 的无效步骤；2) 补齐/去重 id；3) 依赖引用去重
+          steps = steps.filter((s: any) => s && typeof s.prompt === 'string' && s.prompt.trim());
+          if (steps.length === 0) {
+            steps = [{ id: 'step-1', name: '执行任务', prompt: goal, dependsOn: [] }];
+          }
+          const seenIds = new Set<string>();
+          steps = steps.map((s: any, i: number) => {
+            let id = (typeof s.id === 'string' && s.id.trim()) ? s.id.trim() : ('step-' + (i + 1));
+            while (seenIds.has(id)) id = id + '-' + Math.random().toString(36).slice(2, 5);
+            seenIds.add(id);
+            return {
+              ...s,
+              id,
+              name: (typeof s.name === 'string' && s.name.trim()) ? s.name.trim() : ('步骤 ' + (i + 1)),
+              dependsOn: Array.isArray(s.dependsOn) ? [...new Set(s.dependsOn.filter((d: any) => typeof d === 'string'))] : [],
+            };
+          });
+
+          // safety limit（截断后必须同步清理依赖引用，否则被引用步骤永远无法满足依赖 → 任务整体挂死）
           if (steps.length > 10) steps = steps.slice(0, 10);
+          const validIds = new Set<string>(steps.map((s: any) => s.id));
+          for (const s of steps as any[]) {
+            s.dependsOn = s.dependsOn.filter((d: string) => validIds.has(d) && d !== s.id);
+          }
 
           // save task plan (for resume support)
           const plan: TaskPlan = {
@@ -230,8 +267,16 @@ export function handleWSMessage(
           });
 
           // Phase 3: execute DAG via Orchestrator
-          const executor = async (task: TaskNode, context: Record<string, string>) => {
+          const executor = async (task: TaskNode, context: Record<string, string>, signal?: AbortSignal) => {
             const stepIdx = steps.findIndex((s: any) => s.id === task.id);
+            // 用户在步骤间隙点停止 → 直接失败，级联跳过后续依赖步骤
+            if (taskCtrl.signal.aborted) {
+              throw new Error('用户已停止任务');
+            }
+            let abortedByTimeout = false;
+            const onAbort = () => { abortedByTimeout = true; };
+            if (signal) signal.addEventListener('abort', onAbort, { once: true });
+
             broadcast({
               type: "task.progress",
               chatId, from: agentSenderId, msgId: taskMsgId,
@@ -255,6 +300,8 @@ export function handleWSMessage(
 
             let stepResult = '';
             let stepSuccess = true;
+            // ⭐ 合并超时信号 + 用户停止信号，两者都能中断 AI 调用
+            const merged = mergeAbort(signal, taskCtrl.signal);
             try {
               // 修复：fullPrompt 传到 customPrompt（第8参）而非 taskGoal（第6参）；
               // skipPersist 避免中间步骤污染聊天历史
@@ -267,14 +314,22 @@ export function handleWSMessage(
                 undefined,
                 undefined,
                 fullPrompt,
-                undefined,
+                merged.signal,
                 { skipPersist: true }
               );
             } catch (stepErr: any) {
               stepSuccess = false;
-              stepResult = "步骤执行失败：" + (stepErr.message || '未知错误');
+              if (taskCtrl.signal.aborted) {
+                stepResult = "步骤被用户停止中断";
+              } else if (abortedByTimeout || signal?.aborted) {
+                stepResult = "步骤执行超时（" + (task.timeout || 120000) + "ms）被中断";
+              } else {
+                stepResult = "步骤执行失败：" + (stepErr.message || '未知错误');
+              }
               console.error('[WS] step ' + task.id + ' failed:', stepErr);
             }
+
+            if (signal) signal.removeEventListener('abort', onAbort);
 
             broadcast({
               type: "task.progress",
@@ -292,8 +347,9 @@ export function handleWSMessage(
             const p = activeTaskPlans.get(taskMsgId);
             if (p) {
               const st = p.steps.find(s => s.id === task.id);
-              if (st) { st.status = 'done'; st.output = stepResult; }
+              if (st) { st.status = stepSuccess ? 'done' : 'failed'; st.output = stepResult; }
               p.currentStep = stepIdx + 1;
+              if (!stepSuccess) p.status = 'failed';
             }
 
             return stepResult || '';
@@ -340,49 +396,32 @@ export function handleWSMessage(
             p.result = finalResult;
           }
 
-          // broadcast completion
+          // broadcast completion with accurate step count
+          // ⭐ 修复：原 findIndex 返回的是首个失败步骤的下标而非完成数，且忽略 skipped；改为真实统计
+          const completedStepCount = allResults.filter(r => r.status === 'done').length;
+          const userStopped = taskCtrl.signal.aborted;
           broadcast({
             type: "task.progress",
             chatId, from: agentSenderId, msgId: taskMsgId,
             phase: "completed",
-            message: orchResult.success ? '任务全部完成' : '任务部分失败',
-            step: steps.length, total: steps.length,
+            message: userStopped ? '任务已停止' : (orchResult.success ? '任务全部完成' : '任务部分失败'),
+            step: completedStepCount, total: steps.length,
             success: orchResult.success,
             duration: orchResult.duration,
             timestamp: Date.now(),
           });
 
           // ⭐ Bug fix: 必须发送 streaming.end，否则前端 generatingChats 永不递减，聊天卡死
-
-
           broadcast({
-
-
             type: "agent.streaming.end",
-
-
             chatId, from: agentSenderId, msgId: taskMsgId,
-
-
           });
 
-
-
           broadcast({
-
-
             type: "message.new", chatId,
-
-
             from: agentSenderId, senderType: "agent",
-
-
             content: finalResult,
-
-
             msgId: taskMsgId, timestamp: Date.now(),
-
-
           });
 
           // cleanup after 5 min
@@ -397,6 +436,8 @@ export function handleWSMessage(
             timestamp: Date.now(),
           });
           broadcast({ type: "agent.streaming.end", chatId, from: agentSenderId, msgId: taskMsgId, error: err.message });
+        } finally {
+          unregisterGeneration(chatId, taskCtrl);
         }
       })();
       break;
@@ -465,6 +506,12 @@ const COMPLEX_KEYWORDS = [
 ];
 function shouldAutoDecompose(content: string): boolean {
   if (!content) return false;
+  const trimmed = content.trim();
+  // ⭐ 排除纯提问/咨询，避免把问题误拆成多步骤任务
+  if (/[?？]\s*$/.test(trimmed)) return false;
+  if (/^(为什么|为啥|怎么|如何|是什么|什么是|是不是|能不能|可不可以|有没有|哪个|哪些|多少|who|what|why|how|when|where|is |are |can |do |does )/i.test(trimmed)) return false;
+  // ⭐ 排除简短偏好/指令类消息（如"以后回答都要简洁"），没有可拆分的多步动作
+  if (trimmed.length < 12 && !/(修复|修|部署|打包|上传|重构|审计)/.test(trimmed)) return false;
   const lower = content.toLowerCase();
   // 关键词匹配
   for (const kw of COMPLEX_KEYWORDS) {

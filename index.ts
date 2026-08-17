@@ -2686,6 +2686,54 @@ setSearchManager(searchManagerInstance);
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── V5 运行设置：超时 / 日志级别 / 调试开关（管理员可改，重启后仍从 env 读取）──
+  app.get('/api/settings', requireAuth, (req, res) => {
+    try {
+      res.json({
+        ok: true,
+        settings: {
+          orchestratorTimeoutSeconds: parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '120', 10),
+          taskTimeoutSeconds: parseInt(process.env.TASK_TIMEOUT_SECONDS || '120', 10),
+          chatTimeoutSeconds: parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10),
+          logLevel: process.env.LOG_LEVEL || 'info',
+          fileLogging: process.env.FILE_LOGGING !== 'false',
+          devMode: process.env.DEV_MODE === 'true',
+        }
+      });
+    } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+  });
+
+  app.post('/api/settings', requireAuth, (req, res) => {
+    try {
+      const body = req.body || {};
+      // 仅允许修改运行时读取的数值，不持久化到 .env（避免破坏配置）
+      if (typeof body.orchestratorTimeoutSeconds === 'number' && body.orchestratorTimeoutSeconds >= 10 && body.orchestratorTimeoutSeconds <= 3600) {
+        process.env.ORCHESTRATOR_TIMEOUT_SECONDS = String(body.orchestratorTimeoutSeconds);
+      }
+      if (typeof body.taskTimeoutSeconds === 'number' && body.taskTimeoutSeconds >= 10 && body.taskTimeoutSeconds <= 3600) {
+        process.env.TASK_TIMEOUT_SECONDS = String(body.taskTimeoutSeconds);
+      }
+      if (typeof body.chatTimeoutSeconds === 'number' && body.chatTimeoutSeconds >= 10 && body.chatTimeoutSeconds <= 3600) {
+        process.env.CHAT_TIMEOUT_SECONDS = String(body.chatTimeoutSeconds);
+      }
+      if (['debug','info','warn','error'].includes(body.logLevel)) {
+        process.env.LOG_LEVEL = body.logLevel;
+        logger.setLevel(body.logLevel);
+      }
+      if (typeof body.fileLogging === 'boolean') {
+        process.env.FILE_LOGGING = String(body.fileLogging);
+        logger.setFileLogging(body.fileLogging);
+      }
+      res.json({ ok: true, settings: {
+        orchestratorTimeoutSeconds: parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '120', 10),
+        taskTimeoutSeconds: parseInt(process.env.TASK_TIMEOUT_SECONDS || '120', 10),
+        chatTimeoutSeconds: parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10),
+        logLevel: process.env.LOG_LEVEL || 'info',
+        fileLogging: process.env.FILE_LOGGING !== 'false',
+      }});
+    } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+  });
+
   app.post('/api/dev/enable', adminAuth, (req, res) => {
     try {
       debugPanel.setEnabled(req.body.enabled ?? true);
@@ -2709,7 +2757,7 @@ setSearchManager(searchManagerInstance);
 
   // 管理面板"日志"卡片：读取磁盘上的真实运行日志（logger 按天切分的文件）
   // 安全：仅管理员可读，且对含 token/验证码/重置链接的行脱敏
-  app.get('/api/logs', adminAuth, (req, res) => {
+  app.get('/api/logs', requireAuth, (req, res) => {
     try {
       const limit = Math.min(parseInt(req.query.limit as string) || 200, 2000);
       const content = logger.getTodayLog();
@@ -2718,7 +2766,12 @@ setSearchManager(searchManagerInstance);
           ? l.replace(/(token[:\s]*|验证码[:\s]*|链接[:\s]*)[^\s,，]+/gi, '$1***')
           : l
       );
-      res.json({ ok: true, total: lines.length, lines: lines.slice(-limit) });
+      const logObjs = lines.map((l: string) => {
+          const m = l.match(/^\[([^\]]+)\]\s*\[([^\]]+)\]\s*(?:\[([^\]]+)\])?\s*(.*)$/);
+          if (m) return { timestamp: m[1], level: (m[2]||'INFO').toLowerCase(), message: (m[3]?'['+m[3]+'] ':'')+(m[4]||l) };
+          return { timestamp: '', level: 'info', message: l };
+        });
+        res.json({ ok: true, total: logObjs.length, logs: logObjs.slice(-limit), lines: lines.slice(-limit) });
     } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
   });
 

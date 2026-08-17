@@ -609,6 +609,49 @@ function openSearchResult(chatId) {
   if (typeof switchChat === 'function') switchChat(chatId);
 }
 
+
+// ════════════════════════════════════════════
+// 运行时设置（超时/日志级别）
+// ════════════════════════════════════════════
+async function loadRuntimeSettings() {
+  try {
+    var d = await api('/api/settings', 'GET');
+    if (d && d.ok && d.settings) {
+      var s = d.settings;
+      var el;
+      el = document.getElementById('setOrchestratorTimeout'); if (el) el.value = s.orchestratorTimeoutSeconds || 120;
+      el = document.getElementById('setTaskTimeout'); if (el) el.value = s.taskTimeoutSeconds || 120;
+      el = document.getElementById('setChatTimeout'); if (el) el.value = s.chatTimeoutSeconds || 120;
+      el = document.getElementById('setLogLevel'); if (el) el.value = s.logLevel || 'info';
+      el = document.getElementById('setFileLogging'); if (el) el.checked = s.fileLogging !== false;
+    }
+  } catch(e) { console.warn('[Settings] load failed:', e); }
+}
+
+async function saveRuntimeSettings() {
+  var body = {
+    orchestratorTimeoutSeconds: parseInt(document.getElementById('setOrchestratorTimeout')?.value || '120'),
+    taskTimeoutSeconds: parseInt(document.getElementById('setTaskTimeout')?.value || '120'),
+    chatTimeoutSeconds: parseInt(document.getElementById('setChatTimeout')?.value || '120'),
+    logLevel: document.getElementById('setLogLevel')?.value || 'info',
+    fileLogging: document.getElementById('setFileLogging')?.checked !== false,
+  };
+  try {
+    var d = await api('/api/settings', 'POST', body);
+    var msg = document.getElementById('settingsSaveMsg');
+    if (d && d.ok) {
+      if (msg) { msg.textContent = '✅ 已保存'; msg.style.color = 'var(--green)'; }
+      toast('✅ 设置已保存');
+      setTimeout(function(){ if (msg) msg.textContent = ''; }, 3000);
+    } else {
+      if (msg) { msg.textContent = '❌ ' + (d?.error || '保存失败'); msg.style.color = 'var(--red)'; }
+    }
+  } catch(e) {
+    var msg2 = document.getElementById('settingsSaveMsg');
+    if (msg2) { msg2.textContent = '❌ ' + e.message; msg2.style.color = 'var(--red)'; }
+  }
+}
+
 // ════════════════════════════════════════════
 // 数据导出 / 备份
 // ════════════════════════════════════════════
@@ -1813,7 +1856,8 @@ async function reflectMemory() {
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeMemoryPanel(); closeSettings(); hideMembersPanel(); toggleAdmin(false); } });
 
 // ── Settings ──
-function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); document.getElementById('settingsPanel').classList.add('open'); loadModels().catch(()=>{}); loadProviders().catch(()=>{}); onProviderTypeChange(); }
+function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); document.getElementById('settingsPanel').classList.add('open'); loadModels().catch(()=>{}); loadProviders().catch(()=>{});
+  loadRuntimeSettings().catch(()=>{}); onProviderTypeChange(); }
 function closeSettings() { document.getElementById('settingsOverlay').classList.remove('open'); document.getElementById('settingsPanel').classList.remove('open'); }
 
 async function loadModels() {
@@ -3038,24 +3082,40 @@ async function loadLogBody() {
   if (!body) return;
   body.innerHTML = '<div class="log-line"><span class="info">加载中...</span></div>';
   try {
-    var d = await api('/api/logs?limit=100');
-    if (!d.ok) { body.innerHTML = '<div class="log-line"><span class="err">加载失败: ' + (d.error && d.error.message || d.error || '未知错误') + '</span></div>'; return; }
-    var lines = d.lines || [];
-    if (!lines.length) { body.innerHTML = '<div class="log-line"><span class="info">(暂无日志)</span></div>'; return; }
-    var html = '';
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i];
-      var cls = 'info';
-      // 根据日志级别着色
-      if (/\b(error|err|fail|错误)\b/i.test(line)) cls = 'err';
-      else if (/\b(warn|警告)\b/i.test(line)) cls = 'warn';
-      else if (/\b(ok|success|done|完成|成功)\b/i.test(line)) cls = 'ok';
-      html += '<div class="log-line"><span class="' + cls + '">' + esc(line) + '</span></div>';
-    }
-    body.innerHTML = html;
-    body.scrollTop = body.scrollHeight;
+    api('/api/logs?limit=100').then(function(d) {
+      if (!d || !d.ok) {
+        body.innerHTML = '<div class="log-line"><span class="err">❌ ' + (d && d.error || '加载失败') + '</span></div>';
+        return;
+      }
+      var logs = d.logs || d.lines || [];
+      var html = '';
+      if (d.logs && d.logs.length > 0 && typeof d.logs[0] === 'object') {
+        for (var i = 0; i < d.logs.length; i++) {
+          var l = d.logs[i];
+          var cls = 'info';
+          if (l.level === 'error' || l.level === 'err') cls = 'err';
+          else if (l.level === 'warn') cls = 'warn';
+          else if (l.level === 'debug') cls = 'info';
+          html += '<div class="log-line"><span class="t">[' + esc(l.timestamp || '') + ']</span> <span class="' + cls + '">[' + esc(l.level || '') + ']</span> ' + esc(l.message || '') + '</div>';
+        }
+      } else {
+        for (var j = 0; j < logs.length; j++) {
+          var line = String(logs[j] || '');
+          var lc = 'info';
+          if (/\[ERROR\]|\[FATAL\]/i.test(line)) lc = 'err';
+          else if (/\[WARN\]/i.test(line)) lc = 'warn';
+          else if (/\[INFO\]/i.test(line)) lc = 'info';
+          else if (/\[Boot\]|\[Config\]/i.test(line)) lc = 'ok';
+          html += '<div class="log-line"><span class="' + lc + '">' + esc(line) + '</span></div>';
+        }
+      }
+      body.innerHTML = html || '<div class="log-line"><span class="info">暂无日志</span></div>';
+      body.scrollTop = body.scrollHeight;
+    }).catch(function(e) {
+      body.innerHTML = '<div class="log-line"><span class="err">❌ ' + esc(e.message || '网络错误') + '</span></div>';
+    });
   } catch(e) {
-    body.innerHTML = '<div class="log-line"><span class="err">网络错误: ' + (e.message || '') + '</span></div>';
+    body.innerHTML = '<div class="log-line"><span class="err">❌ ' + esc(e.message || '错误') + '</span></div>';
   }
 }
 
@@ -3081,12 +3141,24 @@ async function loadLogs() {
   if (!out) return;
   out.textContent = '加载中...';
   try {
-    const d = await api('/api/logs?limit=200');
-    if (!d.ok) { out.textContent = '❌ ' + _errMsg(d, '加载失败'); return; }
-    const lines = d.lines || [];
-    out.textContent = lines.length ? lines.join('\n') : '(暂无日志)';
-    out.scrollTop = out.scrollHeight;
-  } catch(e) { out.textContent = '❌ ' + (e.message || '网络错误'); }
+    api('/api/logs?limit=200').then(function(d) {
+      if (!d || !d.ok) { out.textContent = '❌ ' + (d && d.error || '加载失败'); return; }
+      var logs = d.logs || d.lines || [];
+      if (d.logs && d.logs.length > 0 && typeof d.logs[0] === 'object') {
+        // New format: array of {timestamp, level, message}
+        out.innerHTML = d.logs.map(function(l) {
+          var cls = 'info';
+          if (l.level === 'error' || l.level === 'err') cls = 'err';
+          else if (l.level === 'warn') cls = 'warn';
+          else if (l.level === 'info') cls = 'info';
+          return '<span style="color:var(--text3)">[' + esc(l.timestamp || '') + ']</span> <span class="' + cls + '">[' + esc(l.level || '') + ']</span> ' + esc(l.message || '') + '\n';
+        }).join('');
+      } else {
+        // Old format: array of strings
+        out.textContent = logs.join('\n');
+      }
+    }).catch(function(e) { out.textContent = '❌ ' + (e.message || '网络错误'); });
+  } catch(e) { out.textContent = '❌ ' + (e.message || '错误'); }
 }
 
 // ── 一键升级 ──

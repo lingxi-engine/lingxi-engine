@@ -259,7 +259,7 @@ export class MessageRouter {
       try {
       // 总超时控制：普通对话 2 分钟兜底；任务模式（taskGoal/customPrompt）给 10 分钟，
       // 避免长任务（多轮工具调用）干到一半被中断（用户反馈"活干到一半就停了"的根因）
-      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '600', 10)) * 1000;
+      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '120', 10)) * 1000;
       const CHAT_TIMEOUT_MS = (parseInt(process.env.CHAT_TIMEOUT_SECONDS || '120', 10)) * 1000;
       const TOTAL_TIMEOUT = (taskGoal || customPrompt) ? TASK_TIMEOUT_MS : CHAT_TIMEOUT_MS;
       const controller = new AbortController();

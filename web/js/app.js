@@ -267,7 +267,7 @@ function markdownToHtml(text) {
 // ── Markdown 表格解析 ──
 function parseMarkdownTable(html) {
   // 匹配连续含 | 的行块（兼容有/无首尾管道符两种格式）
-  const tableRegex = /((?:^|\n)((?:[^\n]*\|[^\n]*(?:\r?\n|$))+))/g;
+  const tableRegex = new RegExp('((?:^|\\n)((?:[^\\n]*\\|[^\\n]*(?:\\r?\\n|$))+))', 'g');
   return html.replace(tableRegex, function(block) {
     var lines = block.trim().split(/\r?\n/).filter(function(l) { return l.trim(); });
     if (lines.length < 2) return block;
@@ -1888,8 +1888,49 @@ async function reflectMemory() {
 document.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeMemoryPanel(); closeSettings(); hideMembersPanel(); toggleAdmin(false); } });
 
 // ── Settings ──
-function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); document.getElementById('settingsPanel').classList.add('open'); loadModels().catch(()=>{}); loadProviders().catch(()=>{}); onProviderTypeChange(); }
+function openSettings() { document.getElementById('settingsOverlay').classList.add('open'); document.getElementById('settingsPanel').classList.add('open'); loadModels().catch(()=>{}); loadProviders().catch(()=>{}); loadRuntimeSettings().catch(()=>{}); onProviderTypeChange(); }
 function closeSettings() { document.getElementById('settingsOverlay').classList.remove('open'); document.getElementById('settingsPanel').classList.remove('open'); }
+
+// ════════════════════════════════════════════
+// 运行时设置（超时/日志级别，对应 index.html 「⚡ 超时与日志」卡片）
+// ════════════════════════════════════════════
+async function loadRuntimeSettings() {
+  try {
+    var d = await api('/api/settings', 'GET');
+    if (d && d.ok && d.settings) {
+      var s = d.settings;
+      var el;
+      el = document.getElementById('setOrchestratorTimeout'); if (el) el.value = s.orchestratorTimeoutSeconds || 120;
+      el = document.getElementById('setTaskTimeout'); if (el) el.value = s.taskTimeoutSeconds || 120;
+      el = document.getElementById('setChatTimeout'); if (el) el.value = s.chatTimeoutSeconds || 120;
+      el = document.getElementById('setLogLevel'); if (el) el.value = s.logLevel || 'info';
+      el = document.getElementById('setFileLogging'); if (el) el.checked = s.fileLogging !== false;
+    }
+  } catch(e) { console.warn('[Settings] load failed:', e); }
+}
+
+async function saveRuntimeSettings() {
+  var body = {
+    orchestratorTimeoutSeconds: parseInt(document.getElementById('setOrchestratorTimeout')?.value || '120'),
+    taskTimeoutSeconds: parseInt(document.getElementById('setTaskTimeout')?.value || '120'),
+    chatTimeoutSeconds: parseInt(document.getElementById('setChatTimeout')?.value || '120'),
+    logLevel: document.getElementById('setLogLevel')?.value || 'info',
+    fileLogging: document.getElementById('setFileLogging')?.checked !== false,
+  };
+  var msg = document.getElementById('settingsSaveMsg');
+  try {
+    var d = await api('/api/settings', 'POST', body);
+    if (d && d.ok) {
+      if (msg) { msg.textContent = '✅ 已保存'; msg.style.color = 'var(--green)'; }
+      toast('✅ 设置已保存');
+      setTimeout(function(){ if (msg) msg.textContent = ''; }, 3000);
+    } else {
+      if (msg) { msg.textContent = '❌ ' + (d?.error || '保存失败'); msg.style.color = 'var(--red)'; }
+    }
+  } catch(e) {
+    if (msg) { msg.textContent = '❌ ' + e.message; msg.style.color = 'var(--red)'; }
+  }
+}
 
 async function loadModels() {
   try {
