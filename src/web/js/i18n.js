@@ -71,7 +71,7 @@
     'mode.debate': '辩论',
     'mode.chain': '链式',
     'mode.roundtable': '圆桌',
-    'mode.vote': '投票',
+    'mode.vote': '投票',     'mode.brainstorm': '头脑风暴',
 
     'market.title': '🏪 AI 员工市场',
     'market.searchPh': '🔍 搜索...',

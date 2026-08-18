@@ -2263,7 +2263,7 @@ async function setChatMode(mode) {
   if (!currentChat) return;
   try {
     await api('/api/chats/' + encodeURIComponent(currentChat) + '/mode', 'POST', { mode });
-    var names = {free:'自由',route:'路由',debate:'辩论',chain:'链式',roundtable:'圆桌',vote:'投票'};
+    var names = {free:'自由',route:'路由',debate:'辩论',chain:'链式',roundtable:'圆桌',vote:'投票',brainstorm:'头脑风暴'};
     toast('✅ 协作模式: ' + (names[mode] || mode));
   } catch(e) { toast('❌ 设置失败'); }
 }

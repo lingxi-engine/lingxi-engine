@@ -663,7 +663,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
             <div class="chat-title-bar">
               <span class="chat-title" id="lanGroupTitle" data-i18n="social.group">群组</span>
               <select id="lanGroupMode" onchange="lanSetGroupMode(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px">
-                <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option>
+                <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
               </select>
               <span id="lanGroupMembers" style="font-size:10px;color:var(--text3)"></span>
             </div>
@@ -1038,5 +1038,8 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 </script>
 
 
+<select id="chatModeSelect" onchange="setChatMode(this.value)" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px;margin-right:8px">
+                <option value="free">自由</option><option value="route">路由</option><option value="debate">辩论</option><option value="chain">链式</option><option value="roundtable">圆桌</option><option value="vote">投票</option><option value="brainstorm">头脑风暴</option>
+              </select>
 </body>
 </html>

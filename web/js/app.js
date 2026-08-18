@@ -2848,7 +2848,7 @@ async function setChatMode(mode) {
   if (!currentChat) return;
   try {
     await api('/api/chats/' + encodeURIComponent(currentChat) + '/mode', 'POST', { mode });
-    var names = {free:t('mode.free'),route:t('mode.route'),debate:t('mode.debate'),chain:t('mode.chain'),roundtable:t('mode.roundtable'),vote:t('mode.vote')};
+    var names = {free:t('mode.free'),route:t('mode.route'),debate:t('mode.debate'),chain:t('mode.chain'),roundtable:t('mode.roundtable'),vote:t('mode.vote'),brainstorm:t('mode.brainstorm')};
     toast(t('chat.collabMode', {mode: names[mode] || mode}));
   } catch(e) { toast('❌ ' + t('err.setFail')); }
 }
