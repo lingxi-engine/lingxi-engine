@@ -790,7 +790,7 @@ export class LanSocialHub {
   /** 编排各成员 Agent（per-chatId 串行锁包装）。
    *  同一群的并发话题排队执行，避免回复交错、latestAgentMessage 回读串号、跨引擎重复同步。 */
   private orchestrateAgents(groupId: string, chatId: string, mode: string, triggerMsgId: string, topic: string): Promise<void> {
-    const ORCH_TIMEOUT = 120_000;  // P1-11: 120秒超时，防止 Promise 永不 resolve 卡死队列
+    const ORCH_TIMEOUT = 180_000;  // P1-11: 120秒超时，防止 Promise 永不 resolve 卡死队列
     const run = () => Promise.race([
       this.orchestrateAgentsCore(groupId, chatId, mode, triggerMsgId, topic),
       new Promise<void>((_, reject) => setTimeout(() => reject(new Error('编排超时(' + ORCH_TIMEOUT/1000 + 's)')), ORCH_TIMEOUT)),
@@ -824,17 +824,68 @@ export class LanSocialHub {
     } else if (mode === 'route') {
       // 路由：只挑一个（轮询简化为第一个在线）
       const a = agents.find((x) => x.isLocal) || agents[0];
-      await this.invokeAgent(a, chatId, triggerMsgId, topic);
-    } else {
-      // free / debate / roundtable / vote：并行
-      const debateStance = mode === 'debate';
-      await Promise.all(agents.map((a, i) => {
-        let prompt: string | undefined;
-        if (debateStance) prompt = `（辩论模式）请站在第 ${i + 1} 位发言者的角度，针对话题给出你的观点并回应其他人。`;
-        if (mode === 'vote') prompt = `（投票模式）请就话题明确给出你的选择与理由（赞成/反对/中立）。`;
-        if (mode === 'roundtable') prompt = `（圆桌会议）请围绕话题发表一轮看法。`;
-        return this.invokeAgent(a, chatId, triggerMsgId, topic, prompt);
+      await this.invokeAgent(a, chatId, triggerMsgId, topic);    } else if (mode === 'debate') {
+      // 辩论：① 各方立场并行开火 → ② 主持人总结（跨引擎多阶段）
+      const stances = ['支持方', '反对方', '中立分析方', '批判性思维方'];
+      const replies: string[] = [];
+      await Promise.all(agents.map(async (a, i) => {
+        const stance = stances[i % stances.length];
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【辩论模式 - 你是${stance}】\n\n议题：${topic}\n\n请从「${stance}」的立场出发进行论述：1. 清晰表明立场；2. 给出 2-3 个论据；3. 引用事实或逻辑支撑；4. 避免人身攻击，针对议题不针对人。`);
+        if (content) replies.push(`【${a.displayName}（${stance}）】\n${content}`);
       }));
+      if (replies.length > 0) {
+        await this.invokeAgent(agents[0], chatId, triggerMsgId, topic,
+          `【辩论总结】\n\n以下是各方观点：\n${replies.join('\n\n').slice(0, 8000)}\n\n请作为中立的总结者，归纳各方主要观点，指出共识和分歧，给出综合评价。`);
+      }
+    } else if (mode === 'roundtable') {
+      // 圆桌：① 第1轮并行 → ② 第2轮（回应他人）→ ③ 主持人总结
+      const maxRounds = 3;
+      const round1: string[] = [];
+      await Promise.all(agents.map(async (a) => {
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【圆桌讨论 - 第 1 轮 / 共 ${maxRounds} 轮】\n\n议题：${topic}\n\n你是参与者之一。请发表你的看法：1. 对这个问题的理解；2. 你的建议或方案；3. 对其他成员可能的质疑点。稍后其他成员会回复你，保持开放态度。`);
+        if (content) round1.push(`【${a.displayName}】\n${content}`);
+      }));
+      const round2: string[] = [];
+      await Promise.all(agents.map(async (a) => {
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【圆桌讨论 - 第 2 轮 / 共 ${maxRounds} 轮】\n\n以下是第一轮发言：\n${round1.join('\n\n').slice(0, 8000)}\n\n请基于以上内容，回应其他成员的观点，补充或修正你的看法。`);
+        if (content) round2.push(`【${a.displayName}】\n${content}`);
+      }));
+      await this.invokeAgent(agents[0], chatId, triggerMsgId, topic,
+        `【圆桌总结】\n\n以下是两轮讨论内容：\n${[...round1, ...round2].join('\n\n').slice(0, 12000)}\n\n圆桌讨论已结束。请作为主持人对本次讨论做一个简洁的总结，归纳各方达成的共识和主要分歧。`);
+    } else if (mode === 'vote') {
+      // 投票：① 独立投票 → ② 开票统计（跨引擎多阶段）
+      const votes: string[] = [];
+      await Promise.all(agents.map(async (a) => {
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【投票模式】\n\n议题：${topic}\n\n请投出你的一票。回复格式：\n✅ 我选择：选项X\n理由：（一句话说明为什么）`);
+        if (content) votes.push(`【${a.displayName}】\n${content}`);
+      }));
+      if (votes.length > 0) {
+        await this.invokeAgent(agents[0], chatId, triggerMsgId, topic,
+          `【投票开票】\n\n以下是各位 AI 的投票结果：\n${votes.join('\n\n').slice(0, 8000)}\n\n请作为计票员：1. 统计每个选项的得票数；2. 用清单列出开票结果；3. 宣布得票最高的方案，并简述各方理由。`);
+      }
+    } else if (mode === 'brainstorm') {
+      // 头脑风暴：① 发散 → ② 收敛 → ③ 主持人汇总行动项（跨引擎三阶段）
+      const ideas: string[] = [];
+      await Promise.all(agents.map(async (a) => {
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【头脑风暴 - 第 1 阶段：发散】\n\n议题：${topic}\n\n规则（必须遵守）：1. 只输出点子，不要解释过程；2. 禁止批评、禁止否定（包括自我否定）；3. 质大于量：给出 3-5 个具体、可执行的点子；4. 欢迎大胆、非常规的想法；5. 每个点子以「- 」开头，一句话说清。`);
+        if (content) ideas.push(`【${a.displayName}】\n${content}`);
+      }));
+      const converged: string[] = [];
+      await Promise.all(agents.map(async (a) => {
+        const content = await this.invokeAgent(a, chatId, triggerMsgId, topic,
+          `【头脑风暴 - 第 2 阶段：收敛】\n\n议题：${topic}\n\n以下是各成员的第一轮点子：\n${ideas.join('\n\n').slice(0, 8000)}\n\n请：1. 从【别人的点子】中挑 1-2 个最有潜力、最值得做的；2. 各用一句话说明：为什么值得做 + 怎么补全它；3. 也可以合并两个点子成一个更强的方案；4. 不要重复罗列自己的点子，不要客套。`);
+        if (content) converged.push(`【${a.displayName}】\n${content}`);
+      }));
+      await this.invokeAgent(agents[0], chatId, triggerMsgId, topic,
+        `【头脑风暴 - 第 3 阶段：汇总】\n\n议题：${topic}\n\n以下是各位成员的发散与收敛意见：\n${[...ideas, ...converged].join('\n\n').slice(0, 12000)}\n\n请作为主持人输出一份头脑风暴成果：1. 去重合并所有点子（明显重复的合并，保留表述更好的）；2. 按「可行性 × 创新性」挑出 Top 3；3. 每个入选点子给出一句落地建议（第一步做什么）；4. 最后输出「行动项」清单：编号 + 一句话。`);
+    } else {
+      // free：并行一轮
+      await Promise.all(agents.map((a) => this.invokeAgent(a, chatId, triggerMsgId, topic)));
     }
   }
 

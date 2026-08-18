@@ -700,7 +700,7 @@ export function updateChatWorkspace(id: string, sharedWorkspace: string | null) 
 }
 
 // —— 群聊协作模式（v1.7.2）——
-export const CHAT_MODES = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote'] as const;
+export const CHAT_MODES = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote', 'brainstorm'] as const;
 export type ChatModeType = typeof CHAT_MODES[number];
 
 export function getChatMode(chatId: string): ChatModeType {
@@ -1534,7 +1534,7 @@ export function listLanGroups(): any[] {
 }
 
 export function setLanGroupMode(groupId: string, mode: string): boolean {
-  const validModes = ['free', 'structured', 'debate', 'brainstorm'];
+  const validModes = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote', 'brainstorm'];
   if (!validModes.includes(mode)) return false;
   _db.run("UPDATE lan_groups SET chat_mode = ? WHERE id = ?", [mode, groupId]);
   return true;

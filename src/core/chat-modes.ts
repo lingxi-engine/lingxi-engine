@@ -8,11 +8,12 @@
  *   - chain     链式：A → B → C 按序传递输出
  *   - roundtable 圆桌式：N 个 AI 轮流发言 N 轮
  *   - vote      投票式：N 个 AI 独立投票 → 统计结果
+ *   - brainstorm 头脑风暴式：发散 → 收敛 → 主持人汇总行动项
  */
 
 import { getChatMode as dbGetChatMode, setChatMode as dbSetChatMode } from '../storage/db.js';
 
-export type ChatMode = 'free' | 'route' | 'debate' | 'chain' | 'roundtable' | 'vote';
+export type ChatMode = 'free' | 'route' | 'debate' | 'chain' | 'roundtable' | 'vote' | 'brainstorm';
 
 export interface ModeDispatchResult {
   /** 需要触发的回复列表 */
@@ -72,6 +73,8 @@ export async function dispatchByMode(
       return dispatchChain(chatId, senderId, content, agentsInChat, db);
     case 'roundtable':
       return dispatchRoundtable(chatId, senderId, content, agentsInChat, db);
+    case 'brainstorm':
+      return dispatchBrainstorm(chatId, senderId, content, agentsInChat);
     case 'vote':
       return dispatchVote(chatId, senderId, content, agentsInChat);
     default:
@@ -479,3 +482,91 @@ ${allVotes}
     }],
   };
 }
+// ─── 头脑风暴式 ─────────────────────────────────────
+/**
+ * 头脑风暴调度：三阶段
+ *   1. 发散：每个 AI 独立给出 3-5 个点子（禁止批评/评价）
+ *   2. 收敛：每个 AI 从已有点子中挑最有潜力的补全落地
+ *   3. 汇总：主持人去重排序，输出行动项
+ */
+function dispatchBrainstorm(
+  chatId: string, senderId: string, content: string,
+  agents: any[]
+): ModeDispatchResult {
+  const activeAgents = agents.filter((a: any) => a.autonomy !== 'passive');
+  if (activeAgents.length < 2) {
+    return dispatchFree(chatId, senderId, 'user', content, agents, null as any);
+  }
+
+  const responses: ModeDispatchResult['responses'] = [];
+  for (let i = 0; i < activeAgents.length; i++) {
+    const agent = activeAgents[i];
+    responses.push({
+      chatId,
+      agentId: agent.id,
+      triggerMessage: { id: 'brainstorm-' + Date.now(), content, senderId },
+      customPrompt: `【头脑风暴 - 第 1 阶段：发散】\n\n议题：${content}\n\n规则（必须遵守）：\n1. 只输出点子，不要解释过程\n2. 禁止批评、禁止否定（包括自我否定）\n3. 质大于量：给出 3-5 个具体、可执行的点子\n4. 欢迎大胆、非常规的想法\n5. 每个点子以「- 」开头，一句话说清\n\n直接开始。`,
+      delayMs: i * 2500,
+      stage: '发散',
+    });
+  }
+
+  return {
+    responses,
+    needsFollowUp: true,
+    followUpContext: { type: 'brainstorm', phase: 'converge', topic: content },
+  };
+}
+
+/**
+ * 头脑风暴后续轮次：
+ *   phase 'converge' → 收敛：每个 AI 从上方点子中挑 1-2 个最有潜力的补全
+ *   phase 'summary'  → 汇总：主持人去重排序，输出行动项
+ */
+export function dispatchBrainstormNext(
+  chatId: string,
+  agents: any[],
+  collected: any[],
+  phase: 'converge' | 'summary',
+  topic: string
+): ModeDispatchResult | null {
+  const activeAgents = agents.filter((a: any) => a.autonomy !== 'passive');
+  if (activeAgents.length === 0) return null;
+
+  if (phase === 'summary') {
+    const host = activeAgents[0];
+    const allIdeas = collected
+      .map((r: any) => `【${r.agentName || '某AI'}】\n${r.content}`)
+      .join('\n\n');
+    return {
+      responses: [{
+        chatId,
+        agentId: host.id,
+        triggerMessage: { id: 'brainstorm-summary', content: allIdeas, senderId: 'system' },
+        customPrompt: `【头脑风暴 - 第 3 阶段：汇总】\n\n议题：${topic}\n\n以下是各位成员的发散与收敛意见：\n${allIdeas}\n\n请作为主持人输出一份头脑风暴成果：\n1. 去重合并所有点子（明显重复的合并，保留表述更好的）\n2. 按「可行性 × 创新性」挑出 Top 3\n3. 每个入选点子给出一句落地建议（第一步做什么）\n4. 最后输出「行动项」清单：编号 + 一句话\n\n格式清晰，直接输出。`,
+        stage: '汇总',
+      }],
+    };
+  }
+
+  // phase === 'converge'
+  const responses: ModeDispatchResult['responses'] = [];
+  for (let i = 0; i < activeAgents.length; i++) {
+    const agent = activeAgents[i];
+    responses.push({
+      chatId,
+      agentId: agent.id,
+      triggerMessage: { id: 'brainstorm-converge-' + Date.now(), content: topic, senderId: 'system' },
+      customPrompt: `【头脑风暴 - 第 2 阶段：收敛】\n\n议题：${topic}\n\n上方消息是各成员的第一轮点子。请：\n1. 从【别人的点子】中挑 1-2 个你认为最有潜力、最值得做的\n2. 各用一句话说明：为什么值得做 + 怎么补全它（补什么关键细节）\n3. 也可以合并两个点子成一个更强的方案\n4. 不要重复罗列自己的点子，不要客套\n\n直接输出。`,
+      delayMs: i * 2500,
+      stage: '收敛',
+    });
+  }
+
+  return {
+    responses,
+    needsFollowUp: true,
+    followUpContext: { type: 'brainstorm', phase: 'summary', topic },
+  };
+}
+

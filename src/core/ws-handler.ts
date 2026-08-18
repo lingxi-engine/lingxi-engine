@@ -1,6 +1,6 @@
 import type { MessageRouter } from "./router.js";
 import type { WebSocket } from "ws";
-import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary } from "./chat-modes.js";
+import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext } from "./chat-modes.js";
 import { Orchestrator, type TaskNode } from "./orchestrator.js";
 
 // === 长任务状态追踪（支持断点续做）===
@@ -633,6 +633,9 @@ export function processUserMessage(
         followUp = undefined; // 一次性汇总
       } else if (followUp.type === 'roundtable') {
         next = dispatchRoundtableNext(chatId, agents, followUp.round, followUp.maxRounds);
+        followUp = next?.needsFollowUp ? next.followUpContext : undefined;
+      } else if (followUp.type === 'brainstorm') {
+        next = dispatchBrainstormNext(chatId, agents, collected, followUp.phase || 'converge', followUp.topic || '');
         followUp = next?.needsFollowUp ? next.followUpContext : undefined;
       } else if (followUp.type === 'vote') {
         next = dispatchVoteSummary(chatId, collected, agents, followUp.options || []);
