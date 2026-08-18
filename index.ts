@@ -410,6 +410,9 @@ setSearchManager(searchManagerInstance);
   );
   subAgentManager.setResultHandler((task: any) => {
     console.log(`[SubAgent] ${task.id} 完成: status=${task.status}, result=${(task.result || '').slice(0, 80)}`);
+    try {
+      broadcast({ type: 'subagent.result', chatId: task.chatId || task.parentChatId, task });
+    } catch (e) { /* ignore */ }
   });
   // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
   setSubAgentManager(subAgentManager);

@@ -78,6 +78,9 @@ export class SubAgentManager {
   constructor(aiClient: any, aiModel: string) {
     this.aiClient = aiClient;
     this.aiModel = aiModel;
+    // 每小时清理一次超过24h的已完成任务记录，避免内存泄漏
+    const cleaner = setInterval(() => { try { this.cleanup(24 * 60 * 60 * 1000); } catch { /* ignore */ } }, 60 * 60 * 1000);
+    if (cleaner.unref) cleaner.unref();
   }
 
   /** 设置结果回调 */
@@ -100,7 +103,7 @@ export class SubAgentManager {
       status: 'pending',
       model: opts.model || this.aiModel,
       createdAt: Date.now(),
-      timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '120', 10),
+      timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '600', 10),
       toolRegistry: opts.toolRegistry,
       agentIdForTools: opts.agentIdForTools || opts.parentId,
       onProgress: opts.onProgress,
@@ -389,7 +392,7 @@ export class SubAgentManager {
     }
     if (task.status === 'completed' || task.status === 'failed' || task.status === 'timeout') {
       const tid = task.id;
-      const t = setTimeout(() => { this.tasks.delete(tid); this.running.delete(tid); }, 5 * 60 * 1000);
+      const t = setTimeout(() => { this.tasks.delete(tid); this.running.delete(tid); }, 24 * 60 * 60 * 1000);
       if (t.unref) t.unref();
     }
   }

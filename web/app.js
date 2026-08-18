@@ -733,6 +733,9 @@ function handleMessage(msg) {
     case 'tool.result':
       updateToolCallRow(msg);
       break;
+    case 'subagent.result':
+      if (typeof loadSubAgents === 'function') loadSubAgents();
+      break;
     case 'agent.streaming.chunk':
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
@@ -4126,3 +4129,25 @@ async function deleteRightGoal(id) {
     else toast('❌ ' + _errMsg(d, '删除失败'));
   } catch(e) { toast('❌ ' + e.message); }
 }
+
+// ═══ 子任务面板（v2.0 子代理）═══
+function loadSubAgents(){
+  fetch('/api/subagents').then(function(r){return r.json()}).then(function(d){
+    var el=document.getElementById('subAgentList');
+    if(!el) return;
+    if(!d.ok||!d.tasks||!d.tasks.length){ el.innerHTML='<span style="color:var(--text3)">暂无子任务</span>'; return; }
+    el.innerHTML=d.tasks.map(function(t){
+      var st=t.status==='completed'?'✅':t.status==='failed'?'❌':t.status==='timeout'?'⏰':(t.status==='running'?'🔄':'⏳');
+      var stc=t.status==='completed'?'#2e7d32':(t.status==='failed'||t.status==='timeout')?'#c62828':'#1565c0';
+      var esc=function(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+      return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">'+
+        '<div style="font-weight:600;font-size:12px">'+st+' '+(t.taskName||'').slice(0,30)+'</div>'+
+        '<div style="font-size:11px;color:var(--text3);margin:2px 0">目标: '+esc((t.objective||'').slice(0,100))+'</div>'+
+        '<div style="font-size:11px;color:'+stc+'">状态: '+t.status+' · 耗时: '+((t.completedAt||t.startedAt||t.createdAt)?'': '')+(t.model?' · '+esc(t.model):'')+'</div>'+
+        (t.result?'<div style="font-size:11px;color:var(--text3);margin-top:4px;word-break:break-all">'+esc(t.result.slice(0,300))+'</div>':'')+
+        (t.error?'<div style="font-size:11px;color:#c62828;margin-top:2px">'+esc(t.error)+'</div>':'')+
+        '</div>';
+    }).join('');
+  }).catch(function(){});
+}
+setInterval(loadSubAgents, 15000);

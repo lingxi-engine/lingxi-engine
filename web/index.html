@@ -513,6 +513,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       </div>
       <div class="input-area">
         <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="上传文件" style="padding:6px 10px;font-size:18px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0">📎</button>
+        <button id="recordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording();event.preventDefault()" ontouchend="stopRecording()" title="按住说话" style="padding:6px 10px;font-size:16px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0;user-select:none">🎤</button>
         <input type="file" id="fileInput" style="display:none" onchange="onFileSelected(this)">
         <textarea id="input" data-i18n-ph="chat.inputPh" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
         <button class="primary" id="sendBtn" onclick="send()" data-i18n="common.send">发送</button>
@@ -691,6 +692,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="right-head">
       <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks" data-i18n="right.tasks">任务监控</button>
       <button onclick="switchTab('goals',this)" id="rbTabGoals" data-i18n="right.goals">目标任务</button>
+      <button onclick="switchTab('subagents',this);loadSubAgents()" id="rbTabSubAgents" data-i18n="right.subagents">子任务</button>
     </div>
     <div class="right-body" id="tab-tasks" style="display:block">
       <div id="taskMonitorList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
@@ -704,6 +706,9 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="right-body" id="tab-goals" style="display:none">
       <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
       <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()" data-i18n="right.addGoal">＋ 添加目标任务</button>
+    </div>
+    <div class="right-body" id="tab-subagents" style="display:none">
+      <div id="subAgentList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
     </div>
   </aside>
 </div>
@@ -743,6 +748,7 @@ function switchTab(name,btn){
   btn.classList.add('active');
   document.getElementById('tab-tasks').style.display = name==='tasks'?'block':'none';
   document.getElementById('tab-goals').style.display = name==='goals'?'block':'none';
+  document.getElementById('tab-subagents').style.display = name==='subagents'?'block':'none';
 }
 function switchTheme(name,btn){
   document.body.className = 'theme-' + name;
@@ -1076,7 +1082,7 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <div id="notificationBar" style="display:none"></div>
 <div id="promptAgentSelect" style="display:none"></div>
 <div id="promptEditArea" style="display:none"></div>
-<div id="recordBtn" style="display:none"></div>
+
 <div id="routeModeTag" style="display:none"></div>
 <div id="visionResult" style="display:none"></div>
 <div id="voiceStatus" style="display:none"></div>
