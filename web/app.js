@@ -1098,7 +1098,8 @@ function appendMessage(msg) {
   container.appendChild(el);
 
   // 检测结构化问答格式（Q:/A:/B:/C:）→ 自动渲染多选表单
-  if (isAgent && content.includes && content.includes('Q:') && content.includes('A:')) {
+  // 修复：放宽匹配，兼容 Q：/Q1:/问题1：/全角冒号 等 AI 常见变体
+  if (isAgent && looksLikeGoalQA(content)) {
     setTimeout(function() { renderGoalQAForm(content, el, chatId); }, 200);
   }
 
@@ -3307,6 +3308,23 @@ async function askAIAboutGoal(goalId, title) {
 // 兼容旧调用名
 var askGoal = askAIAboutGoal;
 
+// 判断 AI 回复是否含目标反问的结构化格式（Q:/A: 及其变体）
+function looksLikeGoalQA(content) {
+  if (!content || typeof content !== 'string') return false;
+  var lines = content.split('\n');
+  var hasQ = false, hasA = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i].trim();
+    // 问题行：Q: / Q1: / 问题: / 问题1： / **Q:**（去掉首尾 **）等
+    var clean = line.replace(/^\*+/, '').replace(/\*+$/, '').trim();
+    if (/^(?:Q|问题)\s*\d*\s*[:：]/.test(clean)) hasQ = true;
+    // 选项行：A: / A： / A. / A、 / B: 等
+    if (/^[A-C]\s*[:：.、]/.test(clean)) hasA = true;
+    if (hasQ && hasA) return true;
+  }
+  return false;
+}
+
 // ── 目标反向提问 -> 选项表单渲染 ──
 // AI 回复中包含 Q:/A:/B:/C: 格式时，自动在消息下方插入多选表单
 function renderGoalQAForm(content, msgEl, chatId) {
@@ -3315,8 +3333,8 @@ function renderGoalQAForm(content, msgEl, chatId) {
   var clines = content.split('\n');
   for (var i = 0; i < clines.length; i++) {
     var line = clines[i].trim();
-    var qm = line.match(/^Q:?\s*(.+)/);
-    var am = line.match(/^([A-C]):?\s*(.+)/);
+    var qm = line.match(/^(?:Q|问题)\s*\d*\s*[:：]?\s*(.+)/);
+    var am = line.match(/^([A-C])\s*[:：.、]?\s*(.+)/);
     if (qm) { currentQ = { q: qm[1], opts: [] }; questions.push(currentQ); }
     else if (am && currentQ) { currentQ.opts.push({ key: am[1], text: am[2] }); }
   }

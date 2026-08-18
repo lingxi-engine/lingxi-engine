@@ -288,7 +288,7 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
       const { chatId, extra } = req.body || {};
       if (!chatId) return res.status(400).json({ error: '需要 chatId' });
       const msgId = 'goal-ask-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-      let content = `请针对目标任务「${goal.title}」进行结构化分析。
+      let content = `请针对目标任务「${goal.title}」进行结构化分析。请严格使用半角冒号（Q:、A:、B:），不要使用全角冒号，不要加Markdown加粗，不要输出除问题列表外的任何其他内容。
 
 要求输出格式（严格遵循）：
 Q: 问题1？
