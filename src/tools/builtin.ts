@@ -1086,6 +1086,50 @@ async function handleRequestAgentHelp(args: Record<string, any>) {
   }
 }
 
+
+// ═══════════════════════════════════════════════
+// 工具 16c: collab_task — 多智能体协作编排 (v2.1)
+// 模式: voting 表决 / debate 辩论 / roundtable 圆桌 / pipeline 流水线 / review 评审 / orchestrator 总裁
+// ═══════════════════════════════════════════════
+
+const TOOL_COLLAB_TASK: ToolDefinition = {
+  name: "collab_task",
+  description: "Run a multi-agent collaboration session with multiple AI models. Modes: voting (parallel answers + judge vote), debate (models rebut each other over rounds), roundtable (open discussion with host summary), pipeline (sequential expert chain), review (draft + review + revise), orchestrator (leader decomposes task to workers then summarizes). Never blocks: each speech has its own timeout. Returns a sessionId; poll GET /api/subagents/collab/:id for progress.",
+  parameters: {
+    type: "object",
+    properties: {
+      mode: { type: "string", description: "voting | debate | roundtable | pipeline | review | orchestrator", enum: ["voting", "debate", "roundtable", "pipeline", "review", "orchestrator"] },
+      question: { type: "string", description: "The question or task for the collaboration" },
+      models: { type: "array", items: { type: "string" }, description: "Model IDs to use (e.g. [\"deepseek-v4-pro\", \"qwen3.7-max\"]). Empty = default model." },
+      rounds: { type: "number", description: "Interaction rounds (default 1; debate/review benefit from 2)", default: 1 },
+      max_speak_seconds: { type: "number", description: "Per-speech timeout in seconds (default 60, max 300)", default: 60 },
+    },
+    required: ["mode", "question"],
+  },
+};
+
+async function handleCollabTask(args: Record<string, any>) {
+  if (!_subAgentManager) return { error: 'SubAgent 系统未就绪' };
+  const { mode, question, models, rounds, max_speak_seconds } = args;
+  if (!question || typeof question !== 'string' || !question.trim()) return { error: 'question 必填' };
+  const validModes = ['voting', 'debate', 'roundtable', 'pipeline', 'review', 'orchestrator'];
+  if (!validModes.includes(mode)) return { error: 'mode 必须是 ' + validModes.join('/') };
+  try {
+    const sessionId = await _subAgentManager.collab({
+      mode,
+      question: question.trim(),
+      models: Array.isArray(models) ? models.filter((m: any) => typeof m === 'string') : [],
+      rounds: typeof rounds === 'number' && rounds > 0 ? rounds : undefined,
+      parentId: _currentAgentId,
+      chatId: _currentChatId,
+      maxSpeakSeconds: typeof max_speak_seconds === 'number' ? max_speak_seconds : undefined,
+    });
+    return { ok: true, sessionId, mode, status: 'running', note: 'GET /api/subagents/collab/' + sessionId + ' 可查进度' };
+  } catch (err: any) {
+    return { error: 'collab_task 失败: ' + err.message };
+  }
+}
+
 // ═══════════════════════════════════════════════
 // 工具 15: json_parse — 容错 JSON 解析
 // ═══════════════════════════════════════════════
@@ -1433,6 +1477,159 @@ async function handleMarkGoalDone(args: Record<string, any>) {
 }
 
 // ═══════════════════════════════════════════════
+// 工具: generate_video — ComfyUI 本地视频生成
+// ═══════════════════════════════════════════════
+
+const COMFYUI_URL = (process.env.COMFYUI_URL || 'http://127.0.0.1:8188').replace(/\/+$/, '');
+const COMFYUI_WORKFLOW_DIR = join(process.cwd(), 'data', 'comfyui-workflows');
+const COMFYUI_OUTPUT_DIR = join(process.cwd(), 'data', 'videos');
+
+const TOOL_GENERATE_VIDEO: ToolDefinition = {
+  name: "generate_video",
+  description: "Generate a video from a text prompt using local ComfyUI. Submits a workflow, polls until done, downloads the result to /videos and returns a playable URL.",
+  parameters: {
+    type: "object",
+    properties: {
+      prompt: { type: "string", description: "Video content description (positive prompt)" },
+      workflow: { type: "string", description: "Workflow template name (default: wan2.1-text-to-video)" },
+      negative_prompt: { type: "string", description: "Negative prompt (if workflow supports it)" },
+      width: { type: "number", description: "Output width (if workflow supports it)" },
+      height: { type: "number", description: "Output height (if workflow supports it)" },
+      steps: { type: "number", description: "Sampling steps (if workflow supports it)" },
+      seed: { type: "number", description: "Random seed (if workflow supports it)" },
+      timeout: { type: "number", description: "Poll timeout in ms, default 600000 (10 min)" },
+    },
+    required: ["prompt"],
+  },
+};
+
+async function comfyuiGetJson(pathname: string, timeoutMs: number): Promise<any> {
+  const res = await fetch(COMFYUI_URL + pathname, { signal: AbortSignal.timeout(timeoutMs) });
+  if (!res.ok) throw new Error('ComfyUI HTTP ' + res.status + ': ' + pathname);
+  return res.json();
+}
+
+function listComfyuiWorkflows(): string {
+  try {
+    if (!existsSync(COMFYUI_WORKFLOW_DIR)) return '(无模板)';
+    return readdirSync(COMFYUI_WORKFLOW_DIR).filter((f: string) => f.endsWith('.json')).join(', ') || '(无模板)';
+  } catch { return '(无模板)'; }
+}
+
+async function handleGenerateVideo(args: Record<string, any>) {
+  const prompt = String(args.prompt || '').trim();
+  if (!prompt) return { ok: false, error: 'prompt 不能为空' };
+  const workflowName = String(args.workflow || 'wan2.1-text-to-video').replace(/\.json$/i, '');
+  const timeoutMs = Number(args.timeout ?? 600000);
+  const start = Date.now();
+
+  try {
+    if (!existsSync(COMFYUI_WORKFLOW_DIR)) mkdirSync(COMFYUI_WORKFLOW_DIR, { recursive: true });
+    const wfPath = join(COMFYUI_WORKFLOW_DIR, workflowName + '.json');
+    if (!existsSync(wfPath)) {
+      return { ok: false, error: '工作流模板不存在: ' + workflowName + ' (' + wfPath + ')。可用模板: ' + listComfyuiWorkflows(), workflow: workflowName };
+    }
+    const workflow = JSON.parse(readFileSync(wfPath, 'utf8'));
+
+    let promptInjected = 0;
+    for (const node of Object.values(workflow) as any[]) {
+      if (!node || typeof node !== 'object' || !node.inputs) continue;
+      const cls = String(node.class_type || '');
+      if (cls === 'CLIPTextEncode' && typeof node.inputs.text === 'string') {
+        if (promptInjected === 0) node.inputs.text = prompt;
+        else if (promptInjected === 1 && args.negative_prompt) node.inputs.text = String(args.negative_prompt);
+        promptInjected++;
+      } else if (cls === 'EmptyLatentImage') {
+        if (args.width) node.inputs.width = Number(args.width);
+        if (args.height) node.inputs.height = Number(args.height);
+      } else if (cls === 'KSampler') {
+        if (args.steps) node.inputs.steps = Number(args.steps);
+        if (args.seed !== undefined) node.inputs.seed = Number(args.seed);
+      }
+    }
+    if (promptInjected === 0) {
+      return { ok: false, error: '工作流中没有找到 CLIPTextEncode 节点，无法注入 prompt。请检查模板节点 class_type。', workflow: workflowName };
+    }
+
+    const submitRes = await fetch(COMFYUI_URL + '/prompt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: workflow }),
+      signal: AbortSignal.timeout(30000),
+    });
+    const submitData = await submitRes.json() as any;
+    if (!submitRes.ok) {
+      return { ok: false, error: 'ComfyUI 提交失败: HTTP ' + submitRes.status + ' ' + JSON.stringify(submitData).slice(0, 300) };
+    }
+    if (submitData.node_errors && Object.keys(submitData.node_errors).length > 0) {
+      return { ok: false, error: '工作流节点错误: ' + JSON.stringify(submitData.node_errors).slice(0, 500) };
+    }
+    const promptId = submitData.prompt_id;
+    if (!promptId) return { ok: false, error: 'ComfyUI 未返回 prompt_id: ' + JSON.stringify(submitData).slice(0, 300) };
+
+    let history: any = null;
+    for (;;) {
+      if (Date.now() - start > timeoutMs) {
+        return { ok: false, error: '视频生成超时（' + Math.round(timeoutMs / 1000) + 's）。任务仍在 ComfyUI 队列: ' + promptId, prompt_id: promptId };
+      }
+      await new Promise(r => setTimeout(r, 2000));
+      try { history = await comfyuiGetJson('/history/' + promptId, 10000); } catch { continue; }
+      if (history[promptId] && (history[promptId].status?.completed || history[promptId].outputs)) break;
+    }
+    const entry = history[promptId];
+    if (entry.status?.status_str === 'error') {
+      return { ok: false, error: 'ComfyUI 执行出错', prompt_id: promptId, messages: entry.status?.messages || [] };
+    }
+
+    let file: { filename: string; subfolder: string; type: string } | null = null;
+    const outputs: Record<string, any> = entry.outputs || {};
+    for (const nodeOut of Object.values(outputs)) {
+      if (!nodeOut || typeof nodeOut !== 'object') continue;
+      const candidates: any[] = [];
+      if (Array.isArray(nodeOut.gifs)) candidates.push(...nodeOut.gifs);
+      if (Array.isArray(nodeOut.videos)) candidates.push(...nodeOut.videos);
+      if (Array.isArray(nodeOut.images)) candidates.push(...nodeOut.images);
+      for (const c of candidates) {
+        if (!c || typeof c !== 'object' || !c.filename) continue;
+        if (!file) file = { filename: c.filename, subfolder: c.subfolder || '', type: c.type || 'output' };
+        if (/\.(mp4|webm|mov|avi|gif)$/i.test(c.filename)) {
+          file = { filename: c.filename, subfolder: c.subfolder || '', type: c.type || 'output' };
+          break;
+        }
+      }
+      if (file && /\.(mp4|webm|mov|avi|gif)$/i.test(file.filename)) break;
+    }
+    if (!file) {
+      return { ok: false, error: 'ComfyUI 执行完成但未找到输出文件', prompt_id: promptId, outputs };
+    }
+
+    if (!existsSync(COMFYUI_OUTPUT_DIR)) mkdirSync(COMFYUI_OUTPUT_DIR, { recursive: true });
+    const params = new URLSearchParams({ filename: file.filename, type: file.type });
+    if (file.subfolder) params.set('subfolder', file.subfolder);
+    const dlRes = await fetch(COMFYUI_URL + '/view?' + params.toString(), { signal: AbortSignal.timeout(120000) });
+    if (!dlRes.ok) return { ok: false, error: '下载视频失败: HTTP ' + dlRes.status };
+    const buf = Buffer.from(await dlRes.arrayBuffer());
+    const ts = new Date().toISOString().replace(/[:.]/g, '-');
+    const saveName = ts + '_' + file.filename;
+    writeFileSync(join(COMFYUI_OUTPUT_DIR, saveName), buf);
+
+    return {
+      ok: true,
+      url: '/videos/' + saveName,
+      filename: saveName,
+      size: buf.length,
+      prompt_id: promptId,
+      workflow: workflowName,
+      elapsedMs: Date.now() - start,
+      comfyui_file: file.filename,
+    };
+  } catch (err: any) {
+    return { ok: false, error: 'generate_video 失败: ' + (err?.message || String(err)) };
+  }
+}
+
+
+// ═══════════════════════════════════════════════
 // 导出
 // ═══════════════════════════════════════════════
 
@@ -1453,6 +1650,7 @@ export const BUILTIN_TOOLS: { tool: ToolDefinition; handler: (args: Record<strin
   { tool: TOOL_JSON_PARSE, handler: handleJsonParse },
   { tool: TOOL_DELEGATE_TASK, handler: handleDelegateTask },
   { tool: TOOL_REQUEST_AGENT_HELP, handler: handleRequestAgentHelp },  // v2.0: Agent 间协作
+  { tool: TOOL_COLLAB_TASK, handler: handleCollabTask },  // v2.1: 多智能体协作
   { tool: TOOL_MARK_GOAL_DONE, handler: handleMarkGoalDone },
   { tool: TOOL_CODE_EXECUTE, handler: handleCodeExecute },
   { tool: TOOL_WRITE_FILE, handler: handleWriteFile },
@@ -1492,6 +1690,7 @@ export const BUILTIN_TOOLS: { tool: ToolDefinition; handler: (args: Record<strin
   { tool: TOOL_LIST_DIR, handler: handleListDir },
   { tool: TOOL_DELETE_FILE, handler: handleDeleteFile },
   { tool: TOOL_RENAME_FILE, handler: handleRenameFile },
+  { tool: TOOL_GENERATE_VIDEO, handler: handleGenerateVideo },
 ];
 
 export const BUILTIN_SKILLS = SKILL_CONFIGURATION;

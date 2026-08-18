@@ -60,6 +60,45 @@ export interface AgentMessage {
 // v2.0: Agent 间消息处理器（由外部注入，用于触发目标 Agent 回复）
 type AgentMessageHandler = (msg: AgentMessage) => Promise<string>;
 
+// v2.1: 多智能体协作编排
+export type CollabMode = 'voting' | 'debate' | 'roundtable' | 'pipeline' | 'review' | 'orchestrator';
+
+export interface CollabTurn {
+  round: number;
+  model: string;
+  role: 'speak' | 'judge' | 'summary';
+  content: string;
+  failed?: boolean;
+  ts: number;
+}
+
+export interface CollabSession {
+  id: string;
+  mode: CollabMode;
+  question: string;
+  models: string[];
+  rounds: number;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  createdAt: number;
+  updatedAt: number;
+  transcript: CollabTurn[];
+  conclusion?: string;
+  error?: string;
+  chatId?: string;
+}
+
+export interface CollabOptions {
+  mode: CollabMode;
+  question: string;
+  models?: string[];
+  rounds?: number;
+  parentId?: string;
+  chatId?: string;
+  maxSpeakSeconds?: number;
+  onEvent?: (evt: any) => void;
+}
+
+
 /**
  * 子代理管理器 v2.0
  */
@@ -74,6 +113,12 @@ export class SubAgentManager {
   private agentMessages = new Map<string, AgentMessage[]>();  // agentId -> 消息队列
   private messageHandlers = new Map<string, AgentMessageHandler>();  // agentId -> 处理器
   private messageListeners = new Map<string, (msg: AgentMessage) => void>();
+
+  // v2.1: 协作会话存储 + 事件回调
+  private collabSessions = new Map<string, CollabSession>();
+  private collabCounter = 0;
+  private collabOnEvent: ((evt: any) => void) | null = null;
+
 
   constructor(aiClient: any, aiModel: string) {
     this.aiClient = aiClient;
@@ -393,6 +438,267 @@ export class SubAgentManager {
     if (task.status === 'completed' || task.status === 'failed' || task.status === 'timeout') {
       const tid = task.id;
       const t = setTimeout(() => { this.tasks.delete(tid); this.running.delete(tid); }, 24 * 60 * 60 * 1000);
+      if (t.unref) t.unref();
+    }
+  }
+
+
+  // ═══════════════════════════════════════════════
+  // v2.1: 多智能体协作编排（表决/辩论/圆桌/流水线/评审/总裁）
+  // 防卡死设计：单次发言超时 + 整体超时 + 失败跳过 + 可取消 + TTL 清理
+  // ═══════════════════════════════════════════════
+
+  /** 创建协作会话（异步执行，立即返回 sessionId） */
+  async collab(opts: CollabOptions): Promise<string> {
+    const id = 'collab-' + Date.now() + '-' + (++this.collabCounter);
+    const models = (opts.models || []).filter((m: string) => typeof m === 'string' && m.trim());
+    const finalModels = models.length > 0 ? models : [this.aiModel];
+    const session: CollabSession = {
+      id, mode: opts.mode, question: opts.question,
+      models: finalModels, rounds: Math.max(1, opts.rounds || 1),
+      status: 'running', createdAt: Date.now(), updatedAt: Date.now(),
+      transcript: [], chatId: opts.chatId,
+    };
+    this.collabOnEvent = opts.onEvent || this.collabOnEvent;
+    this.collabSessions.set(id, session);
+    this.runCollab(session, opts, finalModels).catch((err: any) => {
+      if (session.status === 'running') {
+        session.status = 'failed';
+        session.error = err.message || '协作失败';
+        session.updatedAt = Date.now();
+        this.emitCollabEvent(session, 'done');
+      }
+    });
+    return id;
+  }
+
+  getCollab(id: string): CollabSession | undefined { return this.collabSessions.get(id); }
+
+  listCollabs(limit = 20): CollabSession[] {
+    return Array.from(this.collabSessions.values()).sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+  }
+
+  killCollab(id: string): boolean {
+    const s = this.collabSessions.get(id);
+    if (!s || s.status !== 'running') return false;
+    s.status = 'cancelled'; s.updatedAt = Date.now();
+    this.emitCollabEvent(s, 'done');
+    return true;
+  }
+
+  private emitCollabEvent(session: CollabSession, type: string, extra?: any): void {
+    try {
+      this.collabOnEvent?.(Object.assign({
+        type, sessionId: session.id, chatId: session.chatId,
+        mode: session.mode, question: session.question,
+        status: session.status, transcript: session.transcript,
+        conclusion: session.conclusion, error: session.error,
+      }, extra || {}));
+    } catch { /* ignore */ }
+  }
+
+  private collabSystem(model: string): string {
+    return `你是「${model}」模型驱动的专家智能体，正在参加多智能体协作讨论。请专业、简洁、有观点地回应，中文作答，不要重复提问。`;
+  }
+
+  private collabTranscriptText(session: CollabSession): string {
+    return session.transcript.map(t => `[${t.round}轮/${t.model}] ${t.content}`).join('\n\n');
+  }
+
+  private collabLastOfModel(session: CollabSession, model: string): string {
+    for (let i = session.transcript.length - 1; i >= 0; i--) {
+      if (session.transcript[i].model === model) return session.transcript[i].content;
+    }
+    return '';
+  }
+
+  private buildJudgePrompt(q: string, items: { model: string; content: string }[] | CollabTurn[], kind: 'vote' | 'conclude'): string {
+    const text = items.map(t => t.model + ': ' + t.content).join('\n\n');
+    return kind === 'vote'
+      ? `问题：${q}\n\n以下为各模型的观点：\n${text}\n\n请作为裁判：投票选出最优观点，说明理由，并给出最终结论。`
+      : `问题：${q}\n\n辩论记录：\n${text}\n\n请作为裁判：梳理各方立场、指出最有说服力的论点，给出最终结论。`;
+  }
+
+  /** 并行独立发言（任一失败不影响整体） */
+  private async collabSpeakAll(models: string[], question: string, round: number, maxSpeakMs: number, signal: AbortSignal, session: CollabSession): Promise<{ model: string; content: string }[]> {
+    const settled = await Promise.allSettled(models.map(async (m) => {
+      const c = await this.collabSpeak(m, this.collabSystem(m), `问题：${question}\n\n请直接给出你的观点和理由。`, maxSpeakMs, signal);
+      return { model: m, content: c };
+    }));
+    const out: { model: string; content: string }[] = [];
+    settled.forEach((r, i) => {
+      const m = models[i];
+      if (r.status === 'fulfilled') {
+        const v: any = r.value;
+        out.push({ model: m, content: v.content });
+        session.transcript.push({ round, model: m, role: 'speak', content: v.content, ts: Date.now() });
+      } else {
+        out.push({ model: m, content: '(该模型发言失败/超时，已跳过)' });
+        session.transcript.push({ round, model: m, role: 'speak', content: '(该模型发言失败/超时，已跳过)', failed: true, ts: Date.now() });
+      }
+    });
+    this.emitCollabEvent(session, 'round', { round });
+    return out;
+  }
+
+  /** 单次发言：独立 AbortController + 超时 abort，绝不卡死 */
+  private async collabSpeak(model: string, system: string, user: string, timeoutMs: number, signal?: AbortSignal): Promise<string> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => { try { ctrl.abort(); } catch { /* ignore */ } }, timeoutMs);
+    if (timer.unref) timer.unref();
+    const onOuterAbort = () => { try { ctrl.abort(); } catch { /* ignore */ } };
+    if (signal) {
+      if (signal.aborted) ctrl.abort();
+      else signal.addEventListener('abort', onOuterAbort);
+    }
+    try {
+      const resp = await this.aiClient.chat.completions.create({
+        model,
+        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+        temperature: 0.6,
+        max_tokens: 2000,
+        signal: ctrl.signal,
+      });
+      const content = resp?.choices?.[0]?.message?.content;
+      if (!content || !content.trim()) return '(无内容)';
+      return content.trim();
+    } finally {
+      clearTimeout(timer);
+      if (signal) signal.removeEventListener('abort', onOuterAbort);
+    }
+  }
+
+  /** 协作主流程 */
+  private async runCollab(session: CollabSession, opts: CollabOptions, models: string[]): Promise<void> {
+    const maxSpeakMs = Math.max(15, Math.min(opts.maxSpeakSeconds || 60, 300)) * 1000;
+    const overallMs = Math.min(
+      30 * 1000 + (opts.rounds || 1) * (models.length + 2) * maxSpeakMs,
+      10 * 60 * 1000
+    );
+    const overall = new AbortController();
+    const overallTimer = setTimeout(() => { try { overall.abort(); } catch { /* ignore */ } }, overallMs);
+    if (overallTimer.unref) overallTimer.unref();
+
+    try {
+      const q = session.question;
+      // ── 阶段1：独立发言 ──
+      const first = await this.collabSpeakAll(models, q, 1, maxSpeakMs, overall.signal, session);
+
+      // ── 阶段2：按模式交互 ──
+      const mode = session.mode;
+      if (mode === 'voting') {
+        // 表决：独立作答 + 裁判投票
+        const judgeModel = models[0];
+        const verdict = await this.collabSpeak(judgeModel, this.collabSystem(judgeModel), this.buildJudgePrompt(q, first, 'vote'), maxSpeakMs, overall.signal);
+        session.transcript.push({ round: 2, model: judgeModel, role: 'judge', content: verdict, ts: Date.now() });
+        session.conclusion = verdict;
+        this.emitCollabEvent(session, 'round', { round: 2 });
+      } else if (mode === 'debate') {
+        // 辩论：多轮互驳 + 裁判裁决
+        let round = 2;
+        for (let r = 1; r <= session.rounds && !overall.signal.aborted; r++) {
+          const speeches = await Promise.all(models.map(async (m) => {
+            const mine = this.collabLastOfModel(session, m);
+            const others = session.transcript.filter(t => t.model !== m).map(t => t.model + ': ' + t.content).join('\n\n');
+            const p = `问题：${q}\n\n你的上一轮观点：\n${mine || '(无)'}\n\n其他模型的发言：\n${others || '(无)'}\n\n请反驳或修订你的观点，给出更严谨的结论。`;
+            const c = await this.collabSpeak(m, this.collabSystem(m), p, maxSpeakMs, overall.signal);
+            return { model: m, content: c };
+          }));
+          for (const s of speeches) session.transcript.push({ round, model: s.model, role: 'speak', content: s.content, ts: Date.now() });
+          this.emitCollabEvent(session, 'round', { round });
+          round++;
+        }
+        const verdict = await this.collabSpeak(models[0], this.collabSystem(models[0]), this.buildJudgePrompt(q, session.transcript, 'conclude'), maxSpeakMs, overall.signal);
+        session.transcript.push({ round: round, model: models[0], role: 'judge', content: verdict, ts: Date.now() });
+        session.conclusion = verdict;
+      } else if (mode === 'roundtable') {
+        // 圆桌：全员可见轮流发言 + 主持人总结
+        let round = 2;
+        for (let r = 1; r <= session.rounds && !overall.signal.aborted; r++) {
+          for (const m of models) {
+            if (overall.signal.aborted) break;
+            const p = `问题：${q}\n\n目前讨论记录：\n${this.collabTranscriptText(session)}\n\n作为圆桌成员，请补充新观点或回应他人，不要重复已有内容。`;
+            const c = await this.collabSpeak(m, this.collabSystem(m), p, maxSpeakMs, overall.signal);
+            session.transcript.push({ round, model: m, role: 'speak', content: c, ts: Date.now() });
+            this.emitCollabEvent(session, 'round', { round, model: m });
+          }
+          round++;
+        }
+        const host = models[0];
+        const c = await this.collabSpeak(host, this.collabSystem(host), `问题：${q}\n\n圆桌讨论记录：\n${this.collabTranscriptText(session)}\n\n作为主持人，请总结讨论共识、分歧和最终建议。`, maxSpeakMs, overall.signal);
+        session.transcript.push({ round, model: host, role: 'summary', content: c, ts: Date.now() });
+        session.conclusion = c;
+      } else if (mode === 'pipeline') {
+        // 流水线：串行接力，每步一个专家
+        let prev = '';
+        for (let i = 0; i < models.length && !overall.signal.aborted; i++) {
+          const m = models[i];
+          const stageRole = i === 0 ? '负责初始产出' : (i === models.length - 1 ? '负责最终润色定稿' : '负责审改上一步产出');
+          const p = prev ? `问题：${q}\n\n上一步产出：\n${prev}\n\n你${stageRole}，请输出加工后的完整结果。` : `问题：${q}\n\n你${stageRole}，请直接输出结果。`;
+          const c = await this.collabSpeak(m, this.collabSystem(m), p, maxSpeakMs, overall.signal);
+          session.transcript.push({ round: i + 1, model: m, role: 'speak', content: c, ts: Date.now() });
+          this.emitCollabEvent(session, 'round', { round: i + 1, model: m });
+          prev = c;
+        }
+        session.conclusion = prev;
+      } else if (mode === 'review') {
+        // 评审：方案 → 评审意见 → 修订（迭代）
+        const author = models[0];
+        const reviewers = models.slice(1);
+        const draft = await this.collabSpeak(author, this.collabSystem(author), `问题：${q}\n\n请先给出你的方案初稿。`, maxSpeakMs, overall.signal);
+        session.transcript.push({ round: 1, model: author, role: 'speak', content: draft, ts: Date.now() });
+        let current = draft;
+        for (let r = 1; r <= session.rounds && !overall.signal.aborted; r++) {
+          const roundNo = r + 1;
+          if (reviewers.length === 0) break;
+          const reviews = await Promise.all(reviewers.map(async (m) => {
+            const p = `方案：\n${current}\n\n请从专业角度评审：指出 1-3 个问题并给出改进建议。`;
+            const c = await this.collabSpeak(m, this.collabSystem(m), p, maxSpeakMs, overall.signal);
+            return { model: m, content: c };
+          }));
+          for (const rv of reviews) session.transcript.push({ round: roundNo, model: rv.model, role: 'speak', content: rv.content, ts: Date.now() });
+          const reviewText = reviews.map(rv => rv.model + ': ' + rv.content).join('\n\n');
+          const revised = await this.collabSpeak(author, this.collabSystem(author),
+            `方案：\n${current}\n\n评审意见：\n${reviewText}\n\n请根据评审意见修订方案，输出最终版。`, maxSpeakMs, overall.signal);
+          session.transcript.push({ round: roundNo, model: author, role: 'speak', content: revised, ts: Date.now() });
+          current = revised;
+          this.emitCollabEvent(session, 'round', { round: roundNo });
+        }
+        session.conclusion = current;
+      } else {
+        // orchestrator 总裁：拆解 → 并行执行 → 汇总
+        const boss = models[0];
+        const workers = models.slice(1);
+        const plan = await this.collabSpeak(boss, this.collabSystem(boss), `问题：${q}\n\n你是负责人。请把任务拆解为 ${workers.length} 个子任务，每行一个，格式：1. 子任务描述。不要多余解释。`, maxSpeakMs, overall.signal);
+        session.transcript.push({ round: 1, model: boss, role: 'speak', content: plan, ts: Date.now() });
+        const tasks = plan.split(/\r?\n/).map((l: string) => l.replace(/^\s*\d+[.)、]\s*/, '').trim()).filter((l: string) => l.length > 0).slice(0, workers.length);
+        const results = await Promise.all(workers.map(async (m, i) => {
+          const t = tasks[i] || q;
+          const c = await this.collabSpeak(m, this.collabSystem(m), `子任务：${t}\n\n请完成并输出结果。`, maxSpeakMs, overall.signal);
+          return { model: m, task: t, content: c };
+        }));
+        for (const r of results) session.transcript.push({ round: 2, model: r.model, role: 'speak', content: r.content, ts: Date.now() });
+        const summaryPrompt = `问题：${q}\n\n拆解计划：\n${plan}\n\n各子任务结果：\n${results.map(r => r.model + '(' + r.task + '): ' + r.content).join('\n\n')}\n\n请整合为最终完整结论。`;
+        const final = await this.collabSpeak(boss, this.collabSystem(boss), summaryPrompt, maxSpeakMs, overall.signal);
+        session.transcript.push({ round: 3, model: boss, role: 'summary', content: final, ts: Date.now() });
+        session.conclusion = final;
+        this.emitCollabEvent(session, 'round', { round: 3 });
+      }
+
+      if (!session.conclusion) session.conclusion = this.collabTranscriptText(session);
+      session.status = 'completed';
+      session.updatedAt = Date.now();
+      this.emitCollabEvent(session, 'done');
+    } catch (err: any) {
+      session.status = 'failed';
+      session.error = overall.signal.aborted ? '协作整体超时' : (err.message || '协作失败');
+      session.updatedAt = Date.now();
+      this.emitCollabEvent(session, 'done');
+    } finally {
+      clearTimeout(overallTimer);
+      // 30 分钟后清理会话，防止内存泄漏
+      const tid = session.id;
+      const t = setTimeout(() => { this.collabSessions.delete(tid); }, 30 * 60 * 1000);
       if (t.unref) t.unref();
     }
   }

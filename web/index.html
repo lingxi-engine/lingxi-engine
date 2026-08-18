@@ -704,6 +704,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <div id="taskDecompSummary" style="font-size:10px;color:var(--text3);margin-top:4px"></div>
     </div>
     <div class="right-body" id="tab-goals" style="display:none">
+      <div style="font-size:11px;margin-bottom:6px;color:var(--text3)"><span data-i18n="admin.stat.goal">🎯 目标进度</span>: <b id="goalProgress">-</b></div>
       <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
       <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()" data-i18n="right.addGoal">＋ 添加目标任务</button>
     </div>
@@ -897,7 +898,6 @@ function switchTheme(name,btn){
       <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.agent">🤖 Agent</span>: <b id="sessionCount">-</b></span>
       <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.cron">⏰ 定时任务</span>: <b id="taskCount">-</b></span>
       <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.model">🧠 模型</span>: <b id="modelCount">-</b></span>
-      <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.goal">🎯 目标进度</span>: <b id="goalProgress">-</b></span>
     </div>
     <div class="admin-grid" id="adminGrid">
       <div class="card"><h4 data-i18n="admin.card.agents">📋 Agent</h4><button onclick="adminAgents()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminAgentsOut">-</pre></div>
@@ -909,7 +909,6 @@ function switchTheme(name,btn){
       <div class="card"><h4 data-i18n="admin.card.approval">✅ 审批</h4><button onclick="loadApprovals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="approvalList" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.token">📊 Token</h4><button onclick="loadUsage()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="usageStats" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural" data-i18n="admin.voiceXiaoxiao">晓晓</option><option value="zh-CN-YunxiNeural" data-i18n="admin.voiceYunxi">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
-      <div class="card"><h4 data-i18n="admin.card.goals">🎯 目标</h4><div class="row" style="margin-bottom:4px"><input id="goalInput" data-i18n-ph="admin.goalPh" placeholder="输入新目标..." onkeydown="if(event.key==='Enter')addGoal()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:11px"><button onclick="addGoal()" class="btn green" style="font-size:11px" data-i18n="common.add">+ 添加</button></div><button onclick="loadGoals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="goalsList" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.logs">📋 日志</h4><button onclick="loadLogs()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="admin.viewRecent">查看最近</button><pre id="logsOut" style="font-size:10px;max-height:200px;overflow:auto">-</pre></div>
       <div class="card"><h4 data-i18n="admin.update">⬆️ 系统升级</h4><div id="updateStatus" style="font-size:12px;margin-bottom:4px;color:var(--text3)"><span data-i18n="admin.currentVer">当前:</span> <span id="adminVerTag">-</span></div><button onclick="doUpdate()" class="btn green" style="width:100%;font-size:12px" data-i18n="admin.doUpdate">🔄 一键升级到最新版</button></div>
       <div class="card"><h4 data-i18n="admin.card.system">📊 系统</h4><button onclick="adminHealth()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminHealthOut" style="font-size:10px">-</pre></div>

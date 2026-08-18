@@ -27,7 +27,7 @@ import 'dotenv/config';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
@@ -1328,6 +1328,14 @@ setSearchManager(searchManagerInstance);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     next();
   }, express.static(avatarsDir, { index: false }));
+  // ── 视频静态文件服务（ComfyUI 生成结果）──
+  const videosDir = join(dataDir, 'videos');
+  if (!existsSync(videosDir)) mkdirSync(videosDir, { recursive: true });
+  app.use('/videos', (req: any, res: any, next: any) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    next();
+  }, express.static(videosDir, { index: false }));
+
 
   // ── 聊天成员管理 ──
   app.get('/api/chats/:id/available-members', requireAuth, (req, res) => {
@@ -1604,6 +1612,57 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+
+  // 扫描工作区文档并自动导入知识库
+  app.post('/api/rag/scan-workspace', requireAuth, async (req, res) => {
+    try {
+      const wsRoot = (globalThis as any).__workspaceRoot || process.cwd();
+      const SUPPORTED_EXT = new Set(['.txt', '.md', '.markdown', '.json', '.csv', '.log']);
+      const SKIP_DIRS = new Set(['node_modules', '.git', 'data', 'storage', 'uploads', 'dist', 'build', 'coverage', '.next', '.nuxt', 'avatars']);
+      const existing = new Set((router.listRagDocuments() || []).map((d: any) => d.title));
+      const files: string[] = [];
+      const walk = (dir: string) => {
+        let entries;
+        try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const ent of entries) {
+          if (ent.name.startsWith('.')) continue;
+          const full = join(dir, ent.name);
+          if (ent.isDirectory()) {
+            if (!SKIP_DIRS.has(ent.name)) walk(full);
+          } else if (ent.isFile()) {
+            const ext = path.extname(ent.name).toLowerCase();
+            if (SUPPORTED_EXT.has(ext)) files.push(full);
+          }
+        }
+      };
+      walk(wsRoot);
+      let imported = 0, skipped = 0;
+      for (const full of files) {
+        try {
+          const name = full.split(/[\\/]/).pop() || full;
+          if (existing.has(name)) { skipped++; continue; }
+          const stat = statSync(full);
+          if (stat.size > 2 * 1024 * 1024) { skipped++; continue; }
+          const content = readFileSync(full, 'utf8');
+          if (!content.trim()) { skipped++; continue; }
+          const ext = path.extname(name).toLowerCase();
+          const doc = {
+            id: 'rag-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6),
+            title: name,
+            source: full,
+            mimeType: (ext === '.md' || ext === '.markdown') ? 'text/markdown' : 'text/plain',
+            content,
+            createdAt: Date.now(),
+            metadata: { path: full },
+          };
+          await router.addRagDocument(doc);
+          imported++;
+          existing.add(name);
+        } catch { skipped++; }
+      }
+      res.json({ ok: true, imported, skipped });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
   // ── Agent 更新 API ──
   app.patch('/api/agents/:id', requireAuth, (req, res) => {
     try {
@@ -2494,6 +2553,52 @@ setSearchManager(searchManagerInstance);
       const ok = subAgentManager.kill(String(req.params.id));
       res.json({ ok });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+
+  // ── v2.1: 多智能体协作 API ──
+  app.post('/api/subagents/collab', requireAuth, async (req, res) => {
+    try {
+      const { mode, question, models, rounds, parentId, chatId, maxSpeakSeconds } = req.body;
+      if (!mode || !question) return res.status(400).json({ error: 'mode/question 必填' });
+      const validModes = ['voting', 'debate', 'roundtable', 'pipeline', 'review', 'orchestrator'];
+      if (!validModes.includes(mode)) return res.status(400).json({ error: 'mode 必须是 ' + validModes.join('/') });
+      const sessionId = await subAgentManager.collab({
+        mode, question, models,
+        rounds: typeof rounds === 'number' && rounds > 0 ? rounds : undefined,
+        parentId: parentId || 'api-caller',
+        chatId: chatId || 'chat-default',
+        maxSpeakSeconds,
+        onEvent: (evt: any) => {
+          try {
+            broadcast({
+              type: 'collab.' + evt.type, chatId: evt.chatId, sessionId: evt.sessionId,
+              mode: evt.mode, status: evt.status, round: evt.round, model: evt.model,
+              transcript: evt.transcript, conclusion: evt.conclusion, error: evt.error,
+            });
+          } catch { /* ignore */ }
+        },
+      });
+      res.json({ ok: true, sessionId });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
+
+  app.get('/api/subagents/collab', requireAuth, (req, res) => {
+    try { res.json({ ok: true, sessions: subAgentManager.listCollabs(50) }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.get('/api/subagents/collab/:id', requireAuth, (req, res) => {
+    try {
+      const s = subAgentManager.getCollab(String(req.params.id));
+      if (!s) return res.status(404).json({ error: '协作会话不存在' });
+      res.json({ ok: true, session: s });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post('/api/subagents/collab/:id/cancel', requireAuth, (req, res) => {
+    try { res.json({ ok: subAgentManager.killCollab(String(req.params.id)) }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── P1-4: Telegram 状态 API ──
@@ -4011,6 +4116,31 @@ setSearchManager(searchManagerInstance);
   });
 
 
+
+  // ── 系统升级 API（git pull + pm2 重启）──
+  app.post('/api/update', requireAuth, async (req, res) => {
+    try {
+      const jwtUser = (req as any).user;
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (!isAdmin) return res.status(403).json({ error: '仅管理员可执行升级' });
+      if (!existsSync(join(process.cwd(), '.git'))) {
+        return res.json({ ok: false, error: '当前部署不是 git 仓库，无法自动升级' });
+      }
+      const { execSync } = await import('child_process');
+      const out = execSync('git pull --ff-only', { cwd: process.cwd(), timeout: 120000, encoding: 'utf8' });
+      console.log('[Update] git pull 完成:', String(out).slice(0, 500));
+      res.json({ ok: true, output: String(out).slice(0, 1000) });
+      // 延迟 1.5s 触发 pm2 重启，确保响应先返回
+      setTimeout(async () => {
+        try {
+          const { exec } = await import('child_process');
+          exec('npx pm2 restart lingxi', { cwd: process.cwd() });
+        } catch (e: any) { console.error('[Update] pm2 重启失败:', e?.message || e); }
+      }, 1500);
+    } catch (err: any) {
+      res.status(500).json({ error: '升级失败: ' + (err?.message || err) });
+    }
+  });
   // 标签 API
   app.get('/api/tags', requireAuth, (req, res) => {
     res.json({

@@ -765,6 +765,7 @@ function handleMessage(msg) {
         delete streamingMsgs[msg.msgId];
       }
       updateGenUI();
+      updateCtxInfo();
       maybeFlushQueue(msg.chatId);
       break;
     case 'friend.request':
@@ -1012,6 +1013,7 @@ function appendMessage(msg) {
   }
 
   container.scrollTop = container.scrollHeight;
+  updateCtxInfo();
 }
 
 function appendToolCallRow(msg) {
@@ -1105,6 +1107,7 @@ function deleteMsg(btn) {
       api('/api/chats/' + encodeURIComponent(currentChat) + '/messages/' + encodeURIComponent(msgId), 'DELETE').catch(()=>{});
     }
     if (row) row.remove();
+    updateCtxInfo();
   }
 }
 function forwardMsg(btn) {

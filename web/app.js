@@ -3053,7 +3053,7 @@ function toggleAdmin(force) {
   if (show) refreshAllAdmin();
 }
 async function refreshAllAdmin() {
-  adminHealth(); adminAgents(); adminSessions(); adminSubAgents(); adminCron(); adminMCP(); adminPlugins(); loadApprovals(); loadVoiceStatus(); loadPromptAgentSelect(); loadGoals();
+  adminHealth(); adminAgents(); adminSessions(); adminSubAgents(); adminCron(); adminMCP(); adminPlugins(); loadApprovals(); loadVoiceStatus(); loadPromptAgentSelect();
   refreshStatusBar(); refreshAdminVersion();
 }
 async function refreshStatusBar() {
@@ -3288,61 +3288,6 @@ async function resetUsage() {
   try { await api('/api/usage/reset', 'POST'); loadUsage(); } catch(e) {}
 }
 
-// ── v1.8.4: 目标系统 ──
-const GOAL_EMOJI = { pending: '⏳', in_progress: '🔄', done: '✅', cancelled: '❌' };
-async function loadGoals() {
-  const el = document.getElementById('goalsList');
-  if (!el) return;
-  try {
-    const d = await api('/api/goals');
-    if (!d.ok) { el.innerHTML = '❌ ' + esc(_errMsg(d, '加载失败')); return; }
-    const goals = d.goals || [];
-    const pg = document.getElementById('goalProgress');
-    if (pg) pg.textContent = d.progress ? (d.progress.done + '/' + d.progress.total) : '-';
-    if (!goals.length) { el.innerHTML = '<span style="color:var(--text3)">暂无目标，在上方输入添加</span>'; return; }
-    el.innerHTML = goals.map(g => {
-      const acts = [];
-      if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="开始" style="cursor:pointer;font-size:16px">▶️</a>');
-      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="完成" style="cursor:pointer;font-size:16px">✅</a>');
-      if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="恢复" style="cursor:pointer;font-size:16px">↩️</a>');
-      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="AI反问" style="cursor:pointer;font-size:16px">❓</a>');
-      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="删除" style="cursor:pointer;font-size:16px">🗑️</a>');
-      const style = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
-      const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3)">' + esc(g.acceptanceCriteria) + '</div>' : '';
-      return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">' +
-        '<span>' + (GOAL_EMOJI[g.status] || '⏳') + ' <span style="' + style + '">' + esc(g.title) + '</span></span> ' +
-        '<span style="float:right">' + acts.join(' ') + '</span>' + criteria + '</div>';
-    }).join('');
-  } catch(e) { el.innerHTML = '❌ ' + esc(e.message || '网络错误'); }
-}
-async function addGoal() {
-  const inp = document.getElementById('goalInput');
-  const title = inp ? inp.value.trim() : '';
-  if (!title) { toast('请输入目标内容'); return; }
-  try {
-    const d = await api('/api/goals', 'POST', { title });
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '添加失败')); return; }
-    if (inp) inp.value = '';
-    toast('✅ 目标已添加');
-    loadGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function setGoalStatus(id, status) {
-  try {
-    const d = await api('/api/goals/' + id, 'PATCH', { status });
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '操作失败')); return; }
-    loadGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
-async function removeGoal(id) {
-  if (!confirm('确定删除该目标？')) return;
-  try {
-    const d = await api('/api/goals/' + id, 'DELETE');
-    if (!d.ok) { toast('❌ ' + _errMsg(d, '删除失败')); return; }
-    toast('已删除');
-    loadGoals();
-  } catch(e) { toast('❌ ' + e.message); }
-}
 // ── 反向提问：AI 针对目标提澄清问题（含多选表单 + 继续反问） ──
 async function askAIAboutGoal(goalId, title) {
   _currentAskGoalId = goalId;
@@ -3424,7 +3369,6 @@ function applyGoalRefine(btn, action) {
     if (d.ok) {
       toast('✅ ' + (action === 'create' ? '已生成新目标' : action === 'criteria' ? '已加入验收标准' : '目标已完善'));
       if (typeof loadRightGoals === 'function') loadRightGoals();
-      if (typeof loadGoals === 'function') loadGoals();
     } else toast('❌ ' + _errMsg(d, '操作失败'));
   }).catch(function(e) { toast('❌ ' + e.message); });
 }
@@ -4075,6 +4019,8 @@ async function loadRightGoals() {
     const done = goals.filter(g => g.status === 'done').length;
     const total = goals.length;
     const pct = total > 0 ? Math.round(done / total * 100) : 0;
+    const pg = document.getElementById('goalProgress');
+    if (pg) pg.textContent = done + '/' + total;
     el.innerHTML = goals.map(g => {
       const st = g.status || 'pending';
       const emoji = RIGHT_GOAL_EMOJI[st] || '⏳';
