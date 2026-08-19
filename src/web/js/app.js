@@ -614,9 +614,16 @@ function updateBadge() {
 async function loadChatList() {
   try {
     const res = await api('/api/chats?userId=' + encodeURIComponent(clientId));
-    myChats = res.chats || [];
+    // ⭐ v2.1.1: 按最近活跃排序（F5 后兜底打开的 myChats[0] 即最近会话，而非最早创建的会话）
+    myChats = (res.chats || []).slice().sort(function(a, b){ return (b.last_message_at || b.created_at || 0) - (a.last_message_at || a.created_at || 0); });
     renderChatList();
-    if (myChats.length > 0 && !currentChat) switchChat(myChats[0].id);
+    if (myChats.length > 0 && !currentChat) {
+      // ⭐ v2.1.1 修复 F5 刷新后会话内容丢失：优先恢复上次打开的会话（lingxi-last-chat）
+      var _last = null;
+      try { _last = localStorage.getItem('lingxi-last-chat'); } catch(_e) {}
+      var _target = (_last && myChats.some(function(c4){ return c4.id === _last; })) ? _last : myChats[0].id;
+      switchChat(_target);
+    }
   } catch(e) { console.error('[ChatList]', e); }
 }
 
@@ -682,6 +689,8 @@ async function switchChat(chatId) {
   }
   try {
     const res = await api('/api/chats/' + encodeURIComponent(chatId) + '/messages');
+    // ⭐ v2.1.1: 接口报错（401/403/500）时明确提示，而不是误显示"暂无消息"
+    if (!res || res.ok === false || res.error) throw new Error(_errMsg(res, t('err.loadFail')));
     const msgs = res.messages || [];
     container.innerHTML = '';
     lastMsgTime = 0;
@@ -689,7 +698,7 @@ async function switchChat(chatId) {
     msgs.forEach(m => appendMessage({chatId, senderType:m.sender_type, senderId:m.sender_id, content:m.content, timestamp:m.timestamp}));
     // 对加载的消息应用代码高亮
     setTimeout(() => highlightBlocks(container), 50);
-  } catch(e) { container.innerHTML = '<div class="empty">'+t('err.loadFail')+'</div>'; }
+  } catch(e) { container.innerHTML = '<div class="empty">'+t('err.loadFail')+(e && e.message ? ': '+esc(e.message) : '')+'</div>'; }
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'subscribe', chatId}));
   renderChatList();
   document.getElementById('memoryBtn').classList.remove('hidden');

@@ -477,7 +477,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     </div>
 
     <!-- 会话列表 -->
-    <div class="side-section-title"><span data-i18n="tb.chatTitle">会话列表</span><span style="color:var(--accent);cursor:pointer" onclick="newChat()" data-i18n="sidebar.new">＋ 新建</span></div>
+    <div class="side-section-title"><span data-i18n="tb.chatTitle">会话列表</span><span style="display:flex;gap:8px;align-items:center"><span style="color:var(--accent);cursor:pointer" onclick="newChat()" data-i18n="sidebar.new">＋ 新建</span><span style="color:var(--purple);cursor:pointer" onclick="showCreateGroup()" title="创建群聊（多AI协作）">＋ 群聊</span></span></div>
     <div class="chat-list" id="chatList">
       <div class="empty" style="height:auto;padding:16px;color:var(--text3)" data-i18n="settings.connecting">连接中...</div>
     </div>
