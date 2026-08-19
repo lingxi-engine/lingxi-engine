@@ -459,6 +459,8 @@ setSearchManager(searchManagerInstance);
   // ── V5 P1: 审批管理器 ──
   const approvalManager = new ApprovalManager(300000);
   console.log('[Approval] 审批管理器已初始化 (timeout=5min)');
+  // 注入到 toolRegistry，使危险工具调用走审批流
+  toolRegistry.setApprovalManager(approvalManager);
 
   // ── V5 P1: Hook 管理器 ──
   const hookManager = new HookManager(dataDir);
@@ -1080,10 +1082,15 @@ setSearchManager(searchManagerInstance);
       const { id, chatId, userId, agentId, role } = req.body;
       if (!id || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
       // P1-4 修复: 身份伪造防护 — userId 必须为 JWT 持有者
+      // ⭐ v2.1.2 修复 F5 会话消失：admin-auto（本地免登录）模式下 sub='admin' 是虚拟身份，
+      //    与前端的 clientId（u-xxx）永远不匹配 → participant 写入被 403 拒绝 → 会话列表空白。
+      //    本地免登录（sid='admin-auto'）时跳过一致性检查，允许写入。
       const jwtUser = (req as any).user;
+      const jwtSid = String(jwtUser?.sid || '');
       const jwtSub = String(jwtUser?.sub || '');
       const jwtNumericId = String(jwtUser?.numeric_id || '');
-      if (userId) {
+      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
+      if (userId && !isLocalAuto) {
         const reqUid = String(userId);
         if (jwtSub && reqUid !== jwtSub && reqUid !== jwtNumericId) {
           return res.status(403).json({ error: '无权以他人身份加入群聊' });
@@ -1464,20 +1471,31 @@ setSearchManager(searchManagerInstance);
   app.get('/api/chats', requireAuth, (req, res) => {
     try {
       const userId = req.query.userId as string;
-      if (userId) {
+      // ⭐ v2.1.2 修复 F5 会话消失：admin-auto 本地免登录模式下，participant 表中
+      //    旧会话可能没有 user_id 记录（P1-4 403 拦截导致的遗留数据），按 userId
+      //    过滤会返回空列表。本地模式兜底返回全部会话，避免 F5 后左侧栏空白。
+      const jwtSid = String((req as any).user?.sid || '');
+      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
+      if (userId && !isLocalAuto) {
         const allChats = db.listChats();
         const userChats = allChats.filter((c: any) => {
           const participants = db.getChatParticipants(c.id);
           return participants.some((p: any) => p.user_id === userId);
         });
-        // 如果该用户没有参与任何会话，返回全部列表（个人单机使用兜底）
-        if (!userChats.length) {
-          res.json({ ok: true, chats: [] });
-        } else {
-          res.json({ ok: true, chats: userChats });
-        }
+        res.json({ ok: true, chats: userChats });
       } else {
-        res.json({ ok: true, chats: db.listChats() });
+        // 本地免登录模式或未传 userId：返回全部列表（个人单机使用兜底）
+        const allChats = db.listChats();
+        if (userId && isLocalAuto) {
+          // 本地模式：先尝试按 userId 过滤，有结果就用过滤的，没有就返回全部
+          const userChats = allChats.filter((c: any) => {
+            const participants = db.getChatParticipants(c.id);
+            return participants.some((p: any) => p.user_id === userId);
+          });
+          res.json({ ok: true, chats: userChats.length ? userChats : allChats });
+        } else {
+          res.json({ ok: true, chats: allChats });
+        }
       }
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
