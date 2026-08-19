@@ -2543,11 +2543,19 @@ function checkAuthStatus() {
           document.getElementById('loginButtons').style.display = 'none';
           connect();
         } else {
+          // FIX: token 过期/无效 → 清除后仍以游客身份连接，避免 F5 后会话列表空白
           authToken = null;
           localStorage.removeItem('authToken');
+          connect();
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        // FIX: 网络错误也尝试连接（后端可能在启动中）
+        connect();
+      });
+  } else {
+    // FIX: 未登录（游客）直接连接 —— 原实现此处不调用 connect()，导致 F5 刷新后 WebSocket 不连、会话列表加载不出来
+    connect();
   }
 }
 

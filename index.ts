@@ -96,9 +96,9 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
   // 不退出进程，unhandledRejection 在 Node 默认也是 warn 不 crash
 });
-process.on('uncaughtException', (err) => {
+process.on('uncaughtException', async (err) => {
   console.error('[FATAL] Uncaught Exception:', err.message, '\n', err.stack);
-  try { closeDB(); } catch (_) {}
+  try { await closeDB(); } catch (_) {}
   process.exit(1);
 });
 
@@ -4313,8 +4313,8 @@ async function gracefulShutdown(signal: string) {
   if (_shuttingDown) return;
   _shuttingDown = true;
   console.log(`\n[Shutdown] 收到 ${signal}，开始优雅退出...`);
-  try { saveToDisk(); console.log('[Shutdown] 数据库已保存'); } catch (e: unknown) { console.error('[Shutdown] 保存失败:', (e as Error)?.message); }
-  try { closeDB(); console.log('[Shutdown] 数据库已关闭'); } catch (e: unknown) {}
+  try { await saveToDisk(); console.log('[Shutdown] 数据库已保存'); } catch (e: unknown) { console.error('[Shutdown] 保存失败:', (e as Error)?.message); }
+  try { await closeDB(); console.log('[Shutdown] 数据库已关闭'); } catch (e: unknown) {}
   console.log('[Shutdown] 退出完成');
   process.exit(0);
 }

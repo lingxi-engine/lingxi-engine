@@ -16,8 +16,7 @@ let _dirty = false;  // P1-4: 脏标记，仅在有写入时才触发磁盘保�
 export function startAutoSave(intervalMs = 30000) {
   if (_saveTimer) clearInterval(_saveTimer);
   _saveTimer = setInterval(() => {
-    if (!_dirty) return;  // P1-4: 无写入跳过
-    _dirty = false;
+    // [FIX] markDirty() 全项目零调用，脏标记检查导致自动保存从不执行，聊天数据只活在内存。改为无条件保存（DB 约2.3MB，每5秒全量导出开销可忽略）。
     saveToDisk().catch((e: any) => console.error("[DB] auto-save error:", e.message));
   }, intervalMs);
   // ?
@@ -39,7 +38,10 @@ export async function saveToDisk() {
   try {
     const fs = await getFS();
     const data = _db.export();
-    fs.writeFileSync(_dbPath, Buffer.from(data));
+    // [FIX] 原子写入：先写临时文件再 rename，避免崩溃时写一半损坏主 DB 导致下次启动丢数据
+    const tmpPath = _dbPath + '.tmp';
+    fs.writeFileSync(tmpPath, Buffer.from(data));
+    fs.renameSync(tmpPath, _dbPath);
   } catch (err: any) {
     console.error("[DB] save failed:", err.message);
   }
@@ -51,11 +53,24 @@ export async function saveToDisk() {
 export async function initDB(dbPath: string) {
   _dbPath = dbPath;
   const SQL = await initSqlJs();
-  try {
-    const fs = await import("fs");
-    const buf = fs.readFileSync(dbPath);
-    _db = new SQL.Database(new Uint8Array(buf));
-  } catch {
+  const fs = await import("fs");
+  let fileExists = false;
+  try { fileExists = fs.existsSync(dbPath); } catch {}
+  if (fileExists) {
+    try {
+      const buf = fs.readFileSync(dbPath);
+      _db = new SQL.Database(new Uint8Array(buf));
+    } catch (e: any) {
+      // [FIX] DB 文件损坏：备份原文件而不是静默丢弃，避免"重启后会话全部丢失"
+      console.error('[DB] 数据库文件损坏，将备份后重建:', e.message);
+      try {
+        const bakPath = dbPath + '.corrupt-' + Date.now();
+        fs.copyFileSync(dbPath, bakPath);
+        console.error('[DB] 损坏文件已备份到:', bakPath);
+      } catch {}
+      _db = new SQL.Database();
+    }
+  } else {
     _db = new SQL.Database();
   }
   if (!_db) _db = new SQL.Database();
