@@ -1017,7 +1017,10 @@ setSearchManager(searchManagerInstance);
       const jwtUser2 = (req as any).user;
       const jwtUserId2 = jwtUser2?.sub || jwtUser2?.id || '';
       const jwtNumericId2 = String(jwtUser2?.numeric_id || '');
-      if (jwtUserId2 && jwtUserId2 !== userId && jwtNumericId2 !== userId) {
+      const sid2 = String(jwtUser2?.sid || '');
+      // v2.1.3: admin-auto/admin-token 本地免登录模式下 sub='admin' 是虚拟身份，跳过一致性检查
+      const isLocalAuto2 = (sid2 === 'admin-auto' || sid2 === 'admin-token');
+      if (jwtUserId2 && !isLocalAuto2 && jwtUserId2 !== userId && jwtNumericId2 !== userId) {
         return res.status(403).json({ error: '无权查看他人的好友请求' });
       }
       res.json({ ok: true, ...db.getFriendRequests(userId) });
@@ -1034,7 +1037,10 @@ setSearchManager(searchManagerInstance);
       const jwtUser3 = (req as any).user;
       const jwtUserId3 = jwtUser3?.sub || jwtUser3?.id || '';
       const jwtNumericId3 = String(jwtUser3?.numeric_id || '');
-      if (jwtUserId3 && jwtUserId3 !== userId && jwtNumericId3 !== userId) {
+      const sid3 = String(jwtUser3?.sid || '');
+      // v2.1.3: admin-auto/admin-token 本地免登录模式下 sub='admin' 是虚拟身份，跳过一致性检查
+      const isLocalAuto3 = (sid3 === 'admin-auto' || sid3 === 'admin-token');
+      if (jwtUserId3 && !isLocalAuto3 && jwtUserId3 !== userId && jwtNumericId3 !== userId) {
         return res.status(403).json({ error: '无权查看他人的好友列表' });
       }
       res.json({ ok: true, friends: db.listFriends(userId) });

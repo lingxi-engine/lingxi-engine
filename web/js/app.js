@@ -21,6 +21,14 @@ let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，�
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是否"生成中"）
 let _currentAskGoalId = null;  // 当前反问的目标ID，供多选表单按钮回溯使用
 
+// 持久化未读计数（v2.1.3: 从 web/app.js 同步过来，F5 刷新后保留未读红点）
+function saveUnreadCounts() {
+  try { localStorage.setItem('lingxi-unread', JSON.stringify(unreadCounts)); } catch(e) {}
+}
+function restoreUnreadCounts() {
+  try { unreadCounts = JSON.parse(localStorage.getItem('lingxi-unread') || '{}'); } catch(e) { unreadCounts = {}; }
+}
+
 // ═══ Panel Switching ═══
 function switchPanel(name) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name));
@@ -404,6 +412,7 @@ function connect() {
     socket.onopen = function() {
       if (ws !== socket) return; // 已被更新的连接替换，忽略
       reconnectAttempts = 0;
+      restoreUnreadCounts();
       var _wsEl = document.getElementById('wsState'); if (_wsEl) { _wsEl.textContent = t('status.wsConnected'); _wsEl.className = 'ok'; }
       setStatus(t('status.online'), 'ok');
       enableInput(true);
@@ -429,6 +438,13 @@ function connect() {
       }
       // 订阅局域网社交通知频道
       try { socket.send(JSON.stringify({ type: 'subscribe', chatId: '__lan_social__' })); } catch(_e) {}
+      // 恢复上次局域网群组（v2.1.3: F5 刷新后保留打开的群组）
+      try {
+        var _savedLanGroup = JSON.parse(localStorage.getItem('lingxi-lan-group') || 'null');
+        if (_savedLanGroup && typeof lanCurrentGroup !== 'undefined') {
+          lanCurrentGroup = _savedLanGroup;
+        }
+      } catch(_e2) {}
       // 重连后重新订阅当前打开的局域网群组（否则群消息会静默中断）
       try {
         if (typeof lanCurrentGroup !== 'undefined' && lanCurrentGroup && socket.readyState === 1) {
@@ -662,7 +678,7 @@ function handleMessage(msg) {
   switch(msg.type) {
     case 'message.new':
       if (msg.chatId && msg.chatId !== currentChat) {
-        unreadCounts[msg.chatId] = (unreadCounts[msg.chatId] || 0) + 1;
+        unreadCounts[msg.chatId] = (unreadCounts[msg.chatId] || 0) + 1; saveUnreadCounts();
         renderChatList();
         notifyIncoming(msg);
       }
@@ -859,7 +875,7 @@ async function deleteChat(chatId) {
     await api('/api/chats/' + encodeURIComponent(chatId), 'DELETE');
     // 从列表移除
     myChats = myChats.filter(c => c.id !== chatId);
-    delete unreadCounts[chatId];
+    delete unreadCounts[chatId]; saveUnreadCounts();
     // 如果删的是当前会话，切换到第一个或清空
     if (currentChat === chatId) {
       currentChat = null;
@@ -877,7 +893,7 @@ async function switchChat(chatId) {
   // ⭐ v2.0.5: 保存上次打开的聊天到 localStorage（重启后可恢复）
   if (chatId) localStorage.setItem('lingxi-last-chat', chatId);
   currentChat = chatId;
-  delete unreadCounts[chatId];
+  delete unreadCounts[chatId]; saveUnreadCounts();
   updateGenUI();
   // 从聊天列表找显示名
   var chatInfo = myChats.find(c => c.id === chatId);
@@ -3889,7 +3905,7 @@ async function lanOpenGroup(groupId) {
   try {
     const d = await api('/api/lan/group?groupId=' + encodeURIComponent(groupId), 'GET');
     if (!d || !d.group) { toast(t('social.groupNotExist')); return; }
-    lanCurrentGroup = d.group;
+    lanCurrentGroup = d.group; try { localStorage.setItem('lingxi-lan-group', JSON.stringify({ humanChatId: d.group.humanChatId, agentChatId: d.group.agentChatId, name: d.group.name })); } catch(e) {};
     // 订阅这个群的两个聊天，接收实时消息
     try {
       if (ws && ws.readyState === 1) {
