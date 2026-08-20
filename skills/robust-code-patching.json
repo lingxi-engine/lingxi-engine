@@ -1,0 +1,13 @@
+{
+  "name": "robust-code-patching",
+  "displayName": "稳健代码修改与换行符处理",
+  "description": "在修改代码或应用 patch 时，处理 CRLF/LF 换行符差异以避免匹配失败",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "在修改代码文件、应用 patch 或进行精确字符串匹配时，如果遇到匹配失败，首先检查并统一文件的换行符（CRLF/LF）。在执行替换前，可以将文件内容统一转换为 LF 或在匹配时兼容 CRLF。确保修改后的代码在其他环境部署时也能正常工作。",
+  "autoCreated": true,
+  "createdAt": 1786987763222
+}

@@ -1,0 +1,15 @@
+{
+  "name": "batch-bug-fix-script",
+  "displayName": "批量Bug修复脚本执行",
+  "description": "当面对多个代码Bug且涉及多个文件时，使用脚本一次性地完成定位、修复和执行，避免中途停顿。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "get_time",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户报告多个Bug且路径结构复杂时，请遵循以下流程：1）先快速浏览项目结构，精确定位所有相关文件和代码锚点；2）不要逐个修复并反复等待用户确认，而是将所有修改汇总到一个补丁脚本中；3）使用write_file编写脚本，然后使用shell_exec一次执行；4）执行后检查输出，若有错误则分析并修复脚本后重试，直到成功；5）最后总结修改内容。注意避免在完成全部修复前多次中断或仅给出计划而不执行。",
+  "autoCreated": true,
+  "createdAt": 1787059131553
+}

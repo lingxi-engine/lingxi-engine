@@ -1,0 +1,14 @@
+{
+  "name": "debug-frontend-file-mismatch",
+  "displayName": "前端文件修改不生效排查与修复",
+  "description": "排查前端修改不生效问题，确认实际加载文件并绕过shell限制直接修改源码。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到前端修改不生效或需要排查前端代码问题时：1. 使用 read_file 读取 HTML 文件（如 index.html）确认实际加载的 JS/CSS 文件路径。2. 确认路径后，使用 read_file 读取目标文件的相关代码。3. 如果 shell_exec 受限或报错，直接使用 write_file 修改目标文件。4. 确保修改的是浏览器实际加载的文件，而不是同名但路径不同的文件。",
+  "autoCreated": true,
+  "createdAt": 1787162314731
+}

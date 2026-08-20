@@ -1,0 +1,14 @@
+{
+  "name": "add-chat-mode-to-lingxi-engine",
+  "displayName": "灵犀引擎协作模式开发",
+  "description": "在灵犀引擎中新增或修改 AI 协作模式（辩论、圆桌、头脑风暴等）",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当需要在灵犀引擎（Lingxi Engine）中新增或修改 AI 协作模式时，按以下步骤操作：\n1. 阅读 `src/core/chat-modes.ts`，理解现有模式调度器结构（如 `dispatch` 系列函数、三阶段逻辑：初始化/轮转/总结）。\n2. 检查 `src/storage/db.ts` 中的 `CHAT_MODES` 白名单，确认新模式名称是否已注册，若未注册则添加。\n3. 在 `src/core/chat-modes.ts` 中实现新的 `dispatchXxx` / `dispatchXxxNext` 函数，复用现有模式的编排模式，保持接口一致。\n4. 如涉及 WebSocket 消息处理，在 `src/core/ws-handler.ts` 中接入新模式的事件分发。\n5. 修改后运行 `tsc --noEmit` 全量类型检查，确保 0 错误。\n6. 验证白名单、调度逻辑和消息处理均正确，并总结改动文件和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1787047294350
+}

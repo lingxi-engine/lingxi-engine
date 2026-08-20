@@ -1,0 +1,14 @@
+{
+  "name": "application-material-docx-generator",
+  "displayName": "申报材料起草与Word生成",
+  "description": "根据官方通知文件起草申报材料并生成带分页的合并Word文档",
+  "tools": [
+    "read_file",
+    "write_file",
+    "list_dir",
+    "shell_exec"
+  ],
+  "prompt": "遇到用户提供官方通知文件（如政府公文）并要求起草申报材料时：1. 先读取所有文件，理解通知中的申报要求、报送内容和格式规范；2. 根据用户提供的产品或成果信息，按通知要求起草各模块（申报表、成果简介、案例说明等）；3. 确认实景图等附件材料是否就位；4. 将多份材料合并为一个Word文档，每部分自动分页，便于发送；5. 填入用户指定的申报单位、联系人、所属地等信息；6. 验证生成的docx可正常打开，并报告文件位置和结构。",
+  "autoCreated": true,
+  "createdAt": 1786974879915
+}

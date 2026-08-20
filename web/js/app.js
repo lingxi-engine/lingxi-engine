@@ -1199,7 +1199,7 @@ function newChat() {
   // 异步创建后端记录：聊天 + 用户 participant + AI Agent participant
   api('/api/chats', 'POST', { id: newId, type: 'private', name: t('chat.newChat') }).then(() => {
     // 加用户
-    api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: clientId, role: 'owner' }).catch(e => console.warn('participant user:', e));
+    api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: lanMyId(), role: 'owner' }).catch(e => console.warn('participant user:', e));
     // 加 AI Agent — 查已有 Agent 列表，把第一个加进来
     api('/api/agents').then(d => {
       const agents = d.agents || [];
@@ -1790,11 +1790,15 @@ function showCreateGroup() {
   if (!name) return;
   const chatId = 'team-' + Date.now().toString(36);
   api('/api/chats', 'POST', { id: chatId, type: 'group', name }).then(async () => {
+    // 解析真实登录用户 ID（平台数字 ID）；clientId（u-xxx）与 JWT sub 不匹配会导致 participant 写入被 403 拒绝
+    if (!lanMeId && authToken) {
+      try { const d = await platformApi('/api/user/me', 'GET'); if (d && d.ok && d.user) lanMeId = d.user.id || d.user.sub || null; } catch(_e) {}
+    }
     // 把创建者加为 owner
     await api('/api/participants', 'POST', {
       id: 'p-' + chatId + '-creator',
       chatId: chatId,
-      userId: clientId,
+      userId: lanMyId(),
       role: 'owner'
     }).catch(()=>{});
     // 获取所有可用 agent 让用户选
@@ -1802,15 +1806,15 @@ function showCreateGroup() {
       const d = await api('/api/agents');
       const agents = d.agents || [];
       if (agents.length > 0) {
-        const agentIds = prompt(t('social.selectAiPrompt') + '\n' + agents.map((a,i) => (i+1)+'. '+a.display_name+' [ID:'+a.agent_id+']').join('\n') + '\n\n' + t('social.selectAiSkip'));
+        const agentIds = prompt(t('social.selectAiPrompt') + '\n' + agents.map((a,i) => (i+1)+'. '+a.displayName+' [ID:'+a.id+']').join('\n') + '\n\n' + t('social.selectAiSkip'));
         if (agentIds && agentIds.trim()) {
           const selected = agentIds.split(',').map(s => parseInt(s.trim())-1).filter(i => i >= 0 && i < agents.length);
           for (const idx of selected) {
             const a = agents[idx];
             await api('/api/participants', 'POST', {
-              id: 'p-' + chatId + '-' + a.agent_id,
+              id: 'p-' + chatId + '-' + a.id,
               chatId: chatId,
-              agentId: a.agent_id,
+              agentId: a.id,
               role: 'member'
             }).catch(()=>{});
           }
@@ -1848,7 +1852,7 @@ async function loadAvailableMembers() {
     // 获取可添加的AI
     try {
       const ad = await api('/api/agents');
-      const agents = (ad.agents||[]).map(a => ({ id: a.agent_id, displayName: '🤖 '+a.display_name, type: 'ai-agent' }));
+      const agents = (ad.agents||[]).map(a => ({ id: a.id, displayName: '🤖 '+a.displayName, type: 'ai-agent' }));
       for (const a of agents) members.push(a);
     } catch(e) {}
     if (!members.length) { document.getElementById('availableMembers').innerHTML='<div style="padding:6px;color:#555;font-size:11px">'+t('members.noneAvailable')+'</div>'; return; }
@@ -2379,7 +2383,7 @@ async function loadPromptAgentSelect() {
     const sel = document.getElementById('promptAgentSelect');
     if (!sel) return;
     sel.innerHTML = '<option value="">'+t('admin.selectAgent')+'</option>' +
-      agents.map(a => '<option value="'+esc(a.id)+'">'+esc(a.display_name || a.id)+'</option>').join('');
+      agents.map(a => '<option value="'+esc(a.id)+'">'+esc(a.displayName || a.id)+'</option>').join('');
   } catch(e) {}
 }
 async function loadAgentPrompt() {
@@ -2938,10 +2942,10 @@ async function loadWFAgents() {
     document.getElementById('wfAgentList').innerHTML = agents.map((a,i) => 
       '<div class="wf-agent-item" draggable="true" ' +
       'ondragstart="wfDragAgent(event,'+i+')" ' +
-      'data-agent-id="'+esc(a.agent_id||a.id)+'" ' +
-      'data-agent-name="'+esc(a.display_name||a.id)+'" ' +
+      'data-agent-id="'+esc(a.id)+'" ' +
+      'data-agent-name="'+esc(a.displayName||a.id)+'" ' +
       'data-agent-model="'+esc(a.model||'default')+'">' +
-      esc(a.display_name||a.id)+'<br><span style="color:#666;font-size:9px">'+esc(a.model||'default')+'</span></div>'
+      esc(a.displayName||a.id)+'<br><span style="color:#666;font-size:9px">'+esc(a.model||'default')+'</span></div>'
     ).join('');
   } catch(e) {}
 }

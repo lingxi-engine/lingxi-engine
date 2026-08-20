@@ -1,0 +1,15 @@
+{
+  "name": "system-bug-investigation",
+  "displayName": "系统问题排查",
+  "description": "遇到用户报告系统异常并要求检查时，使用工具实际排查代码和日志，而非猜测。",
+  "tools": [
+    "list_dir",
+    "web_search",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户报告系统或软件的异常行为（如数据丢失、功能失效），并明确要求“检查”或表现出对猜测的不满时，不要直接给出可能的原因猜测。应使用文件系统工具（如 list_dir, read_file）和命令行工具（如 shell_exec）搜索相关代码、查看日志或配置文件，定位问题的根本原因。如果需要了解特定技术或框架，使用 web_search。最后根据实际检查结果给出确切的结论和修复建议。",
+  "autoCreated": true,
+  "createdAt": 1787161636005
+}

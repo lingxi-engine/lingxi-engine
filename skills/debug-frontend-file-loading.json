@@ -1,0 +1,13 @@
+{
+  "name": "debug-frontend-file-loading",
+  "displayName": "前端文件加载排查",
+  "description": "排查前端修改不生效或状态丢失问题，通过检查HTML引用路径确认实际加载的文件。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到前端修改不生效、状态丢失或类似问题时，不要盲目猜测原因。首先使用工具检查HTML文件中实际引用的脚本或资源路径，然后对比实际修改的文件路径，确认浏览器实际加载的是哪个文件。使用 list_dir 查看目录结构，read_file 读取HTML和JS文件内容，shell_exec 执行相关验证命令，确保修复应用到正确的文件上。",
+  "autoCreated": true,
+  "createdAt": 1787161835710
+}

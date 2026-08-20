@@ -23,6 +23,7 @@ uploads/
 
 # Runtime data (generated at runtime, not source code)
 data/
+usage.json
 
 # External project (not part of this repo)
 diffrhythm-local/
@@ -78,3 +79,148 @@ docs/dev/*执*.md
 
 # 旧版死目录（根目录 index.ts 才是真正入口，src/src/ 是废弃副本）
 src/src/
+
+# ══════════════════════════════════════════════
+# 2026-08-20 补全：阻塞上 GitHub 的泄露/垃圾文件
+# ══════════════════════════════════════════════
+
+# ── 报送材料 / 个人材料（含个人信息，绝对不能开源）──
+*算力大会*
+*灵犀引擎成果征集*
+*报送材料*
+
+# ── 根目录散落的各种调试/临时脚本 ──
+check_fix*.cjs
+check_fix*.js
+check_fix_out*.txt
+grep_db_persist.py
+inspect_chat*.py
+pack-deploy.cjs
+tmp_*.cjs
+tmp_*.js
+
+# ── 备份 / 验证临时目录 ──
+_verify_tmp/
+_pkgtest/
+_secfix_backup_*/
+
+# ── 打包产物 ──
+lingxi-engine-*.tar.gz
+
+# ── 审计报告 / 部署指南（非代码，属于项目内部文档，按需开源）──
+代码审计报告*.md
+部署与测试指南.md
+BUGFIX_*.md
+REFACTOR_REPORT.md
+FINAL_AUDIT_REPORT.md
+SOCIAL_FIX_REPORT_*.md
+
+# ── 根目录的备份文件 ──
+_bak_*
+_bak_*_*
+index.ts.bak-*
+
+# ── 旧版死文件 ──
+*.bak-persist-fix-*
+*.bak-routes-*
+*.bak-timeout-fix
+
+# ── 根目录散落的中文文档（内部用）──
+灵犀引擎开源计划/
+
+# ── 移动端构建产物 ──
+mobile-dist/
+
+# ── 服务器日志 ──
+server_restart.log
+
+# ── 截图（按需保留，默认不提交）──
+screenshot-*.png
+
+# ── 根目录杂项脚本 ──
+av_check.py
+check_env2.py
+check_mirrors.py
+check_muq_progress.py
+check_net.py
+check_portable.py
+cleanup.cjs
+cleanup.py
+disk_check.ps1
+dl_direct.py
+download_muq.py
+download_weights.py
+env_check2.py
+find_docx.py
+find_docx2.py
+find_espeak.py
+find_ffmpeg2.py
+find_muq.py
+generate.py
+generate_music.py
+generate_song.py
+install_music.bat
+install_song_env.bat
+list_e.py
+list_e2.py
+list_lingxi.py
+lscheck.cjs
+make_final_video.py
+modify_docs.py
+peek_collab.cjs
+peek_tsc.cjs
+pe_check.py
+probe.cjs
+probe.js
+probe_engine.py
+probe_engine2.py
+probe_engine3.py
+probe_env.py
+probe_hf.py
+proc_check.ps1
+query_muq.py
+read_front.cjs
+read_shutdown.cjs
+route_compare.py
+scan_pretrained.py
+search_markdirty.cjs
+song_mcp_server.py
+step1_start_comfy.cjs
+test.docx
+test_api.py
+test_chat_full.py
+test_cloud_model.py
+test_full.py
+test_g2p.py
+test_phonemizer.py
+test_read_docx.py
+test_song_env.py
+test_speed.py
+
+# ── 根目录的杂项临时目录 ──
+tmp-verify/
+tmp-verify-cron/
+friend_test/
+video_task/
+song_maker/
+music/
+ai-song-maker/
+
+# ── 根目录的杂项文件 ──
+marker_probe.txt
+FINAL_SETUP_GUIDE.md
+README_song_production.md
+song_production_plan.md
+song_tech_stack.md
+bug_check_round2.txt
+bug_report_2026-08-09.md
+tmp_chat.json
+
+# ── workspace 下的各种调试脚本（workspace 本身已 ignore，但保险起见）──
+workspace/*
+
+# ── 源码备份文件（.pre-platform-时间戳）──
+*.pre-platform-*
+
+# ── 打包验证临时脚本 ──
+_verify_pack.ps1

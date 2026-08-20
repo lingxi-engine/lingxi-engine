@@ -1,0 +1,14 @@
+{
+  "name": "full-codebase-audit-and-fix",
+  "displayName": "全量代码审查与修复",
+  "description": "对代码库进行全量扫描，验证真实状态与预期是否一致，列出问题清单并逐批修复。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到大型代码修复或审查任务时，不要依赖之前的记忆或对话摘要。首先使用 list_dir 和 read_file 对相关目录进行全量扫描，验证代码的真实状态。将真实状态与预期状态对比，列出所有问题和差异（如函数未调用、工具未定义等）。然后使用 write_file 逐批打补丁修复问题，最后使用 shell_exec 运行编译或测试验证修复结果。如果任务过大导致超时，主动将任务拆分为更小的批次执行。",
+  "autoCreated": true,
+  "createdAt": 1786947194977
+}
