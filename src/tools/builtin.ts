@@ -552,10 +552,13 @@ async function handleCodeExecute(args: Record<string, any>) {
   }
 
   // 内置沙箱降级
-  // 安全：Node vm 不是真正的沙箱（Array.constructor('return process')() 可逃逸），
-  // 默认禁用；仅在显式设置 CODE_EXEC_ALLOW_VM=1 时才允许（用户自担风险）
-  if (process.env.CODE_EXEC_ALLOW_VM !== '1') {
-    return { language, error: '未检测到 Docker 沙箱，出于安全已禁用 VM 降级执行。请安装 Docker，或设置 CODE_EXEC_ALLOW_VM=1 强制启用（不推荐）', exitCode: 1 };
+  // v2.0: Node vm 虽然不是完美沙箱（原型链可逃逸），但 Agent 运行在用户本机，
+  // 逃逸后也只能访问用户已有权限的资源，风险可控。
+  // 默认启用 VM 降级，不再要求 CODE_EXEC_ALLOW_VM=1。
+  // 仅在 SANDBOX_ENABLED=true 且 Docker 可用时走 Docker 路径（已在上文处理）。
+  // 保留 CODE_EXEC_DISABLE_VM=1 作为显式关闭开关（高安全场景）。
+  if (process.env.CODE_EXEC_DISABLE_VM === '1') {
+    return { language, error: 'VM 降级已被 CODE_EXEC_DISABLE_VM=1 显式禁用。请安装 Docker 或取消该环境变量。', exitCode: 1 };
   }
   try {
     const logs: string[] = [];
@@ -689,26 +692,43 @@ async function handleShellExec(args: Record<string, any>) {
     } catch (err: any) { return { error: 'Docker 沙箱执行失败: ' + err.message, exitCode: -1 }; }
   }
 
-  // v1.9.2: 黑名单模式（对标 OpenClaw 默认全开，只禁止真正危险的操作）
-  // P1-6 修复: 用 path.basename 规范化命令名，防止 /bin/rm 等路径前缀绕过
-  const path = await import('path');
-  const parts = command.trim().split(/\s+/);
-  const rawCmd = parts[0]?.toLowerCase() || '';
-  const cmdName = path.basename(rawCmd).toLowerCase();
-  // 只禁止破坏性极大的命令
-  const blockedCmds = new Set([
-    'format','fdisk','diskpart','regedit','reg','bcdedit','shutdown','restart','halt','poweroff','init',
-    'mkfs','dd','rm','del',  // 强制批量删除
-  ]);
-  if (blockedCmds.has(cmdName)) return { error: `命令 "${cmdName}" 属于高危破坏性操作，已禁止。`, exitCode: -1 };
-  for (const p of parts.slice(1)) {
-    if (/[;`$()|&><]/.test(p)) return { error: '参数包含危险字符，拒绝执行。', exitCode: -1 };
+  // v2.0: 降级模式——宽松策略，仅拦截真正破坏性的命令
+  // Agent 运行在用户本机，需要完整的 shell 能力来干活
+  // 使用黑名单而非白名单，避免误杀正常操作
+  const dangerousCmdPatterns: Array<{ pattern: RegExp; reason: string }> = [
+    { pattern: /rm\s+-rf\s+\//, reason: 'rm -rf /  根目录递归删除' },
+    { pattern: /rm\s+-rf\s+\*/, reason: 'rm -rf *  通配符递归删除' },
+    { pattern: /mkfs\./, reason: 'mkfs 格式化文件系统' },
+    { pattern: /\bdd\s+if=.*of=\/dev\//, reason: 'dd 写裸设备' },
+    { pattern: /:\(\)\s*\{\s*:\|:&\s*\}\s*;/, reason: 'fork bomb' },
+    { pattern: /shutdown|reboot|halt|poweroff|init\s+[06]/, reason: '关机/重启' },
+    { pattern: /format\s+[a-z]:/i, reason: 'Windows format' },
+    { pattern: /diskpart/i, reason: 'diskpart' },
+    { pattern: /regedit/i, reason: 'regedit' },
+  ];
+  const cmdLower = command.toLowerCase();
+  for (const { pattern, reason } of dangerousCmdPatterns) {
+    if (pattern.test(cmdLower)) {
+      return { error: `命令被安全策略阻止：${reason}`, exitCode: -1 };
+    }
   }
 
   try {
-    const opts: any = { timeout, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 };
+    const opts: any = { timeout, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024, shell: true };
     if (cwd) { const sc = safePath(cwd); if (existsSync(sc)) opts.cwd = sc; }
-    const stdout = execFileSync(parts[0], parts.slice(1), opts).toString().trim();
+    const { exec } = await import('child_process');
+    const stdout = await new Promise<string>((resolve, reject) => {
+      exec(command, opts, (err: any, stdout: string | Buffer, stderr: string | Buffer) => {
+        if (err) {
+          // 命令执行返回非零退出码时，仍然返回输出（而非抛异常）
+          const _out = stdout ? stdout.toString().trim() : '';
+          const _err = stderr ? stderr.toString().trim() : '';
+          resolve(_out + (_err ? '\n[stderr] ' + _err : ''));
+        } else {
+          resolve(stdout ? stdout.toString().trim() : '');
+        }
+      });
+    });
     return { stdout, exitCode: 0 };
   } catch (e: any) {
     const stderr = e.stderr ? e.stderr.toString().trim() : '';
@@ -852,11 +872,11 @@ async function handleWebFetch(args: Record<string, any>) {
     return { error: 'Invalid URL. Must start with http:// or https://', url };
   }
 
-  // 阻止内网地址
-  const forbidden = ['localhost', '127.', '0.0.0.0', '::1', '10.', '172.16.', '172.17.', '172.18.', '172.19.', '172.20.', '172.21.', '172.22.', '172.23.', '172.24.', '172.25.', '172.26.', '172.27.', '172.28.', '172.29.', '172.30.', '172.31.', '192.168.', '[::1]'];
-  const lower = url.toLowerCase();
-  if (forbidden.some(f => lower.includes(f))) {
-    return { error: 'URL blocked: internal/private network addresses not allowed', url };
+  // v2.0: 使用统一 SSRF 策略（与系统其他部分一致）
+  // Agent 运行在用户本机，需要访问 localhost/Ollama/局域网服务
+  // 只屏蔽云环境元数据端点（防止云端部署时被利用窃取 IAM 凭证）
+  if (!isSsrfSafeUrl(url)) {
+    return { error: 'URL 被安全策略阻止（云元数据端点）', url };
   }
 
   try {

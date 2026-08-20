@@ -424,14 +424,11 @@ export function handleWSMessage(
           });
 
           // ⭐ Bug fix: 必须发送 streaming.end，否则前端 generatingChats 永不递减，聊天卡死
-          broadcast({
-            type: "agent.streaming.end",
-            chatId, from: agentSenderId, msgId: taskMsgId,
-          });
+          broadcast({ type: "agent.streaming.end", chatId, from: agentSenderId, msgId: taskMsgId });
 
           broadcast({
             type: "message.new", chatId,
-            from: agentSenderId, senderType: "agent",
+            from: agentSenderId, senderId: agentSenderId, senderType: "agent",
             content: finalResult,
             msgId: taskMsgId, timestamp: Date.now(),
           });
@@ -448,6 +445,13 @@ export function handleWSMessage(
             timestamp: Date.now(),
           });
           broadcast({ type: "agent.streaming.end", chatId, from: agentSenderId, msgId: taskMsgId, error: err.message });
+          // ⭐ 修复：失败时也要发送 message.new，否则用户看不到错误信息
+          broadcast({
+            type: "message.new", chatId,
+            from: agentSenderId, senderId: agentSenderId, senderType: "agent",
+            content: "❌ 任务执行失败：" + (err.message || '未知错误'),
+            msgId: taskMsgId, timestamp: Date.now(),
+          });
         } finally {
           if (taskHeartbeatId) clearInterval(taskHeartbeatId);
           unregisterGeneration(chatId, taskCtrl);

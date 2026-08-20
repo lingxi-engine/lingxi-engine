@@ -279,7 +279,7 @@ export class MessageRouter {
         registry: this.toolRegistry!,
         agentId,
         chatId,
-        maxIterations: (taskGoal || customPrompt) ? 30 : 15,
+        maxIterations: (taskGoal || customPrompt) ? 50 : 15,
         temperature: 0.7,
         maxTokens: 16384,
         signal: controller.signal,

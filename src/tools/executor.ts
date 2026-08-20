@@ -336,8 +336,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
-      if (result.consecutiveErrors >= 3) {
-        result.finalContent = `AI 调用连续失败 3 次: ${errMsg}。请检查 API Key 和网络连接。`;
+      if (result.consecutiveErrors >= 5) {
+        result.finalContent = `AI 调用连续失败 5 次: ${errMsg}。请检查 API Key 和网络连接。`;
         break;
       }
       const errMsg2: ChatMessage = {
@@ -479,11 +479,19 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // ⭐ 连续工具失败检测：工具连续失败 3 次则停止循环，避免死循环卡住
       if (!callResult.success) {
         consecutiveToolFailures++;
-        if (consecutiveToolFailures >= 3) {
+        if (consecutiveToolFailures >= 6) {
           console.warn(`[Executor] 工具连续失败 ${consecutiveToolFailures} 次，停止循环`);
           result.finalContent = `工具连续失败 ${consecutiveToolFailures} 次，已停止执行。最后错误: ${callResult.error || '未知'}。建议换一种方式或拆小任务重试。`;
           i = maxIterations; // 强制退出外层循环
           break; // 退出内层循环
+        }
+        // 连续失败 3 次后注入纠正提示，给 AI 自我修复机会而非直接终止
+        if (consecutiveToolFailures === 3) {
+          console.warn(`[Executor] 工具已连续失败 3 次，注入纠正提示`);
+          result.messages.push({
+            role: 'user',
+            content: `系统提示：最近连续 3 次工具调用失败。请分析失败原因（参数格式？路径不存在？权限不足？），换一种方式或换一个工具继续完成任务，不要放弃。`,
+          });
         }
       } else {
         consecutiveToolFailures = 0;

@@ -161,17 +161,24 @@ export class ApprovalManager {
 
   /**
    * 判断操作是否需要审批
+   * 注意：write_file/code_execute/shell_exec 是 AI 执行任务的常用工具，
+   * 如果列为需审批，在无人值守的目标任务中会因 5 分钟超时无人批准而中断。
+   * 仅保留真正高危的操作需审批。
    */
   needsApproval(tool: string, args: Record<string, any>): boolean {
-    const dangerousTools = ['write_file', 'code_execute', 'browser_navigate', 'shell_exec'];
-    if (dangerousTools.includes(tool)) return true;
-    
-    // 写系统目录需审批
+    // shell_exec 仅在执行破坏性命令时需审批
+    if (tool === 'shell_exec' && args.command) {
+      const cmd = String(args.command).toLowerCase();
+      const dangerousPatterns = ['rm -rf', 'mkfs', 'shutdown', 'reboot', 'dd if=', 'chmod 777', 'format ', 'del /f'];
+      if (dangerousPatterns.some(p => cmd.includes(p))) return true;
+    }
+
+    // 写系统关键目录需审批
     if (tool === 'write_file' && args.path) {
-      const sysPaths = ['/etc', '/usr', '/bin', 'C:\\Windows', 'C:\\Program'];
+      const sysPaths = ['/etc', '/usr/bin', 'C:\\Windows\\System32', 'C:\\Program Files'];
       if (sysPaths.some(p => String(args.path).startsWith(p))) return true;
     }
-    
+
     return false;
   }
 
