@@ -1991,54 +1991,36 @@ async function loadAgentMgmt() {
     var nameCount = {};
     for (var a of agents) { nameCount[a.displayName] = (nameCount[a.displayName]||0)+1; }
     var dupNames = Object.keys(nameCount).filter(function(n){return nameCount[n]>1;});
-    var html = '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">'
-      + t('agentMgmt.total',{n:agents.length});
+    var html = '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">'+t('agentMgmt.total',{n:agents.length});
     if (dupNames.length) html += ' | <span style="color:var(--red)">'+t('agentMgmt.dups',{n:dupNames.length})+'</span>';
     html += '</div>';
     html += agents.map(function(a) {
       var isDup = nameCount[a.displayName] > 1;
       var badge = isDup ? ' <span style="color:var(--red);font-size:10px">['+t('agentMgmt.dupTag')+']</span>' : '';
-      return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">'
-        + '<div style="flex:1;min-width:0">'
-        + '<div style="font-size:12px">' + esc(a.displayName) + badge + '</div>'
-        + '<div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.id) + ' | ' + esc(a.model||'default') + '</div>'
-        + '</div>'
-        + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 8px;flex-shrink:0;margin-left:6px" onclick="deleteAgentMgmt(\''+esc(a.id)+'\',\''+esc(a.displayName)+'\')">'+t('common.delete')+'</button>'
-        + '</div>';
+      return '<div style="padding:8px 10px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center"><div style="flex:1;min-width:0"><div style="font-size:12px">'+esc(a.displayName)+badge+'</div><div style="font-size:10px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(a.id)+' | '+esc(a.model||'default')+'</div></div><button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 8px;flex-shrink:0;margin-left:6px" onclick="deleteAgentMgmt(\''+esc(a.id)+'\',\''+esc(a.displayName)+'\')">'+t('common.delete')+'</button></div>';
     }).join('');
     c.innerHTML = html;
   } catch(e) { c.innerHTML = '<div style="padding:10px;color:var(--red)">'+t('err.loadFail')+'</div>'; }
 }
 async function deleteAgentMgmt(agentId, displayName) {
   if (!confirm(t('agentMgmt.confirmDelete',{name:displayName}))) return;
-  try {
-    await api('/api/agents/'+encodeURIComponent(agentId), 'DELETE');
-    toast(t('toast.deleted'));
-    loadAgentMgmt();
-  } catch(e) { toast(t('err.deleteFail')); }
+  try { await api('/api/agents/'+encodeURIComponent(agentId),'DELETE'); toast(t('toast.deleted')); loadAgentMgmt(); }
+  catch(e) { toast(t('err.deleteFail')); }
 }
 async function batchDeleteDefaultAgents() {
   if (!confirm(t('agentMgmt.confirmBatch'))) return;
   try {
-    var d = await api('/api/agents');
-    var agents = d.agents || [];
-    var toDelete = agents.filter(function(a){return a.displayName === 'AI助手';});
+    var d = await api('/api/agents'); var agents = d.agents||[];
+    var toDelete = agents.filter(function(a){return a.displayName==='AI助手';});
     if (!toDelete.length) { toast(t('agentMgmt.noDup')); return; }
     var deleted = 0;
-    for (var i=0; i<toDelete.length; i++) {
-      try {
-        await api('/api/agents/'+encodeURIComponent(toDelete[i].id), 'DELETE');
-        deleted++;
-      } catch(e) {}
-    }
-    toast(t('agentMgmt.batchDone',{n:deleted}));
-    loadAgentMgmt();
+    for (var i=0;i<toDelete.length;i++) { try { await api('/api/agents/'+encodeURIComponent(toDelete[i].id),'DELETE'); deleted++; } catch(e){} }
+    toast(t('agentMgmt.batchDone',{n:deleted})); loadAgentMgmt();
   } catch(e) { toast(t('err.loadFail')); }
 }
 
 // ── Multi-AI Interact ──
 var _multiAIHistory = [];
-var _multiAIModelsCache = null;
 function showMultiAI() {
   document.getElementById('multiAIOverlay').classList.add('open');
   document.getElementById('multiAIPanel').classList.add('open');
@@ -2055,129 +2037,81 @@ async function loadMultiAIModels() {
     const d = await api('/api/providers');
     var models = d.models || [];
     if (models.length === 0 && d.providers) {
-      models = d.providers.flatMap(function(p){return (p.models||[]).map(function(m){return {id:m.id||m.name||m, provider:p.id, providerName:p.name};});});
+      models = d.providers.flatMap(function(p){return (p.models||[]).map(function(m){return {id:m.id||m.name||m,provider:p.id,providerName:p.name};});});
     }
-    _multiAIModelsCache = models;
     c.innerHTML = models.map(function(m) {
       var mid = esc(m.id||m);
-      var label = esc((m.providerName||m.provider||'') + ' / ' + (m.id||m));
-      return '<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;font-size:12px">'
-        + '<input type="checkbox" value="'+mid+'" class="multiAIModelCb">'
-        + '<span>'+label+'</span></label>';
+      var label = esc((m.providerName||m.provider||'')+' / '+(m.id||m));
+      return '<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;font-size:12px"><input type="checkbox" value="'+mid+'" class="multiAIModelCb"><span>'+label+'</span></label>';
     }).join('');
   } catch(e) { c.innerHTML = '<div style="padding:6px;color:var(--red);font-size:11px">'+t('err.loadFail')+'</div>'; }
 }
-function multiAISelectAll() {
-  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=true;});
-}
-function multiAIDeselectAll() {
-  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=false;});
-}
+function multiAISelectAll() { document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=true;}); }
+function multiAIDeselectAll() { document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=false;}); }
 function multiAIGetSelected() {
-  var selected = [];
-  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){if(cb.checked) selected.push(cb.value);});
-  return selected;
-}
-function multiAIAddMsg(role, text, model) {
-  var c = document.getElementById('multiAIChat');
-  var color = model ? 'var(--accent)' : 'var(--text)';
-  var prefix = model ? '🤖 '+esc(model) : '👤';
-  var div = document.createElement('div');
-  div.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;'+(model?'background:var(--bg2,rgba(255,255,255,0.03))':'');
-  div.innerHTML = '<div style="font-size:11px;color:'+color+';margin-bottom:2px">'+prefix+'</div><div style="font-size:13px;white-space:pre-wrap">'+esc(text)+'</div>';
-  c.appendChild(div);
-  c.scrollTop = c.scrollHeight;
+  var s = []; document.querySelectorAll('.multiAIModelCb').forEach(function(cb){if(cb.checked) s.push(cb.value);}); return s;
 }
 function multiAIStreamMsg(model) {
   var c = document.getElementById('multiAIChat');
   var div = document.createElement('div');
-  div.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;background:var(--bg2,rgba(255,255,255,0.03))';
+  div.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;background:rgba(255,255,255,0.03)';
   div.innerHTML = '<div style="font-size:11px;color:var(--accent);margin-bottom:2px">🤖 '+esc(model)+'</div><div class="multiAIStreamText" style="font-size:13px;white-space:pre-wrap"></div>';
-  c.appendChild(div);
-  c.scrollTop = c.scrollHeight;
+  c.appendChild(div); c.scrollTop = c.scrollHeight;
   return div.querySelector('.multiAIStreamText');
 }
 async function multiAISend() {
   var input = document.getElementById('multiAIInput');
-  var msg = input.value.trim();
-  if (!msg) return;
+  var msg = input.value.trim(); if (!msg) return;
   var models = multiAIGetSelected();
   if (models.length === 0) { toast(t('multiAI.selectAtLeastOne')); return; }
   var mode = document.getElementById('multiAIMode').value;
   input.value = '';
-  // 显示用户消息
-  multiAIAddMsg('user', msg);
-  _multiAIHistory.push({role:'user', content:msg});
-  // 禁用输入
+  var c = document.getElementById('multiAIChat');
+  var udiv = document.createElement('div');
+  udiv.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px';
+  udiv.innerHTML = '<div style="font-size:11px;color:var(--text);margin-bottom:2px">👤</div><div style="font-size:13px;white-space:pre-wrap">'+esc(msg)+'</div>';
+  c.appendChild(udiv); c.scrollTop = c.scrollHeight;
+  _multiAIHistory.push({role:'user',content:msg});
   input.disabled = true;
-  var sendBtn = input.nextElementSibling;
-  if (sendBtn) sendBtn.disabled = true;
-  // 当前流式文本元素映射
-  var streamEls = {};
-  var modelReplies = {};
+  var sendBtn = input.nextElementSibling; if (sendBtn) sendBtn.disabled = true;
+  var streamEls = {}, modelReplies = {};
   try {
-    var resp = await fetch('/api/multi-ai', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({mode:mode, models:models, message:msg, history:_multiAIHistory.slice(-10)})
-    });
-    var reader = resp.body.getReader();
-    var decoder = new TextDecoder();
-    var buffer = '';
+    var resp = await fetch('/api/multi-ai', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mode:mode, models:models, message:msg, history:_multiAIHistory.slice(-10)})});
+    var reader = resp.body.getReader(); var decoder = new TextDecoder(); var buffer = '';
     while (true) {
-      var result = await reader.read();
-      if (result.done) break;
+      var result = await reader.read(); if (result.done) break;
       buffer += decoder.decode(result.value, {stream:true});
-      var lines = buffer.split('\n');
-      buffer = lines.pop();
-      var eventType = '';
+      var lines = buffer.split('\n'); buffer = lines.pop(); var eventType = '';
       for (var i=0; i<lines.length; i++) {
         var line = lines[i];
         if (line.startsWith('event: ')) eventType = line.slice(7);
         else if (line.startsWith('data: ')) {
           try {
             var data = JSON.parse(line.slice(6));
-            if (eventType === 'start') {
-              // 开始一个模型的回复
-              if (!streamEls[data.model]) {
-                streamEls[data.model] = multiAIStreamMsg(data.model);
-                modelReplies[data.model] = '';
-              }
-            } else if (eventType === 'chunk') {
-              if (!streamEls[data.model]) {
-                streamEls[data.model] = multiAIStreamMsg(data.model);
-                modelReplies[data.model] = '';
-              }
+            if ((eventType==='start'||eventType==='chunk') && !streamEls[data.model]) {
+              streamEls[data.model] = multiAIStreamMsg(data.model); modelReplies[data.model] = '';
+            }
+            if (eventType === 'chunk') {
               modelReplies[data.model] += data.text;
               streamEls[data.model].textContent = modelReplies[data.model];
-              var c = document.getElementById('multiAIChat');
-              c.scrollTop = c.scrollHeight;
-            } else if (eventType === 'done') {
-              // 模型完成
+              document.getElementById('multiAIChat').scrollTop = 999999;
             } else if (eventType === 'error') {
-              if (!streamEls[data.model]) {
-                streamEls[data.model] = multiAIStreamMsg(data.model);
-              }
-              streamEls[data.model].textContent = '❌ ' + (data.error||'Error');
+              if (!streamEls[data.model]) streamEls[data.model] = multiAIStreamMsg(data.model);
+              streamEls[data.model].textContent = '❌ '+(data.error||'Error');
               streamEls[data.model].style.color = 'var(--red)';
-            } else if (eventType === 'complete') {
-              // 全部完成
             }
           } catch(e) {}
         }
       }
     }
-    // 将回复加入历史
-    for (var m in modelReplies) {
-      if (modelReplies[m]) _multiAIHistory.push({role:'assistant', content:'['+m+']: '+modelReplies[m]});
-    }
+    for (var m in modelReplies) { if (modelReplies[m]) _multiAIHistory.push({role:'assistant',content:'['+m+']: '+modelReplies[m]}); }
   } catch(e) {
-    multiAIAddMsg('system', '❌ ' + e.message);
+    var ediv = document.createElement('div');
+    ediv.style.cssText = 'margin-bottom:8px;padding:6px 8px;color:var(--red);font-size:13px';
+    ediv.textContent = '❌ '+e.message; c.appendChild(ediv);
   }
-  // 恢复输入
-  input.disabled = false;
-  if (sendBtn) sendBtn.disabled = false;
-  input.focus();
+  input.disabled = false; if (sendBtn) sendBtn.disabled = false; input.focus();
 }
 
 // ── Memory Panel ──
