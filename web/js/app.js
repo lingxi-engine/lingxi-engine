@@ -794,6 +794,12 @@ function handleMessage(msg) {
     case 'friend.accepted':
       toast(t('friends.requestAccepted')); loadFriends(); loadRequests();
       break;
+    case 'stop.ack':
+      // 服务端确认停止：立即强制清理生成状态，不等 streaming.end（防止 end 丢失导致永久卡住）
+      if (msg.stopped && msg.chatId) {
+        forceResetGenerating(msg.chatId);
+      }
+      break;
     case 'welcome': case 'user.online': case 'user.offline': break;
     case 'error':
       console.error('[WS error]', msg.message, msg.detail);
@@ -1302,12 +1308,17 @@ function maybeFlushQueue(chatId) {
   if (next.chatId !== chatId) return;      // 只 flush 刚结束的那个聊天
   if (isChatGenerating(next.chatId)) return; // 仍在生成（多 Agent 并发），等下一个 end
   sendQueue.shift();
-  ws.send(JSON.stringify({ type: 'message', chatId: next.chatId, content: next.content }));
+  // 支持文件类排队消息（带 fileType/originalName）和普通文本消息
+  var sendPayload = { type: 'message', chatId: next.chatId, content: next.content };
+  if (next.fileType) { sendPayload.fileType = next.fileType; sendPayload.originalName = next.originalName; }
+  ws.send(JSON.stringify(sendPayload));
   // 乐观渲染：排队消息发出后立即显示
   const _dedupKey = next.chatId + '|' + next.content + '|' + (clientId || '');
   _optimisticSent.add(_dedupKey);
   setTimeout(() => _optimisticSent.delete(_dedupKey), 8000);
-  appendMessage({ chatId: next.chatId, senderId: clientId || 'user', senderType: 'user', content: next.content, timestamp: Date.now() });
+  var renderMsg = { chatId: next.chatId, senderId: clientId || 'user', senderType: 'user', content: next.content, timestamp: Date.now() };
+  if (next.fileType) { renderMsg.fileType = next.fileType; renderMsg.originalName = next.originalName; }
+  appendMessage(renderMsg);
   updateGenUI();
 }
 
@@ -1393,22 +1404,33 @@ document.addEventListener('drop', function(e) {
 async function uploadAndSendFile(file) {
   if (!ws || ws.readyState !== 1) { toast(t('toast.notConnected')); return; }
   if (file.size > 10 * 1024 * 1024) { toast(t('err.fileTooLarge')); return; }
+  if (!currentChat) { toast(t('chat.selectChatFirst')); return; }
+  const chatId = currentChat;
   const fd = new FormData();
   fd.append('file', file);
+  var token = localStorage.getItem('authToken');
   try {
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    var headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch('/api/upload', { method: 'POST', headers: headers, body: fd });
     const data = await res.json();
     if (data.ok) {
-      const chatId = currentChat || '';
       const msgType = file.type.startsWith('image/') ? 'image' : 'file';
-      ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: data.url, originalName: file.name, fileType: msgType }));
-      // 乐观渲染：文件/图片消息立即显示
-      const _dedupKey = chatId + '|' + data.url + '|' + (clientId || '');
-      _optimisticSent.add(_dedupKey);
-      setTimeout(() => _optimisticSent.delete(_dedupKey), 8000);
-      appendMessage({ chatId, senderId: clientId || 'user', senderType: 'user', content: data.url, fileType: msgType, originalName: file.name, timestamp: Date.now() });
-    } else { toast(t('err.uploadFail')); }
-  } catch(err) { toast(t('err.uploadError')); }
+      // 检查是否生成中：生成中时排队，避免并发
+      if (isChatGenerating(chatId)) {
+        sendQueue.push({ chatId: chatId, content: data.url, fileType: msgType, originalName: file.name, isFile: true });
+        updateGenUI();
+        toast(t('chat.queuedAuto', { n: sendQueue.length }));
+      } else {
+        ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: data.url, originalName: file.name, fileType: msgType }));
+        // 乐观渲染：文件/图片消息立即显示
+        const _dedupKey = chatId + '|' + data.url + '|' + (clientId || '');
+        _optimisticSent.add(_dedupKey);
+        setTimeout(() => _optimisticSent.delete(_dedupKey), 8000);
+        appendMessage({ chatId, senderId: clientId || 'user', senderType: 'user', content: data.url, fileType: msgType, originalName: file.name, timestamp: Date.now() });
+      }
+    } else { toast(t('err.uploadFail') + ': ' + (data?.error?.message || data?.error || '')); }
+  } catch(err) { toast(t('err.uploadError') + ': ' + (err.message || '')); }
 }
 
 // ── File Upload ──
@@ -1434,18 +1456,33 @@ function clearFile() {
 }
 async function sendFile() {
   if (!currentFile || !ws || ws.readyState !== 1) return;
+  if (!currentChat) { toast(t('chat.selectChatFirst')); clearFile(); return; }
+  const chatId = currentChat;
   const fd = new FormData();
   fd.append('file', currentFile);
+  var token = localStorage.getItem('authToken');
   try {
-    const res = await fetch('/api/upload', { method: 'POST', body: fd });
+    var headers = {};
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const res = await fetch('/api/upload', { method: 'POST', headers: headers, body: fd });
     const data = await res.json();
     if (data.ok) {
-      if (!currentChat) { toast(t('chat.selectChatFirst')); clearFile(); return; }
-      const chatId = currentChat;
       const msgType = currentFile.type.startsWith('image/') ? 'image' : 'file';
-      ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: data.url, originalName: currentFile.name, fileType: msgType }));
-    } else { toast(t('err.uploadFail')); }
-  } catch(e) { toast(t('err.uploadError')); }
+      // 检查是否生成中：生成中时排队
+      if (isChatGenerating(chatId)) {
+        sendQueue.push({ chatId: chatId, content: data.url, fileType: msgType, originalName: currentFile.name, isFile: true });
+        updateGenUI();
+        toast(t('chat.queuedAuto', { n: sendQueue.length }));
+      } else {
+        ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: data.url, originalName: currentFile.name, fileType: msgType }));
+        // 乐观渲染
+        const _dedupKey = chatId + '|' + data.url + '|' + (clientId || '');
+        _optimisticSent.add(_dedupKey);
+        setTimeout(() => _optimisticSent.delete(_dedupKey), 8000);
+        appendMessage({ chatId, senderId: clientId || 'user', senderType: 'user', content: data.url, fileType: msgType, originalName: currentFile.name, timestamp: Date.now() });
+      }
+    } else { toast(t('err.uploadFail') + ': ' + (data?.error?.message || data?.error || '')); }
+  } catch(e) { toast(t('err.uploadError') + ': ' + (e.message || '')); }
   clearFile();
 }
 // 合并文件发送逻辑到 send()
@@ -1828,6 +1865,20 @@ function showCreateGroup() {
 }
 
 // ── Members Panel ──
+// 缓存模型列表，避免每次渲染成员都请求
+var _cachedModels = null;
+async function _getModelList() {
+  if (_cachedModels) return _cachedModels;
+  try {
+    const d = await api('/api/providers');
+    let models = d.models || [];
+    if (models.length === 0 && d.providers) {
+      models = d.providers.flatMap(p => (p.models||[]).map(m => ({id:m.id||m.name||m, provider:p.id, providerName:p.name})));
+    }
+    _cachedModels = models;
+    return models;
+  } catch(e) { return []; }
+}
 function showMembersPanel() { renderMembers(); document.getElementById('membersOverlay').classList.add('open'); document.getElementById('membersPanel').classList.add('open'); }
 function hideMembersPanel() { document.getElementById('membersOverlay').classList.remove('open'); document.getElementById('membersPanel').classList.remove('open'); }
 async function renderMembers() {
@@ -1836,12 +1887,59 @@ async function renderMembers() {
   try {
     const d = await api('/api/chats/'+encodeURIComponent(currentChat)+'/participants');
     const members = d.participants||[];
+    // 获取模型列表用于 AI 成员的模型下拉
+    const models = await _getModelList();
+    // 获取所有 agent 信息（含 model 字段）
+    let agentMap = {};
+    try {
+      const ad = await api('/api/agents');
+      for (const a of (ad.agents||[])) agentMap[a.id] = a;
+    } catch(e) {}
     c.innerHTML = members.map(m => {
       const name = m.display_name||m.user_id||m.agent_id||'?';
       const icon = m.agent_id ? '🤖' : '👤';
-      return '<div style="padding:8px 14px;border-bottom:1px solid #222;display:flex;justify-content:space-between"><span>' + icon + ' ' + esc(name) + '</span></div>';
+      // AI 成员渲染模型选择下拉框
+      if (m.agent_id) {
+        const agentInfo = agentMap[m.agent_id] || {};
+        const currentModel = agentInfo.model || '';
+        const modelOpts = models.map(md => {
+          const label = (md.providerName||md.provider||'') + ' / ' + md.id;
+          const sel = (md.id === currentModel) ? ' selected' : '';
+          return '<option value="'+esc(md.id)+'"'+sel+'>'+esc(label)+'</option>';
+        }).join('');
+        return '<div style="padding:8px 14px;border-bottom:1px solid #222">'
+          + '<div style="display:flex;justify-content:space-between;align-items:center">'
+          + '<span>' + icon + ' ' + esc(name) + '</span>'
+          + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.agent_id)+'\')">'+t('common.remove')+'</button>'
+          + '</div>'
+          + '<select onchange="setAgentModel(\''+esc(m.agent_id)+'\',this.value)" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px">'
+          + '<option value="">'+t('settings.defaultModel')+'</option>'
+          + modelOpts
+          + '</select>'
+          + '</div>';
+      }
+      // 普通用户成员
+      return '<div style="padding:8px 14px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center">'
+        + '<span>' + icon + ' ' + esc(name) + '</span>'
+        + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.user_id||'')+'\')">'+t('common.remove')+'</button>'
+        + '</div>';
     }).join('');
   } catch(e) { c.innerHTML='<div style="padding:10px;color:#555">'+t('err.loadFail')+'</div>'; }
+}
+async function setAgentModel(agentId, model) {
+  try {
+    await api('/api/agents/'+encodeURIComponent(agentId), 'PATCH', { model: model, modelSource: 'manual' });
+    toast('✅ ' + t('chat.modelSet', { model: model || t('settings.defaultModel') }));
+  } catch(e) { toast('❌ ' + t('err.setFail')); }
+}
+async function removeMember(mid) {
+  if (!currentChat || !mid) return;
+  try {
+    // 后端 DELETE /api/participants 从 body 读 id + chatId
+    await api('/api/participants', 'DELETE', { id: mid, chatId: currentChat });
+    renderMembers();
+    toast(t('toast.removed'));
+  } catch(e) { toast(t('err.removeFail')); }
 }
 async function loadAvailableMembers() {
   if (!currentChat || !clientId) { toast(t('toast.connectAndSelect')); return; }
@@ -1857,7 +1955,7 @@ async function loadAvailableMembers() {
     } catch(e) {}
     if (!members.length) { document.getElementById('availableMembers').innerHTML='<div style="padding:6px;color:#555;font-size:11px">'+t('members.noneAvailable')+'</div>'; return; }
     document.getElementById('availableMembers').innerHTML = members.map(m =>
-      '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #222;font-size:12px"><span>' + (m.type==='my-ai'?'🤖 ':'👤 ') + esc(m.displayName) + '</span><button class="btn-sm btn-accept" onclick="addMember(\''+m.id+'\')">'+t('common.add')+'</button></div>'
+      '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #222;font-size:12px"><span>' + (m.type==='ai-agent'||m.type==='my-ai'?'🤖 ':'👤 ') + esc(m.displayName) + '</span><button class="btn-sm btn-accept" onclick="addMember(\''+esc(m.id)+'\','+(m.type==='ai-agent'||m.type==='my-ai'?'true':'false')+')">'+t('common.add')+'</button></div>'
     ).join('');
   } catch(e) {}
 }
@@ -2412,7 +2510,10 @@ async function uploadVision(event) {
     const fd = new FormData();
     fd.append('file', file);
     fd.append('prompt', t('admin.visionPrompt'));
-    const r = await fetch('/api/vision/analyze', { method: 'POST', body: fd });
+    var visToken = localStorage.getItem('authToken');
+    var visHeaders = {};
+    if (visToken) visHeaders['Authorization'] = 'Bearer ' + visToken;
+    const r = await fetch('/api/vision/analyze', { method: 'POST', headers: visHeaders, body: fd });
     const d = await r.json();
     if (d.ok && d.result) {
       document.getElementById('visionResult').textContent = d.result;
@@ -3665,7 +3766,10 @@ function startRecording() {
         const fd = new FormData();
         fd.append('file', blob, 'voice.' + (mime.includes('webm') ? 'webm' : 'mp3'));
         try {
-          const res = await fetch('/api/upload', { method: 'POST', body: fd });
+          var vToken = localStorage.getItem('authToken');
+          var vHeaders = {};
+          if (vToken) vHeaders['Authorization'] = 'Bearer ' + vToken;
+          const res = await fetch('/api/upload', { method: 'POST', headers: vHeaders, body: fd });
           const data = await res.json();
           if (data.ok && ws && ws.readyState === 1) {
             ws.send(JSON.stringify({ type: 'message', chatId: currentChat || 'chat-demo-1', content: data.url, fileType: 'voice', duration: Math.ceil((Date.now() - recordingStart) / 1000) }));
