@@ -2132,167 +2132,74 @@ setSearchManager(searchManagerInstance);
       if (!message || !Array.isArray(models) || models.length === 0) {
         return res.status(400).json({ error: 'message 和 models 必填' });
       }
-      if (models.length > 6) {
-        return res.status(400).json({ error: '最多选择6个模型' });
-      }
-
-      // SSE 头
+      if (models.length > 6) { return res.status(400).json({ error: '最多选择6个模型' }); }
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders?.();
-
-      const send = (event: string, data: any) => {
-        res.write(`event: ${event}\n`);
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-      };
-
-      // 构建消息历史
-      const buildMessages = (modelName: string, systemPrompt: string, extraHistory: any[] = []) => {
-        const msgs: any[] = [{ role: 'system', content: systemPrompt }];
-        // 加入历史
-        for (const h of (history || []).slice(-10)) {
-          msgs.push({ role: h.role || 'user', content: h.content });
-        }
-        // 加入额外历史（如辩论中其他模型的发言）
-        for (const h of extraHistory) {
-          msgs.push({ role: h.role || 'user', content: h.content });
-        }
+      const send = (event: string, data: any) => { res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); };
+      const buildMessages = (_m: string, sys: string, extra: any[] = []) => {
+        const msgs: any[] = [{ role: 'system', content: sys }];
+        for (const h of (history || []).slice(-10)) msgs.push({ role: h.role || 'user', content: h.content });
+        for (const h of extra) msgs.push({ role: h.role || 'user', content: h.content });
         msgs.push({ role: 'user', content: message });
         return msgs;
       };
-
-      // 调用单个模型（流式）
-      const callModel = async (modelId: string, systemPrompt: string, extraHistory: any[] = []): Promise<string> => {
-        const clientResult = aiHub.getClient(modelId);
-        if (!clientResult) throw new Error('找不到模型: ' + modelId);
-        const msgs = buildMessages(modelId, systemPrompt, extraHistory);
-        let fullContent = '';
+      const callModel = async (modelId: string, sys: string, extra: any[] = []): Promise<string> => {
+        const cr = aiHub.getClient(modelId);
+        if (!cr) throw new Error('找不到模型: ' + modelId);
+        const msgs = buildMessages(modelId, sys, extra);
+        let full = '';
         try {
-          const stream = await clientResult.client.chat.completions.create({
-            model: clientResult.resolvedModel,
-            messages: msgs,
-            stream: true,
-            temperature: 0.7,
-          });
-          for await (const chunk of stream as any) {
-            const delta = chunk.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
-              send('chunk', { model: modelId, text: delta });
-            }
-          }
+          const stream = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, stream: true, temperature: 0.7 });
+          for await (const chunk of stream as any) { const d = chunk.choices?.[0]?.delta?.content; if (d) { full += d; send('chunk', { model: modelId, text: d }); } }
         } catch (e: any) {
-          // 非流式兜底
-          const resp = await clientResult.client.chat.completions.create({
-            model: clientResult.resolvedModel,
-            messages: msgs,
-            temperature: 0.7,
-          });
-          fullContent = resp.choices?.[0]?.message?.content || '';
-          send('chunk', { model: modelId, text: fullContent });
+          const resp = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, temperature: 0.7 });
+          full = resp.choices?.[0]?.message?.content || '';
+          send('chunk', { model: modelId, text: full });
         }
-        send('done', { model: modelId, full: fullContent });
-        return fullContent;
+        send('done', { model: modelId, full });
+        return full;
       };
-
-      const modeType = mode || 'free';
-
-      if (modeType === 'free' || modeType === 'brainstorm') {
-        // 自由模式 / 头脑风暴：所有模型并行回复
-        const prompt = modeType === 'brainstorm'
-          ? '你是一个创意顾问。请针对用户的问题提出你的独特想法和建议，要具体、有创意。'
-          : '你是一个有用的AI助手。请回答用户的问题。';
-        const promises = models.map(m => callModel(m, prompt).catch(e => {
-          send('error', { model: m, error: e.message });
-          return '';
-        }));
-        await Promise.all(promises);
-
-      } else if (modeType === 'debate') {
-        // 辩论模式：模型轮流发言，每个模型看到前面的发言
+      const mt = mode || 'free';
+      if (mt === 'free' || mt === 'brainstorm') {
+        const p = mt === 'brainstorm' ? '你是一个创意顾问。请针对用户的问题提出你的独特想法和建议，要具体、有创意。' : '你是一个有用的AI助手。请回答用户的问题。';
+        await Promise.all(models.map(m => callModel(m, p).catch(e => { send('error', { model: m, error: e.message }); return ''; })));
+      } else if (mt === 'debate') {
         const replies: any[] = [];
         for (let i = 0; i < models.length; i++) {
-          const modelId = models[i];
-          const position = i === 0 ? '正方（支持）' : i === 1 ? '反方（反对）' : `第${i+1}方观点`;
-          const debateHistory = replies.map((r, j) => ({
-            role: 'assistant',
-            content: `[${models[j]} 的发言]: ${r}`
-          }));
-          const prompt = `你正在参加一场辩论。你的立场是${position}。请针对用户的议题发表你的观点和论据。${debateHistory.length > 0 ? '以下是其他参与者的发言，请回应他们的观点：' : ''}`;
-          send('start', { model: modelId, position });
-          const reply = await callModel(modelId, prompt, debateHistory).catch(e => {
-            send('error', { model: modelId, error: e.message });
-            return '';
-          });
-          replies.push(reply);
+          const pos = i === 0 ? '正方（支持）' : i === 1 ? '反方（反对）' : `第${i+1}方观点`;
+          const dh = replies.map((r, j) => ({ role: 'assistant', content: `[${models[j]} 的发言]: ${r}` }));
+          send('start', { model: models[i], position: pos });
+          replies.push(await callModel(models[i], `你正在参加一场辩论。你的立场是${pos}。请针对用户的议题发表你的观点和论据。${dh.length > 0 ? '以下是其他参与者的发言，请回应他们的观点：' : ''}`, dh).catch(e => { send('error', { model: models[i], error: e.message }); return ''; }));
         }
-
-      } else if (modeType === 'roundtable') {
-        // 圆桌模式：模型轮流发言，后面的能看到前面的
+      } else if (mt === 'roundtable') {
         const replies: any[] = [];
         for (let i = 0; i < models.length; i++) {
-          const modelId = models[i];
-          const roundHistory = replies.map((r, j) => ({
-            role: 'assistant',
-            content: `[${models[j]} 的发言]: ${r}`
-          }));
-          const prompt = `你正在参加一个圆桌讨论。请就用户提出的话题分享你的专业见解。${roundHistory.length > 0 ? '请参考其他参与者的发言并补充你的观点：' : ''}`;
-          send('start', { model: modelId, round: i + 1 });
-          const reply = await callModel(modelId, prompt, roundHistory).catch(e => {
-            send('error', { model: modelId, error: e.message });
-            return '';
-          });
-          replies.push(reply);
+          const rh = replies.map((r, j) => ({ role: 'assistant', content: `[${models[j]} 的发言]: ${r}` }));
+          send('start', { model: models[i], round: i + 1 });
+          replies.push(await callModel(models[i], `你正在参加一个圆桌讨论。请就用户提出的话题分享你的专业见解。${rh.length > 0 ? '请参考其他参与者的发言并补充你的观点：' : ''}`, rh).catch(e => { send('error', { model: models[i], error: e.message }); return ''; }));
         }
-
-      } else if (modeType === 'chain') {
-        // 链式模式：模型A的输出作为模型B的输入
-        let accumulated = '';
+      } else if (mt === 'chain') {
+        let acc = '';
         for (let i = 0; i < models.length; i++) {
-          const modelId = models[i];
-          const chainHistory = i > 0 ? [{ role: 'assistant', content: `[上一个模型(${models[i-1]})的分析]: ${accumulated}` }] : [];
-          const prompt = i === 0
-            ? '你是一个分析专家。请分析用户的问题并给出你的初步判断。'
-            : `你是一个续写专家。上一个模型已经给出了分析，请在此基础上深入分析并给出你的结论。`;
-          send('start', { model: modelId, step: i + 1 });
-          const reply = await callModel(modelId, prompt, chainHistory).catch(e => {
-            send('error', { model: modelId, error: e.message });
-            return '';
-          });
-          accumulated = reply;
+          const ch = i > 0 ? [{ role: 'assistant', content: `[上一个模型(${models[i-1]})的分析]: ${acc}` }] : [];
+          send('start', { model: models[i], step: i + 1 });
+          acc = await callModel(models[i], i === 0 ? '你是一个分析专家。请分析用户的问题并给出你的初步判断。' : '你是一个续写专家。上一个模型已经给出了分析，请在此基础上深入分析并给出你的结论。', ch).catch(e => { send('error', { model: models[i], error: e.message }); return ''; });
         }
-
-      } else if (modeType === 'vote') {
-        // 投票模式：各模型先给出方案，然后互相投票
-        // 第一轮：各模型提出方案
-        const proposals: any[] = [];
+      } else if (mt === 'vote') {
+        const props: any[] = [];
         for (let i = 0; i < models.length; i++) {
-          const modelId = models[i];
-          const prompt = '你是一个决策顾问。请针对用户的问题给出你的方案和建议。';
-          send('start', { model: modelId, phase: 'proposal' });
-          const reply = await callModel(modelId, prompt).catch(e => {
-            send('error', { model: modelId, error: e.message });
-            return '';
-          });
-          proposals.push({ model: modelId, content: reply });
+          send('start', { model: models[i], phase: 'proposal' });
+          props.push({ model: models[i], content: await callModel(models[i], '你是一个决策顾问。请针对用户的问题给出你的方案和建议。').catch(e => { send('error', { model: models[i], error: e.message }); return ''; }) });
         }
-        // 第二轮：各模型投票
         for (let i = 0; i < models.length; i++) {
-          const modelId = models[i];
-          const proposalsText = proposals.map(p => `[${p.model}的方案]: ${p.content.slice(0, 500)}...`).join('\n\n');
-          const prompt = `你是一个评委。以下是多个方案，请评价并投票选出最佳方案，说明理由。\n\n${proposalsText}`;
-          send('start', { model: modelId, phase: 'vote' });
-          await callModel(modelId, prompt).catch(e => {
-            send('error', { model: modelId, error: e.message });
-          });
+          const pt = props.map(p => `[${p.model}的方案]: ${p.content.slice(0, 500)}...`).join('\n\n');
+          send('start', { model: models[i], phase: 'vote' });
+          await callModel(models[i], `你是一个评委。以下是多个方案，请评价并投票选出最佳方案，说明理由。\n\n${pt}`).catch(e => { send('error', { model: models[i], error: e.message }); });
         }
-
-      } else {
-        return res.status(400).json({ error: '不支持的模式: ' + modeType });
-      }
-
-      send('complete', { mode: modeType, models });
+      } else { return res.status(400).json({ error: '不支持的模式: ' + mt }); }
+      send('complete', { mode: mt, models });
       res.end();
     } catch (err: any) {
       console.error('[MultiAI] error:', err);
