@@ -939,17 +939,7 @@ async function switchChat(chatId) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'subscribe', chatId}));
   renderChatList();
   document.getElementById('memoryBtn').classList.remove('hidden');
-  // membersBtn 只在群聊显示（私聊没有多AI协作）
-  var chatInfo = myChats.find(c => c.id === chatId);
-  var membersBtn = document.getElementById('membersBtn');
-  var tbMembersBtn = document.getElementById('tbMembersBtn');
-  if (chatInfo && chatInfo.type === 'group') {
-    membersBtn.classList.remove('hidden');
-    if (tbMembersBtn) tbMembersBtn.style.display = '';
-  } else {
-    membersBtn.classList.add('hidden');
-    if (tbMembersBtn) tbMembersBtn.style.display = 'none';
-  }
+  document.getElementById('membersBtn').classList.remove('hidden');
   updateCtxInfo();
 }
 
@@ -1831,92 +1821,13 @@ async function searchUser() {
 }
 
 // ── Create Group ──
-var _groupAgentData = [];
 function showCreateGroup() {
-  // 弹出正规建群弹窗（替代旧的 prompt 方式）
-  document.getElementById('groupNameInput').value = '';
-  document.getElementById('groupModeSelect').value = 'free';
-  document.getElementById('groupAgentList').innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">'+t('common.loading')+'</div>';
-  document.getElementById('createGroupOverlay').classList.add('open');
-  document.getElementById('createGroupPanel').classList.add('open');
-  // 加载 Agent 列表
-  loadGroupAgentList();
-}
-function hideCreateGroupDialog() {
-  document.getElementById('createGroupOverlay').classList.remove('open');
-  document.getElementById('createGroupPanel').classList.remove('open');
-}
-async function loadGroupAgentList() {
-  try {
-    const d = await api('/api/agents');
-    const agents = d.agents || [];
-    _groupAgentData = agents;
-    // 同时加载模型列表
-    const models = await _getModelList();
-    const c = document.getElementById('groupAgentList');
-    if (agents.length === 0) {
-      c.innerHTML = '<div style="padding:10px;color:var(--text3);font-size:12px">'+t('social.noAgents')+'</div>';
-      return;
-    }
-    c.innerHTML = agents.map((a, i) => {
-      const currentModel = a.model || '';
-      const modelOpts = models.map(md => {
-        const label = (md.providerName||md.provider||'') + ' / ' + md.id;
-        const sel = (md.id === currentModel) ? ' selected' : '';
-        return '<option value="'+esc(md.id)+'"'+sel+'>'+esc(label)+'</option>';
-      }).join('');
-      return '<div style="display:flex;align-items:center;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border);font-size:12px">'
-        + '<input type="checkbox" id="grp-agent-'+i+'" data-agent-id="'+esc(a.id)+'" style="margin:0;flex-shrink:0">'
-        + '<div style="flex:1;min-width:0">'
-        + '<div style="font-weight:500">'+esc(a.displayName)+'</div>'
-        + '<div style="font-size:10px;color:var(--text3)">'+esc(a.id)+'</div>'
-        + '</div>'
-        + '<select id="grp-model-'+i+'" data-agent-id="'+esc(a.id)+'" style="width:130px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 4px;border-radius:4px;font-size:10px;flex-shrink:0">'
-        + '<option value="">'+t('settings.defaultModel')+'</option>'
-        + modelOpts
-        + '</select>'
-        + '</div>';
-    }).join('');
-  } catch(e) {
-    document.getElementById('groupAgentList').innerHTML = '<div style="padding:10px;color:#ef4444;font-size:12px">'+t('err.loadFail')+'</div>';
-  }
-}
-function selectAllAgents() {
-  document.querySelectorAll('input[id^="grp-agent-"]').forEach(cb => cb.checked = true);
-}
-function deselectAllAgents() {
-  document.querySelectorAll('input[id^="grp-agent-"]').forEach(cb => cb.checked = false);
-}
-async function confirmCreateGroup() {
-  const name = document.getElementById('groupNameInput').value.trim();
-  if (!name) { toast(t('social.teamNamePh')); return; }
-  const mode = document.getElementById('groupModeSelect').value;
+  // 弹窗让用户输入群聊名称 + 选择AI加入
+  const name = prompt(t('social.teamNamePh'));
+  if (!name) return;
   const chatId = 'team-' + Date.now().toString(36);
-
-  // 收集选中的 Agent
-  const selectedAgentIds = [];
-  const modelUpdates = [];
-  document.querySelectorAll('input[id^="grp-agent-"]').forEach(cb => {
-    if (cb.checked) {
-      const agentId = cb.getAttribute('data-agent-id');
-      selectedAgentIds.push(agentId);
-      // 找对应的模型下拉
-      const modelSelect = document.querySelector('select[data-agent-id="'+agentId+'"]');
-      if (modelSelect && modelSelect.value) {
-        modelUpdates.push({ agentId, model: modelSelect.value });
-      }
-    }
-  });
-
-  // 先更新每个 Agent 的模型设置
-  for (const mu of modelUpdates) {
-    try { await api('/api/agents/'+encodeURIComponent(mu.agentId), 'PATCH', { model: mu.model, modelSource: 'manual' }); } catch(e) {}
-  }
-
-  // 创建群聊
-  try {
-    await api('/api/chats', 'POST', { id: chatId, type: 'group', name });
-    // 解析真实登录用户 ID
+  api('/api/chats', 'POST', { id: chatId, type: 'group', name }).then(async () => {
+    // 解析真实登录用户 ID（平台数字 ID）；clientId（u-xxx）与 JWT sub 不匹配会导致 participant 写入被 403 拒绝
     if (!lanMeId && authToken) {
       try { const d = await platformApi('/api/user/me', 'GET'); if (d && d.ok && d.user) lanMeId = d.user.id || d.user.sub || null; } catch(_e) {}
     }
@@ -1927,24 +1838,30 @@ async function confirmCreateGroup() {
       userId: lanMyId(),
       role: 'owner'
     }).catch(()=>{});
-    // 把选中的 AI Agent 加为成员
-    for (const agentId of selectedAgentIds) {
-      await api('/api/participants', 'POST', {
-        id: 'p-' + chatId + '-' + agentId,
-        chatId: chatId,
-        agentId: agentId,
-        role: 'member'
-      }).catch(()=>{});
-    }
-    // 设置协作模式
-    if (mode !== 'free') {
-      try { await api('/api/chats/' + encodeURIComponent(chatId) + '/mode', 'POST', { mode }); } catch(e) {}
-    }
-    toast(t('social.teamCreated', { n: selectedAgentIds.length }));
-    hideCreateGroupDialog();
+    // 获取所有可用 agent 让用户选
+    try {
+      const d = await api('/api/agents');
+      const agents = d.agents || [];
+      if (agents.length > 0) {
+        const agentIds = prompt(t('social.selectAiPrompt') + '\n' + agents.map((a,i) => (i+1)+'. '+a.displayName+' [ID:'+a.id+']').join('\n') + '\n\n' + t('social.selectAiSkip'));
+        if (agentIds && agentIds.trim()) {
+          const selected = agentIds.split(',').map(s => parseInt(s.trim())-1).filter(i => i >= 0 && i < agents.length);
+          for (const idx of selected) {
+            const a = agents[idx];
+            await api('/api/participants', 'POST', {
+              id: 'p-' + chatId + '-' + a.id,
+              chatId: chatId,
+              agentId: a.id,
+              role: 'member'
+            }).catch(()=>{});
+          }
+          toast(t('social.teamCreated', { n: selected.length }));
+        }
+      }
+    } catch(e) {}
     loadChatList();
     switchChat(chatId);
-  } catch(e) { toast(t('err.createFail')); }
+  }).catch(()=>toast(t('err.createFail')));
 }
 
 // ── Members Panel ──
@@ -2071,7 +1988,6 @@ async function loadAgentMgmt() {
   try {
     const d = await api('/api/agents');
     const agents = d.agents || [];
-    // 按名字分组统计
     var nameCount = {};
     for (var a of agents) { nameCount[a.displayName] = (nameCount[a.displayName]||0)+1; }
     var dupNames = Object.keys(nameCount).filter(function(n){return nameCount[n]>1;});
@@ -2106,7 +2022,6 @@ async function batchDeleteDefaultAgents() {
   try {
     var d = await api('/api/agents');
     var agents = d.agents || [];
-    // 找出 displayName === 'AI助手' 的
     var toDelete = agents.filter(function(a){return a.displayName === 'AI助手';});
     if (!toDelete.length) { toast(t('agentMgmt.noDup')); return; }
     var deleted = 0;
@@ -2119,6 +2034,150 @@ async function batchDeleteDefaultAgents() {
     toast(t('agentMgmt.batchDone',{n:deleted}));
     loadAgentMgmt();
   } catch(e) { toast(t('err.loadFail')); }
+}
+
+// ── Multi-AI Interact ──
+var _multiAIHistory = [];
+var _multiAIModelsCache = null;
+function showMultiAI() {
+  document.getElementById('multiAIOverlay').classList.add('open');
+  document.getElementById('multiAIPanel').classList.add('open');
+  loadMultiAIModels();
+}
+function hideMultiAI() {
+  document.getElementById('multiAIOverlay').classList.remove('open');
+  document.getElementById('multiAIPanel').classList.remove('open');
+}
+async function loadMultiAIModels() {
+  const c = document.getElementById('multiAIModels');
+  c.innerHTML = '<div style="padding:6px;color:var(--text3);font-size:11px">'+t('common.loading')+'</div>';
+  try {
+    const d = await api('/api/providers');
+    var models = d.models || [];
+    if (models.length === 0 && d.providers) {
+      models = d.providers.flatMap(function(p){return (p.models||[]).map(function(m){return {id:m.id||m.name||m, provider:p.id, providerName:p.name};});});
+    }
+    _multiAIModelsCache = models;
+    c.innerHTML = models.map(function(m) {
+      var mid = esc(m.id||m);
+      var label = esc((m.providerName||m.provider||'') + ' / ' + (m.id||m));
+      return '<label style="display:flex;align-items:center;gap:6px;padding:4px 6px;cursor:pointer;font-size:12px">'
+        + '<input type="checkbox" value="'+mid+'" class="multiAIModelCb">'
+        + '<span>'+label+'</span></label>';
+    }).join('');
+  } catch(e) { c.innerHTML = '<div style="padding:6px;color:var(--red);font-size:11px">'+t('err.loadFail')+'</div>'; }
+}
+function multiAISelectAll() {
+  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=true;});
+}
+function multiAIDeselectAll() {
+  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){cb.checked=false;});
+}
+function multiAIGetSelected() {
+  var selected = [];
+  document.querySelectorAll('.multiAIModelCb').forEach(function(cb){if(cb.checked) selected.push(cb.value);});
+  return selected;
+}
+function multiAIAddMsg(role, text, model) {
+  var c = document.getElementById('multiAIChat');
+  var color = model ? 'var(--accent)' : 'var(--text)';
+  var prefix = model ? '🤖 '+esc(model) : '👤';
+  var div = document.createElement('div');
+  div.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;'+(model?'background:var(--bg2,rgba(255,255,255,0.03))':'');
+  div.innerHTML = '<div style="font-size:11px;color:'+color+';margin-bottom:2px">'+prefix+'</div><div style="font-size:13px;white-space:pre-wrap">'+esc(text)+'</div>';
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+}
+function multiAIStreamMsg(model) {
+  var c = document.getElementById('multiAIChat');
+  var div = document.createElement('div');
+  div.style.cssText = 'margin-bottom:8px;padding:6px 8px;border-radius:6px;background:var(--bg2,rgba(255,255,255,0.03))';
+  div.innerHTML = '<div style="font-size:11px;color:var(--accent);margin-bottom:2px">🤖 '+esc(model)+'</div><div class="multiAIStreamText" style="font-size:13px;white-space:pre-wrap"></div>';
+  c.appendChild(div);
+  c.scrollTop = c.scrollHeight;
+  return div.querySelector('.multiAIStreamText');
+}
+async function multiAISend() {
+  var input = document.getElementById('multiAIInput');
+  var msg = input.value.trim();
+  if (!msg) return;
+  var models = multiAIGetSelected();
+  if (models.length === 0) { toast(t('multiAI.selectAtLeastOne')); return; }
+  var mode = document.getElementById('multiAIMode').value;
+  input.value = '';
+  // 显示用户消息
+  multiAIAddMsg('user', msg);
+  _multiAIHistory.push({role:'user', content:msg});
+  // 禁用输入
+  input.disabled = true;
+  var sendBtn = input.nextElementSibling;
+  if (sendBtn) sendBtn.disabled = true;
+  // 当前流式文本元素映射
+  var streamEls = {};
+  var modelReplies = {};
+  try {
+    var resp = await fetch('/api/multi-ai', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({mode:mode, models:models, message:msg, history:_multiAIHistory.slice(-10)})
+    });
+    var reader = resp.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = '';
+    while (true) {
+      var result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, {stream:true});
+      var lines = buffer.split('\n');
+      buffer = lines.pop();
+      var eventType = '';
+      for (var i=0; i<lines.length; i++) {
+        var line = lines[i];
+        if (line.startsWith('event: ')) eventType = line.slice(7);
+        else if (line.startsWith('data: ')) {
+          try {
+            var data = JSON.parse(line.slice(6));
+            if (eventType === 'start') {
+              // 开始一个模型的回复
+              if (!streamEls[data.model]) {
+                streamEls[data.model] = multiAIStreamMsg(data.model);
+                modelReplies[data.model] = '';
+              }
+            } else if (eventType === 'chunk') {
+              if (!streamEls[data.model]) {
+                streamEls[data.model] = multiAIStreamMsg(data.model);
+                modelReplies[data.model] = '';
+              }
+              modelReplies[data.model] += data.text;
+              streamEls[data.model].textContent = modelReplies[data.model];
+              var c = document.getElementById('multiAIChat');
+              c.scrollTop = c.scrollHeight;
+            } else if (eventType === 'done') {
+              // 模型完成
+            } else if (eventType === 'error') {
+              if (!streamEls[data.model]) {
+                streamEls[data.model] = multiAIStreamMsg(data.model);
+              }
+              streamEls[data.model].textContent = '❌ ' + (data.error||'Error');
+              streamEls[data.model].style.color = 'var(--red)';
+            } else if (eventType === 'complete') {
+              // 全部完成
+            }
+          } catch(e) {}
+        }
+      }
+    }
+    // 将回复加入历史
+    for (var m in modelReplies) {
+      if (modelReplies[m]) _multiAIHistory.push({role:'assistant', content:'['+m+']: '+modelReplies[m]});
+    }
+  } catch(e) {
+    multiAIAddMsg('system', '❌ ' + e.message);
+  }
+  // 恢复输入
+  input.disabled = false;
+  if (sendBtn) sendBtn.disabled = false;
+  input.focus();
 }
 
 // ── Memory Panel ──
@@ -2265,18 +2324,11 @@ async function switchHeaderModel(mid) {
     if (replySel) replySel.value = mid;
     updateRouteTag();
   } else {
-    // 单模型模式：顶部选的就是唯一模型
-    // ⭐ 群聊保护：如果在群聊里，只更新默认模型，不覆盖每个 Agent 的单独设置
-    var curChat = myChats.find(c => c.id === currentChat);
-    if (curChat && curChat.type === 'group') {
-      try { await api('/api/providers/default','PUT',{model:mid}); } catch(e) {}
-      toast(t('chat.groupModelHint') || '群聊中仅更新默认模型，AI成员的单独设置不受影响');
-    } else {
-      try { await api('/api/providers/default','PUT',{model:mid}); } catch(e) {}
-      try { const d = await api('/api/agents'); const list = d.agents || [];
-        for (const a of list) { try { await api('/api/agents/' + encodeURIComponent(a.id), 'PATCH', { model: mid, modelSource: 'manual' }); } catch(_){} }
-      } catch(e) {}
-    }
+    // 单模型模式：顶部选的就是唯一模型，更新所有 Agent
+    try { await api('/api/providers/default','PUT',{model:mid}); } catch(e) {}
+    try { const d = await api('/api/agents'); const list = d.agents || [];
+      for (const a of list) { try { await api('/api/agents/' + encodeURIComponent(a.id), 'PATCH', { model: mid, modelSource: 'manual' }); } catch(_){} }
+    } catch(e) {}
     document.getElementById('routeModeTag').style.display = 'none';
   }
 }

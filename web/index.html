@@ -506,10 +506,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
     <div class="content-panel active" id="panel-chat">
       <div class="chat-title-bar">
         <span class="chat-title" id="chatTitle"></span>
-        <select id="chatModeSelect" onchange="setChatMode(this.value)" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px;margin-left:8px">
-          <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
-        </select>
-        <span style="font-size:10px;color:var(--text3);margin-left:auto" id="ctxInfo"></span>
+        <span style="font-size:10px;color:var(--text3)" id="ctxInfo"></span>
       </div>
       <div class="messages" id="messages">
         <div class="empty" data-i18n="chat.selectOrCreate">选择或创建一个会话</div>
@@ -823,6 +820,7 @@ function switchTheme(name,btn){
     <div class="section">
       <h3 data-i18n="settings.modelMgr">⚙️ 模型管理</h3>
       <button onclick="showAgentMgmt()" class="btn" style="font-size:12px;width:100%;margin-top:6px" data-i18n="settings.agentMgmt">🤖 Agent 管理</button>
+      <button onclick="showMultiAI()" class="btn" style="font-size:12px;width:100%;margin-top:6px" data-i18n="settings.multiAI">🔀 多AI交互</button>
     </div>
     <div class="section">
       <h3 data-i18n="settings.notify">🔔 通知</h3>
@@ -929,33 +927,6 @@ function switchTheme(name,btn){
     <div style="padding:6px 10px;border-bottom:1px solid var(--border)"><button class="btn-sm" onclick="loadAvailableMembers()" data-i18n="members.addMember">＋ 添加成员</button></div>
     <div id="availableMembers" style="border-bottom:1px solid var(--border)"></div>
     <div id="membersList"></div>
-  </div>
-</div>
-
-<!-- ═══ CREATE GROUP DIALOG ═══ -->
-<div id="createGroupOverlay" class="panel-overlay" onclick="hideCreateGroupDialog()"></div>
-<div class="settings-panel" id="createGroupPanel" style="left:0;right:auto;max-width:420px">
-  <div class="panel-header"><h2 data-i18n="social.createGroup">＋ 创建群聊</h2><button onclick="hideCreateGroupDialog()">×</button></div>
-  <div class="panel-body" style="padding:12px">
-    <!-- 群名输入 -->
-    <input id="groupNameInput" data-i18n-ph="social.teamNamePh" placeholder="输入群聊名称..." style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px;margin-bottom:10px" onkeydown="if(event.key==='Enter')confirmCreateGroup()">
-    <!-- 模式选择 -->
-    <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px" data-i18n="social.selectMode">协作模式</label>
-    <select id="groupModeSelect" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px;margin-bottom:10px">
-      <option value="free" data-i18n="mode.free">自由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="chain" data-i18n="mode.chain">链式</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option><option value="route" data-i18n="mode.route">路由</option>
-    </select>
-    <!-- 全选/取消全选 -->
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-      <label style="font-size:11px;color:var(--text3)" data-i18n="social.selectAiMembers">选择 AI 成员</label>
-      <div style="display:flex;gap:6px">
-        <button class="btn-sm" onclick="selectAllAgents()" style="font-size:10px;padding:2px 8px" data-i18n="social.selectAll">全选</button>
-        <button class="btn-sm" onclick="deselectAllAgents()" style="font-size:10px;padding:2px 8px" data-i18n="social.deselectAll">取消全选</button>
-      </div>
-    </div>
-    <!-- Agent 列表 + 模型下拉 -->
-    <div id="groupAgentList" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-bottom:10px"></div>
-    <!-- 创建按钮 -->
-    <button class="btn primary" onclick="confirmCreateGroup()" style="width:100%;padding:8px;font-size:13px" data-i18n="social.create">创建</button>
   </div>
 </div>
 <div id="memoryOverlay" class="panel-overlay" onclick="closeMemoryPanel()"></div>
@@ -1076,6 +1047,9 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 
 <!-- [修复] 补齐JS依赖的缺失DOM元素 -->
 <div id="availableMembers" style="display:none"></div>
+<select id="chatModeSelect" onchange="setChatMode(this.value)" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px;margin-right:8px">
+                <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
+              </select>
 <div id="chatSearchBar" style="display:none"></div>
 <div id="chatSearchInput" style="display:none"></div>
 <div id="chatSearchResults" style="display:none"></div>
@@ -1128,6 +1102,40 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
       <button class="btn-sm" style="color:var(--red);border-color:var(--red)" onclick="batchDeleteDefaultAgents()" data-i18n="agentMgmt.batchClean">🧹 批量清理重名AI助手</button>
     </div>
     <div id="agentMgmtList" style="max-height:500px;overflow-y:auto"></div>
+  </div>
+</div>
+
+<!-- ═══ MULTI-AI INTERACT ═══ -->
+<div id="multiAIOverlay" class="panel-overlay" onclick="hideMultiAI()"></div>
+<div class="settings-panel" id="multiAIPanel" style="max-width:640px">
+  <div class="panel-header"><h2 data-i18n="multiAI.title">🔀 多AI交互</h2><button onclick="hideMultiAI()">×</button></div>
+  <div class="panel-body" style="padding:10px">
+    <div style="margin-bottom:8px">
+      <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px" data-i18n="multiAI.mode">协作模式</label>
+      <select id="multiAIMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px">
+        <option value="free" data-i18n="mode.free">自由</option>
+        <option value="debate" data-i18n="mode.debate">辩论</option>
+        <option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
+        <option value="roundtable" data-i18n="mode.roundtable">圆桌</option>
+        <option value="chain" data-i18n="mode.chain">链式</option>
+        <option value="vote" data-i18n="mode.vote">投票</option>
+      </select>
+    </div>
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <label style="font-size:11px;color:var(--text3)" data-i18n="multiAI.selectModels">选择模型（可多选）</label>
+        <div style="display:flex;gap:4px">
+          <button class="btn-sm" onclick="multiAISelectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.selectAll">全选</button>
+          <button class="btn-sm" onclick="multiAIDeselectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.deselectAll">取消全选</button>
+        </div>
+      </div>
+      <div id="multiAIModels" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div>
+    </div>
+    <div id="multiAIChat" style="height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:8px;font-size:13px;background:var(--bg)"></div>
+    <div style="display:flex;gap:6px">
+      <input id="multiAIInput" data-i18n-ph="multiAI.inputPh" placeholder="输入消息..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')multiAISend()">
+      <button class="btn primary" onclick="multiAISend()" data-i18n="common.send">发送</button>
+    </div>
   </div>
 </div>
 </body>

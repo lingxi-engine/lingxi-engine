@@ -623,11 +623,6 @@ export function listAgents() {
   return queryObjects("SELECT * FROM agents");
 }
 
-export function deleteAgent(id: string) {
-  const d = getDB();
-  d.run('DELETE FROM agents WHERE id = ?', [id]);
-}
-
 // Bug #14 修复：SQL 参数用数组传递，不再用 spread
 export function updateAgent(agentId: string, updates: Record<string, any>) {
   const allowed = ['personality', 'memory_summary', 'memory_facts', 'status', 'model', 'display_name'];
@@ -750,10 +745,6 @@ export function removeParticipant(chatId: string, userId: string, agentId?: stri
   } else {
     _db.run("DELETE FROM participants WHERE chat_id = ? AND user_id = ?", [chatId, userId]);
   }
-}
-
-export function removeParticipantByAgentId(agentId: string) {
-  _db.run("DELETE FROM participants WHERE agent_id = ?", [agentId]);
 }
 
 // ———— Messages ————
@@ -1118,7 +1109,6 @@ export class DB {
   }
   getAgent(id: string) { return getAgent(id); }
   listAgents() { return listAgents(); }
-  deleteAgent(id: string) { return deleteAgent(id); }
   updateAgent(agentId: string, updates: Record<string, any>) {
     return updateAgent(agentId, updates);
   }
@@ -1140,9 +1130,6 @@ export class DB {
   setChatMode(chatId: string, mode: string) { return setChatMode(chatId, mode); }
   removeParticipant(chatId: string, userId: string, agentId?: string) {
     return removeParticipant(chatId, userId, agentId);
-  }
-  removeParticipantByAgentId(agentId: string) {
-    return removeParticipantByAgentId(agentId);
   }
   addMessage(msg: DBMessage) { return addMessage(msg); }
   listMessages(chatId: string, limit = 100) { return listMessages(chatId, limit); }

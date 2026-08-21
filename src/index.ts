@@ -1017,7 +1017,7 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
         return ps.some((p: any) => p.user_id === clientId);
       });
       if (userChats.length > 0) return;
-      const agent = manager.register(clientId, clientId + '的AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
+      const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
       const chatId = 'chat-' + clientId;
       db.createChat(chatId, 'private');
       db.addParticipant('p-' + clientId + '-user', chatId, clientId, undefined, 'owner');
@@ -1028,10 +1028,9 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
     const raw = getDB();
     const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL'); ms.step(); const maxId = ms.getAsObject().m || 9999; ms.free();
     const nextId = maxId + 1;
-    const userDisplay = '用户' + nextId;
-    db.createUser(clientId, userDisplay);
-    raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', userDisplay, clientId]);
-    const agent = manager.register(clientId, userDisplay + '的AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
+    db.createUser(clientId, '用户' + nextId);
+    raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', '用户' + nextId, clientId]);
+    const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
     const chatId = 'chat-' + clientId;
     db.createChat(chatId, 'private');
     db.addParticipant('p-' + clientId + '-user', chatId, clientId, undefined, 'owner');
