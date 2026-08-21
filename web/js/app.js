@@ -1896,11 +1896,11 @@ async function renderMembers() {
       for (const a of (ad.agents||[])) agentMap[a.id] = a;
     } catch(e) {}
     c.innerHTML = members.map(m => {
-      const name = m.display_name||m.user_id||m.agent_id||'?';
+      const agentInfo = agentMap[m.agent_id] || {};
+      const name = agentInfo.displayName || m.display_name || m.user_id || m.agent_id || '?';
       const icon = m.agent_id ? '🤖' : '👤';
       // AI 成员渲染模型选择下拉框
       if (m.agent_id) {
-        const agentInfo = agentMap[m.agent_id] || {};
         const currentModel = agentInfo.model || '';
         const modelOpts = models.map(md => {
           const label = (md.providerName||md.provider||'') + ' / ' + md.id;

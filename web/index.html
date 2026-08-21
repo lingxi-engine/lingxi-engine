@@ -922,9 +922,9 @@ function switchTheme(name,btn){
 <div class="settings-panel" id="membersPanel" style="left:0;right:auto">
   <div class="panel-header"><h2 data-i18n="members.title">👥 群成员</h2><button onclick="hideMembersPanel()">×</button></div>
   <div class="panel-body">
+    <div style="padding:6px 10px;border-bottom:1px solid var(--border)"><button class="btn-sm" onclick="loadAvailableMembers()" data-i18n="members.addMember">＋ 添加成员</button></div>
+    <div id="availableMembers" style="border-bottom:1px solid var(--border)"></div>
     <div id="membersList"></div>
-    <div id="availableMembers" style="margin-top:8px"></div>
-    <button class="btn" style="width:100%;margin-top:8px" onclick="loadAvailableMembers()" data-i18n="members.addMember">＋ 添加成员</button>
   </div>
 </div>
 <div id="memoryOverlay" class="panel-overlay" onclick="closeMemoryPanel()"></div>

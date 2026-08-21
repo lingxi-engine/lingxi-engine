@@ -42,7 +42,6 @@
     'common.name': '名称',
     'common.none': '暂无',
     'common.delete': '删除',
-    'common.remove': '移除',
     'common.confirm': '确定',
 
     'nav.switchTheme': '切换主题配色',
@@ -377,11 +376,6 @@
     'social.orchestrateFail': '智能体编排失败',
     'social.orchestrateFailShort': '编排失败',
     'members.noneAvailable': '无可添加成员',
-    'members.addMember': '＋ 添加成员',
-    'chat.modelSet': '模型已设为 {model}',
-    'toast.removed': '已移除',
-    'err.removeFail': '移除失败',
-    'settings.defaultModel': '默认模型',
     'memory.noAI': '当前聊天无AI',
     'memory.none': '暂无记忆',
     'memory.reflecting': 'AI 反思压缩中...',
@@ -726,6 +720,12 @@
     'right.confirmDeleteGoal': '确定删除此目标？',
     'social.loginToView': '请先登录后查看好友',
     'social.loginToAdd': '请先登录后加好友',
+    'common.remove': '移除',
+    'settings.defaultModel': '默认模型',
+    'chat.modelSet': '✅ 模型已设为 {model}',
+    'toast.removed': '已移除成员',
+    'err.removeFail': '移除失败',
+    'members.addMember': '＋ 添加成员',
   };
 
   /* ─────────────── 繁體中文 ─────────────── */
@@ -1423,6 +1423,12 @@
     'right.confirmDeleteGoal': '確定刪除此目標？',
     'social.loginToView': '請先登錄後查看好友',
     'social.loginToAdd': '請先登錄後加好友',
+    'common.remove': '移除',
+    'settings.defaultModel': '預設模型',
+    'chat.modelSet': '✅ 模型已設為 {model}',
+    'toast.removed': '已移除成員',
+    'err.removeFail': '移除失敗',
+    'members.addMember': '＋ 新增成員',
   };
 
   /* ─────────────── English ─────────────── */
@@ -2120,6 +2126,12 @@
     'right.confirmDeleteGoal': 'Delete this goal?',
     'social.loginToView': 'Please log in to view friends',
     'social.loginToAdd': 'Please log in to add friends',
+    'common.remove': 'Remove',
+    'settings.defaultModel': 'Default Model',
+    'chat.modelSet': '✅ Model set to {model}',
+    'toast.removed': 'Member removed',
+    'err.removeFail': 'Failed to remove',
+    'members.addMember': '＋ Add Member',
   };
 
   /* ─────────────── 日本語 ─────────────── */
@@ -2817,6 +2829,12 @@
     'right.confirmDeleteGoal': 'この目標を削除しますか？',
     'social.loginToView': '友達を見るにはまずログインしてください',
     'social.loginToAdd': '友達を追加するにはまずログインしてください',
+    'common.remove': '削除',
+    'settings.defaultModel': 'デフォルトモデル',
+    'chat.modelSet': '✅ モデルを {model} に設定しました',
+    'toast.removed': 'メンバーを削除しました',
+    'err.removeFail': '削除に失敗しました',
+    'members.addMember': '＋ メンバー追加',
   };
 
   /* ─────────────── 한국어 ─────────────── */
@@ -3514,6 +3532,12 @@
     'right.confirmDeleteGoal': '이 목표를 삭제할까요?',
     'social.loginToView': '친구를 보려면 먼저 로그인하세요',
     'social.loginToAdd': '친구를 추가하려면 먼저 로그인하세요',
+    'common.remove': '제거',
+    'settings.defaultModel': '기본 모델',
+    'chat.modelSet': '✅ 모델이 {model}(으)로 설정되었습니다',
+    'toast.removed': '멤버가 제거되었습니다',
+    'err.removeFail': '제거 실패',
+    'members.addMember': '＋ 멤버 추가',
   };
 
   /* ─────────────── Tiếng Việt ─────────────── */
@@ -4211,6 +4235,12 @@
     'right.confirmDeleteGoal': 'Xóa mục tiêu này?',
     'social.loginToView': 'Vui lòng đăng nhập để xem bạn bè',
     'social.loginToAdd': 'Vui lòng đăng nhập để thêm bạn bè',
+    'common.remove': 'Xóa',
+    'settings.defaultModel': 'Mô hình mặc định',
+    'chat.modelSet': '✅ Đã đặt mô hình thành {model}',
+    'toast.removed': 'Đã xóa thành viên',
+    'err.removeFail': 'Xóa thất bại',
+    'members.addMember': '＋ Thêm thành viên',
   };
 
   /* ─────────────── ไทย ─────────────── */
@@ -4908,6 +4938,12 @@
     'right.confirmDeleteGoal': 'ลบเป้่าหมายน้ี?',
     'social.loginToView': 'กรุณาเข้้าส่่ระบบเพื่่อด้เพื่่อน',
     'social.loginToAdd': 'กรุณาเข้้าส่่ระบบเพื่่อเพิ่่มเพื่่อน',
+    'common.remove': 'ลบ',
+    'settings.defaultModel': 'โมเดลเริ่มต้น',
+    'chat.modelSet': '✅ ตั้งโมเดลเป็น {model}',
+    'toast.removed': 'ลบสมาชิกแล้ว',
+    'err.removeFail': 'ลบไม่สำเร็จ',
+    'members.addMember': '＋ เพิ่มสมาชิก',
   };
 
   var DICTS = { 'zh': zh, 'zh-TW': zhTW, 'en': en, 'ja': ja, 'ko': ko, 'vi': vi, 'th': th };
