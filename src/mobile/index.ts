@@ -456,7 +456,7 @@ function ensureMobileUserSetup(clientId: string, db: any, manager: any, toolRegi
       db.createUser(clientId, '移动端用户');
     }
     // 创建默认 Agent + 聊天
-    const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手。', 'semi');
+    const agent = manager.register(clientId, clientId + '的AI助手', '你是一个友好实用的AI助手。', 'semi');
     const chatId = 'chat-' + clientId;
     db.createChat(chatId, 'private');
     db.addParticipant('p-' + clientId + '-user', chatId, clientId, undefined, 'owner');

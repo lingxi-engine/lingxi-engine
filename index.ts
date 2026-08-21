@@ -1696,6 +1696,18 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
+  app.delete('/api/agents/:id', requireAuth, (req, res) => {
+    try {
+      const agentId = String(req.params.id);
+      const agent = manager.get(agentId);
+      if (!agent) return res.status(404).json({ error: 'Agent not found' });
+      manager.delete(agentId);
+      // 同时清理该 agent 参与的群成员记录
+      try { db.removeParticipantByAgentId(agentId); } catch(e) {}
+      res.json({ ok: true, deleted: agentId });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ── Agent 绑定技能 API ──
   app.post('/api/agents/:id/skills', requireAuth, (req, res) => {
     try {

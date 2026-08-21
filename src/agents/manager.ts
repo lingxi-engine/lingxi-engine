@@ -120,4 +120,8 @@ export class AgentManager {
     if (!agent) return;
     (this.db as any).db.prepare('UPDATE agents SET status=? WHERE id=?').run(status, agentId);
   }
+
+  delete(agentId: string) {
+    this.db.deleteAgent(agentId);
+  }
 }
