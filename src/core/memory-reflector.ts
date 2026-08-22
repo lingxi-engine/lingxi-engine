@@ -71,7 +71,7 @@ ${rawSummary}
         max_tokens: 1500,
       });
 
-      const content = response.choices[0].message.content || '';
+      const content = (response.choices[0].message as any).content || (response.choices[0].message as any).reasoning_content || '';
 
       // 尝试解析 JSON
       const parsed = this.parseReflectionJSON(content);

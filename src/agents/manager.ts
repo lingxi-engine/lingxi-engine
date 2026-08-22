@@ -13,6 +13,7 @@ export interface AgentDTO {
   skills: string[];
   memorySummary: string;
   memoryFacts: Record<string, string>;
+  personalityDims: Record<string, number>;
   status: string;
   createdAt: number;
 }
@@ -28,6 +29,7 @@ interface AgentRow {
   skills: string;
   memory_summary: string;
   memory_facts: string;
+  personality_dims: string;
   status: string;
   created_at: number;
 }
@@ -47,8 +49,9 @@ function rowToDTO(row: any): AgentDTO {
       skills: safeArr(row[7]),
       memorySummary: row[8] || '',
       memoryFacts: safeObj(row[9]),
-      status: row[10],
-      createdAt: row[11],
+      personalityDims: safeObj(row[10]),
+      status: row[11],
+      createdAt: row[12],
     };
   }
   return {
@@ -62,6 +65,7 @@ function rowToDTO(row: any): AgentDTO {
     skills: safeArr(row.skills),
     memorySummary: row.memory_summary || '',
     memoryFacts: safeObj(row.memory_facts),
+    personalityDims: safeObj(row.personality_dims),
     status: row.status,
     createdAt: row.created_at,
   };
@@ -71,7 +75,7 @@ function safeArr(v: any): string[] {
   if (!v) return [];
   try { const r = JSON.parse(v); return Array.isArray(r) ? r : []; } catch { return []; }
 }
-function safeObj(v: any): Record<string, string> {
+function safeObj(v: any): Record<string, any> {
   if (!v) return {};
   try { const r = JSON.parse(v); return r && typeof r === 'object' ? r : {}; } catch { return {}; }
 }

@@ -95,6 +95,13 @@ export interface RunToolsOptions {
   signal?: AbortSignal;
   /** P1-6: 摘要专用模型（轻量），未设置时用主 model */
   summaryModel?: string;
+  /**
+   * AGI 持续执行模式：true 时，AI 输出文字但没调工具时不会立即结束，
+   * 而是强制追问"任务是否真的完成？"直到出现明确的完成信号或达到额外追问上限。
+   * 解决"干一点就停"的根因——AI 做了一部分后主观判定完成导致回合提前结束。
+   * 普通闲聊不开启（避免一问一答变啰嗦）。
+   */
+  requireCompletion?: boolean;
   onToolCall?: (e: ToolCallEvent) => void;
   onToolResult?: (e: ToolResultEvent) => void;
   onThink?: (thinkChunk: string) => void;
@@ -157,6 +164,40 @@ export function stripDsmlMarkup(text: string): string {
     .replace(/<\/?｜{1,2}DSML｜{1,2}[^>]*>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * 判断 AI 的输出是否带有明确的"完成任务"信号
+ * 用于持续执行模式：只有当 AI 明确宣告完成时才允许结束回合。
+ * 注意：反问句（"需要我继续吗？""还要做什么吗？"）不算完成。
+ */
+function isCompletionSignal(content: string): boolean {
+  if (!content) return false;
+  const t = content.trim();
+  // 明确完成信号
+  const donePatterns = [
+    /(任务|工作|全部|所有|目标)(已经|已|均已|都)(完成|做完|搞定|结束|处理完|执行完)/,
+    /^任务完成/,
+    /全部完成/,
+    /已全部完成/,
+    /均已完成/,
+    /(?:所有|全部)验收(?:标准|条件)(?:已|均已)?(?:满足|达到|完成)/,
+    /(?:done|completed|finished|all done)\.?\s*$/i,
+  ];
+  for (const p of donePatterns) {
+    if (p.test(t)) return true;
+  }
+  // 反问/请示（这些不是完成，是停下来等用户）
+  const askingPatterns = [
+    /(需要我|要我|是否需要|要不要)(继续|接着|下一步)/,
+    /(还需要|还需要做什么|还有什么需要)/,
+    /是否(需要|要我)/,
+    /\?\s*$/,
+  ];
+  for (const p of askingPatterns) {
+    if (p.test(t)) return false;
+  }
+  return false;
 }
 
 /**
@@ -290,6 +331,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     temperature = 0.7,
     maxTokens = 16384,
     signal,
+    requireCompletion = false,
     onToolCall,
     onToolResult,
     onThink,
@@ -305,6 +347,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
+  // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
+  const MAX_IDLE_ROUNDS = 3;
+  let idleRounds = 0;
 
   const availableTools = buildToolsForAgent(registry, agentId);
   const openaiTools = availableTools.length > 0 ? buildOpenAITools(availableTools) : undefined;
@@ -425,9 +470,23 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     // 没有工具调用，AI 给出了最终回复
     if (toolCalls.length === 0) {
+      const textContent = stripDsmlMarkup(assistantMsg.content || "");
       result.messages.push(assistantEntry);
-      // ⭐ 最终回复若混入 DSML 标记则剥离（剥离后为空会走下方兜底重问）
-      result.finalContent = stripDsmlMarkup(assistantMsg.content || "");
+
+      // ⭐ AGI 持续执行：任务模式（requireCompletion=true）下，AI 只出文字不调工具时，
+      // 先判断是否真的"完成"了——含明确完成信号才停；否则注入追问强制继续。
+      // 这是解决"干一点就停"的核心：不能把"AI 这轮没调工具"当成"任务完成"。
+      if (requireCompletion && !isCompletionSignal(textContent) && idleRounds < MAX_IDLE_ROUNDS) {
+        idleRounds += 1;
+        const nudge = idleRounds === 1
+          ? "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。"
+          : `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请明确输出"任务完成"并说明已满足的条件；否则请继续调用工具推进剩余工作，不要停。`;
+        result.messages.push({ role: "user", content: nudge } as ChatMessage);
+        console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}），注入追问继续`);
+        continue;
+      }
+
+      result.finalContent = textContent;
       break;
     }
 

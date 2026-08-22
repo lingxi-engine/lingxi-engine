@@ -149,6 +149,7 @@ function _dbInit(db: any) {
       skills TEXT NOT NULL DEFAULT '[]',
       memory_summary TEXT DEFAULT '',
       memory_facts TEXT DEFAULT '{}',
+      personality_dims TEXT DEFAULT '{}',
       status TEXT NOT NULL DEFAULT 'offline',
       created_at INTEGER NOT NULL
     );
@@ -625,7 +626,7 @@ export function listAgents() {
 
 // Bug #14 修复：SQL 参数用数组传递，不再用 spread
 export function updateAgent(agentId: string, updates: Record<string, any>) {
-  const allowed = ['personality', 'memory_summary', 'memory_facts', 'status', 'model', 'display_name'];
+  const allowed = ['personality', 'memory_summary', 'memory_facts', 'personality_dims', 'status', 'model', 'display_name'];
   const sets: string[] = [];
   const vals: any[] = [];
   for (const [k, v] of Object.entries(updates)) {
@@ -762,6 +763,16 @@ export function addMessage(msg: DBMessage) {
 
 export function listMessages(chatId: string, limit = 100) {
   return queryObjects("SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?", [chatId, limit]).reverse();
+}
+
+/** 获取指定 Agent 最近的消息 */
+export function getRecentMessages(agentId: string, limit = 20): Array<{ content: string; timestamp: number }> {
+  return queryObjects(
+    `SELECT content, timestamp FROM messages 
+     WHERE sender_id = ? OR sender_type = 'agent' AND sender_id = ?
+     ORDER BY timestamp DESC LIMIT ?`,
+    [agentId, agentId, limit]
+  ).reverse();
 }
 
 // —— 验证码 ——
@@ -1134,6 +1145,7 @@ export class DB {
   }
   addMessage(msg: DBMessage) { return addMessage(msg); }
   listMessages(chatId: string, limit = 100) { return listMessages(chatId, limit); }
+  getRecentMessages(agentId: string, limit = 20) { return getRecentMessages(agentId, limit); }
   saveVerificationCode(email: string, code: string, username?: string, expiresAtMs?: number) {
     return saveVerificationCode(email, code, username, expiresAtMs);
   }

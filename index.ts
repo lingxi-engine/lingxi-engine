@@ -87,6 +87,8 @@ import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
+import { createEvaluationRoutes } from './src/routes/evaluation.js';
+import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
 
@@ -2580,6 +2582,10 @@ setSearchManager(searchManagerInstance);
   const authIfMatch = (pattern: RegExp) => (req: any, res: any, next: any) =>
     pattern.test(req.path) ? requireAuth(req, res, next) : next();
   app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
+  app.use('/api', authIfMatch(/^\/evaluations(\/|$)/), createEvaluationRoutes({ router, db } as any));  // AGI: 评测体系
+
+  // ── AGI 能力（辩论/思考树/世界模型/人格）──
+  app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));
 
   // ── 个人资料 API（GET/PUT /api/profile、头像上传）──
   app.use('/api', authIfMatch(/^\/profile(\/|$)/), createProfileRoutes({ db, dataDir } as any));

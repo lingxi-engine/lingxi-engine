@@ -16,6 +16,7 @@ export interface Agent {
   memory_summary?: string;
   memoryFacts?: Record<string, string>;
   memory_facts?: string | Record<string, string>;
+  personalityDims?: Record<string, number>;
 }
 
 // ── Chat Participant ──
@@ -76,6 +77,8 @@ export interface Database {
   createUser(id: string, displayName: string): unknown;
   appendMemorySummary(agentId: string, summary: string): void;
   updateAgentMemory(agentId: string, summary: string, facts: Record<string, string>): void;
+  updateAgent(agentId: string, updates: Record<string, any>): void;
+  getRecentMessages(agentId: string, limit: number): Array<{ content: string; timestamp: number }>;
   listRagDocuments?(): unknown[];
   listRagChunks?(): unknown[];
   insertRagDocument?(doc: unknown): void;

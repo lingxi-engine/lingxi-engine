@@ -528,7 +528,7 @@ function shouldAutoDecompose(content: string): boolean {
   if (/[?？]\s*$/.test(trimmed)) return false;
   if (/^(为什么|为啥|怎么|如何|是什么|什么是|是不是|能不能|可不可以|有没有|哪个|哪些|多少|who|what|why|how|when|where|is |are |can |do |does )/i.test(trimmed)) return false;
   // ⭐ 排除简短偏好/指令类消息（如"以后回答都要简洁"），没有可拆分的多步动作
-  if (trimmed.length < 12 && !/(修复|修|部署|打包|上传|重构|审计)/.test(trimmed)) return false;
+  if (trimmed.length < 12 && !/(修复|修|部署|打包|上传|重构|审计|分析|写|生成|优化|迁移|解决)/.test(trimmed)) return false;
   const lower = content.toLowerCase();
   // 关键词匹配
   for (const kw of COMPLEX_KEYWORDS) {
@@ -537,7 +537,9 @@ function shouldAutoDecompose(content: string): boolean {
   // 较长消息（>80字）+ 包含多个操作动词 → 多步骤任务
   if (content.length > 80) {
     const actionCount = ['修复', '修改', '添加', '删除', '更新', '检查', '实现', '创建', '配置', '部署', '打包', '上传', '验证',
-                         'fix', 'add', 'remove', 'update', 'check', 'implement', 'create', 'config', 'deploy', 'package', 'upload']
+                         '分析', '编写', '生成', '优化', '迁移', '整理', '重构', '审计',
+                         'fix', 'add', 'remove', 'update', 'check', 'implement', 'create', 'config', 'deploy', 'package', 'upload',
+                         'analyze', 'analyse', 'write', 'generate', 'optimize', 'migrate', 'refactor']
       .filter(v => lower.includes(v)).length;
     if (actionCount >= 2) return true;
   }
