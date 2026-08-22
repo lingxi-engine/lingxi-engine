@@ -2150,13 +2150,55 @@ setSearchManager(searchManagerInstance);
         if (!cr) throw new Error('找不到模型: ' + modelId);
         const msgs = buildMessages(modelId, sys, extra);
         let full = '';
+        // 获取通用助手的工具列表
+        const tools = toolRegistry ? toolRegistry.listToolsForSkills(['general-assistant']).map((t: any) => ({
+          type: 'function',
+          function: { name: t.name, description: t.description, parameters: { type: 'object', properties: t.parameters.properties || {}, required: t.parameters.required || [] } }
+        })) : undefined;
         try {
-          const stream = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, stream: true, temperature: 0.7 });
-          for await (const chunk of stream as any) { const d = chunk.choices?.[0]?.delta?.content; if (d) { full += d; send('chunk', { model: modelId, text: d }); } }
+          const stream = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, stream: true, temperature: 0.7, tools: tools as any });
+          for await (const chunk of stream as any) {
+            const d = chunk.choices?.[0]?.delta?.content;
+            if (d) { full += d; send('chunk', { model: modelId, text: d }); }
+            // 处理工具调用
+            const toolCalls = chunk.choices?.[0]?.delta?.tool_calls;
+            if (toolCalls && toolRegistry) {
+              for (const tc of toolCalls) {
+                if (tc.function?.name && tc.function?.arguments) {
+                  try {
+                    const args = JSON.parse(tc.function.arguments || '{}');
+                    const result = await toolRegistry.execute({ id: tc.id || 'multi-ai-tool', name: tc.function.name, arguments: args });
+                    send('tool', { model: modelId, tool: tc.function.name, result: JSON.stringify(result).slice(0, 200) });
+                    msgs.push({ role: 'assistant', tool_calls: [tc] });
+                    msgs.push({ role: 'tool', tool_call_id: tc.id || 'multi-ai-tool', content: JSON.stringify(result).slice(0, 4000) });
+                  } catch(e: any) { send('tool', { model: modelId, tool: tc.function.name, error: e.message }); }
+                }
+              }
+            }
+          }
         } catch (e: any) {
-          const resp = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, temperature: 0.7 });
+          const resp = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, temperature: 0.7, tools: tools as any });
           full = resp.choices?.[0]?.message?.content || '';
-          send('chunk', { model: modelId, text: full });
+          // 非流式也处理工具调用
+          const respToolCalls = resp.choices?.[0]?.message?.tool_calls;
+          if (respToolCalls && toolRegistry) {
+            for (const tc of respToolCalls) {
+              try {
+                const args = JSON.parse(tc.function.arguments || '{}');
+                const result = await toolRegistry.execute({ id: tc.id || 'multi-ai-tool', name: tc.function.name, arguments: args });
+                send('tool', { model: modelId, tool: tc.function.name, result: JSON.stringify(result).slice(0, 200) });
+                msgs.push({ role: 'assistant', tool_calls: [tc] });
+                msgs.push({ role: 'tool', tool_call_id: tc.id || 'multi-ai-tool', content: JSON.stringify(result).slice(0, 4000) });
+              } catch(e2: any) { send('tool', { model: modelId, tool: tc.function.name, error: e2.message }); }
+            }
+            // 如果有工具调用，再请求一次让模型基于工具结果回复
+            if (respToolCalls.length > 0) {
+              const resp2 = await cr.client.chat.completions.create({ model: cr.resolvedModel, messages: msgs, temperature: 0.7 });
+              full = resp2.choices?.[0]?.message?.content || full;
+              send('chunk', { model: modelId, text: full });
+            }
+          }
+          if (!full) { full = resp.choices?.[0]?.message?.content || ''; send('chunk', { model: modelId, text: full }); }
         }
         send('done', { model: modelId, full });
         return full;

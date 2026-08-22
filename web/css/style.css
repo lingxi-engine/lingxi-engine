@@ -148,7 +148,7 @@ body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14
 /* ═══ OVERLAYS ═══ */
 .panel-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999}
 .panel-overlay.open{display:block}
-.settings-panel{position:fixed;top:0;right:0;width:400px;height:100vh;background:var(--bg2);border-left:1px solid var(--border);z-index:1000;overflow-y:auto;display:none}
+.settings-panel{position:fixed;top:0;right:0;width:400px;min-width:360px;max-width:90vw;height:100vh;background:var(--bg2);border-left:1px solid var(--border);z-index:1000;overflow-y:auto;display:none}
 .settings-panel.open{display:block}
 .panel-header{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1}
 .panel-header h2{font-size:16px}
