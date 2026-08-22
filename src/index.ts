@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Project Hub - 主入口
  */
 // 必须最先加载 .env：ESM 中 import 会被提升，若在模块体中调用 dotenvConfig()，
@@ -27,7 +27,7 @@ import { AIHub } from './src/ai/hub.js';
 import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { AgentManager } from './src/agents/manager.js';
 import { handleWSMessage, wsSubscriptions, processUserMessage } from './src/core/ws-handler.js';
-import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage, setAgentsProvider, setUsersProvider } from './src/core/instance-mesh.js';
+import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage, setUsersProvider } from './src/core/instance-mesh.js';
 import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
 import { verifyLanRequest } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
@@ -78,6 +78,7 @@ import { createSystemRoutes } from './src/routes/system.js';
 import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
+import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createChannelRoutes } from './src/routes/channel.js';
 import { createAdminRoutes } from './src/routes/admin.js';
 // CLI 通过 bin 入口直接运行，不需要导入
@@ -580,6 +581,7 @@ setSearchManager(searchManagerInstance);
   app.use('/api', requireAuth, createGoalOutcomeRoutes(ctx));
   app.use('/api', requireAuth, createProfileRoutes(ctx));
   app.use('/api', requireAuth, createMiscRoutes(ctx));
+  app.use('/api', requireAuth, createEvaluationRoutes(ctx));  // AGI P0: 评测体系查询接口
   app.use('/api', requireAuth, createChannelRoutes(ctx));
   // v2.0.7 安全修复：admin 接口用 adminAuth 而非 requireAuth
   app.use('/api', adminAuth, createAdminRoutes(ctx));
@@ -820,7 +822,7 @@ setSearchManager(searchManagerInstance);
     res.json({ ok: true, group: g });
   });
   app.post('/api/lan/group-mode', requireAuth, async (req, res) => {
-    try { res.json(await lanSocial.setGroupMode(req.body.groupId, req.body.mode, (req as any).user?.sub)); }
+    try { res.json(await lanSocial.setGroupMode(req.body.groupId, req.body.mode)); }
     catch (err: any) { res.status(400).json({ error: err.message }); }
   });
   app.post('/api/lan/group-message', requireAuth, async (req, res) => {

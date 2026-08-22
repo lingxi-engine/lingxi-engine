@@ -1910,7 +1910,7 @@ async function renderMembers() {
         return '<div style="padding:8px 14px;border-bottom:1px solid #222">'
           + '<div style="display:flex;justify-content:space-between;align-items:center">'
           + '<span>' + icon + ' ' + esc(name) + '</span>'
-          + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.agent_id)+'\')">'+t('common.remove')+'</button>'
+          + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.agent_id)+'\',true)">'+t('common.remove')+'</button>'
           + '</div>'
           + '<select onchange="setAgentModel(\''+esc(m.agent_id)+'\',this.value)" style="width:100%;margin-top:4px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px">'
           + '<option value="">'+t('settings.defaultModel')+'</option>'
@@ -1921,7 +1921,7 @@ async function renderMembers() {
       // 普通用户成员
       return '<div style="padding:8px 14px;border-bottom:1px solid #222;display:flex;justify-content:space-between;align-items:center">'
         + '<span>' + icon + ' ' + esc(name) + '</span>'
-        + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.user_id||'')+'\')">'+t('common.remove')+'</button>'
+        + '<button class="btn-sm" style="color:var(--red);border-color:var(--red);font-size:10px;padding:2px 6px" onclick="removeMember(\''+esc(m.user_id||'')+'\',false)">'+t('common.remove')+'</button>'
         + '</div>';
     }).join('');
   } catch(e) { c.innerHTML='<div style="padding:10px;color:#555">'+t('err.loadFail')+'</div>'; }
@@ -1932,11 +1932,12 @@ async function setAgentModel(agentId, model) {
     toast('✅ ' + t('chat.modelSet', { model: model || t('settings.defaultModel') }));
   } catch(e) { toast('❌ ' + t('err.setFail')); }
 }
-async function removeMember(mid) {
+async function removeMember(mid, isAgent) {
   if (!currentChat || !mid) return;
   try {
-    // 后端 DELETE /api/participants 从 body 读 id + chatId
-    await api('/api/participants', 'DELETE', { id: mid, chatId: currentChat });
+    // 后端 DELETE /api/participants：AI 成员传 agentId，真人传 id
+    const body = isAgent ? { agentId: mid, chatId: currentChat } : { id: mid, chatId: currentChat };
+    await api('/api/participants', 'DELETE', body);
     renderMembers();
     toast(t('toast.removed'));
   } catch(e) { toast(t('err.removeFail')); }

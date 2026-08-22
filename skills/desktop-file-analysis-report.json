@@ -1,14 +1,13 @@
 {
   "name": "desktop-file-analysis-report",
   "displayName": "桌面文件分析与报告生成",
-  "description": "读取桌面上的方案文档，分析内容（如任务拆解、AGI相关性），生成 Word 报告并保存到桌面",
+  "description": "当用户要求查看桌面上的指定文件并生成分析报告（尤其是Word格式）时，使用此技能。",
   "tools": [
-    "list_dir",
-    "read_file",
     "shell_exec",
+    "read_file",
     "write_file"
   ],
-  "prompt": "当用户要求分析桌面上的某个文件并生成报告（如开发任务清单、可行性分析、AGI方向评估等）且需要 Word 格式输出时，按以下步骤执行：\n1. 使用 list_dir 查看桌面文件，确认用户提到的文件是否存在；\n2. 用 read_file 读取该文件的完整内容；\n3. 根据用户的具体需求分析内容（若需求不明确，可先提炼要点，再询问或主动给出合理的分析框架）；\n4. 组织报告结构（如背景、方向拆解、可执行任务表、阶段划分、AGI 相关性评估、建议等）；\n5. 使用 shell_exec 运行脚本（如 python-docx）将报告保存为 Word 文档，保存到桌面路径；\n6. 用 write_file 写入必要的辅助文件或最终校验，完成后向用户汇报文件路径和核心结论。",
+  "prompt": "当用户要求查看桌面上的某个文件并生成分析报告时，按以下步骤操作：\n1. 使用 shell_exec 列出桌面文件（如 `dir /b C:\\Users\\Administrator\\Desktop` 或 `ls`），确认目标文件是否存在。\n2. 使用 read_file 完整读取目标文件内容，理解其核心主题。\n3. 如果用户需要分析报告，先确认环境（如 Python 和 python-docx 是否可用），再编写脚本生成 Word 报告，保存到桌面。\n4. 运行脚本后，使用 read_file 或 shell_exec 验证报告已正确生成且内容完整。\n5. 清理临时脚本文件，并向用户简要说明已完成的步骤和交付物路径。\n注意：报告内容要结构清晰，涵盖用户要求的分析角度（如 AGI 视角），并且确保文件落在桌面。",
   "autoCreated": true,
-  "createdAt": 1787392632985
+  "createdAt": 1787393728441
 }

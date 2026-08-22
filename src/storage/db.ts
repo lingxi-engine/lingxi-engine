@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ?- SQLite (sql.js)
  *  DB 
  */
@@ -741,7 +741,7 @@ export function setChatMode(chatId: string, mode: string): boolean {
 
 export function removeParticipant(chatId: string, userId: string, agentId?: string) {
   if (agentId) {
-    _db.run("DELETE FROM participants WHERE chat_id = ? AND user_id = ? AND agent_id = ?", [chatId, userId, agentId]);
+    _db.run("DELETE FROM participants WHERE chat_id = ? AND agent_id = ?", [chatId, agentId]);
   } else {
     _db.run("DELETE FROM participants WHERE chat_id = ? AND user_id = ?", [chatId, userId]);
   }
@@ -1102,6 +1102,7 @@ export class DB {
   }
   getUser(id: string) { return getUser(id); }
   getUserByEmail(email: string) { return getUserByEmail(email); }
+  getUserByNumericId(numericId: number) { return getUserByNumericId(numericId); }
   listUsers() { return listUsers(); }
   searchUsers(keyword: string, limit?: number) { return searchUsers(keyword, limit); }
   createAgent(id: string, userId: string, displayName: string, personality: string, autonomy: string, model?: string) {

@@ -1,0 +1,12 @@
+{
+  "name": "agi-driven-engine-development",
+  "displayName": "AGI驱动引擎开发执行",
+  "description": "根据进化方案执行大规模开发任务，含预先备份、自主推进、中间不停顿",
+  "tools": [
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求基于方案推进大型开发任务（如“按方案开搞”）时：1) 先用 git 提交当前状态并打 pre-AGI 基线 tag，再用 git bundle 全量备份到 F 盘；2) 读取相关方案/分析文档，按阶段拆解任务；3) 自主执行代码修改，若任务过大则拆分批次，但不要中途停下来等待用户确认；4) 每完成一个阶段简要汇报；5) 出错时尝试自行修复，继续推进。",
+  "autoCreated": true,
+  "createdAt": 1787416589941
+}

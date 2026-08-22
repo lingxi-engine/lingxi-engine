@@ -1205,9 +1205,9 @@ setSearchManager(searchManagerInstance);
 
   app.delete('/api/participants', requireAuth, (req, res) => {
     try {
-      const { id, chatId } = req.body || {};
-      if (!id || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
-      db.removeParticipant(chatId, id);
+      const { id, chatId, agentId } = req.body || {};
+      if ((!id && !agentId) || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
+      db.removeParticipant(chatId, id || '', agentId);
       // 如果群聊没参与者了，清理协作模式缓存
       const remaining = db.getChatParticipants(chatId);
       if (!remaining || remaining.length === 0) {

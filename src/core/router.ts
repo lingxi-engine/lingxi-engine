@@ -14,7 +14,7 @@ import { homedir } from "os";
 import { getChatMemory, upsertChatMemory, getDB, getChatMode, sanitizeMemoryInput, trimMemoryText, getDataDir } from "../storage/db.js";
 import { GoalTracker } from "./goal-tracker.js";
 import { Critic } from "./critic.js";
-import { Evaluator } from "./evaluator.js";
+import { Evaluator, type EvaluationSummary, type EvaluationRecord } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
 
 /**
@@ -1173,4 +1173,20 @@ export class MessageRouter {
       return '';
     }
   }
+  // ─── AGI P0: 评测体系对外查询接口（供 /api/evaluations/* 使用）───
+  /** 评测聚合统计 */
+  getEvaluationSummary(filter: { agentId?: string; chatId?: string; model?: string; since?: number } = {}): EvaluationSummary {
+    return this.evaluator.summary(filter);
+  }
+
+  /** 最近评测记录 */
+  getRecentEvaluations(limit = 50): EvaluationRecord[] {
+    return this.evaluator.recent(limit);
+  }
+
+  /** 最近一次评测 */
+  getLastEvaluation(): EvaluationRecord | null {
+    return this.evaluator.last();
+  }
+
 }
