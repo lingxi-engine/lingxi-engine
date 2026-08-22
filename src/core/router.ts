@@ -13,6 +13,8 @@ import { join } from "path";
 import { homedir } from "os";
 import { getChatMemory, upsertChatMemory, getDB, getChatMode, sanitizeMemoryInput, trimMemoryText, getDataDir } from "../storage/db.js";
 import { GoalTracker } from "./goal-tracker.js";
+import { Critic } from "./critic.js";
+import { Evaluator } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
 
 /**
@@ -80,6 +82,8 @@ export class MessageRouter {
   private reflectionInFlight: Set<string> = new Set(); // P2-1: 反思并发锁
   private readonly REFLECT_EVERY_N_MESSAGES = 5;
   private readonly reflectionCountsPath: string;
+  private critic: Critic | null = null;  // AGI P0: 生成→校验→修正流水线
+  private evaluator: Evaluator = new Evaluator();  // AGI P0: 评测体系
 
   constructor(
     // db 和 agentManager 使用精确接口类型
@@ -449,6 +453,46 @@ export class MessageRouter {
     }
 
     // 保存回复消息（skipPersist：任务拆解中间步骤等场景跳过落库/记忆/索引，避免污染聊天历史）
+    // ── Critic 校验-修正流水线 + 评测记录（AGI P0：生成→校验→修正→再校验）──
+    if (finalContent && !options?.skipPersist) {
+      const startCritic = Date.now();
+      const triggerContent = (recentMessages.find(m => m.id === triggerMsgId)?.content
+        || recentMessages[recentMessages.length - 1]?.content || '').slice(0, 500);
+      try {
+        if (!this.critic) {
+          this.critic = new Critic(replyClient.client, replyClient.resolvedModel, { threshold: 70, maxRounds: 1 });
+        }
+        // 流式回复已推给用户（打字气泡），只评测不修正，避免用户看到的与落库不一致
+        const pipe = await this.critic.runPipeline(finalContent, {
+          userMessage: triggerContent,
+          agentName: agent.displayName,
+          taskGoal,
+          modePrompt: customPrompt,
+        }, { skipRevise: !!onChunk });
+        if (pipe.content !== finalContent) {
+          console.log(`[Router] Critic 修正回复 (${finalContent.length}字 → ${pipe.content.length}字, rounds=${pipe.rounds})`);
+          finalContent = pipe.content;
+        }
+        if (pipe.critique) {
+          this.evaluator.record({
+            agentId: agent.id,
+            chatId,
+            model: replyClient.resolvedModel,
+            triggerLen: triggerContent.length,
+            replyLen: finalContent.length,
+            score: pipe.critique.score,
+            issues: pipe.critique.issues,
+            revised: pipe.revised,
+            latencyMs: Date.now() - startCritic,
+            rounds: pipe.rounds,
+          });
+          console.log(`[Router] 评测记录: score=${pipe.critique.score}, issues=${pipe.critique.issues.length}, revised=${pipe.revised}, rounds=${pipe.rounds}`);
+        }
+      } catch (err: any) {
+        console.warn('[Router] Critic 流水线失败，不阻塞主流程:', err?.message || err);
+      }
+    }
+
     const replyId = 'msg-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8);
     if (options?.skipPersist) {
       return finalContent;
