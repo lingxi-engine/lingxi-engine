@@ -1707,6 +1707,16 @@ setSearchManager(searchManagerInstance);
       res.json({ ok: true, agentId: String(req.params.id), skills: skillIds });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+  // 鈹€鈹€ 璁板繂鍙嶆€?API 鈹€鈹€锛堝墠绔?reflectMemory() 璋冪敤锛?
+  app.post('/api/agents/:id/reflect', requireAuth, async (req, res) => {
+    try {
+      const agentId = String(req.params.id);
+      const chatId = (req.body && req.body.chatId) ? String(req.body.chatId) : undefined;
+      const result = await router.reflectAgent(agentId, chatId);
+      res.json(result);
+    } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
+  });
+
 
   // ── 工具列表 API ──
   app.get('/api/tools', requireAuth, (_req, res) => {

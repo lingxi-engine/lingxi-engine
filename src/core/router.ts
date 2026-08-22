@@ -1066,6 +1066,20 @@ export class MessageRouter {
     }
   }
 
+  /**
+   * 公开的反思入口（供 HTTP 路由 /api/agents/:id/reflect 调用）
+   * 触发 Agent 记忆反思：压缩 memory_summary → 结构化要点，并演化人格。
+   * @param agentId  Agent id
+   * @param chatId   可选，群聊独立记忆的 chatId
+   */
+  async reflectAgent(agentId: string, chatId?: string): Promise<{ ok: boolean; message: string }> {
+    const agent = this.agentManager.get(agentId);
+    if (!agent) return { ok: false, message: 'Agent 不存在' };
+    if (!this.reflector) return { ok: false, message: '反思器未初始化（缺少 AI 客户端）' };
+    await this.triggerReflection(agentId, chatId);
+    return { ok: true, message: '反思已触发' };
+  }
+
   // ────── 记忆搜索 ──────
 
   /**
