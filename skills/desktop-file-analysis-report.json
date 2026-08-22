@@ -1,0 +1,14 @@
+{
+  "name": "desktop-file-analysis-report",
+  "displayName": "桌面文件分析与报告生成",
+  "description": "读取桌面上的方案文档，分析内容（如任务拆解、AGI相关性），生成 Word 报告并保存到桌面",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求分析桌面上的某个文件并生成报告（如开发任务清单、可行性分析、AGI方向评估等）且需要 Word 格式输出时，按以下步骤执行：\n1. 使用 list_dir 查看桌面文件，确认用户提到的文件是否存在；\n2. 用 read_file 读取该文件的完整内容；\n3. 根据用户的具体需求分析内容（若需求不明确，可先提炼要点，再询问或主动给出合理的分析框架）；\n4. 组织报告结构（如背景、方向拆解、可执行任务表、阶段划分、AGI 相关性评估、建议等）；\n5. 使用 shell_exec 运行脚本（如 python-docx）将报告保存为 Word 文档，保存到桌面路径；\n6. 用 write_file 写入必要的辅助文件或最终校验，完成后向用户汇报文件路径和核心结论。",
+  "autoCreated": true,
+  "createdAt": 1787392632985
+}

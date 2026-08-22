@@ -1,6 +1,6 @@
 import type { MessageRouter } from "./router.js";
 import type { WebSocket } from "ws";
-import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext, getChatMode } from "./chat-modes.js";
+import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext } from "./chat-modes.js";
 import { Orchestrator, type TaskNode } from "./orchestrator.js";
 
 // === 长任务状态追踪（支持断点续做）===
@@ -553,11 +553,7 @@ export function processUserMessage(
   broadcast: (event: any) => void
 ): void {
   // ── 复杂度判断：如果消息看起来需要多步骤，自动触发任务拆解 ──
-  // ⭐ 修复：非 free 模式（辩论/圆桌/投票/链式/头脑风暴/路由）下不拦截，
-  //    否则用户想在群里多AI协作讨论复杂话题，结果被任务拆解劫持只让第一个Agent处理
-  const currentMode = getChatMode(chatId);
-  const isMultiAgentMode = currentMode !== 'free';
-  if (!isMultiAgentMode && shouldAutoDecompose(content)) {
+  if (shouldAutoDecompose(content)) {
     router.handleIncoming({
       chatId,
       senderType: "user",
