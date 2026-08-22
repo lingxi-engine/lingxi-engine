@@ -19,6 +19,7 @@ import { homedir } from "os";
 import { getChatMemory, upsertChatMemory, getDB, getChatMode, sanitizeMemoryInput, trimMemoryText, getDataDir } from "../storage/db.js";
 import { GoalTracker } from "./goal-tracker.js";
 import { Critic } from "./critic.js";
+import { Clarifier } from "./clarifier.js";
 import { Evaluator, type EvaluationSummary, type EvaluationRecord } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
 
@@ -126,6 +127,11 @@ export class MessageRouter {
   private readonly reflectionCountsPath: string;
   private critic: Critic | null = null;  // AGI P0: 生成→校验→修正流水线
   private evaluator: Evaluator = new Evaluator();  // AGI P0: 评测体系
+  private clarifier: Clarifier = new Clarifier({
+    hardThreshold: parseInt(process.env.CLARIFY_HARD_THRESHOLD || '60', 10),
+    softThreshold: parseInt(process.env.CLARIFY_SOFT_THRESHOLD || '75', 10),
+    maxQuestions: 3,
+  });  // AGI P0: 意图澄清（生成前拦截高歧义输入，阈值可用 CLARIFY_HARD/SOFT_THRESHOLD 覆盖）
   private worldModel: WorldModel | null = null;  // AGI: 世界模型/常识推理
   private thoughtTree: ThoughtTreeBuilder | null = null;  // AGI: 白盒思考树
   private debateEngine: DebateEngine | null = null;  // AGI: 多智能体对弈
@@ -259,6 +265,33 @@ export class MessageRouter {
     // 用户原话（用于判断是否任务类 + 检索知识库）
     const _triggerMsg = recentMessages.find(m => m.id === triggerMsgId);
     const triggerContent = _triggerMsg?.content || recentMessages[recentMessages.length - 1]?.content || '';
+    // ── AGI P0: 意图澄清（Clarifier）——生成前拦截高歧义输入，避免模型瞎猜 ──
+    // 仅对普通用户对话生效；任务类/协作指令/内部步骤一律跳过，不打断干活流程
+    let clarifyHint = '';
+    if (!taskGoal && !customPrompt && !options?.skipPersist && triggerContent && !_looksLikeTask(triggerContent)) {
+      try {
+        const isFollowUp = recentMessages.some(m => m.id !== triggerMsgId && m.sender_type === 'agent');
+        const history = recentMessages.filter(m => m.id !== triggerMsgId).slice(-10).map(m => m.content);
+        const clarify = this.clarifier.evaluate(triggerContent, isFollowUp, history);
+        if (clarify.needsClarify) {
+          // 硬拦截：直接追问，不调用 LLM（省 token + 快速响应），并正常落库保证刷新不丢
+          const question = clarify.questions[0] || '你能具体说说想了解什么吗？';
+          const clarifyMsg = '我还没完全理解你的意思，先确认一下：\n\n' + question
+            + '\n\n（检测到：' + clarify.reasons.map(r => r.dimension + '——' + r.description).join('；') + '）';
+          const replyId = 'msg-' + Date.now() + '-' + crypto.randomUUID().slice(0, 8);
+          this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: clarifyMsg, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
+          if (onChunk) onChunk(clarifyMsg);
+          console.log(`[Router] 意图澄清拦截: agent=${agent.id}, score=${clarify.score}, reasons=${clarify.reasons.map(r => r.dimension).join('/')}`);
+          return clarifyMsg;
+        }
+        if (clarify.score < this.clarifier.softThreshold) {
+          // 软提示：注入 system prompt，让模型自然确认而不是臆测
+          clarifyHint = '\n\n## 意图提示\n用户本次输入可能不够明确（清晰度 ' + clarify.score + '/100）。若你无法确定其真实意图，请用一句话主动追问确认，不要臆测作答。';
+        }
+      } catch (e: unknown) {
+        console.warn('[Router] 意图澄清失败，不阻塞主流程:', (e as Error)?.message || e);
+      }
+    }
     // 检索知识库上下文（如果有）
     let ragContext = '';
     try {
@@ -285,7 +318,7 @@ export class MessageRouter {
 
     // ⭐ 用实际 resolved 的模型名构建 system prompt，而非 env 变量原始值
     const messages: ChatMessage[] = [
-      { role: 'system', content: this.buildSystemPrompt(agent, effectiveTaskGoal, chatId, { tool: toolClient.resolvedModel, reply: replyClient.resolvedModel }) + ragContext + modePrompt },
+      { role: 'system', content: this.buildSystemPrompt(agent, effectiveTaskGoal, chatId, { tool: toolClient.resolvedModel, reply: replyClient.resolvedModel }) + ragContext + modePrompt + clarifyHint },
       ...recentMessages.map(m => ({
         role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
         content: m.content,
