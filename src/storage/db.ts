@@ -19,8 +19,7 @@ export function startAutoSave(intervalMs = 30000) {
     // [FIX] markDirty() 全项目零调用，脏标记检查导致自动保存从不执行，聊天数据只活在内存。改为无条件保存（DB 约2.3MB，每5秒全量导出开销可忽略）。
     saveToDisk().catch((e: any) => console.error("[DB] auto-save error:", e.message));
   }, intervalMs);
-  // ?
-  if (_saveTimer && typeof _saveTimer === 'object' && 'unref' in _saveTimer) (_saveTimer as any).unref();
+  // 不调用 unref() —— 确保进程退出前定时器仍能触发保存，防止丢上下文
   console.log(`[DB] auto-save every ${intervalMs / 1000}s`);
 }
 

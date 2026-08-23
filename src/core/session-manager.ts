@@ -67,9 +67,7 @@ export class SessionManager {
     this.saveTimer = setInterval(() => {
       if (this.dirty) { this.save(); this.dirty = false; }
     }, intervalMs);
-    if (this.saveTimer && typeof this.saveTimer === 'object' && 'unref' in this.saveTimer) {
-      (this.saveTimer as any).unref();
-    }
+    // 不调用 unref() —— 确保进程退出前定时器仍能触发保存，防止丢上下文
   }
 
   /** 保存到磁盘（P2-3: 原子写入 —— 先写临时文件再 rename 覆盖，覆盖前备份 .bak） */

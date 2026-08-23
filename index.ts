@@ -4365,18 +4365,26 @@ setSearchManager(searchManagerInstance);
     console.log('');
   });
 
-  process.on('SIGINT', async () => {
-    console.log('Closing...');
-    cronScheduler.stop();
-    sessionManager.close();
-    telegramAdapter?.stop();
-    await channelManager.closeAll();
-    await browserManager.close();
-    await mcpManager.closeAll();
-    await closeDB(dbPath);
-    server.close();
+  // ═══ 优雅退出（统一 SIGINT/SIGTERM，防止 PM2 重启丢上下文）═══
+  let _shuttingDown = false;
+  const gracefulExit = async (sig: string) => {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    console.log(`\n[Shutdown] 收到 ${sig}，开始优雅退出...`);
+    try { cronScheduler.stop(); } catch(_e) {}
+    try { sessionManager.close(); console.log('[Shutdown] 会话已保存'); } catch(_e) {}
+    try { telegramAdapter?.stop(); } catch(_e) {}
+    try { await channelManager.closeAll(); } catch(_e) {}
+    try { await browserManager.close(); } catch(_e) {}
+    try { await mcpManager.closeAll(); } catch(_e) {}
+    try { await saveToDisk(); console.log('[Shutdown] 数据库已保存'); } catch (e: any) { console.error('[Shutdown] DB保存失败:', e.message); }
+    try { await closeDB(dbPath); console.log('[Shutdown] 数据库已关闭'); } catch(_e) {}
+    try { server.close(); } catch(_e) {}
+    console.log('[Shutdown] 退出完成');
     process.exit(0);
-  });
+  };
+  process.on('SIGINT', () => gracefulExit('SIGINT'));
+  process.on('SIGTERM', () => gracefulExit('SIGTERM'));
 }
 
 /**
@@ -4472,16 +4480,3 @@ main().catch((err: any) => {
   process.exit(1);
 });
 
-// ═══ 优雅退出 ═══
-let _shuttingDown = false;
-async function gracefulShutdown(signal: string) {
-  if (_shuttingDown) return;
-  _shuttingDown = true;
-  console.log(`\n[Shutdown] 收到 ${signal}，开始优雅退出...`);
-  try { await saveToDisk(); console.log('[Shutdown] 数据库已保存'); } catch (e: unknown) { console.error('[Shutdown] 保存失败:', (e as Error)?.message); }
-  try { await closeDB(); console.log('[Shutdown] 数据库已关闭'); } catch (e: unknown) {}
-  console.log('[Shutdown] 退出完成');
-  process.exit(0);
-}
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
