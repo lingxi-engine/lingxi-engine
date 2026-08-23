@@ -3475,6 +3475,19 @@ async function sendMeshMsg() {
   } catch(e) { toast('❌ ' + (e.message || t('err.sendFail'))); }
 }
 
+// ── Token 时间线渲染（30天/24小时 柱状图）──
+function renderUsageTimeline(items, keyField, title) {
+  var max = Math.max.apply(null, items.map(function(i){ return i.totalTokens; }).concat([1]));
+  var bars = items.map(function(i) {
+    var h = i.totalTokens > 0 ? Math.max(3, Math.round(i.totalTokens / max * 56)) : 2;
+    var label = i[keyField] + ": " + i.totalTokens.toLocaleString() + " tokens / " + i.calls + t('admin.timesUnit');
+    var color = i.totalTokens > 0 ? 'var(--accent)' : 'rgba(255,255,255,.08)';
+    return '<div title="' + esc(label) + '" style="flex:1;min-width:2px;height:' + h + 'px;background:' + color + ';border-radius:2px 2px 0 0"></div>';
+  }).join('');
+  var total = items.reduce(function(a, i){ return a + i.totalTokens; }, 0);
+  return '<div style="margin-top:8px"><b>' + title + '</b> <span style="color:var(--text3);font-size:10px">∑ ' + total.toLocaleString() + ' tokens</span>' +
+    '<div style="display:flex;align-items:flex-end;gap:2px;height:60px;padding:6px 4px 2px;background:rgba(0,0,0,.25);border-radius:6px;margin-top:4px">' + bars + '</div></div>';
+}
 async function loadUsage() {
   try {
     const d = await api('/api/usage');
@@ -3499,6 +3512,13 @@ async function loadUsage() {
       for (const [type, item] of Object.entries(s.byType)) {
         html += '<div>' + (typeNames[type]||type) + ': ' + item.calls + t('admin.timesUnit') + ' / ' + item.totalTokens.toLocaleString() + ' tokens</div>';
       }
+    }
+    // ── 时间线：每日(30天) + 每小时(24小时) ──
+    if (Array.isArray(s.daily) && s.daily.length) {
+      html += renderUsageTimeline(s.daily, 'date', t('admin.dailyTimeline'));
+    }
+    if (Array.isArray(s.hourly) && s.hourly.length) {
+      html += renderUsageTimeline(s.hourly, 'hour', t('admin.hourlyTimeline'));
     }
     document.getElementById('usageStats').innerHTML = html || t('admin.noData');
   } catch(e) { document.getElementById('usageStats').innerHTML = '<span style="color:#f44">Error: ' + esc(e.message) + '</span>'; }

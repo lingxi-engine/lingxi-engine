@@ -61,6 +61,8 @@ class UsageTrackerClass {
     byType: Record<string, { calls: number; promptTokens: number; completionTokens: number; totalTokens: number }>;
     recent24h: { calls: number; totalTokens: number };
     recent1h: { calls: number; totalTokens: number };
+    daily: { date: string; calls: number; totalTokens: number }[];
+    hourly: { hour: string; calls: number; totalTokens: number }[];
   } {
     const total = { calls: 0, promptTokens: 0, completionTokens: 0, totalTokens: 0 };
     const byModel: Record<string, any> = {};
@@ -68,6 +70,10 @@ class UsageTrackerClass {
     const now = Date.now();
     let recent24h = { calls: 0, totalTokens: 0 };
     let recent1h = { calls: 0, totalTokens: 0 };
+
+    // 时间序列：30天 + 24小时分桶
+    const dailyMap = new Map<string, { calls: number; totalTokens: number }>();
+    const hourlyMap = new Map<string, { calls: number; totalTokens: number }>();
 
     for (const r of this.records) {
       total.calls++;
@@ -93,9 +99,38 @@ class UsageTrackerClass {
       const age = now - r.timestamp;
       if (age < 3600000) { recent1h.calls++; recent1h.totalTokens += r.totalTokens; }
       if (age < 86400000) { recent24h.calls++; recent24h.totalTokens += r.totalTokens; }
+
+      // 按天分桶（最近30天）
+      const d = new Date(r.timestamp);
+      const dayKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const dm = dailyMap.get(dayKey) || { calls: 0, totalTokens: 0 };
+      dm.calls++; dm.totalTokens += r.totalTokens;
+      dailyMap.set(dayKey, dm);
+
+      // 按小时分桶（最近24小时）
+      const hourKey = dayKey + ' ' + String(d.getHours()).padStart(2, '0') + ':00';
+      const hm = hourlyMap.get(hourKey) || { calls: 0, totalTokens: 0 };
+      hm.calls++; hm.totalTokens += r.totalTokens;
+      hourlyMap.set(hourKey, hm);
     }
 
-    return { total, byModel, byType, recent24h, recent1h };
+    // 补全最近30天（缺失填0）
+    const daily: { date: string; calls: number; totalTokens: number }[] = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now - i * 86400000);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const v = dailyMap.get(key) || { calls: 0, totalTokens: 0 };
+      daily.push({ date: key, calls: v.calls, totalTokens: v.totalTokens });
+    }
+    // 补全最近24小时（缺失填0）
+    const hourly: { hour: string; calls: number; totalTokens: number }[] = [];
+    for (let i = 23; i >= 0; i--) {
+      const d = new Date(now - i * 3600000);
+      const key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' ' + String(d.getHours()).padStart(2, '0') + ':00';
+      const v = hourlyMap.get(key) || { calls: 0, totalTokens: 0 };
+      hourly.push({ hour: key, calls: v.calls, totalTokens: v.totalTokens });
+    }
+    return { total, byModel, byType, recent24h, recent1h, daily, hourly };
   }
 
   /** 获取最近 N 条记录 */
