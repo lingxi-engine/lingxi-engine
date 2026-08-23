@@ -1,4 +1,4 @@
-/**
+﻿/**
  * executor.ts - 工具调用执行器（类型安全增强版 v1.3.0 P2-1）
  * AI 生成 -> 检测 tool_calls -> 执行工具 -> 把结果喂回 AI -> 重复
  *
@@ -67,6 +67,7 @@ export interface ToolCallEvent {
   toolCallId: string;
   toolName: string;
   args: Record<string, any>;
+  description?: string;
   timestamp: number;
 }
 
@@ -522,6 +523,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         toolCallId: tc.id,
         toolName,
         args: toolArgs,
+        description: (availableTools.find((t) => t.name === toolName)?.description || registry.getTool(toolName)?.description || ""),
         timestamp: Date.now(),
       });
 

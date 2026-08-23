@@ -1056,7 +1056,8 @@ function appendToolCallRow(msg) {
   const el = document.createElement('div');
   el.className = 'msg-row ai tool-call-row';
   el.dataset.toolCallId = msg.toolCallId || '';
-  el.innerHTML = '<div class="msg-avatar ai">\u2699</div><div style="max-width:70%"><div class="msg-bubble"><div class="msg-content" style="font-size:12px;color:#8b949e">\u26a1 \u8c03\u7528 <b>' + esc(msg.toolName || '') + '</b>(' + esc(JSON.stringify(msg.args || {}).slice(0,120)) + ') <span class="tool-status">...</span></div></div></div>';
+  const desc = msg.description || '';
+  el.innerHTML = '<div class="msg-avatar ai">\u2699</div><div style="max-width:70%"><div class="msg-bubble"><div class="msg-content" style="font-size:12px;color:#8b949e">\u26a1 <b>' + esc(msg.toolName || '') + '</b>' + (desc ? ' \u2014 <span style="color:#58a6ff">' + esc(desc) + '</span>' : '') + ' (' + esc(JSON.stringify(msg.args || {}).slice(0,120)) + ') <span class="tool-status">...</span></div></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
