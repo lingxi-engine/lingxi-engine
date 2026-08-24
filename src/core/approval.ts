@@ -5,6 +5,13 @@
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'timeout';
 
+/** 解析环境变量布尔值：1/true/yes/on 视为开启 */
+function envBool(v: string | undefined): boolean {
+  if (!v) return false;
+  const s = v.trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
 export interface ApprovalRequest {
   id: string;
   agentId: string;
@@ -27,8 +34,13 @@ export class ApprovalManager {
   private timers: Map<string, NodeJS.Timeout> = new Map();
   private resolvers: Map<string, (req: ApprovalRequest) => void> = new Map();
 
-  constructor(timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '300000', 10)) { // 默认 5 分钟，可通过环境变量配置
+  private autoApprove: boolean;
+
+  constructor(timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '300000', 10), autoApprove?: boolean) { // 默认 5 分钟，可通过环境变量配置
     this.timeoutMs = timeoutMs;
+    // 自动批准模式：APPROVAL_AUTO_APPROVE=1/true/yes/on 时开启，所有审批请求立即放行（历史留痕可审计）
+    this.autoApprove = autoApprove ?? envBool(process.env.APPROVAL_AUTO_APPROVE);
+    if (this.autoApprove) console.log('[Approval] 自动批准模式已开启 (APPROVAL_AUTO_APPROVE) —— 审批请求将自动通过');
   }
 
   /**
@@ -48,6 +60,12 @@ export class ApprovalManager {
       timeoutMs: this.timeoutMs,
     };
     this.pending.set(id, req);
+
+    // 自动批准模式：立即放行（decidedBy='auto' 留痕，可审计）
+    if (this.autoApprove) {
+      this.approve(id, 'auto');
+      return req;
+    }
 
     // 超时自动拒绝
     const timer = setTimeout(() => {
@@ -122,7 +140,8 @@ export class ApprovalManager {
    */
   waitForApproval(id: string): Promise<ApprovalRequest> {
     return new Promise((resolve) => {
-      const req = this.pending.get(id);
+      // 优先查 pending；若请求已被 approve/reject/expire（含自动批准、HTTP 接口先批），从 history 取，避免竞态误判 rejected
+      const req = this.pending.get(id) || this.history.find(h => h.id === id);
       if (!req) {
         resolve({ id, status: 'rejected', decidedAt: Date.now(), createdAt: Date.now(), userId: '', tool: '', args: {} } as unknown as ApprovalRequest);
         return;

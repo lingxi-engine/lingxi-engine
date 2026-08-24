@@ -511,6 +511,16 @@ function _dbInit(db: any) {
     console.warn('[DB] v1.7.2 migration warning:', e.message);
   }
 
+  // —— v2.1.x: 迁移：给 agents 表补 personality_dims 列（人格演化持久化，修复老库 no such column）——
+  try {
+    const agentCols = db.exec(`PRAGMA table_info(agents)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!agentCols.includes('personality_dims')) {
+      db.run(`ALTER TABLE agents ADD COLUMN personality_dims TEXT DEFAULT '{}'`);
+      console.log('[DB] v2.1.x migration: added personality_dims to agents');
+    }
+  } catch (e: any) {
+    console.warn('[DB] agents personality_dims migration warning:', e.message);
+  }
   // —— v2.0.12: 迁移：AI员工市场自定义时长 + 雇佣到期时间 + 订单关联hire ——
   try {
     const mkCols = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
