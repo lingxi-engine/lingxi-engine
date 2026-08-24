@@ -1,14 +1,14 @@
 {
   "name": "code-review-and-fix",
   "displayName": "代码审查与修复",
-  "description": "对代码库进行问题定位、修复和验证，并输出清晰诊断报告。",
+  "description": "对工作区代码进行系统性审查（安全、逻辑、架构），按优先级输出问题清单并逐一修复验证",
   "tools": [
-    "shell_exec",
     "list_dir",
-    "write_file",
-    "read_file"
+    "read_file",
+    "shell_exec",
+    "write_file"
   ],
-  "prompt": "当用户要求审查代码、修复 bug 或解释代码模块时：先用 list_dir 和 read_file 梳理项目结构与关键文件；用 shell_exec 运行 grep/tsc 等命令定位问题；定位后使用 write_file 修复代码；最后通过编译或测试验证修复结果，并向用户输出简洁的诊断结论与修改说明。",
+  "prompt": "遇到代码审查任务时按以下流程执行：1) 用 list_dir 摸清项目结构，read_file 通读核心模块，理解整体架构；2) 用 shell_exec 运行语法检查/编译和现有测试，确认基线状态；3) 从三个维度逐文件分析：安全漏洞（如命令注入、白名单失效）、逻辑缺陷（边界条件、异常处理）、架构问题；4) 按 P0（高危安全问题）/P1（逻辑暗坑）/P2（改进建议）分级输出清单，每条附文件路径、代码片段和具体修复方案；5) 用户要求修复时逐项修改，write_file 写回后必须用 shell_exec 重跑全部测试验证无回归，最后汇总修复结果。",
   "autoCreated": true,
-  "createdAt": 1787068040967
+  "createdAt": 1787535071771
 }
