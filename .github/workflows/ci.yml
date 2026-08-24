@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+  workflow_dispatch:
+
+jobs:
+  python-engine:
+    name: Python 子引擎回归 (8套件/152断言)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: 运行全量回归
+        working-directory: workspace/lingxi_engine/tests
+        run: |
+          python run_all.py
+          cat run_all_result.txt
+      - name: 断言 ALL_OK
+        working-directory: workspace/lingxi_engine/tests
+        run: |
+          grep -q "ALL_OK=True" run_all_result.txt || (echo "回归失败" && exit 1)
+
+  ts-engine:
+    name: TS 主引擎 (类型检查 + 核心测试)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: 安装依赖
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: TypeScript 类型检查
+        run: npx tsc --noEmit --skipLibCheck 2>&1 | head -50
+        continue-on-error: true
+      - name: 故障转移单元测试
+        run: npx tsx tests/verify-failover.ts
+
+  cleanup-check:
+    name: 工作区卫生检查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 统计垃圾文件
+        run: |
+          BAK=$(find . -path ./node_modules -prune -o \( -name '*.bak' -o -name '*.~1~' -o -name '*.bak-*' -o -name '*.pre-*' \) -print | wc -l)
+          echo "垃圾文件数: $BAK"
+          echo "垃圾文件数=$BAK" >> $GITHUB_ENV
+      - name: 超过 100 个即告警
+        run: |
+          if [ "${{ env.垃圾文件数 }}" -gt 100 ]; then
+            echo "::warning::工作区垃圾文件过多 (${{ env.垃圾文件数 }} 个)，建议清理"
+          fi

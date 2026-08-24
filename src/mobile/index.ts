@@ -16,30 +16,30 @@ import { existsSync, mkdirSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES } from '../src/storage/db.js';
-import { initGoalTrackerTable } from '../src/core/goal-tracker.js';
-import * as auth from '../src/auth/index.js';
-import { jwtAuth } from '../src/middleware/jwt-auth.js';
-import { apiRateLimit, authRateLimit } from '../src/middleware/rate-limit.js';
-import { MessageRouter } from '../src/core/router.js';
-import { AIHub } from '../src/ai/hub.js';
-import { AgentManager } from '../src/agents/manager.js';
-import { handleWSMessage, wsSubscriptions } from '../src/core/ws-handler.js';
-import { ToolRegistry } from '../src/tools/registry.js';
-import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager } from '../src/tools/builtin.js';
-import { SearchManager } from '../src/tools/search-providers.js';
-import { UsageTracker } from '../src/core/usage-tracker.js'; // singleton instance
-import { ProviderRegistry } from '../src/ai/provider-registry.js';
-import { CronScheduler } from '../src/core/cron-scheduler.js';
-import { logger } from '../src/core/logger.js';
-import { SessionManager } from '../src/core/session-manager.js';
-import { SubAgentManager } from '../src/core/subagent-manager.js';
-import { ApprovalManager } from '../src/core/approval.js';
-import { HookManager } from '../src/core/hooks.js';
-import { InboxManager } from '../src/core/inbox.js';
-import { SkillManager } from '../src/skills/skill-manager.js';
-import { CustomProviderManager, INFERENCE_BACKENDS } from '../src/ai/custom-providers.js';
-import { VisionManager } from '../src/ai/vision.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES } from '../storage/db.js';
+import { initGoalTrackerTable } from '../core/goal-tracker.js';
+import * as auth from '../auth/index.js';
+import { jwtAuth } from '../middleware/jwt-auth.js';
+import { apiRateLimit, authRateLimit } from '../middleware/rate-limit.js';
+import { MessageRouter } from '../core/router.js';
+import { AIHub } from '../ai/hub.js';
+import { AgentManager } from '../agents/manager.js';
+import { handleWSMessage, wsSubscriptions } from '../core/ws-handler.js';
+import { ToolRegistry } from '../tools/registry.js';
+import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager } from '../tools/builtin.js';
+import { SearchManager } from '../tools/search-providers.js';
+import { UsageTracker } from '../core/usage-tracker.js'; // singleton instance
+import { ProviderRegistry } from '../ai/provider-registry.js';
+import { CronScheduler } from '../core/cron-scheduler.js';
+import { logger } from '../core/logger.js';
+import { SessionManager } from '../core/session-manager.js';
+import { SubAgentManager } from '../core/subagent-manager.js';
+import { ApprovalManager } from '../core/approval.js';
+import { HookManager } from '../core/hooks.js';
+import { InboxManager } from '../core/inbox.js';
+import { SkillManager } from '../skills/skill-manager.js';
+import { CustomProviderManager, INFERENCE_BACKENDS } from '../ai/custom-providers.js';
+import { VisionManager } from '../ai/vision.js';
 import { localChat, isLocalModelAvailable, getLocalModelInfo } from './local-llm.js';
 
 // ═══ 移动端环境配置 ═══

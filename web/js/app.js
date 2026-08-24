@@ -1,4 +1,4 @@
-﻿// ── Error Guard ──
+// ── Error Guard ──
 window.onerror = function(msg, url, line) {
   console.error('[GlobalError]', msg, 'at', url + ':' + line);
   toast(t('err.jsError', { msg: String(msg).slice(0, 60) }));
@@ -965,6 +965,33 @@ if (window.innerWidth <= 768) {
   document.querySelector('.content').classList.add('hide-mobile');
 }
 
+// ── Agent 信息缓存（名字/模型徽章，供消息渲染显示命名与所用模型） ──
+var _agentInfoMap = null;
+async function _ensureAgentInfoMap() {
+  if (_agentInfoMap) return _agentInfoMap;
+  _agentInfoMap = {};
+  try {
+    const d = await api('/api/agents');
+    for (const a of (d.agents || [])) {
+      const raw = String(a.id || '');
+      _agentInfoMap[raw] = a;
+      const noAgent = raw.replace(/^agent:/, '').replace(/^agent-/, '');
+      _agentInfoMap[noAgent] = a;
+      _agentInfoMap[noAgent.replace(/^user-/, '')] = a;
+    }
+  } catch(e) {}
+  return _agentInfoMap;
+}
+function _agentNameLine(senderId) {
+  const raw = String(senderId || '');
+  let info = (_agentInfoMap && (_agentInfoMap[raw] || _agentInfoMap[raw.replace(/^agent:/, '').replace(/^agent-/, '')] || _agentInfoMap[raw.replace(/^agent:/, '').replace(/^agent-/, '').replace(/^user-/, '')])) || {};
+  const name = info.displayName || raw.replace(/^agent:/, '').replace(/^agent-/, '').replace(/^user-/, '') || 'AI';
+  const model = info.model || '';
+  return '<div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">🤖 ' + esc(name) +
+    (model ? ' <span style="color:#8ab4f8;background:rgba(138,180,248,0.12);padding:0 5px;border-radius:8px;font-size:9px">' + esc(model) + '</span>' : '') + '</div>';
+}
+_ensureAgentInfoMap();
+
 // ── Message Rendering (V5 气泡样式) ──
 function appendMessage(msg) {
   const senderId = msg.senderId || msg.sender_id;
@@ -1036,7 +1063,7 @@ function appendMessage(msg) {
   const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑️</button></div>';
   
   el.innerHTML = '<div class="msg-avatar ' + esc(avatarClass) + '">' + esc(avatarIcon) + '</div>' +
-    '<div style="max-width:70%"><div class="msg-bubble">' + bubbleContent + actions + '</div>' +
+    '<div style="max-width:70%">' + (isAgent ? _agentNameLine(senderId) : '') + '<div class="msg-bubble">' + bubbleContent + actions + '</div>' +
     '<div class="msg-meta">' + esc(time) + '</div></div>';
   
   container.appendChild(el);
@@ -1103,7 +1130,7 @@ function appendStreamingMsg(msg) {
   el.className = 'msg-row ' + (isMe ? 'me' : 'ai');
   const displayName = senderId.replace(/^agent-|^user-/, '').charAt(0).toUpperCase() || '?';
   el.innerHTML = '<div class="msg-avatar ai">🤖</div>' +
-    '<div style="max-width:70%"><div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot" style="animation:blink 1s infinite;color:#4a9eff">●</span></div></div>' +
+    '<div style="max-width:70%">' + _agentNameLine(senderId) + '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot" style="animation:blink 1s infinite;color:#4a9eff">●</span></div></div>' +
     '<div class="msg-meta">' + new Date(msg.timestamp || Date.now()).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + '</div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
@@ -1823,7 +1850,7 @@ async function searchUser() {
 
 // ── Create Group ──
 function showCreateGroup() {
-  // 弹窗让用户输入群聊名称 + 选择AI加入
+  // 弹窗让用户输入群聊名称，建群后自动弹出多选勾选面板（不再手输序号）
   const name = prompt(t('social.teamNamePh'));
   if (!name) return;
   const chatId = 'team-' + Date.now().toString(36);
@@ -1839,30 +1866,83 @@ function showCreateGroup() {
       userId: lanMyId(),
       role: 'owner'
     }).catch(()=>{});
-    // 获取所有可用 agent 让用户选
-    try {
-      const d = await api('/api/agents');
-      const agents = d.agents || [];
-      if (agents.length > 0) {
-        const agentIds = prompt(t('social.selectAiPrompt') + '\n' + agents.map((a,i) => (i+1)+'. '+a.displayName+' [ID:'+a.id+']').join('\n') + '\n\n' + t('social.selectAiSkip'));
-        if (agentIds && agentIds.trim()) {
-          const selected = agentIds.split(',').map(s => parseInt(s.trim())-1).filter(i => i >= 0 && i < agents.length);
-          for (const idx of selected) {
-            const a = agents[idx];
-            await api('/api/participants', 'POST', {
-              id: 'p-' + chatId + '-' + a.id,
-              chatId: chatId,
-              agentId: a.id,
-              role: 'member'
-            }).catch(()=>{});
-          }
-          toast(t('social.teamCreated', { n: selected.length }));
-        }
-      }
-    } catch(e) {}
     loadChatList();
     switchChat(chatId);
+    // 建群后自动弹出多选勾选面板：直接勾选要加入的 AI/好友，批量添加
+    showAgentPicker(chatId);
   }).catch(()=>toast(t('err.createFail')));
+}
+
+// ── Agent 多选勾选面板（建群/加人共用；勾选式，不手输编号） ──
+var _pickerChatId = null;
+function showAgentPicker(chatId) {
+  _pickerChatId = chatId || currentChat;
+  var old = document.getElementById('agentPickerWrap');
+  if (old) old.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'agentPickerWrap';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+  wrap.innerHTML = '<div style="background:#1e1f26;border:1px solid #333;border-radius:10px;width:480px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column">' +
+    '<div style="padding:12px 16px;border-bottom:1px solid #333;font-size:14px;font-weight:600">🤖 选择AI加入团队（勾选，可多选）</div>' +
+    '<div id="agentPickerList" style="flex:1;overflow-y:auto;padding:6px 0;min-height:120px"></div>' +
+    '<div style="padding:10px 16px;border-top:1px solid #333;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<button class="btn-sm" onclick="agentPickerAll(true)">全选</button>' +
+    '<button class="btn-sm" onclick="agentPickerAll(false)">' + t('common.clear') + '</button>' +
+    '<span id="agentPickerCount" style="flex:1;font-size:12px;color:#999"></span>' +
+    '<button class="btn-sm btn-accept" onclick="agentPickerAdd()">确定添加</button>' +
+    '<button class="btn-sm" onclick="hideAgentPicker()">' + t('common.cancel') + '</button>' +
+    '</div></div>';
+  wrap.addEventListener('click', function(e) { if (e.target === wrap) hideAgentPicker(); });
+  document.body.appendChild(wrap);
+  loadAgentPickerList();
+}
+function hideAgentPicker() { var w = document.getElementById('agentPickerWrap'); if (w) w.remove(); _pickerChatId = null; }
+async function loadAgentPickerList() {
+  var c = document.getElementById('agentPickerList');
+  if (!c) return;
+  c.innerHTML = '<div style="padding:10px;color:#888;font-size:12px">' + t('common.loading') + '</div>';
+  try {
+    var d = await api('/api/agents');
+    var agents = d.agents || [];
+    if (!agents.length) { c.innerHTML = '<div style="padding:10px;color:#888;font-size:12px">' + t('members.noneAvailable') + '</div>'; return; }
+    // 已在该群的 agent 显示为已勾选并禁用，避免重复添加
+    var existing = {};
+    try {
+      var pd = await api('/api/chats/' + encodeURIComponent(_pickerChatId) + '/participants');
+      (pd.participants || []).forEach(function(m) { if (m.agent_id) existing[m.agent_id] = true; });
+    } catch(e) {}
+    c.innerHTML = agents.map(function(a) {
+      var disabled = existing[a.id] ? ' checked disabled' : '';
+      return '<label style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid #222;cursor:pointer">' +
+        '<input type="checkbox" class="agentPickerCb" value="' + esc(a.id) + '"' + disabled + '>' +
+        '<span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🤖 ' + esc(a.displayName) + '</span>' +
+        '<span style="font-size:10px;color:#8ab4f8;background:rgba(138,180,248,0.12);padding:1px 6px;border-radius:8px;flex-shrink:0">' + esc(a.model || 'default') + '</span>' +
+        '</label>';
+    }).join('');
+    agentPickerRefreshCount();
+  } catch(e) { c.innerHTML = '<div style="padding:10px;color:#f66;font-size:12px">' + t('err.loadFail') + '</div>'; }
+}
+function agentPickerAll(on) { document.querySelectorAll('.agentPickerCb').forEach(function(cb){ if (!cb.disabled) cb.checked = on; }); agentPickerRefreshCount(); }
+function agentPickerRefreshCount() {
+  var n = document.querySelectorAll('.agentPickerCb:checked:not(:disabled)').length;
+  var el = document.getElementById('agentPickerCount');
+  if (el) el.textContent = '已选 ' + n + ' 个';
+}
+async function agentPickerAdd() {
+  var ids = [];
+  document.querySelectorAll('.agentPickerCb:checked:not(:disabled)').forEach(function(cb){ ids.push(cb.value); });
+  if (!ids.length) { toast('请先勾选要加入的AI'); return; }
+  var chatId = _pickerChatId;
+  var added = 0;
+  for (var i = 0; i < ids.length; i++) {
+    try {
+      await api('/api/participants', 'POST', { id: 'p-' + chatId + '-' + ids[i], chatId: chatId, agentId: ids[i], role: 'member' });
+      added++;
+    } catch(e) {}
+  }
+  toast(t('social.teamCreated', { n: added }));
+  hideAgentPicker();
+  renderMembers();
 }
 
 // ── Members Panel ──
@@ -1945,21 +2025,98 @@ async function removeMember(mid, isAgent) {
 }
 async function loadAvailableMembers() {
   if (!currentChat || !clientId) { toast(t('toast.connectAndSelect')); return; }
+  const box = document.getElementById('availableMembers');
+  if (!box) return;
+  box.innerHTML = '<div style="padding:6px;color:#888;font-size:11px">' + t('common.loading') + '</div>';
   try {
-    // 获取可添加的人
-    const d = await api('/api/chats/'+encodeURIComponent(currentChat)+'/available-members?userId='+encodeURIComponent(clientId));
-    const members = d.members||[];
-    // 获取可添加的AI
+    // 可添加的人（好友）
+    let members = [];
+    try {
+      const d = await api('/api/chats/' + encodeURIComponent(currentChat) + '/available-members?userId=' + encodeURIComponent(clientId));
+      members = d.members || [];
+    } catch(e) {}
+    // 可添加的 AI（全部智能体，带模型徽章）
+    let agents = [];
     try {
       const ad = await api('/api/agents');
-      const agents = (ad.agents||[]).map(a => ({ id: a.id, displayName: '🤖 '+a.displayName, type: 'ai-agent' }));
-      for (const a of agents) members.push(a);
+      agents = (ad.agents || []).map(a => ({ id: a.id, displayName: a.displayName, model: a.model || 'default', type: 'ai-agent' }));
     } catch(e) {}
-    if (!members.length) { document.getElementById('availableMembers').innerHTML='<div style="padding:6px;color:#555;font-size:11px">'+t('members.noneAvailable')+'</div>'; return; }
-    document.getElementById('availableMembers').innerHTML = members.map(m =>
-      '<div style="display:flex;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #222;font-size:12px"><span>' + (m.type==='ai-agent'||m.type==='my-ai'?'🤖 ':'👤 ') + esc(m.displayName) + '</span><button class="btn-sm btn-accept" onclick="addMember(\''+esc(m.id)+'\','+(m.type==='ai-agent'||m.type==='my-ai'?'true':'false')+')">'+t('common.add')+'</button></div>'
-    ).join('');
+    // 已存在的成员（避免重复添加）
+    let existing = {};
+    try {
+      const pd = await api('/api/chats/' + encodeURIComponent(currentChat) + '/participants');
+      (pd.participants || []).forEach(m => { if (m.agent_id) existing[m.agent_id] = true; if (m.user_id) existing['u:' + m.user_id] = true; });
+    } catch(e) {}
+    const rows = [];
+    agents.forEach(a => {
+      if (existing[a.id]) return;
+      rows.push('<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #222;cursor:pointer;font-size:12px">' +
+        '<input type="checkbox" class="availMemberCb" data-type="agent" value="' + esc(a.id) + '">' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🤖 ' + esc(a.displayName) + '</span>' +
+        '<span style="font-size:10px;color:#8ab4f8;background:rgba(138,180,248,0.12);padding:0 6px;border-radius:8px;flex-shrink:0">' + esc(a.model) + '</span>' +
+        '<span onclick="event.preventDefault();event.stopPropagation();renameAgent(this)" data-id="' + esc(a.id) + '" style="cursor:pointer;font-size:11px;color:#ffb74d;flex-shrink:0;padding:0 4px" title="改名">✏️</span></label>');
+    });
+    members.forEach(m => {
+      const key = 'u:' + (m.id || m.user_id);
+      if (existing[key]) return;
+      rows.push('<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #222;cursor:pointer;font-size:12px">' +
+        '<input type="checkbox" class="availMemberCb" data-type="user" value="' + esc(m.id || m.user_id) + '">' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">👤 ' + esc(m.displayName || m.name || m.id || '') + '</span></label>');
+    });
+    if (!rows.length) { box.innerHTML = '<div style="padding:6px;color:#555;font-size:11px">' + t('members.noneAvailable') + '</div>'; return; }
+    box.innerHTML = rows.join('') +
+      '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px">' +
+      '<button class="btn-sm" onclick="availMemberAll(true)">全选</button>' +
+      '<button class="btn-sm" onclick="availMemberAll(false)">' + t('common.clear') + '</button>' +
+      '<span id="availMemberCount" style="flex:1;font-size:11px;color:#999"></span>' +
+      '<button class="btn-sm btn-accept" onclick="batchAddMembers()">批量添加</button></div>';
+    availMemberRefreshCount();
+  } catch(e) { box.innerHTML = '<div style="padding:6px;color:#f66;font-size:11px">' + t('err.loadFail') + '</div>'; }
+}
+async function renameAgent(btn) {
+  const id = btn.getAttribute('data-id');
+  if (!id) return;
+  let oldName = '';
+  try {
+    const d = await api('/api/agents');
+    (d.agents || []).forEach(a => { if (String(a.id) === id) oldName = a.displayName || ''; });
   } catch(e) {}
+  const name = prompt('给这个智能体起个新名字：', oldName || '');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await api('/api/agents/' + encodeURIComponent(id), 'PATCH', { displayName: name.trim() });
+    if (r && r.ok) {
+      toast('✅ 已改名：' + name.trim());
+      _agentInfoMap = null;
+      _ensureAgentInfoMap();
+      loadAvailableMembers();
+      renderMembers();
+    } else { toast('改名失败'); }
+  } catch(e) { toast('改名失败'); }
+}
+function availMemberAll(on) { document.querySelectorAll('.availMemberCb').forEach(cb => cb.checked = on); availMemberRefreshCount(); }
+function availMemberRefreshCount() {
+  const el = document.getElementById('availMemberCount');
+  if (el) el.textContent = '已选 ' + document.querySelectorAll('.availMemberCb:checked').length + ' 个';
+}
+async function batchAddMembers() {
+  if (!currentChat) return;
+  const picks = Array.from(document.querySelectorAll('.availMemberCb:checked'));
+  if (!picks.length) { toast('请先勾选要添加的成员'); return; }
+  let added = 0;
+  for (const cb of picks) {
+    const mid = cb.value, type = cb.getAttribute('data-type');
+    try {
+      const body = type === 'agent'
+        ? { id: 'p-' + currentChat + '-' + mid, chatId: currentChat, agentId: mid, role: 'member' }
+        : { id: 'p-' + currentChat + '-' + mid, chatId: currentChat, userId: mid };
+      await api('/api/participants', 'POST', body);
+      added++;
+    } catch(e) {}
+  }
+  toast(t('social.teamCreated', { n: added }));
+  renderMembers();
+  loadAvailableMembers();
 }
 async function addMember(mid, isAgent) {
   if (!currentChat) return;
@@ -4040,10 +4197,86 @@ async function lanRespondFriend(requestId, action) {
 async function lanShowCreateGroup() {
   const name = prompt(t('social.groupNamePh'), t('social.defaultGroupName'));
   if (!name) return;
-  const idsRaw = prompt(t('social.memberIdsPh'), '');
-  const memberNumericIds = (idsRaw || '').split(/[,，\s]+/).map(s => Number(s.trim())).filter(n => Number.isFinite(n) && n > 0);
+  // 动态弹出多选勾选面板：列出邻居用户 + 好友，勾选即可，不用手输数字ID
+  showLanMemberPicker(name);
+}
+
+// ── LAN 建群成员多选面板 ──
+var _lanPickerName = null;
+function showLanMemberPicker(name) {
+  _lanPickerName = name;
+  var old = document.getElementById('lanPickerWrap');
+  if (old) old.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'lanPickerWrap';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center';
+  wrap.innerHTML = '<div style="background:#1e1f26;border:1px solid #333;border-radius:10px;width:480px;max-width:92vw;max-height:80vh;display:flex;flex-direction:column">' +
+    '<div style="padding:12px 16px;border-bottom:1px solid #333;font-size:14px;font-weight:600">👥 选择群成员（勾选，可多选）</div>' +
+    '<div id="lanPickerList" style="flex:1;overflow-y:auto;padding:6px 0;min-height:120px"></div>' +
+    '<div style="padding:10px 16px;border-top:1px solid #333;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+    '<button class="btn-sm" onclick="lanPickerAll(true)">全选</button>' +
+    '<button class="btn-sm" onclick="lanPickerAll(false)">' + t('common.clear') + '</button>' +
+    '<span id="lanPickerCount" style="flex:1;font-size:12px;color:#999"></span>' +
+    '<button class="btn-sm btn-accept" onclick="lanPickerCreate()">✅ 创建群组</button>' +
+    '<button class="btn-sm" onclick="hideLanPicker()">' + t('common.cancel') + '</button>' +
+    '</div></div>';
+  wrap.addEventListener('click', function(e) { if (e.target === wrap) hideLanPicker(); });
+  document.body.appendChild(wrap);
+  loadLanPickerList();
+}
+function hideLanPicker() { var w = document.getElementById('lanPickerWrap'); if (w) w.remove(); _lanPickerName = null; }
+async function loadLanPickerList() {
+  var c = document.getElementById('lanPickerList');
+  if (!c) return;
+  c.innerHTML = '<div style="padding:10px;color:#888;font-size:12px">' + t('common.loading') + '</div>';
+  var myId = String(lanMyId());
+  var rows = [];
+  // 邻居引擎的用户
   try {
-    const r = await api('/api/lan/group-create', 'POST', { ownerUserId: lanMyId(), name, memberNumericIds, chatMode: 'free' });
+    var pd = await api('/api/lan/peers', 'GET');
+    var peers = (pd && pd.peers) || [];
+    for (var pi = 0; pi < peers.length; pi++) {
+      var p = peers[pi];
+      for (var ui = 0; ui < (p.users || []).length; ui++) {
+        var u = p.users[ui];
+        if (String(u.numericId) === myId) continue;
+        rows.push({ numericId: u.numericId, label: '🖥️ ' + esc(p.lanIp) + ':' + p.port + ' · ' + esc(u.displayName) + ' #' + u.numericId });
+      }
+    }
+  } catch(e) {}
+  // 平台好友
+  try {
+    var fr = await platformApi('/api/lan/friends', 'GET');
+    var friends = (fr && fr.friends) || [];
+    for (var fi = 0; fi < friends.length; fi++) {
+      var f = friends[fi];
+      if (String(f.numericId) === myId) continue;
+      rows.push({ numericId: f.numericId, label: '👤 ' + esc(f.displayName) + ' #' + f.numericId + (f.online ? ' 🟢' : ' ⚪') });
+    }
+  } catch(e) {}
+  if (!rows.length) {
+    c.innerHTML = '<div style="padding:10px;color:#888;font-size:12px">没有可选的成员（无邻居用户/好友），可直接创建单人群</div>';
+    return;
+  }
+  c.innerHTML = rows.map(function(r) {
+    return '<label style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid #222;cursor:pointer">' +
+      '<input type="checkbox" class="lanPickerCb" value="' + r.numericId + '">' +
+      '<span style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + r.label + '</span></label>';
+  }).join('');
+  lanPickerRefreshCount();
+}
+function lanPickerAll(on) { document.querySelectorAll('.lanPickerCb').forEach(function(cb){ cb.checked = on; }); lanPickerRefreshCount(); }
+function lanPickerRefreshCount() {
+  var n = document.querySelectorAll('.lanPickerCb:checked').length;
+  var el = document.getElementById('lanPickerCount');
+  if (el) el.textContent = '已选 ' + n + ' 个';
+}
+async function lanPickerCreate() {
+  var ids = [];
+  document.querySelectorAll('.lanPickerCb:checked').forEach(function(cb){ ids.push(Number(cb.value)); });
+  try {
+    const r = await api('/api/lan/group-create', 'POST', { ownerUserId: lanMyId(), name: _lanPickerName, memberNumericIds: ids, chatMode: 'free' });
+    hideLanPicker();
     if (r && r.ok) { toast(t('social.groupCreated')); lanSwitchTab('groups'); lanOpenGroup(r.groupId); }
     else toast('❌ ' + (r.error || t('err.createFail')));
   } catch (e) { toast('❌ ' + e.message); }
@@ -4158,8 +4391,10 @@ function lanAppendMessage(msg, container) {
   if (msg.msgId) el.dataset.msgid = msg.msgId;
   const bubble = isAgent ? '<div class="msg-content">' + markdownToHtml(content) + '</div>' : '<div class="msg-content">' + esc(content) + '</div>';
   const avatar = isAgent ? '🤖' : (isMe ? '🙂' : '👤');
+  // v2.1.4: 智能体消息显示「命名 + 模型」徽章
+  const senderLine = isAgent ? _agentNameLine(senderId) : '<div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">' + esc(name) + '</div>';
   el.innerHTML = '<div class="msg-avatar ' + (isAgent ? 'ai' : 'human') + '">' + avatar + '</div>' +
-    '<div style="max-width:72%"><div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">' + esc(name) + '</div>' +
+    '<div style="max-width:72%">' + senderLine +
     '<div class="msg-bubble">' + bubble + '</div><div class="msg-meta">' + time + '</div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
@@ -4174,7 +4409,8 @@ function lanStreamingStart(msg) {
   const el = document.createElement('div');
   el.className = 'msg-row ai';
   const name = (msg.senderName || (msg.from || '').replace(/^agent:/, '')).toString();
-  el.innerHTML = '<div class="msg-avatar ai">🤖</div><div style="max-width:72%"><div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">' + esc(name) + '</div>' +
+  const senderLine = _agentNameLine(msg.senderId || msg.from || '');
+  el.innerHTML = '<div class="msg-avatar ai">🤖</div><div style="max-width:72%">' + senderLine +
     '<div class="msg-bubble"><div class="msg-content"><span class="typing-dot">' + t('chat.thinking') + '</span></div></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;

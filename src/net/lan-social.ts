@@ -576,7 +576,7 @@ export class LanSocialHub {
     if (!getChatById(aChat)) createChat(aChat, 'group');
     setChatMode(aChat, chatMode);
     for (const m of members) {
-      addLanGroupMember({ groupId, instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName });
+      addLanGroupMember({ groupId, instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName, agentId: m.agentId });
       // 人类聊天：加用户
       this.safeAddParticipant(`p-${hChat}-${m.userId}`, hChat, m.userId, undefined, 'member');
       // 智能体聊天：加该成员的 agent
@@ -600,7 +600,8 @@ export class LanSocialHub {
     const g = getLanGroup(groupId);
     if (!g) return null;
     const members = getLanGroupMembers(groupId).map((m) => ({
-      ...m, online: !!getLanPeer(m.instanceId), local: m.instanceId === getLanInstanceId(),
+      userId: m.user_id, numericId: m.numeric_id, displayName: m.display_name, agentId: m.agent_id,
+      instanceId: m.instance_id, online: !!getLanPeer(m.instance_id), local: m.instance_id === getLanInstanceId(),
     }));
     return { id: g.id, name: g.name, ownerInstance: g.owner_instance, chatMode: g.chat_mode, createdAt: g.created_at, members, humanChatId: humanChatId(groupId), agentChatId: agentChatId(groupId) };
   }
@@ -1149,8 +1150,8 @@ export class LanSocialHub {
   /** 群成员编排视图 */
   private buildRoster(groupId: string): AgentRosterEntry[] {
     return getLanGroupMembers(groupId).map((m) => ({
-      userId: m.userId, numericId: m.numericId, displayName: m.displayName, agentId: m.agentId,
-      instanceId: m.instanceId, isLocal: m.instanceId === getLanInstanceId(),
+      userId: m.user_id, numericId: m.numeric_id, displayName: m.display_name, agentId: m.agent_id,
+      instanceId: m.instance_id, isLocal: m.instance_id === getLanInstanceId(),
     }));
   }
 

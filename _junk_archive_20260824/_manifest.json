@@ -1,0 +1,3970 @@
+[
+ {
+  "rel": "src\\.env.example.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\.env.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\.temp-db-patch.sql.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\agents\\manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ai\\custom-providers.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ai\\hub.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ai\\provider-registry.ts.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ai\\provider-registry.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ai\\vision.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\android\\app\\build.gradle.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\android\\app\\src\\main\\AndroidManifest.xml.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\android\\build.gradle.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\capacitor.config.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\ios\\App\\App\\AppDelegate.swift.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\ios\\App\\App\\EngineManager.swift.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\package.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\app\\README.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\auth\\index.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\auth\\platform-bind.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\BUGFIX_INDEX_TS.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\BUGFIX_REPORT.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\BUGFIX_REPORT_v2.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\discord.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\feishu.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\imessage.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\qqbot.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\signal.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\slack.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\telegram.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\wechat.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\channels\\whatsapp.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\cli\\chat.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\CONTRIBUTING.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\approval.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\builtin.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\chat-modes.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\compaction.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\cron-scheduler.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\docker-sandbox.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\dreamer.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\entity-extractor.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\goal-executor.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\goal-tracker.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\hooks.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\inbox.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\index.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\instance-mesh.ts.bak-bugfix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\instance-mesh.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\logger.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\memory-reflector.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\memory-search.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\orchestrator.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\outcome-tracker.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\plugin-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\push.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\rag-engine.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\router.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\sandbox.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\search-providers.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\session-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\steer.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\subagent-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\team-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\timezone.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\types.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\usage-tracker.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\core\\ws-handler.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\db.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\deploy-aliyun.sh.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\deploy.sh.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\dev\\debug-panel.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ecosystem.config.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\FINAL_AUDIT_REPORT.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\generate_report.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\http\\error.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\index.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\install-server.ps1.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\install.ps1.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\install.sh.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\LICENSE.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mcp\\adapter.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mesh-platform.ts.bak-20260813-011445.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mesh-platform.ts.pre-platform-20260813-015120.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mesh-platform.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\middleware\\admin-auth.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\middleware\\jwt-auth.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\middleware\\rate-limit.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mobile\\index.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mobile\\local-llm.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\mobile-dist\\lingxi-mobile.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\net\\lan-discovery.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\net\\lan-social.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\net\\lan-transport.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\package-lock.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\package.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\platform-server.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\plugins\\plugin-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\README.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\REFACTOR_REPORT.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\router.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\admin.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\agent.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\auth.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\channel.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\chat.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\goals-outcomes.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\market.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\misc.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\profile.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\provider.ts.bak-20260801.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\provider.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\rag.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\system.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\upload.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes\\workflow.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\routes-v1.7.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\scp2-stderr.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\scp2-stdout.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\scripts\\add-exe-download.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\scripts\\clone-engine.bat.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\scripts\\patch-db.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\server\\context.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\server\\rbac.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\setup.bat.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\setup.sh.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\ai-market-integration.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\check-project-folder-integrity.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\check-project-folder.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-analysis-and-fix-deploy.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-audit-and-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-audit-refactor-report.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-audit-refactor.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-bug-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-bug-hunting.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-bug-review.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-fix-package-deploy.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\code-issue-diagnosis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-audit-and-refactor.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-audit-refactor-report.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-bug-audit.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-bug-hunting.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-bug-scan-and-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\codebase-bugfix-and-deploy-prep.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\competitor-analysis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\comprehensive-code-review-and-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\config-mismatch-debugging.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\cross-system-id-harmonization.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\debug-ai-model-integration.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\debug-distributed-sync-issue.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\debug-in-sandbox.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\debug-model-connection.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\deploy-and-test-remote.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\diagnose-model-connection-issue.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\email-checker\\SKILL.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\external-service-connection-troubleshoot.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\find-bugs-in-codebase.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\find-engine-bugs.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\fix-cross-engine-sync.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\fix-cross-system-id-inconsistency.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\fix-id-inconsistency.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\fix-inconsistent-id-format.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\github-trending-finder.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\id-consistency-diagnosis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\id-format-alignment.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\import-files-to-workspace.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\iterative-codebase-bug-audit.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\ollama-connection-diagnosis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\ollama-connection-troubleshoot.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\ollama-local-model-troubleshoot.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\product-comparison-analysis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\remote-deploy-update.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\remote-server-troubleshooting.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\skill-manager.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\social-engine-group-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\social-group-sync-debug-fix.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\system-integration-issue-resolver.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\troubleshoot-ai-model-connection.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\troubleshoot-config-issue.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\troubleshoot-model-routing.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\update-server-package.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\weather-briefing\\SKILL.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\workspace-inspection.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\skills\\workspace-problem-diagnosis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\smoke-test.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\SOCIAL_FIX_REPORT_v2.md.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ssh3-stderr.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\ssh3-stdout.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\start.bat.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\storage\\db.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\brainstorm.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\code-review.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\competitive-intel.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\data-analysis.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\learning.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\templates\\writing.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\check_tools.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-ai.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-calc.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-chat.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-list-d.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-shen.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-smoke.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-weather.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-ws.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\test-ws.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tests\\unit.pure.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\auto-skill.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\browser.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\builtin.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\executor.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\n64.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\office-reader.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\registry.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\search-providers.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tools\\types.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\tsconfig.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\types\\index.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\types\\puppeteer.d.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\verify-login-flash.cjs.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\version.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\voice\\stt.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\voice\\tts.ts.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\admin.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-apple-080204.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-horn-08020345.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-horn-08020346.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-ling032702.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo-031837.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo2-032054.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo3-033119.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v10.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v11-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v12-static-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v13-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v8-0338.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\favicon.ico.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\icon.svg.bak-old-0716.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\icon.svg.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index-p1.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-disabledfix-0803.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.FINAL-v9layout-crystal-20260802.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index_v9_bound.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index_v9_final.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index_v9_func.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index_v9_preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\index_v9_with_orb.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\install.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\i18n.js.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\i18n.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\js\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\manifest.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\market.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\model-management.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\model-mgmt.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\sw.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\test-small.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\test-write.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\test.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\test123.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\test2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_analyze.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_analyze2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_audit_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_body_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_check_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_chk_idx.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_chk_kf.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073800\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073804\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073808\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073817\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073817\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cleanup-bak-20260802-073817\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_cssidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_logo3.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_dump_topnav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_extract_css.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_extract_svg.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_extract_v14.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_final_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_find.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_find2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_find_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_logo6.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_logo7.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_logo_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_fix_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_i18n.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_i18n2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_idx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_inspect_css.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_inspect_i18n.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_inspect_i18n2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_inspect_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_jsidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_merge_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_nav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_probe.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_residue_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_rollback-0602\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_rollback-0602\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_rollback-0602\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_rollback-0602\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step10_check.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step11_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step12_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step13_bound.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step14_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step15_clean.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step16_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step17_recheck.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step1_style.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step2_html.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step3b_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step3_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step4_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step5_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step6_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step7_mobile.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step8_icon.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_step9_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_t1.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_final.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_horn2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_logo4.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_logo4_checks.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web\\_verify_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\admin.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\mobile.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\mobile.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-apple-080204.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-horn-08020345.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-horn-08020346.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-ling032702.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo-031837.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo2-032054.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo3-033119.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v10.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v11-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v12-static-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v13-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v8-0338.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\favicon.ico.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\icon.svg.bak-old-0716.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\icon.svg.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index-p1.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.FINAL-v9layout-crystal-20260802.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index_v9_bound.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index_v9_final.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index_v9_func.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index_v9_preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index_v9_with_orb.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\install.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\i18n.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\manifest.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\market.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\model-management.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\model-mgmt.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\sw.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\test-small.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\test-write.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\test.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\test123.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\test2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_analyze.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_analyze2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_audit_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_body_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_check_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_chk_idx.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_chk_kf.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073800\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073804\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073808\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073817\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073817\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cleanup-bak-20260802-073817\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_cssidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_logo3.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_dump_topnav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_extract_css.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_extract_svg.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_extract_v14.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_final_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_find.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_find2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_find_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_logo6.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_logo7.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_logo_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_fix_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_i18n.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_i18n2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_idx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_inspect_css.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_inspect_i18n.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_inspect_i18n2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_inspect_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_jsidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_merge_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_nav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_probe.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_residue_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_rollback-0602\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_rollback-0602\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_rollback-0602\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_rollback-0602\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step10_check.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step11_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step12_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step13_bound.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step14_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step15_clean.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step16_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step17_recheck.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step1_style.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step2_html.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step3b_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step3_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step4_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step5_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step6_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step7_mobile.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step8_icon.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_step9_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_t1.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_final.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_horn2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_logo4.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_logo4_checks.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "src\\web_backup_v9\\_verify_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\admin.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\app.js.bak-platformui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\app.js.old.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\mobile.css.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\mobile.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\mobile.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-apple-080204.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-horn-08020345.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-horn-08020346.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-ling032702.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo-031837.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo2-032054.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo3-033119.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v10.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v11-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v12-static-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v13-0802.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v8-0338.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\design-preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\favicon.ico.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\icon.svg.bak-old-0716.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\icon.svg.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index-p1.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-before-layout-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-platformui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-disabledfix-0803.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-logo.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-premic.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.FINAL-v9layout-crystal-20260802.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.layout-before-20260802.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.rollback-20260802-060217.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index_v9_bound.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index_v9_final.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index_v9_func.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index_v9_preview.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\index_v9_with_orb.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\install.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-fix-20260802-071902.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-friendfix-1786638579274.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-pre-fix.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-pre-v12ui-20260802-124513.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-ui.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\i18n.js.func.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\i18n.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\js\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\manifest.json.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\market.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\market.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\market.js.old.bak.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\market.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\model-management.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\model-mgmt.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\sw.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\test-small.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\test-write.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\test.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\test123.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\test2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_analyze.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_analyze2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_audit_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_body_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_check_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_chk_idx.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_chk_kf.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073800\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073804\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073808\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073817\\css\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073817\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cleanup-bak-20260802-073817\\js\\app.js.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_cssidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_logo3.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_dump_topnav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_extract_css.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_extract_svg.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_extract_v14.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_final_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_find.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_find2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_find_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_logo3.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_logo6.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_logo7.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_logo_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_residue.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_fix_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_i18n.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_i18n2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_idx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_inspect_css.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_inspect_i18n.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_inspect_i18n2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_inspect_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_jsidx.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_merge_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_nav.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_probe.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_residue_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_rollback-0602\\icon.svg.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_rollback-0602\\index.html.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_rollback-0602\\mobile.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_rollback-0602\\style.css.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step10_check.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step11_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step12_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step13_bound.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step14_view.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step15_clean.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step16_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step17_recheck.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step1_style.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step2_html.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step3b_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step3_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step4_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step5_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step6_scan.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step7_mobile.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step8_icon.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_step9_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_t1.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify2.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_final.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_horn.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_horn2.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_logo4.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_logo4.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_logo4_checks.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_out.txt.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_v12.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "web\\_verify_v13.py.~1~",
+  "reason": "tilde"
+ },
+ {
+  "rel": "data\\sessions.json.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "index.ts.bak-persist-fix-1787164965869",
+  "reason": "bak"
+ },
+ {
+  "rel": "index.ts.bak-routes-20260818",
+  "reason": "bak"
+ },
+ {
+  "rel": "index.ts.bak-timeout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\ai\\provider-registry.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\core\\instance-mesh.ts.bak-bugfix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\mesh-platform.ts.bak-20260813-011445",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\routes\\provider.ts.bak-20260801",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\storage\\db.ts.bak-atomic-1787165252668",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\storage\\db.ts.bak-edge-1786696170183",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\storage\\db.ts.bak-lanmodes-1787047877199",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\storage\\db.ts.bak-persist-fix-1787164965865",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\storage\\db.ts.bak-v2-1786696221439",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-disabledfix-0803",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\js\\app.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web\\js\\i18n.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "src\\web_backup_v9\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\app.js.bak-goalui-1787068431360",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\app.js.bak-platformui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\app.js.bak-timeout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\app.js.old.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\mobile.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-goalui-1787068431357",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-groupbtn",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-platformui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-disabledfix-0803",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-premic",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-timeout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-voice-restore-1787054328155",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.bak-voice-restore-1787054677917",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-ctxfix-1787064219510",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-ctxfix-1787064237739",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-f5guest-1787166760298",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-friendfix-1786638579274",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-pre-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\app.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\js\\i18n.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "web\\market.js.old.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\ai\\provider-registry.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\core\\instance-mesh.ts.bak-bugfix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\core\\ws-handler.ts.bak-corrupted",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\routes\\provider.ts.bak-20260801",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\mobile.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-pre-disabledfix-0803",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\js\\app.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web\\js\\i18n.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\web_backup_v9\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\app.js.bak-toolprog",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\app.js.old.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\mobile.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\mobile.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\mobile.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\css\\style.css.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-apple-080204",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-horn-08020345",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-horn-08020346",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-ling032702",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-logo-031837",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-logo2-032054",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-logo3-033119",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-v10.html",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-v11-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-v12-static-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-v13-0802",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\design-preview.html.bak-v8-0338",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\icon.svg.bak-old-0716",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\icon.svg.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-before-layout-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-pre-disabledfix-0803",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-pre-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-pre-logo",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.layout-before-20260802.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\index.html.rollback-20260802-060217.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\app.js.bak-fix-20260802-071902",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\app.js.bak-pre-fix",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\app.js.bak-pre-v12ui-20260802-124513",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\app.js.bak-ui",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\app.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\js\\i18n.js.func",
+  "reason": "bak"
+ },
+ {
+  "rel": "workspace\\_pkgx\\web\\market.js.old.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "_secfix_backup_20260818\\index.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "_secfix_backup_20260818\\src__core__approval.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "_secfix_backup_20260818\\src__server__rbac.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "_secfix_backup_20260818\\src__tools__builtin.ts.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "_secfix_backup_20260818\\web__app.js.bak",
+  "reason": "bak"
+ },
+ {
+  "rel": "data\\data.bak\\lingxi.db",
+  "reason": "empty"
+ },
+ {
+  "rel": "data\\logs\\dev-restart-err.log",
+  "reason": "empty"
+ },
+ {
+  "rel": "data\\logs\\dev-restart-out.log",
+  "reason": "empty"
+ },
+ {
+  "rel": "diffrhythm-local\\pretrained\\.locks\\models--ASLP-lab--DiffRhythm-1_2\\3e819b317ce2cf1fb22f386d74f351b697204ec1f57f03edfe50dbca71cf0768.lock",
+  "reason": "empty"
+ },
+ {
+  "rel": "diffrhythm-local\\thirdparty\\LangSegment\\utils\\__init__.py",
+  "reason": "empty"
+ },
+ {
+  "rel": "docs\\dev\\scp2-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "docs\\dev\\scp2-stdout.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "docs\\dev\\ssh3-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "src\\scp2-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "src\\scp2-stdout.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "src\\ssh3-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "startup.log",
+  "reason": "empty"
+ },
+ {
+  "rel": "workspace\\'",
+  "reason": "empty"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\scp2-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\scp2-stdout.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "workspace\\_pkgx\\src\\ssh3-stderr.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "_err.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "_py_imports.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "_tsc2.txt",
+  "reason": "empty"
+ },
+ {
+  "rel": "2026涓浗绠楀姏澶т細_鐏电妧寮曟搸鎴愭灉寰侀泦閫佹姤鏉愭枡.txt",
+  "reason": "garbled"
+ },
+ {
+  "rel": "2026娑擃厼娴楃粻妤€濮忔径褌绱癬閻忕數濡у鏇熸惛閹存劖鐏夊渚€娉﹂柅浣瑰Г閺夋劖鏋_txt",
+  "reason": "garbled"
+ },
+ {
+  "rel": "娴狅絿鐖滅€孤ゎ吀閹躲儱鎲20260820.md",
+  "reason": "garbled"
+ },
+ {
+  "rel": "浠ｇ爜瀹¤鎶ュ憡_20260820.md",
+  "reason": "garbled"
+ },
+ {
+  "rel": "閮ㄧ讲涓庢祴璇曟寚鍗_md",
+  "reason": "garbled"
+ },
+ {
+  "rel": "闁劎璁叉稉搴㈢ゴ鐠囨洘瀵氶崡_md",
+  "reason": "garbled"
+ },
+ {
+  "rel": "$null",
+  "reason": "rootjunk"
+ },
+ {
+  "rel": "0)",
+  "reason": "rootjunk"
+ },
+ {
+  "rel": "check_fix.js",
+  "reason": "rootjunk"
+ },
+ {
+  "rel": "check_fix_out.txt",
+  "reason": "rootjunk"
+ },
+ {
+  "rel": "check_fix_out2.txt",
+  "reason": "rootjunk"
+ }
+]

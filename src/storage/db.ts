@@ -521,6 +521,23 @@ function _dbInit(db: any) {
   } catch (e: any) {
     console.warn('[DB] agents personality_dims migration warning:', e.message);
   }
+
+  // —— v2.2.0: 迁移：lan_groups/lan_group_members 补列（老库表结构与新代码建表脱节，导致建群 INSERT 报 no such column）——
+  try {
+    const lgCols = db.exec(`PRAGMA table_info(lan_groups)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!lgCols.includes('member_count')) {
+      db.run(`ALTER TABLE lan_groups ADD COLUMN member_count INTEGER DEFAULT 0`);
+      console.log('[DB] v2.2.0 migration: added member_count to lan_groups');
+    }
+    const lgmCols = db.exec(`PRAGMA table_info(lan_group_members)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!lgmCols.includes('agent_id')) {
+      db.run(`ALTER TABLE lan_group_members ADD COLUMN agent_id TEXT`);
+      console.log('[DB] v2.2.0 migration: added agent_id to lan_group_members');
+    }
+  } catch (e: any) {
+    console.warn('[DB] v2.2.0 migration warning:', e.message);
+  }
+
   // —— v2.0.12: 迁移：AI员工市场自定义时长 + 雇佣到期时间 + 订单关联hire ——
   try {
     const mkCols = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
@@ -1290,7 +1307,7 @@ export function addInboxItem(item: {
   createdAt: number;
 }): void {
   _db.run(
-    "INSERT INTO inbox (id, agent_id, type, title, content, file_path, read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    "INSERT INTO inbox (id, agent_id, type, title, content, file_path, read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [item.id, item.agentId, item.type, item.title, item.content, item.filePath, item.read ? 1 : 0, item.createdAt]
   );
 }
@@ -1591,13 +1608,14 @@ export function addLanGroupMember(params: {
   displayName?: string;
   instanceId?: string;
   role?: string;
+  agentId?: string;
 }): void {
   const id = 'lgm-' + params.groupId + '-' + params.userId;
   const now = Date.now();
   _db.run(
-    `INSERT OR REPLACE INTO lan_group_members (id, group_id, user_id, numeric_id, display_name, instance_id, role, joined_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, params.groupId, params.userId, params.numericId ?? null, params.displayName ?? null, params.instanceId ?? null, params.role ?? 'member', now]
+    `INSERT OR REPLACE INTO lan_group_members (id, group_id, user_id, numeric_id, display_name, instance_id, role, joined_at, agent_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, params.groupId, params.userId, params.numericId ?? null, params.displayName ?? null, params.instanceId ?? null, params.role ?? 'member', now, params.agentId ?? null]
   );
   // Update member count
   const count = queryOne("SELECT COUNT(*) as cnt FROM lan_group_members WHERE group_id = ?", [params.groupId]);

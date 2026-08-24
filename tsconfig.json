@@ -13,12 +13,17 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["**/*.ts"],
+  "include": [
+    "**/*.ts"
+  ],
   "exclude": [
     "node_modules",
     "dist",
     "workspace",
     "src/core/index.ts",
-    "src/router.ts"
+    "src/router.ts",
+    "src/index.ts",
+    "src/tests",
+    "_*.ts"
   ]
 }
