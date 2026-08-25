@@ -71,7 +71,7 @@ export interface Database {
   addMessage(msg: { id: string; chatId: string; senderType: string; senderId: string; content: string; type: string; replyTo?: string; timestamp: number }): void;
   listMessages(chatId: string, limit: number): Array<{ id: string; chatId: string; sender_type: string; senderId: string; content: string; type: string; replyTo?: string; timestamp: number }>;
   getChatParticipants(chatId: string): ChatParticipant[];
-  createChat(id: string, type?: 'private' | 'group'): { id: string; type: string; sharedWorkspace?: string; createdAt: number };
+  createChat(id: string, type?: 'private' | 'group', sharedWorkspace?: string, name?: string): { id: string; type: string; sharedWorkspace?: string; name?: string; createdAt: number };
   addParticipant(id: string, chatId: string, userId?: string, agentId?: string, role?: string): void;
   listAgents(): Agent[];
   createUser(id: string, displayName: string): unknown;

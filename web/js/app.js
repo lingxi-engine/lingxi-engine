@@ -1233,7 +1233,9 @@ function newChat() {
   // 异步创建后端记录：聊天 + 用户 participant + AI Agent participant
   api('/api/chats', 'POST', { id: newId, type: 'private', name: t('chat.newChat') }).then(() => {
     // 加用户
-    api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: lanMyId(), role: 'owner' }).catch(e => console.warn('participant user:', e));
+    api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: lanMyId(), role: 'owner' })
+      .catch(function(e) { console.warn('participant user:', e); return api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: clientId, role: 'owner' }); })
+      .catch(function(e) { console.warn('participant user retry:', e); });
     // 加 AI Agent — 查已有 Agent 列表，把第一个加进来
     api('/api/agents').then(d => {
       const agents = d.agents || [];
@@ -1859,13 +1861,24 @@ function showCreateGroup() {
     if (!lanMeId && authToken) {
       try { const d = await platformApi('/api/user/me', 'GET'); if (d && d.ok && d.user) lanMeId = d.user.id || d.user.sub || null; } catch(_e) {}
     }
-    // 把创建者加为 owner
-    await api('/api/participants', 'POST', {
-      id: 'p-' + chatId + '-creator',
-      chatId: chatId,
-      userId: lanMyId(),
-      role: 'owner'
-    }).catch(()=>{});
+    // 把创建者加为 owner —— 失败自动降级重试 + 回读验证（修复"建群后侧边栏看不到群"）
+    try {
+      var tryOwner = function(uid) { return api('/api/participants', 'POST', {
+        id: 'p-' + chatId + '-creator',
+        chatId: chatId,
+        userId: uid,
+        role: 'owner'
+      }).then(function(){ return true; }).catch(function(){ return false; }); };
+      var ownerOk = await tryOwner(lanMyId());
+      if (!ownerOk && lanMeId && String(lanMeId) !== String(clientId)) ownerOk = await tryOwner(clientId);
+      if (!ownerOk && authToken) {
+        try { var d2 = await platformApi('/api/user/me', 'GET'); if (d2 && d2.ok && d2.user) { lanMeId = d2.user.id || d2.user.sub || null; if (lanMeId && String(lanMeId) !== String(lanMyId())) ownerOk = await tryOwner(lanMeId); } } catch(_e) {}
+      }
+      if (!ownerOk) {
+        try { var pd2 = await api('/api/chats/' + encodeURIComponent(chatId) + '/participants'); ownerOk = (pd2.participants || []).some(function(p){ return p.user_id === lanMyId() && p.role === 'owner'; }); } catch(_e) {}
+      }
+      if (!ownerOk) toast('⚠️ 群已创建，但创建者入群写入失败，刷新后可能不显示（请检查登录身份）');
+    } catch(_e) { toast('⚠️ 群已创建，但创建者入群写入异常'); }
     loadChatList();
     switchChat(chatId);
     // 建群后自动弹出多选勾选面板：直接勾选要加入的 AI/好友，批量添加
@@ -3165,13 +3178,24 @@ async function loadChatMode(chatId) {
     }
   } catch(e) {}
 }
+let _modeSwitching = false;
 async function setChatMode(mode) {
-  if (!currentChat) return;
+  if (!currentChat || _modeSwitching) return;
+  var sel = document.getElementById('chatModeSelect');
+  var prevMode = sel ? sel.value : null;
+  _modeSwitching = true;
+  if (sel) sel.disabled = true;
   try {
     await api('/api/chats/' + encodeURIComponent(currentChat) + '/mode', 'POST', { mode });
     var names = {free:t('mode.free'),route:t('mode.route'),debate:t('mode.debate'),chain:t('mode.chain'),roundtable:t('mode.roundtable'),vote:t('mode.vote'),brainstorm:t('mode.brainstorm')};
     toast(t('chat.collabMode', {mode: names[mode] || mode}));
-  } catch(e) { toast('❌ ' + t('err.setFail')); }
+  } catch(e) {
+    if (sel && prevMode) sel.value = prevMode;
+    toast('❌ ' + t('err.setFail'));
+  } finally {
+    _modeSwitching = false;
+    if (sel) sel.disabled = false;
+  }
 }
 
 

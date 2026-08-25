@@ -1075,9 +1075,9 @@ setSearchManager(searchManagerInstance);
   // ── 聊天 & 参与者 API ──
   app.post('/api/chats', requireAuth, (req, res) => {
     try {
-      const { id, type } = req.body;
+      const { id, type, name } = req.body;
       if (!id) return res.status(400).json({ error: 'id 必填' });
-      const chat = db.createChat(id, type || 'private');
+      const chat = db.createChat(id, type || 'private', undefined, name);
       res.json({ ok: true, chat });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) return res.json({ ok: true, exists: true });

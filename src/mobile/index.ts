@@ -277,7 +277,7 @@ async function main() {
   app.post('/api/chats', requireAuth, (req: any, res) => {
     const { type, name } = req.body || {};
     const chatId = 'chat-' + Date.now();
-    db.createChat(chatId, type || 'private');
+    db.createChat(chatId, type || 'private', undefined, name);
     const userId = req.user?.id || 'user-mobile-admin';
     db.addParticipant('p-' + chatId + '-user', chatId, userId, undefined, 'owner');
     res.json({ ok: true, chatId });

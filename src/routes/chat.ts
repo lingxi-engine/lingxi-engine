@@ -12,12 +12,12 @@ export function createChatRoutes(ctx: ServerContext): Router {
   // ── 创建聊天 ──
   router.post('/chats', (req, res) => {
     try {
-      const { id, type } = req.body;
+      const { id, type, name } = req.body;
       if (!id) return res.status(400).json({ error: 'id 必填' });
-      const chat = db.createChat(id, type || 'private');
+      const chat = db.createChat(id, type || 'private', undefined, name);
       // 自动创建会话跟踪 (v2.0.7)
       if (sessionManager && req.body.userId) {
-        sessionManager.ensureSessionForChat(id, req.body.userId, (chat as any).display_name || id);
+        sessionManager.ensureSessionForChat(id, req.body.userId, name || (chat as any).display_name || id);
       }
       res.json({ ok: true, chat });
     } catch (err: any) {

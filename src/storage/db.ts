@@ -180,6 +180,7 @@ function _dbInit(db: any) {
     CREATE TABLE IF NOT EXISTS chats (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL DEFAULT 'private',
+      name TEXT,
       shared_workspace TEXT,
       chat_mode TEXT NOT NULL DEFAULT 'free',
       created_at INTEGER NOT NULL,
@@ -511,6 +512,80 @@ function _dbInit(db: any) {
     console.warn('[DB] v1.7.2 migration warning:', e.message);
   }
 
+  // —— v2.3.0: 迁移：给 chats 表补 name 列（群名持久化，修复建群后群名丢失/列表不显示名字）——
+  try {
+    const chatCols3 = db.exec(`PRAGMA table_info(chats)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!chatCols3.includes('name')) {
+      db.run(`ALTER TABLE chats ADD COLUMN name TEXT`);
+      console.log('[DB] v2.3.0 migration: added name to chats');
+    }
+  } catch (e: any) {
+    console.warn('[DB] v2.3.0 migration warning:', e.message);
+  }
+
+  // —— v2.3.1: 迁移：存量孤儿群修复（补 owner、回填群名、type 归一、清理幽灵参与者）——
+  //    孤儿群 = type in (group,team) 且没有任何 user 参与者的群（建群时 owner 写入失败被吞，
+  //    会话列表 INNER JOIN participants 永远查不到 -> 群隐身）。启动时幂等修复，老库自动生效。
+  try {
+    // 1) 孤儿群补 owner：扫描所有无用户参与者的群聊
+    const orphanGroups = db.exec(
+      "SELECT id, name FROM chats WHERE type IN ('group','team')" +
+      " AND NOT EXISTS (SELECT 1 FROM participants WHERE chat_id = chats.id AND user_id IS NOT NULL)"
+    )[0]?.values || [];
+    let fixedOwner = 0, fixedName = 0;
+    for (const row of orphanGroups) {
+      const gid = String(row[0]);
+      const gname = row[1] == null ? null : String(row[1]);
+      // 找群内 agent 的归属用户（agent-u-* 真实平台用户优先）
+      const ownerRows = db.exec(
+        "SELECT a.user_id FROM participants p JOIN agents a ON a.id = p.agent_id" +
+        " WHERE p.chat_id = '" + gid.replace(/'/g, "''") + "' AND p.agent_id IS NOT NULL" +
+        " AND a.user_id IS NOT NULL AND a.user_id != ''" +
+        " ORDER BY (CASE WHEN p.agent_id LIKE 'agent-u-%' THEN 0 ELSE 1 END), p.joined_at ASC LIMIT 1"
+      )[0]?.values || [];
+      if (ownerRows.length) {
+        const ownerId = String(ownerRows[0][0]);
+        const pid = 'p-' + gid + '-creator';
+        const exists = db.exec("SELECT id FROM participants WHERE id = '" + pid.replace(/'/g, "''") + "'")[0]?.values?.length || 0;
+        if (!exists) {
+          db.run(
+            "INSERT INTO participants (id, chat_id, user_id, agent_id, role, joined_at) VALUES (?, ?, ?, NULL, 'owner', ?)",
+            [pid, gid, ownerId, Date.now()]
+          );
+          console.log('[DB] v2.3.1 migration: owner added', gid, '->', ownerId);
+          fixedOwner++;
+        }
+      } else {
+        console.warn('[DB] v2.3.1 migration: cannot infer owner for', gid, '- skip');
+      }
+      // 回填 AGI进化组 群名（其他空名群提示人工处理）
+      if (!gname && gid === 'team-mt7qknoh') {
+        db.run("UPDATE chats SET name = ? WHERE id = ?", ['AGI进化组', gid]);
+        console.log('[DB] v2.3.1 migration: name backfilled AGI进化组');
+        fixedName++;
+      } else if (!gname) {
+        console.warn('[DB] v2.3.1 migration: group', gid, 'has no name - manual UPDATE needed if desired');
+      }
+    }
+    // 2) type=team 归一为 group（smoke 测试残留）
+    const teamRows = db.exec("SELECT id FROM chats WHERE type = 'team'")[0]?.values || [];
+    if (teamRows.length) {
+      db.run("UPDATE chats SET type = 'group' WHERE type = 'team'");
+      console.log('[DB] v2.3.1 migration: normalized', teamRows.length, 'team -> group:', teamRows.map((r: any) => r[0]).join(', '));
+    }
+    // 3) 清理幽灵参与者（user_id 和 agent_id 双空）
+    const ghostRows = db.exec("SELECT id FROM participants WHERE user_id IS NULL AND agent_id IS NULL")[0]?.values || [];
+    if (ghostRows.length) {
+      db.run("DELETE FROM participants WHERE user_id IS NULL AND agent_id IS NULL");
+      console.log('[DB] v2.3.1 migration: removed', ghostRows.length, 'ghost participants:', ghostRows.map((r: any) => r[0]).join(', '));
+    }
+    if (fixedOwner || fixedName || teamRows.length || ghostRows.length) {
+      console.log('[DB] v2.3.1 migration done: owner=' + fixedOwner + ' name=' + fixedName + ' team2group=' + teamRows.length + ' ghosts=' + ghostRows.length);
+    }
+  } catch (e: any) {
+    console.warn('[DB] v2.3.1 migration warning:', e.message);
+  }
+
   // —— v2.1.x: 迁移：给 agents 表补 personality_dims 列（人格演化持久化，修复老库 no such column）——
   try {
     const agentCols = db.exec(`PRAGMA table_info(agents)`)[0]?.values?.map((r: any) => r[1]) || [];
@@ -708,10 +783,10 @@ export function appendMemorySummary(agentId: string, newContent: string) {
 }
 
 // ———— Chats ————
-export function createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string) {
+export function createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string, name?: string) {
   const now = Date.now();
-  _db.run("INSERT INTO chats (id, type, shared_workspace, created_at) VALUES (?, ?, ?, ?)", [id, type, sharedWorkspace ?? null, now]);
-  return { id, type, sharedWorkspace, createdAt: now };
+  _db.run("INSERT INTO chats (id, type, shared_workspace, name, created_at) VALUES (?, ?, ?, ?, ?)", [id, type, sharedWorkspace ?? null, name ?? null, now]);
+  return { id, type, sharedWorkspace, name, createdAt: now };
 }
 
 export function addParticipant(id: string, chatId: string, userId?: string, agentId?: string, role: string = "member") {
@@ -739,6 +814,10 @@ export function getChatById(id: string) {
 
 export function updateChatWorkspace(id: string, sharedWorkspace: string | null) {
   _db.run("UPDATE chats SET shared_workspace = ? WHERE id = ?", [sharedWorkspace, id]);
+}
+
+export function updateChatName(id: string, name: string | null) {
+  _db.run("UPDATE chats SET name = ? WHERE id = ?", [name, id]);
 }
 
 // —— 群聊协作模式（v1.7.2）——
@@ -1156,7 +1235,7 @@ export class DB {
   appendMemorySummary(agentId: string, newContent: string) {
     return appendMemorySummary(agentId, newContent);
   }
-  createChat(id: string, type: "private" | "group" = "private") { return createChat(id, type); }
+  createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string, name?: string) { return createChat(id, type, sharedWorkspace, name); }
   addParticipant(id: string, chatId: string, userId?: string, agentId?: string, role: string = "member") {
     return addParticipant(id, chatId, userId, agentId, role);
   }
