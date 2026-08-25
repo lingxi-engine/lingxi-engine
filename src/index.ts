@@ -418,8 +418,16 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── V5 P1: 审批管理器 ──
-  const approvalManager = new ApprovalManager(300000);
-  console.log('[Approval] 审批管理器已初始化 (timeout=5min)');
+  const approvalManager = new ApprovalManager(10000);
+  console.log('[Approval] 审批管理器已初始化 (timeout=10s, 超时自动通过)');
+
+  // ── 审批事件推送前端（实时弹窗）──
+  approvalManager.onRequest((req) => {
+    try { broadcast({ type: 'approval.requested', approval: req }); } catch (_e) {}
+  });
+  approvalManager.onDecide((req) => {
+    try { broadcast({ type: 'approval.decided', approval: req }); } catch (_e) {}
+  });
 
   // ── V5 P1: Hook 管理器 ──
   const hookManager = new HookManager(dataDir);

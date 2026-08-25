@@ -901,7 +901,7 @@ function switchTheme(name,btn){
       <div class="card"><h4 data-i18n="admin.card.mcp">🔌 MCP</h4><button onclick="adminMCP()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><button onclick="showAddMCP()" class="btn green" style="width:100%;margin-top:4px;font-size:11px" data-i18n="common.add">+ 添加</button><pre id="adminMCPOut">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.subagent">🤖 SubAgent</h4><button onclick="adminSubAgents()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminSubOut">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.plugins">🧩 插件</h4><button onclick="adminPlugins()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminPluginsOut">-</pre></div>
-      <div class="card"><h4 data-i18n="admin.card.approval">✅ 审批</h4><button onclick="loadApprovals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="approvalList" style="font-size:12px">-</div></div>
+      <!-- 审批已迁移到当前界面弹窗 (v2 2026-08-25) -->
       <div class="card"><h4 data-i18n="admin.card.token">📊 Token</h4><button onclick="loadUsage()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="usageStats" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural">晓晓</option><option value="zh-CN-YunxiNeural">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
       <div class="card"><h4 data-i18n="admin.card.goals">🎯 目标</h4><div class="row" style="margin-bottom:4px"><input id="goalInput" data-i18n-ph="admin.goalPh" placeholder="输入新目标..." onkeydown="if(event.key==='Enter')addGoal()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:11px"><button onclick="addGoal()" class="btn green" style="font-size:11px" data-i18n="common.add">+ 添加</button></div><button onclick="loadGoals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="goalsList" style="font-size:12px">-</div></div>
@@ -1041,5 +1041,29 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <select id="chatModeSelect" onchange="setChatMode(this.value)" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px;margin-right:8px">
                 <option value="free">自由</option><option value="route">路由</option><option value="debate">辩论</option><option value="chain">链式</option><option value="roundtable">圆桌</option><option value="vote">投票</option><option value="brainstorm">头脑风暴</option>
               </select>
+
+<!-- ═══ 审批弹窗 (v2 2026-08-25: 当前界面直接弹出 + 10秒倒计时自动通过) ═══ -->
+<div id="approvalModalOverlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.55);z-index:99999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:12px;padding:20px 24px;max-width:440px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.5)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h3 style="margin:0;font-size:15px">🔐 需要审批</h3>
+      <span id="approvalCountdown" style="font-size:20px;font-weight:700;color:#fbbf24;font-variant-numeric:tabular-nums">10</span>
+    </div>
+    <div style="background:var(--bg,#15151f);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:12px;line-height:1.6;max-height:160px;overflow:auto">
+      <div><b>操作：</b><span id="approvalAction">-</span></div>
+      <div><b>工具：</b><span id="approvalTool">-</span></div>
+      <div><b>风险：</b><span id="approvalRisk">-</span></div>
+      <div style="margin-top:4px"><b>参数：</b><pre id="approvalArgs" style="margin:4px 0 0;white-space:pre-wrap;font-size:11px;color:var(--text3,#888)">-</pre></div>
+    </div>
+    <div style="height:6px;background:var(--bg,#15151f);border-radius:3px;overflow:hidden;margin-bottom:14px">
+      <div id="approvalCountdownBar" style="height:100%;width:100%;background:linear-gradient(90deg,#fbbf24,#f59e0b);transition:width 0.9s linear"></div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button id="approvalRejectBtn" onclick="respondApproval(currentApprovalId,'reject')" style="padding:8px 16px;background:#4a2a2a;border:1px solid #ef4444;color:#ef4444;border-radius:6px;cursor:pointer;font-size:13px">拒绝</button>
+      <button id="approvalApproveBtn" onclick="respondApproval(currentApprovalId,'accept')" style="padding:8px 16px;background:#2a4a2a;border:1px solid #4ade80;color:#4ade80;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">通过</button>
+    </div>
+    <div style="margin-top:10px;font-size:11px;color:var(--text3,#888);text-align:center">⏱ 10 秒内未操作将自动通过</div>
+  </div>
+</div>
 </body>
 </html>

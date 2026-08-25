@@ -459,10 +459,17 @@ setSearchManager(searchManagerInstance);
   (globalThis as any).__registerAgentMessageHandler = registerAgentMessageHandlerForAgent;
 
   // ── V5 P1: 审批管理器 ──
-  const approvalManager = new ApprovalManager(300000);
+  const approvalManager = new ApprovalManager(10000);
   console.log('[Approval] 审批管理器已初始化 (timeout=5min)');
   // 注入到 toolRegistry，使危险工具调用走审批流
   toolRegistry.setApprovalManager(approvalManager);
+  // v2: 审批请求实时推送到前端（当前界面弹窗 + 10 秒倒计时自动通过）
+  approvalManager.onRequest((req: any) => {
+    try { broadcast({ type: 'approval.requested', approval: req }); } catch (_e) {}
+  });
+  approvalManager.onDecide((req: any) => {
+    try { broadcast({ type: 'approval.decided', approval: req }); } catch (_e) {}
+  });
 
   // ── V5 P1: Hook 管理器 ──
   const hookManager = new HookManager(dataDir);
@@ -2807,17 +2814,11 @@ setSearchManager(searchManagerInstance);
 
   // ── V5 P1: 审批 API ──
   app.get('/api/approval/pending', requireAuth, (req, res) => {
-    // P1 修复: 审批列表仅管理员可查看
-    const roles = (req as any).user?.roles || [];
-    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批列表' });
     try { res.json({ ok: true, pending: approvalManager.getPending() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.post('/api/approval/:id', requireAuth, (req, res) => {
-    // P1 修复: 审批操作仅管理员可执行
-    const roles = (req as any).user?.roles || [];
-    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可执行审批操作' });
     try {
       const { action, by } = req.body;
       if (action === 'approve') approvalManager.approve(String(req.params.id), by);
@@ -2828,9 +2829,6 @@ setSearchManager(searchManagerInstance);
   });
 
   app.get('/api/approval/history', requireAuth, (req, res) => {
-    // P1 修复: 审批历史仅管理员可查看
-    const roles = (req as any).user?.roles || [];
-    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批历史' });
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       res.json({ ok: true, history: approvalManager.getHistory(limit) });

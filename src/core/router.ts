@@ -319,10 +319,18 @@ export class MessageRouter {
     // ⭐ 用实际 resolved 的模型名构建 system prompt，而非 env 变量原始值
     const messages: ChatMessage[] = [
       { role: 'system', content: this.buildSystemPrompt(agent, effectiveTaskGoal, chatId, { tool: toolClient.resolvedModel, reply: replyClient.resolvedModel }) + ragContext + modePrompt + clarifyHint },
-      ...recentMessages.map(m => ({
-        role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: m.content,
-      })),
+      ...recentMessages.map(m => {
+        let metaReasoning: string | undefined;
+        try {
+          const meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
+          if (meta?.reasoning_content) metaReasoning = meta.reasoning_content;
+        } catch { /* ignore */ }
+        return {
+          role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+          content: m.content,
+          ...(metaReasoning ? { reasoning_content: metaReasoning } : {}),
+        };
+      }),
     ];
 
     // ── 上下文压缩：超限时用工具模型摘要旧消息 ──
@@ -336,6 +344,9 @@ export class MessageRouter {
     const messagesFinal = compactResult.messages as ChatMessage[];
 
     let finalContent = '';
+    // ⭐ 修复：thinking 模型要求 assistant 消息原样回传 reasoning_content（否则 400）
+    // 工具循环执行后提取最后一条 assistant 的 reasoning_content，落库时写入 metadata
+    let toolLoopReasoning: string | undefined;
 
     // ── 判断是否有工具可用 ──
     const agentTools = this.toolRegistry ? this.toolRegistry.listToolsForAgent(agentId) : [];
@@ -390,6 +401,11 @@ export class MessageRouter {
         throw abortErr;
       }
         finalContent = result.finalContent;
+        // ⭐ 修复：提取工具循环中最后一条带 reasoning_content 的 assistant 消息（thinking 模型回传必需）
+        try {
+          const lastAsst = [...(result.messages || [])].reverse().find((m: any) => m.role === 'assistant' && m.reasoning_content);
+          if (lastAsst) toolLoopReasoning = lastAsst.reasoning_content;
+        } catch { /* ignore */ }
         // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
         // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作
         if (replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {
@@ -586,7 +602,7 @@ export class MessageRouter {
     if (options?.skipPersist) {
       return finalContent;
     }
-    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
+    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now(), metadata: toolLoopReasoning ? { reasoning_content: toolLoopReasoning } : undefined });
 
     // 更新记忆（P0-1: 写入前过滤指令性内容，防止对话中的 Prompt 注入持久化为记忆）
     const exchangeSummary = `[${new Date().toLocaleString('zh-CN')}] ${agent.displayName} 在 ${chatId} 回复说: ${sanitizeMemoryInput(finalContent.slice(0, 200))}`;

@@ -7,6 +7,7 @@ import { createCronJob } from '../core/cron-scheduler.js';
 import { INFERENCE_BACKENDS } from '../ai/custom-providers.js';
 import { UsageTracker } from '../core/usage-tracker.js';
 import { logger } from '../core/logger.js';
+import { jwtAuth } from '../middleware/jwt-auth.js';
 import type { ServerContext } from '../server/context.js';
 
 export function createAdminRoutes(ctx: ServerContext): Router {
@@ -158,17 +159,17 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   });
 
   // ── 审批 ──
-  router.get('/approval/pending', (_req, res) => {
+  router.get('/approval/pending', jwtAuth(), (_req, res) => {
     try { res.json({ ok: true, pending: approvalManager.getPending() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.post('/approval/:id', (req, res) => {
-    try { const { action, by } = req.body; if (action === 'approve') approvalManager.approve(req.params.id, by); else if (action === 'reject') approvalManager.reject(req.params.id, by, req.body.reason); else return res.status(400).json({ error: 'action 只能是 approve 或 reject' }); res.json({ ok: true }); }
+  router.post('/approval/:id', jwtAuth(), (req, res) => {
+    try { const body = (req.body as any) || {}; const id = String(req.params.id || ''); const action = String(body.action || ''); const by = String(body.by || ''); const reason = String(body.reason || ''); if (action === 'approve') approvalManager.approve(id, by); else if (action === 'reject') approvalManager.reject(id, by, reason); else return res.status(400).json({ error: 'action 只能是 approve 或 reject' }); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.get('/approval/history', (req, res) => {
+  router.get('/approval/history', jwtAuth(), (req, res) => {
     try { const limit = parseInt(req.query.limit as string) || 50; res.json({ ok: true, history: approvalManager.getHistory(limit) }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });

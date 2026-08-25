@@ -21,6 +21,7 @@ export function estimateTokens(text: string): number {
 export interface ChatMessage {
   role: string;
   content?: string;
+  reasoning_content?: string;
   tool_calls?: any[];
   tool_call_id?: string;
   name?: string;

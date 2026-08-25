@@ -25,6 +25,7 @@ import type { ToolRegistry } from "./registry.js";
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content?: string;
+  reasoning_content?: string;
   tool_calls?: ToolCallInMessage[];
   tool_call_id?: string;
   name?: string;
@@ -42,6 +43,7 @@ interface OpenAIChatResponse {
     message: {
       role: string;
       content?: string | null;
+      reasoning_content?: string;
       tool_calls?: Array<{
         id: string;
         type: "function";
@@ -123,6 +125,22 @@ export interface RunToolsResult {
 
 export function buildToolsForAgent(registry: ToolRegistry, agentId: string): ToolDefinition[] {
   return registry.listToolsForAgent(agentId);
+}
+
+/**
+ * 判断模型是否为 thinking/推理模式（此类模型 API 不接受 tool_choice 参数，
+ * 传入会返回 400: "Thinking mode does not support this tool_choice"）
+ */
+function isThinkingModel(model: string): boolean {
+  if (!model) return false;
+  const m = model.toLowerCase();
+  if (m.includes('thinking') || m.includes('-think') || m.includes('_think')) return true;
+  if (m.includes('reasoner')) return true;
+  if (/\b(r1|o1|o3|o4)\b/.test(m)) return true;
+  if (m.includes('gpt-5') || m.includes('gpt-oss')) return true;
+  // deepseek 官方 reasoning 系列
+  if (m.includes('deepseek') && (m.includes('reason') || m.includes('r1'))) return true;
+  return false;
 }
 
 export function buildOpenAITools(tools: ToolDefinition[]): Record<string, unknown>[] {
@@ -359,6 +377,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
   const MAX_IDLE_ROUNDS = 5;
   let idleRounds = 0;
+  // thinking 模型兼容：一旦 API 报 tool_choice 不支持，置位后后续轮次都不再传该参数
+  let toolChoiceBlocked = false;
 
   const availableTools = buildToolsForAgent(registry, agentId);
   const openaiTools = availableTools.length > 0 ? buildOpenAITools(availableTools) : undefined;
@@ -382,7 +402,10 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       requestParams.tools = openaiTools;
       // 修复：任务模式（requireCompletion）首轮强制工具调用，阻止模型"用嘴停轮"；
       // 后续轮次恢复 auto（若模型不支持 required，首轮失败后自动回退 auto，最多浪费一轮）
-      requestParams.tool_choice = (requireCompletion && i === 0) ? "required" : "auto";
+      // thinking/推理模型不支持 tool_choice 参数（API 返回 400: Thinking mode does not support this tool_choice），跳过
+      if (!isThinkingModel(model) && !toolChoiceBlocked) {
+        requestParams.tool_choice = (requireCompletion && i === 0) ? "required" : "auto";
+      }
     }
 
     let aiResponse: OpenAIChatResponse;
@@ -392,6 +415,14 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
+      // tool_choice 相关 400：置位标志 + 移除参数后重试一次（thinking 模型兼容兜底）
+      if (/tool_choice|tool choice|Thinking mode/i.test(errMsg)) {
+        toolChoiceBlocked = true;
+        delete requestParams.tool_choice;
+        console.warn('[Executor] 检测到 tool_choice 不被支持，已置位阻塞标志并移除该参数重试');
+        result.consecutiveErrors = 0;
+        continue;
+      }
       // 修复：429 配额/限流识别 —— 这类错误重试无用，连续 2 次即终止并给出可操作提示（不再傻等 5 次）
       const isQuotaError = /429|usage limit|rate limit|quota|weekly limit|reached your/i.test(errMsg);
       if (isQuotaError && result.consecutiveErrors >= 2) {
@@ -434,6 +465,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     const assistantEntry: ChatMessage = {
       role: "assistant",
       content: assistantMsg.content ?? "",
+      reasoning_content: reasoningContent || undefined,
     };
 
     // ── 提取工具调用 (3 层 fallback) ──

@@ -753,6 +753,12 @@ function handleMessage(msg) {
         }
       }
       break;
+    case 'approval.requested':
+      showApprovalModal(msg.approval);
+      break;
+    case 'approval.decided':
+      hideApprovalModal();
+      break;
     case 'task.progress':
       handleTaskProgress(msg);
       break;
@@ -2637,6 +2643,7 @@ async function pullOllamaCloud(modelId) {
 // ── v1.3 补全：审批/提示词/视觉/TTS ──
 
 async function loadApprovals() {
+  if (!document.getElementById('approvalList')) return; // 管理页卡片已移除，静默跳过
   try {
     const d = await api('/api/approval/pending');
     const items = d.pending || [];
@@ -2656,11 +2663,66 @@ async function loadApprovals() {
     document.getElementById('approvalList').innerHTML = html;
   } catch(e) { document.getElementById('approvalList').innerHTML = '<span style="color:#f44">'+t('err.loadFail')+'</span>'; }
 }
-async function respondApproval(id, action) {
+let currentApprovalId = null;
+let approvalTimer = null;
+let approvalCountdown = 10;
+
+function showApprovalModal(approval) {
+  if (!approval) return;
+  currentApprovalId = approval.id;
+  const d = document.getElementById('approvalDesc');
+  if (d) d.textContent = approval.action || approval.tool || '未知操作';
+  const tEl = document.getElementById('approvalTool');
+  if (tEl) tEl.textContent = approval.tool || '-';
+  const pEl = document.getElementById('approvalParams');
+  if (pEl) pEl.textContent = JSON.stringify(approval.args || {}, null, 2);
+  const rEl = document.getElementById('approvalRisk');
+  const risk = approval.risk || 'medium';
+  if (rEl) {
+    rEl.textContent = risk === 'high' ? '高风险' : risk === 'low' ? '低风险' : '中风险';
+    rEl.style.background = risk === 'high' ? '#4a2a2a' : risk === 'low' ? '#1a3a2a' : '#3a3a1a';
+    rEl.style.color = risk === 'high' ? '#ef4444' : risk === 'low' ? '#4ade80' : '#faad14';
+    rEl.style.borderColor = rEl.style.color;
+  }
+  const m = document.getElementById('approvalModal');
+  if (m) m.style.display = 'flex';
+  startApprovalCountdown(approval.id);
+}
+
+function startApprovalCountdown(id) {
+  clearInterval(approvalTimer);
+  approvalCountdown = 10;
+  updateApprovalUI();
+  approvalTimer = setInterval(() => {
+    approvalCountdown--;
+    updateApprovalUI();
+    if (approvalCountdown <= 0) {
+      clearInterval(approvalTimer);
+      respondApproval(id, 'accept', true); // 10秒无操作 → 自动通过
+    }
+  }, 1000);
+}
+
+function updateApprovalUI() {
+  const num = document.getElementById('approvalCountdown');
+  const bar = document.getElementById('approvalProgress');
+  if (num) num.textContent = Math.max(approvalCountdown, 0);
+  if (bar) bar.style.width = (approvalCountdown * 10) + '%';
+}
+
+function hideApprovalModal() {
+  clearInterval(approvalTimer);
+  const m = document.getElementById('approvalModal');
+  if (m) m.style.display = 'none';
+  currentApprovalId = null;
+}
+
+async function respondApproval(id, action, auto) {
   try {
     await api('/api/approval/' + encodeURIComponent(id), 'POST', { action });
-    toast(action === 'accept' ? t('admin.approved') : t('admin.rejected'));
+    toast(action === 'accept' ? (auto ? '⏱ 超时未操作，已自动通过' : t('admin.approved')) : t('admin.rejected'));
     loadApprovals();
+    hideApprovalModal();
   } catch(e) { toast('❌ ' + t('err.operationFail')); }
 }
 
