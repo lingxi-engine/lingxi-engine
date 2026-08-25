@@ -2815,8 +2815,8 @@ async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
   // 自动携带 JWT token（如果已登录）
-  const token = localStorage.getItem('authToken');
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
+  // v2.0.13: local engine must NOT carry platform JWT (different secret -> 401)
+  // local APIs use admin-auto intranet bypass; platform calls go through platformApi()
   const r = await fetch(url, opts); return r.json();
 }
 // 云平台 API：注册/登录/市场
@@ -2890,6 +2890,7 @@ async function submitAuth() {
       authToken = tk;
       localStorage.setItem('authToken', authToken);
       const user = r.user || {};
+      if (user.id) lanMeId = user.id; // v2.0.13: set platform user id immediately for new chat
       document.getElementById('userNameLabel').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
       document.getElementById('userInfo').style.display = 'flex';
       document.getElementById('loginArea').style.display = 'none';
@@ -2923,11 +2924,11 @@ function checkAuthStatus() {
   const saved = localStorage.getItem('authToken');
   if (saved) {
     authToken = saved;
-    fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + saved } })
-      .then(r => r.json())
-      .then(d => {
-        if (d.ok && d.user) {
-          document.getElementById('userNameLabel').textContent = '👤 ' + (d.user.username || d.user.display_name || d.user.email || t('profile.defaultUser'));
+    platformApi('/api/user/me', 'GET').then(d => {
+      if (d && d.ok && d.user) {
+        const u = d.user;
+        if (u.id) lanMeId = u.id; // v2.0.13: platform user id for chat owner
+        document.getElementById('userNameLabel').textContent = '👤 ' + (u.username || u.display_name || u.email || t('profile.defaultUser'));
           document.getElementById('userInfo').style.display = 'flex';
           document.getElementById('loginArea').style.display = 'none';
           document.getElementById('loginButtons').style.display = 'none';
@@ -2962,8 +2963,7 @@ async function loadProfileCard() {
     var u = null;
     if (token) {
       try {
-        var r = await fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + token } });
-        var d = await r.json();
+        var d = await platformApi('/api/user/me', 'GET');
         if (d && d.ok && d.user) u = d.user;
       } catch(e) {}
     }
@@ -2993,7 +2993,7 @@ async function loadProfileCard() {
         bio = p.bio || bio;
         email = p.email || email;
         createdAt = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN') : createdAt;
-        credits = pr.credits || 0;
+        credits = (typeof u.points !== 'undefined' && u.points !== null) ? u.points : (pr.credits || 0); // v2.0.13: platform points first
         if (pr.ratings && pr.ratings.avgRating) rating = t('profile.starUnit', {n: Number(pr.ratings.avgRating).toFixed(1)});
         if (pr.ratings && pr.ratings.count) rating += t('profile.ratingCount', {n: pr.ratings.count});
         if (pr.usage) { tokens = pr.usage.totalTokens || 0; calls = pr.usage.calls || 0; }
@@ -3094,7 +3094,7 @@ async function showCreditsDetail() {
   try {
     var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
     if (pr && pr.ok) {
-      credits = pr.credits || 0;
+      credits = (typeof u.points !== 'undefined' && u.points !== null) ? u.points : (pr.credits || 0); // v2.0.13 platform points first
       totalEarned = pr.totalEarned || 0;
       totalSpent = pr.totalSpent || 0;
     }
@@ -3183,7 +3183,7 @@ async function loadProfile() {
       // 过滤本地默认名称（"用户+nid"模式），避免覆盖来自 /api/auth/me 的真实姓名
       if (p.display_name && !/^用户\d+$/.test(p.display_name)) name = p.display_name;
       idShow = p.numeric_id || p.id;
-      credits = pr.credits || 0;
+      credits = (typeof u.points !== 'undefined' && u.points !== null) ? u.points : (pr.credits || 0); // v2.0.13 platform points first
       rating = pr.ratings?.avgRating ? '⭐ ' + Number(pr.ratings.avgRating).toFixed(1) : t('common.none');
       tokens = pr.usage?.totalTokens || 0;
       calls = pr.usage?.calls || 0;

@@ -1,6 +1,16 @@
 // market.js - AI员工市场 雇佣系统 完整版
 
-const USER_ID = localStorage.getItem('userId') || 'admin';
+let USER_ID = 'admin';
+// v2.0.13: resolve real user id from platform token (local market page)
+async function resolveUserId() {
+  try {
+    const tk = localStorage.getItem('authToken');
+    if (!tk) return;
+    const r = await fetch('http://47.93.157.83:8080/api/user/me', { headers: { 'Authorization': 'Bearer ' + tk } });
+    const d = await r.json();
+    if (d && d.ok && d.user && d.user.id) USER_ID = d.user.id;
+  } catch(e) {}
+}
 let currentTab = 'market';
 let pendingHire = null;
 let _listingCache = {};       // 我的发布缓存 id -> listing
@@ -16,6 +26,15 @@ function fmtDuration(l) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  // v2.0.13: login gate - no token -> show login prompt, no market data
+  if (!localStorage.getItem('authToken')) {
+    const grid = document.getElementById('listingGrid');
+    if (grid) grid.innerHTML = '<div class="empty-state">🔒 请先登录后查看市场<br><br><button class="hire-btn" onclick="location.href='/'">返回首页登录</button></div>';
+    const cred = document.getElementById('creditsDisplay');
+    if (cred) { cred.style.display = 'none'; }
+    return;
+  }
+  await resolveUserId();
   await refreshCredits();
   // 支持 ?tab=mylistings|employees 直达
   const _t = new URLSearchParams(location.search).get('tab');
