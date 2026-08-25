@@ -861,7 +861,7 @@ function updateBadge() {
 // ── Chat List ──
 async function loadChatList() {
   try {
-    const res = await api('/api/chats?userId=' + encodeURIComponent(clientId));
+    const res = await api('/api/chats?userId=' + encodeURIComponent(lanMyId()));
     // ⭐ v2.1.1: 按最近活跃排序（F5 后兜底打开的 myChats[0] 即最近会话，而非最早创建的会话）
     myChats = (res.chats || []).slice().sort(function(a, b){ return (b.last_message_at || b.created_at || 0) - (a.last_message_at || a.created_at || 0); });
     renderChatList();
@@ -2890,8 +2890,9 @@ async function submitAuth() {
       authToken = tk;
       localStorage.setItem('authToken', authToken);
       const user = r.user || {};
-      document.getElementById('userInfo').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
-      document.getElementById('loginArea').style.display = '';
+      document.getElementById('userNameLabel').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
+      document.getElementById('userInfo').style.display = 'flex';
+      document.getElementById('loginArea').style.display = 'none';
       document.getElementById('loginButtons').style.display = 'none';
       document.getElementById('loginBtn').style.display = 'none';
       document.getElementById('registerBtn').style.display = 'none';
@@ -2910,6 +2911,7 @@ async function logout() {
   try { await api('/api/auth/logout', 'POST'); } catch {}
   authToken = null;
   localStorage.removeItem('authToken');
+  document.getElementById('userInfo').style.display = 'none';
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
   document.getElementById('loginBtn').style.display = '';
@@ -2925,8 +2927,9 @@ function checkAuthStatus() {
       .then(r => r.json())
       .then(d => {
         if (d.ok && d.user) {
-          document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || t('profile.defaultUser'));
-          document.getElementById('loginArea').style.display = '';
+          document.getElementById('userNameLabel').textContent = '👤 ' + (d.user.username || d.user.display_name || d.user.email || t('profile.defaultUser'));
+          document.getElementById('userInfo').style.display = 'flex';
+          document.getElementById('loginArea').style.display = 'none';
           document.getElementById('loginButtons').style.display = 'none';
       document.getElementById('loginBtn').style.display = 'none';
       document.getElementById('registerBtn').style.display = 'none';
@@ -3227,6 +3230,7 @@ async function loadProfile() {
         '<div style="' + cell + '"><div style="' + num + '">' + Number(calls).toLocaleString() + '</div><div style="' + lab + '">' + t('profile.callCount') + '</div></div>' +
       '</div>' +
       '<div style="font-size:11px;color:var(--text2);margin-bottom:12px">' + t('profile.registeredAt', {time: esc(createdAt)}) + '</div>' +
+      (u.email ? '<div style="font-size:11px;color:var(--text2);margin-bottom:12px">📧 ' + esc(u.email) + '</div>' : '') +
       (ratingsHtml ? '<div style="font-size:12px;color:var(--accent);margin-bottom:6px">' + t('profile.myRatings') + '</div>' + ratingsHtml : '');
   } catch (e) {
     box.innerHTML = '<div style="text-align:center;color:var(--red);padding:30px 0">' + t('err.loadFail') + ': ' + esc(e.message) + '</div>';

@@ -433,7 +433,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <span class="status-dot" id="wsState">🟢 已连接</span>
   <button class="btn-sm green" id="loginBtn" onclick="showLoginModal()" data-i18n="nav.login">登录</button>
   <button class="btn-sm" id="registerBtn" onclick="showRegisterModal()" data-i18n="nav.register">注册</button>
-<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
+<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><b id="userNameLabel" style="color:#4f9cf9;font-weight:600;white-space:nowrap">👤</b><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
 </nav>
 
 <!-- ═══ 主体 ═══ -->
@@ -1045,7 +1045,7 @@ if (ov) ov.classList.remove('show');
 });
 </script>
 <script src="js/i18n.js?v=20260825b"></script>
-<script src="js/app.js?v=20260826b"></script>
+<script src="js/app.js?v=20260826c"></script>
 <script>
 // ── 包装 switchPanel 同步更新底部工具栏 ──
 (function(){

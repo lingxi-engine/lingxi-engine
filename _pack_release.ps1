@@ -14,6 +14,7 @@ $excludes = @(
     '--exclude=./data',
     '--exclude=./docs',
     '--exclude=./mobile-dist',
+    '--exclude=./mobile',
     '--exclude=./app',
     '--exclude=./diffrhythm-local',
     '--exclude=./song_maker',

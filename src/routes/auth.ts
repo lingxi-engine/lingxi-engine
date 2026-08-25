@@ -149,8 +149,34 @@ export function createAuthRoutes(ctx: ServerContext): Router {
 
   // ── V7: 当前用户信息（需 JWT） ──
   router.get('/me', jwtAuth({ required: true }), (req, res) => {
-    const user = (req as any).user;
-    res.json({ ok: true, user: { ...user, id: user.sub } });
+    try {
+      const user = (req as any).user;
+      const uid = user?.sub || '';
+      // 从 DB 查完整用户信息（JWT payload 只有 sub/numeric_id，没有 display_name/email/credits）
+      const full = uid ? ctx.db.getUser(uid) || ctx.db.getUserByNumericId(Number(uid)) || null : null;
+      let credits = 0;
+      try { if (full) credits = ctx.db.getUserCredits(full.id).credits; } catch {}
+      res.json({
+        ok: true,
+        user: {
+          ...user,
+          id: user.sub,
+          sub: user.sub,
+          numeric_id: full?.numeric_id ?? user.numeric_id ?? 0,
+          display_name: full?.display_name || user.display_name || '',
+          username: full?.display_name || user.username || user.display_name || '',
+          email: full?.email || user.email || '',
+          email_verified: full?.email_verified || 0,
+          avatar_url: full?.avatar_url || '',
+          bio: full?.bio || '',
+          status: full?.status || user.status || 'offline',
+          created_at: full?.created_at || null,
+          credits,
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: { code: 'me_error', message: err.message } });
+    }
   });
 
   // ── V7: Admin 管理接口 ──
