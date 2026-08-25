@@ -53,6 +53,11 @@ function switchMarketTab(tab) {
 function showPublishForm() { document.getElementById('publishForm').style.display = 'block'; }
 
 async function loadMarket() {
+  const grid0 = document.getElementById('listingGrid');
+  if (!authToken && !localStorage.getItem('authToken')) {
+    if (grid0) grid0.innerHTML = '<div class="empty" style="text-align:center;padding:40px 0">🔒 <b>请先登录后查看市场</b><br><br><button class="btn primary" onclick="showLoginModal()">去登录</button> <button class="btn" onclick="showRegisterModal()">注册</button></div>';
+    return;
+  }
   const search = document.getElementById('marketSearch')?.value?.toLowerCase() || '';
   const cat = document.getElementById('marketCategory')?.value || '';
   const sort = document.getElementById('marketSort')?.value || 'hot';
@@ -119,6 +124,7 @@ function hireFromDetail() {
 }
 
 async function publishAgent() {
+  if (!authToken && !localStorage.getItem('authToken')) { toast(t('auth.loginFirst')); showLoginModal(); return; }
   if (!clientId) return toast(t('toast.connectFirst'));
   const title = document.getElementById('pubTitle').value.trim();
   const desc = document.getElementById('pubDesc').value.trim();
@@ -134,6 +140,7 @@ async function publishAgent() {
 }
 
 async function hireAgent(listingId) {
+  if (!authToken && !localStorage.getItem('authToken')) { toast(t('auth.loginFirst')); showLoginModal(); return; }
   if (!clientId) return toast(t('toast.connectFirst'));
   if (!confirm(t('market.confirmHire'))) return;
   try {
@@ -2886,6 +2893,8 @@ async function submitAuth() {
       document.getElementById('userInfo').textContent = '👤 ' + (user.username || user.display_name || user.displayName || username);
       document.getElementById('loginArea').style.display = '';
       document.getElementById('loginButtons').style.display = 'none';
+      document.getElementById('loginBtn').style.display = 'none';
+      document.getElementById('registerBtn').style.display = 'none';
       closeAuthModal();
       connect();
       toast('✅ ' + (authMode === 'register' ? t('auth.registerSuccess') : t('auth.loginSuccess')));
@@ -2903,6 +2912,8 @@ async function logout() {
   localStorage.removeItem('authToken');
   document.getElementById('loginArea').style.display = 'none';
   document.getElementById('loginButtons').style.display = '';
+  document.getElementById('loginBtn').style.display = '';
+  document.getElementById('registerBtn').style.display = '';
   if (ws) try { ws.close(); } catch {}
   toast(t('auth.loggedOut'));
 }
@@ -2917,11 +2928,16 @@ function checkAuthStatus() {
           document.getElementById('userInfo').textContent = '👤 ' + (d.user.username || d.user.display_name || t('profile.defaultUser'));
           document.getElementById('loginArea').style.display = '';
           document.getElementById('loginButtons').style.display = 'none';
+      document.getElementById('loginBtn').style.display = 'none';
+      document.getElementById('registerBtn').style.display = 'none';
           connect();
         } else {
           // FIX: token 过期/无效 → 清除后仍以游客身份连接，避免 F5 后会话列表空白
           authToken = null;
           localStorage.removeItem('authToken');
+          document.getElementById('loginBtn').style.display = '';
+          document.getElementById('registerBtn').style.display = '';
+          document.getElementById('userInfo').style.display = 'none';
           connect();
         }
       })
@@ -4581,6 +4597,8 @@ function handleTaskProgress(msg) {
   if (!msg.msgId) return;
   var panel = document.getElementById('taskDecompPanel');
   if (!panel) return;
+  var rb = document.getElementById('rightbar');
+  if (rb) rb.classList.add('show');
   
   var state = _taskDecompState[msg.msgId] || { steps: [], status: 'planning', total: 0 };
   
