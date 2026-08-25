@@ -34,6 +34,8 @@ $excludes = @(
     '--exclude=./src/web',
     '--exclude=./src/web_backup_v9',
     '--exclude=./_archive',
+    '--exclude=./_add_market_routes.cjs',
+    '--exclude=./_pack_release.ps1',
     '--exclude=./_junk*'
 )
 
@@ -61,3 +63,4 @@ try {
 } finally {
     Pop-Location
 }
+
