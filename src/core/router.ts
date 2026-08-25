@@ -256,7 +256,7 @@ export class MessageRouter {
     onBroadcast?: (event: any) => void,
     customPrompt?: string,
     signal?: AbortSignal,
-    options?: { skipPersist?: boolean }
+    options?: { skipPersist?: boolean; requireCompletion?: boolean }
   ): Promise<string> {
     const agent = this.agentManager.get(agentId);
     if (!agent) throw new Error('Agent not found: ' + agentId);
@@ -373,7 +373,8 @@ export class MessageRouter {
         maxIterations: isTaskMode ? 50 : 15,
         temperature: 0.7,
         maxTokens: 16384,
-        requireCompletion: isTaskMode,
+        // 修复：允许调用方显式覆盖（如 Orchestrator 单次步骤关闭持续执行，避免内部空转追问）
+        requireCompletion: options?.requireCompletion ?? isTaskMode,
         signal: controller.signal,
         onToolCall: onBroadcast ? (e) => onBroadcast({ type: 'tool.call', ...e }) : undefined,
         onToolResult: onBroadcast ? (e) => onBroadcast({ type: 'tool.result', ...e }) : undefined,
@@ -668,15 +669,20 @@ export class MessageRouter {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const resp = await client.chat.completions.create({
+      // 修复：kimi/moonshot 系模型不支持 temperature 参数（实测 kimi-k3 报 400 InvalidParameter），
+      // 按模型名裁剪该参数，避免任务规划阶段直接失败
+      const reqBody: Record<string, unknown> = {
         model: resolvedModel,
         messages: [
           { role: 'system', content: opts?.systemPrompt || '你是灵犀引擎的任务规划器。严格按用户要求输出内容，不要输出任何工具调用标记（如 <｜DSML｜｜...>），不要多余解释。' },
           { role: 'user', content: prompt },
         ],
-        temperature: opts?.temperature ?? 0.3,
         max_tokens: opts?.maxTokens ?? 4096,
-      }, { signal: controller.signal });
+      };
+      if (!/kimi|moonshot|k3|k2\.6|k2\.7/i.test(resolvedModel)) {
+        reqBody.temperature = opts?.temperature ?? 0.3;
+      }
+      const resp = await client.chat.completions.create(reqBody as any, { signal: controller.signal });
       if (resp.usage) UsageTracker.record({ model: resolvedModel, promptTokens: resp.usage.prompt_tokens, completionTokens: resp.usage.completion_tokens, type: 'reply' });
       let content = resp.choices[0]?.message?.content || '';
       if (content.includes('｜DSML｜')) content = this.stripDsml(content);

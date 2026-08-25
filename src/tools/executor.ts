@@ -175,7 +175,19 @@ export function stripDsmlMarkup(text: string): string {
 function isCompletionSignal(content: string): boolean {
   if (!content) return false;
   const t = content.trim();
-  // 明确完成信号
+  // ① 先查反问/请示信号 —— 命中即未完成，绝不判为完成
+  //    （修复：原实现先查完成信号，导致"任务已完成第一步，是否继续？"被误判整体完成、提前收工）
+  const askingPatterns = [
+    /(需要我|要我|是否需要|要不要|需不需要)(继续|接着|下一步)/,
+    /(还需要|还需要做什么|还有什么需要|还有什么要做的)/,
+    /是否(需要|要我|要)/,
+    /(?:继续|接着|下一步)(?:吗|么|吧)?\s*[?？]?\s*$/,
+    /\?\s*$/,
+  ];
+  for (const p of askingPatterns) {
+    if (p.test(t)) return false;
+  }
+  // ② 再查明确完成信号
   const donePatterns = [
     /(任务|工作|全部|所有|目标)(已经|已|均已|都)(完成|做完|搞定|结束|处理完|执行完)/,
     /^任务完成/,
@@ -188,15 +200,11 @@ function isCompletionSignal(content: string): boolean {
   for (const p of donePatterns) {
     if (p.test(t)) return true;
   }
-  // 反问/请示（这些不是完成，是停下来等用户）
-  const askingPatterns = [
-    /(需要我|要我|是否需要|要不要)(继续|接着|下一步)/,
-    /(还需要|还需要做什么|还有什么需要)/,
-    /是否(需要|要我)/,
-    /\?\s*$/,
-  ];
-  for (const p of askingPatterns) {
-    if (p.test(t)) return false;
+  // ③ 兜底：两条以上"完成性证据"才算完成（避免真做完但没写"任务完成"被白追问）
+  const evidence = [/成功/, /已生成/, /已写入/, /已保存/, /已修复/, /已删除/, /测试通过/, /已更新/, /已完成/, /已解决/, /全部处理/];
+  let evidenceHits = 0;
+  for (const p of evidence) {
+    if (p.test(t)) { evidenceHits++; if (evidenceHits >= 2) return true; }
   }
   return false;
 }
@@ -349,7 +357,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
-  const MAX_IDLE_ROUNDS = 3;
+  const MAX_IDLE_ROUNDS = 5;
   let idleRounds = 0;
 
   const availableTools = buildToolsForAgent(registry, agentId);
@@ -372,7 +380,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     };
     if (openaiTools) {
       requestParams.tools = openaiTools;
-      requestParams.tool_choice = "auto";
+      // 修复：任务模式（requireCompletion）首轮强制工具调用，阻止模型"用嘴停轮"；
+      // 后续轮次恢复 auto（若模型不支持 required，首轮失败后自动回退 auto，最多浪费一轮）
+      requestParams.tool_choice = (requireCompletion && i === 0) ? "required" : "auto";
     }
 
     let aiResponse: OpenAIChatResponse;
@@ -382,6 +392,12 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
+      // 修复：429 配额/限流识别 —— 这类错误重试无用，连续 2 次即终止并给出可操作提示（不再傻等 5 次）
+      const isQuotaError = /429|usage limit|rate limit|quota|weekly limit|reached your/i.test(errMsg);
+      if (isQuotaError && result.consecutiveErrors >= 2) {
+        result.finalContent = `任务中断：API 配额/限流耗尽（${errMsg.substring(0, 200)}）。请稍后重试，或在设置中切换到其他模型。`;
+        break;
+      }
       if (result.consecutiveErrors >= 5) {
         result.finalContent = `AI 调用连续失败 5 次: ${errMsg}。请检查 API Key 和网络连接。`;
         break;
@@ -479,10 +495,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // 这是解决"干一点就停"的核心：不能把"AI 这轮没调工具"当成"任务完成"。
       if (requireCompletion && !isCompletionSignal(textContent) && idleRounds < MAX_IDLE_ROUNDS) {
         idleRounds += 1;
-        const nudge = idleRounds === 1
-          ? "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。"
-          : `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请明确输出"任务完成"并说明已满足的条件；否则请继续调用工具推进剩余工作，不要停。`;
-        result.messages.push({ role: "user", content: nudge } as ChatMessage);
+                // 修复：system 角色注入（模型更服从）；删除"如果你认为确实做完了请明确输出任务完成"的诱导措辞（防止提前收工）
+        const nudge = `系统提示：任务尚未完成，请继续检查工作、继续调用工具推进，不要停下，也不要询问用户。`;
+        result.messages.push({ role: "system", content: nudge } as ChatMessage);
         console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}），注入追问继续`);
         continue;
       }
@@ -490,6 +505,9 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       result.finalContent = textContent;
       break;
     }
+
+    // ⭐ 修复：本轮有工具调用 → 重置 idleRounds，避免"干完活继续累计追问次数"导致误停
+    idleRounds = 0;
 
     // 记录 tool_calls（已验证过的条目）
     assistantEntry.tool_calls = toolCalls.map((tc) => ({
