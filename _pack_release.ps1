@@ -1,34 +1,43 @@
-# 灵犀引擎打包脚本
-# 用法: powershell -ExecutionPolicy Bypass -File .\_pack_release.ps1
+# Lingxi Engine pack script v2 (2026-08-26 fixed)
+# Usage: powershell -ExecutionPolicy Bypass -File .\_pack_release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.12.tar.gz"
 
-# 排除规则（注意：--exclude=storage 会匹配 src/storage/，必须用精确路径）
+# Exclude rules (NOTE: --exclude=storage would match src/storage/, use exact paths)
 $excludes = @(
     '--exclude=./node_modules',
     '--exclude=./.git',
+    '--exclude=./.env',
     '--exclude=./workspace',
     '--exclude=./data',
     '--exclude=./docs',
     '--exclude=./mobile-dist',
-    '--exclude=./mobile',
     '--exclude=./app',
     '--exclude=./diffrhythm-local',
     '--exclude=./song_maker',
     '--exclude=./_verify_tmp',
-    # storage/ uploads/ 是空的运行时目录，不排除（避免误杀 src/storage/）
+    '--exclude=./_release_check',
+    '--exclude=./_pkgx',
+    '--exclude=./backup_20260825_reasoning',
+    '--exclude=*.tar.gz',
     '--exclude=*.bak*',
+    '--exclude=*_cleanup-bak-*',
+    '--exclude=*.patch-ctor',
+    '--exclude=fix-task-interrupt*.cjs',
     '--exclude=*.log',
     '--exclude=*.tmp',
     '--exclude=patch-db.cjs',
     '--exclude=startup.err',
+    '--exclude=usage.json',
+    '--exclude=./src/web',
+    '--exclude=./src/web_backup_v9',
     '--exclude=./_archive',
     '--exclude=./_junk*'
 )
 
-# 打包
+# Pack
 Push-Location $ProjectRoot
 try {
     tar czf $OutFile @excludes -C "." .
@@ -37,9 +46,10 @@ try {
     Write-Host "SIZE: $sz bytes ($mb MB)" -ForegroundColor Green
     Write-Host "PATH: $OutFile" -ForegroundColor Cyan
 
-    # 验证关键文件
-    Write-Host "`n验证关键文件..." -ForegroundColor Yellow
-    $keyFiles = @('index.ts', 'src/storage/db.ts', 'src/core/router.ts', 'web/index.html', 'package.json')
+    # Verify key files
+    Write-Host ""
+    Write-Host "Verify key files..." -ForegroundColor Yellow
+    $keyFiles = @('index.ts', 'src/storage/db.ts', 'src/core/router.ts', 'src/mobile/index.ts', 'web/index.html', 'web/js/app.js', 'package.json')
     foreach ($f in $keyFiles) {
         $found = tar -tzf $OutFile | Select-String -Pattern $f -SimpleMatch
         if ($found) {

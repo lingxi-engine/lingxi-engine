@@ -3,7 +3,7 @@
  * 危险操作需用户批准后才执行
  *
  * v2 (2026-08-25 改造)：
- *  1. 默认超时改为 10 秒（原 5 分钟）
+ *  1. 默认超时改为 30 秒（原 5 分钟）
  *  2. 超时行为从「自动拒绝」改为「自动通过」（无人操作默认放行，留痕可审计）
  *  3. 新增事件回调 onRequest/onDecide，用于前端实时弹窗
  */
@@ -42,14 +42,14 @@ export class ApprovalManager {
   private resolvers: Map<string, (req: ApprovalRequest) => void> = new Map();
 
   private autoApprove: boolean;
-  /** 超时自动通过（默认 true）：10 秒不操作 → 自动批准 */
+  /** 超时自动通过（默认 true）：30 秒不操作 → 自动批准 */
   private autoApproveOnTimeout: boolean;
 
   private onRequestListeners: ApprovalListener[] = [];
   private onDecideListeners: ApprovalListener[] = [];
 
   constructor(
-    timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '10000', 10), // 默认 10 秒
+    timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '30000', 10), // 默认 30 秒
     autoApprove?: boolean,
     autoApproveOnTimeout?: boolean
   ) {

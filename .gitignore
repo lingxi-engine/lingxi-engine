@@ -228,3 +228,8 @@ _verify_pack.ps1
 # 2026-08-22 AGI进化前快照：编辑器自动备份副本，不入库  
 *.~1~  
 *.~2~  
+
+# temp fix scripts & patch leftovers
+*.patch-ctor
+fix-task-interrupt*.cjs
+scripts/fix-task-interrupt*.cjs
