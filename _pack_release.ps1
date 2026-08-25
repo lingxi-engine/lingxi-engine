@@ -6,6 +6,7 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.12.tar.gz"
 
 # Exclude rules (NOTE: --exclude=storage would match src/storage/, use exact paths)
+# NOTE: do NOT add --exclude=./mobile - bsdtar matches it against src/mobile/* too (prefix match)
 $excludes = @(
     '--exclude=./node_modules',
     '--exclude=./.git',
@@ -14,7 +15,6 @@ $excludes = @(
     '--exclude=./data',
     '--exclude=./docs',
     '--exclude=./mobile-dist',
-    '--exclude=./mobile',
     '--exclude=./app',
     '--exclude=./diffrhythm-local',
     '--exclude=./song_maker',
@@ -64,4 +64,3 @@ try {
 } finally {
     Pop-Location
 }
-
