@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENV_PATH = join(__dirname, '..', '.env');
-const PLATFORM_URL = process.env.PLATFORM_URL || 'http://47.93.157.83:8080';
+const PLATFORM_URL = process.env.PLATFORM_API_URL || process.env.PLATFORM_URL || 'http://47.93.157.83:8080';
 
 interface PlatformUser {
   ok: boolean;
@@ -18,15 +18,31 @@ interface PlatformUser {
   points?: number;
   role?: string;
   error?: string;
+  user?: { id?: string | number; numeric_id?: number; numericId?: number; email?: string; display_name?: string; displayName?: string; credits?: number };
 }
 
 async function apiPost(path: string, body: any): Promise<PlatformUser> {
-  const res = await fetch(PLATFORM_URL + path, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  return res.json();
+  // V7 新协议: /api/auth/* （本地引擎 3456 侧），404 时回退旧协议 /api/*（云平台 3001 侧）
+  const newPath = '/api/auth' + path.replace(/^\/api/, '');
+  const tryPaths = [newPath, path];
+  let lastErr: any = null;
+  for (const p of tryPaths) {
+    try {
+      const res = await fetch(PLATFORM_URL + p, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (res.status === 404) { lastErr = { status: 404 }; continue; } // 新协议没有 → 回退
+      const data = await res.json();
+      return data;
+    } catch (err: any) {
+      lastErr = err;
+      if (err?.cause?.code !== 'ECONNREFUSED' && err?.cause?.code !== 'ENOTFOUND') continue;
+      break; // 连接失败不必再试
+    }
+  }
+  throw lastErr || new Error('平台请求失败');
 }
 
 function getEnvVar(key: string): string | undefined {
@@ -72,7 +88,7 @@ export async function ensurePlatformId(): Promise<{ id: number; token: string } 
   const password = Math.random().toString(36).slice(2, 14);
 
   try {
-    const result = await apiPost('/api/register', { username, password });
+    const result = await apiPost('/api/register', { email: username + '@lingxi.local', password, display_name: username, username });
     if (result.ok && result.id) {
       setEnvVar('LINGXI_ID', String(result.id));
       setEnvVar('LINGXI_TOKEN', result.token);
@@ -92,7 +108,7 @@ export async function ensurePlatformId(): Promise<{ id: number; token: string } 
 
 // CLI 手动绑定
 export async function loginPlatform(username: string, password: string): Promise<PlatformUser> {
-  const result = await apiPost('/api/login', { username, password });
+  const result = await apiPost('/api/login', { email: username.includes('@') ? username : username + '@lingxi.local', password });
   if (result.ok) {
     setEnvVar('LINGXI_ID', String(result.id));
     setEnvVar('LINGXI_TOKEN', result.token);
@@ -102,7 +118,7 @@ export async function loginPlatform(username: string, password: string): Promise
 }
 
 export async function registerPlatform(username: string, password: string, email?: string): Promise<PlatformUser> {
-  const result = await apiPost('/api/register', { username, password, email });
+  const result = await apiPost('/api/register', { email: email || username + '@lingxi.local', password, display_name: username, username });
   if (result.ok) {
     setEnvVar('LINGXI_ID', String(result.id));
     setEnvVar('LINGXI_TOKEN', result.token);

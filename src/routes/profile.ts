@@ -1,5 +1,11 @@
 /**
  * 个人中心路由 — 获取/更新用户资料（头像、介绍、昵称）
+ * 
+ * [FIX 个人中心 2026-08] 修复"个人中心信息空白"问题：
+ *  1. userId 可从 JWT 推断（sub / numeric_id），不传 query/body 也能用
+ *  2. 查询走 db.getUser（已支持 id / numeric_id 双格式），查不到再按 numeric_id 兜底
+ *  3. 云平台账号（ouid-N）首次编辑资料时自动在本地建档，避免 404
+ *  4. UPDATE / 头像均按解析出的真实行 id 更新，消除"校验过了、更新不到"的错位
  */
 import { Router } from 'express';
 import { existsSync, mkdirSync, writeFileSync, renameSync } from 'fs';
@@ -7,6 +13,48 @@ import { join, extname } from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import type { ServerContext } from '../server/context.js';
+
+/**
+ * 解析 userId：query/body 优先，其次 JWT 的 sub，再其次 JWT 的 numeric_id
+ */
+function resolveUserId(req: any, bodyUserId?: string): string {
+  const q = (req.query?.userId as string) || '';
+  const b = bodyUserId || '';
+  const jwt = req.user || {};
+  const sub = String(jwt.sub || '');
+  const nid = jwt.numeric_id !== undefined && jwt.numeric_id !== null ? String(jwt.numeric_id) : '';
+  return q || b || sub || nid;
+}
+
+/**
+ * 获取用户行：id / numeric_id 双格式兜底查询
+ */
+function findUser(db: any, userId: string): any {
+  let user = db.getUser(userId);
+  if (!user && !Number.isNaN(Number(userId))) {
+    try { user = db.getUserByNumericId(Number(userId)); } catch {}
+  }
+  return user;
+}
+
+/**
+ * 确保用户在本地存在：云平台账号（ouid-N）首次编辑资料时自动建档
+ */
+function ensureLocalUser(db: any, userId: string, jwtUser?: any): any {
+  let user = findUser(db, userId);
+  if (user) return user;
+  const nidMatch = String(userId).match(/(\d+)$/);
+  const numericId = nidMatch ? Number(nidMatch[1]) : (typeof db.nextNumericId === 'function' ? db.nextNumericId() : 0);
+  const fallbackName = (jwtUser?.display_name || jwtUser?.displayName || '') || ('用户' + (numericId || Date.now() % 100000));
+  try {
+    db.createUser(userId, fallbackName);
+    db.raw.run('UPDATE users SET numeric_id = ?, status = ?, updated_at = ? WHERE id = ?', [numericId, 'online', Date.now(), userId]);
+    user = db.getUser(userId);
+  } catch (e: any) {
+    console.warn('[profile] auto-create user failed:', e.message);
+  }
+  return user;
+}
 
 export function createProfileRoutes(ctx: ServerContext): Router {
   const router = Router();
@@ -38,16 +86,17 @@ export function createProfileRoutes(ctx: ServerContext): Router {
   // ── 获取用户资料 ──
   router.get('/profile', (req, res) => {
     try {
-      const userId = req.query.userId as string;
+      // [FIX] userId 可从 JWT 推断，不再强制要求 query 参数
+      const userId = resolveUserId(req);
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
 
-      const user = db.getUser(userId);
+      const user = findUser(db, userId);
       if (!user) return res.status(404).json({ error: '用户不存在' });
 
       // 查询积分
       let credits = 0;
       try {
-        const creditsRow = db.raw.prepare('SELECT credits FROM user_credits WHERE user_id = ?').bind([userId]);
+        const creditsRow = db.raw.prepare('SELECT credits FROM user_credits WHERE user_id = ?').bind([user.id]);
         if (creditsRow.step()) { credits = creditsRow.get()[0] || 0; }
         creditsRow.free();
       } catch {}
@@ -56,7 +105,7 @@ export function createProfileRoutes(ctx: ServerContext): Router {
       let avgRating = 0;
       let ratingCount = 0;
       try {
-        const ratingRow = db.raw.prepare('SELECT AVG(rating) as avg, COUNT(*) as cnt FROM message_ratings WHERE user_id = ?').bind([userId]);
+        const ratingRow = db.raw.prepare('SELECT AVG(rating) as avg, COUNT(*) as cnt FROM message_ratings WHERE user_id = ?').bind([user.id]);
         if (ratingRow.step()) { const r = ratingRow.getAsObject(); avgRating = r.avg || 0; ratingCount = r.cnt || 0; }
         ratingRow.free();
       } catch {}
@@ -65,7 +114,7 @@ export function createProfileRoutes(ctx: ServerContext): Router {
       let totalTokens = 0;
       let calls = 0;
       try {
-        const usageRow = db.raw.prepare('SELECT SUM(tokens) as tokens, COUNT(*) as calls FROM messages WHERE sender_id = ?').bind([userId]);
+        const usageRow = db.raw.prepare('SELECT SUM(tokens) as tokens, COUNT(*) as calls FROM messages WHERE sender_id = ?').bind([user.id]);
         if (usageRow.step()) { const u = usageRow.getAsObject(); totalTokens = u.tokens || 0; calls = u.calls || 0; }
         usageRow.free();
       } catch {}
@@ -95,7 +144,9 @@ export function createProfileRoutes(ctx: ServerContext): Router {
   // ── 更新用户资料 ──
   router.put('/profile', (req, res) => {
     try {
-      const { userId, displayName, bio, avatarUrl } = req.body;
+      const { userId: bodyUserId, displayName, bio, avatarUrl } = req.body;
+      // [FIX] userId 可从 JWT 推断
+      const userId = resolveUserId(req, bodyUserId);
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
 
       // P1 修复: 只能修改自己的资料（管理员除外）
@@ -107,7 +158,8 @@ export function createProfileRoutes(ctx: ServerContext): Router {
         return res.status(403).json({ error: '无权修改他人资料' });
       }
 
-      const user = db.getUser(userId);
+      // [FIX] 双格式查询 + 云平台用户自动建档
+      const user = ensureLocalUser(db, userId, jwtUser);
       if (!user) return res.status(404).json({ error: '用户不存在' });
 
       const sets: string[] = [];
@@ -115,11 +167,11 @@ export function createProfileRoutes(ctx: ServerContext): Router {
 
       if (displayName !== undefined) {
         sets.push('display_name = ?');
-        vals.push(displayName.trim());
+        vals.push(String(displayName).trim());
       }
       if (bio !== undefined) {
         sets.push('bio = ?');
-        vals.push(bio.trim());
+        vals.push(String(bio).trim());
       }
       if (avatarUrl !== undefined) {
         sets.push('avatar_url = ?');
@@ -128,10 +180,10 @@ export function createProfileRoutes(ctx: ServerContext): Router {
 
       if (sets.length === 0) return res.json({ ok: true, message: '无需更新' });
 
-      vals.push(userId);
+      vals.push(user.id);  // [FIX] 按真实行 id 更新，不再依赖传入的 userId 格式
       db.raw.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, vals);
 
-      const updated = db.getUser(userId);
+      const updated = db.getUser(user.id);
       res.json({ ok: true, user: updated });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -154,7 +206,8 @@ export function createProfileRoutes(ctx: ServerContext): Router {
     });
   }, (req, res) => {
     try {
-      const userId = req.body?.userId || req.query.userId as string;
+      // [FIX] userId 可从 JWT 推断
+      const userId = resolveUserId(req, req.body?.userId || req.query?.userId as string);
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
 
       // P1 修复: 只能修改自己的头像（管理员除外）
@@ -166,15 +219,16 @@ export function createProfileRoutes(ctx: ServerContext): Router {
         return res.status(403).json({ error: '无权修改他人头像' });
       }
 
-      const user = db.getUser(userId);
+      // [FIX] 双格式查询 + 云平台用户自动建档
+      const user = ensureLocalUser(db, userId, jwtUser);
       if (!user) return res.status(404).json({ error: '用户不存在' });
 
       if (!req.file) return res.status(400).json({ error: '请上传图片文件' });
 
       const avatarUrl = `/avatars/${req.file.filename}`;
 
-      // 更新数据库
-      db.raw.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, userId]);
+      // [FIX] 按真实行 id 更新
+      db.raw.run('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, user.id]);
 
       res.json({ ok: true, avatarUrl });
     } catch (err: any) {

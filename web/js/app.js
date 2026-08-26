@@ -2972,11 +2972,12 @@ async function loadProfileCard() {
     }
     if (!u) return;
     var userId = u.id || u.sub || '';
-    var name = u.display_name || u.username || t('profile.defaultUser');
-    var idShow = u.numeric_id || u.id || '';
-    var avatarUrl = u.avatar_url || '';
+    // [FIX 个人中心] 兼容云平台驼峰字段（displayName/numericId/avatarUrl）+ 本地下划线字段
+    var name = u.display_name || u.displayName || u.username || t('profile.defaultUser');
+    var idShow = u.numeric_id || u.numericId || u.id || '';
+    var avatarUrl = u.avatar_url || u.avatarUrl || '';
     var bio = u.bio || '';
-    var credits = 0;
+    var credits = (typeof u.credits !== 'undefined' && u.credits !== null) ? u.credits : 0;
     var rating = t('common.none');
     var tokens = 0;
     var calls = 0;
@@ -2993,7 +2994,7 @@ async function loadProfileCard() {
         bio = p.bio || bio;
         email = p.email || email;
         createdAt = p.created_at ? new Date(p.created_at).toLocaleString('zh-CN') : createdAt;
-        credits = (typeof u.points !== 'undefined' && u.points !== null) ? u.points : (pr.credits || 0); // v2.0.13: platform points first
+        credits = (typeof u.credits !== 'undefined' && u.credits !== null) ? u.credits : (pr.credits || 0); // v2.0.13: platform credits first
         if (pr.ratings && pr.ratings.avgRating) rating = t('profile.starUnit', {n: Number(pr.ratings.avgRating).toFixed(1)});
         if (pr.ratings && pr.ratings.count) rating += t('profile.ratingCount', {n: pr.ratings.count});
         if (pr.usage) { tokens = pr.usage.totalTokens || 0; calls = pr.usage.calls || 0; }
@@ -3018,8 +3019,13 @@ async function loadProfileCard() {
 async function editProfile() {
   var token = localStorage.getItem('authToken');
   if (!token) { toast(t('auth.loginFirst')); return; }
-  // 获取当前用户 ID
-  var userId = clientId || '';
+  // 获取当前用户 ID（[FIX] 优先账号ID，回退 clientId）
+  var userId = '';
+  try {
+    var _meU = await platformApi('/api/user/me', 'GET');
+    if (_meU && _meU.ok && _meU.user) userId = _meU.user.id || _meU.user.sub || clientId || '';
+  } catch(_e) {}
+  if (!userId) userId = clientId || '';
   if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 获取当前资料
   var curName = '', curBio = '';
@@ -3057,7 +3063,12 @@ async function doUploadAvatar(input) {
   var file = input.files[0];
   if (!file) return;
   input.value = ''; // 重置以便下次可选同一文件
-  var userId = clientId || '';
+  var userId = '';
+  try {
+    var _meA = await platformApi('/api/user/me', 'GET');
+    if (_meA && _meA.ok && _meA.user) userId = _meA.user.id || _meA.user.sub || clientId || '';
+  } catch(_e) {}
+  if (!userId) userId = clientId || '';
   if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 校验文件类型
   if (!/^image\//.test(file.type)) { toast(t('profile.pickImage')); return; }
@@ -3094,7 +3105,7 @@ async function showCreditsDetail() {
   try {
     var pr = await api('/api/profile?userId=' + encodeURIComponent(userId));
     if (pr && pr.ok) {
-      credits = (typeof u.points !== 'undefined' && u.points !== null) ? u.points : (pr.credits || 0); // v2.0.13 platform points first
+      credits = pr.credits || 0; // [FIX] 去掉未定义的 u 引用
       totalEarned = pr.totalEarned || 0;
       totalSpent = pr.totalSpent || 0;
     }

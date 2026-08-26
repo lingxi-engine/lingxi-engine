@@ -51,6 +51,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
   avatar_url TEXT DEFAULT '',
+  bio TEXT DEFAULT '',
+  email_verified INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active',
   created_at INTEGER NOT NULL,
   registered_instance TEXT DEFAULT ''
 );
@@ -126,8 +129,22 @@ async function initDB() {
     sqlDb = new SQL.Database();
   }
   sqlDb.run(SCHEMA);
+  migrateUsersTable();
   saveDB();
   migrateFromJson();
+}
+
+// 老库迁移: users 表补列（ALTER TABLE 幂等）
+function migrateUsersTable() {
+  try {
+    const cols = (sqlDb.exec("PRAGMA table_info(users)")[0]?.values || []).map((v: any) => v[1]);
+    if (!cols.includes('bio')) sqlDb.run("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''");
+    if (!cols.includes('email_verified')) sqlDb.run("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
+    if (!cols.includes('status')) sqlDb.run("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'");
+    console.log('[DB] migrateUsersTable: 老库 users 表结构已对齐 (bio/email_verified/status)');
+  } catch (e: any) {
+    console.error('[DB] migrateUsersTable 失败:', e.message);
+  }
 }
 
 function saveDB() {
@@ -253,7 +270,7 @@ app.post('/api/user/register', (req, res) => {
   sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, 1000)`, { $u: userId });
   saveDB();  // P1-8: 关键操作立即保存，不依赖 scheduleSave 的 10 秒延迟
 
-  res.json({ ok: true, user: { id: userId, numericId, email: em, displayName: dn, credits: 1000 }, token: genJwt(userId) });
+  res.json({ ok: true, user: { id: userId, numeric_id: numericId, numericId, email: em, display_name: dn, displayName: dn, avatar_url: '', avatarUrl: '', bio: '', email_verified: 0, status: 'active', credits: 1000 }, token: genJwt(userId) });
 });
 
 app.post('/api/user/login', (req, res) => {
@@ -261,36 +278,36 @@ app.post('/api/user/login', (req, res) => {
   if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
   const em = String(email).trim().toLowerCase();
   // P0-1 修复: 参数化查询
-  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, password_hash FROM users WHERE email = $em");
+  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, avatar_url, bio, email_verified, status, password_hash FROM users WHERE email = $em");
   stmt.bind({ $em: em });
   if (!stmt.step()) { stmt.free(); return res.status(401).json({ error: '邮箱或密码错误' }); }
   const row = stmt.getAsObject();
   stmt.free();
-  const { id, numeric_id: nid, email: em2, display_name: dn, password_hash: ph } = row as any;
+  const { id, numeric_id: nid, email: em2, display_name: dn, avatar_url: av, bio: bioTxt, email_verified: ev, status: st, password_hash: ph } = row as any;
   if (!verifyPw(String(password), ph)) return res.status(401).json({ error: '邮箱或密码错误' });
   // P0-1 修复: 参数化查询
   const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
   crStmt.bind({ $u: id });
   const credits = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
   crStmt.free();
-  res.json({ ok: true, user: { id, numericId: nid, email: em2, displayName: dn, credits }, token: genJwt(id as string) });
+  res.json({ ok: true, user: { id, numeric_id: nid, numericId: nid, email: em2, display_name: dn, displayName: dn, avatar_url: av || '', avatarUrl: av || '', bio: bioTxt || '', email_verified: ev || 0, status: st || 'active', credits }, token: genJwt(id as string) });
 });
 
 app.get('/api/user/me', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
   // P0-1 修复: 参数化查询
-  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name FROM users WHERE id = $u");
+  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, avatar_url, bio, email_verified, status FROM users WHERE id = $u");
   stmt.bind({ $u: uid });
   if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '用户不存在' }); }
   const row = stmt.getAsObject();
   stmt.free();
-  const { id, numeric_id: nid, email: em, display_name: dn } = row as any;
+  const { id, numeric_id: nid, email: em, display_name: dn, avatar_url: av, bio: bioTxt, email_verified: ev, status: st } = row as any;
   const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
   crStmt.bind({ $u: uid });
   const credits = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
   crStmt.free();
-  res.json({ ok: true, user: { id, numericId: nid, email: em, displayName: dn, credits } });
+  res.json({ ok: true, user: { id, numeric_id: nid, numericId: nid, email: em, display_name: dn, displayName: dn, avatar_url: av || '', avatarUrl: av || '', bio: bioTxt || '', email_verified: ev || 0, status: st || 'active', credits } });
 });
 
 app.get('/api/user/credits', (req, res) => {
@@ -313,7 +330,10 @@ app.get('/api/user/search', (req, res) => {
   const stmt = sqlDb.prepare(`SELECT id, numeric_id, display_name, email FROM users WHERE CAST(numeric_id AS TEXT) LIKE $q OR display_name LIKE $q2 OR email LIKE $q3 LIMIT 20`);
   stmt.bind({ $q: like, $q2: like, $q3: like });
   const results: any[] = [];
-  while (stmt.step()) results.push(stmt.getAsObject());
+  while (stmt.step()) {
+    const r = stmt.getAsObject();
+    results.push({ id: r.id, numeric_id: r.numeric_id, numericId: r.numeric_id, display_name: r.display_name, displayName: r.display_name, email: r.email });
+  }
   stmt.free();
   res.json({ ok: true, results });
 });
@@ -327,7 +347,7 @@ app.get('/api/user/find', (req, res) => {
   if (stmt.step()) {
     const u = stmt.getAsObject();
     stmt.free();
-    res.json({ ok: true, found: true, user: u });
+    res.json({ ok: true, found: true, user: { id: u.id, numeric_id: u.numeric_id, numericId: u.numeric_id, display_name: u.display_name, displayName: u.display_name, email: u.email } });
   } else {
     stmt.free();
     res.json({ ok: true, found: false });
@@ -375,7 +395,7 @@ app.get('/api/friend/requests', (req, res) => {
   const incoming: any[] = [];
   while (stmt.step()) {
     const r = stmt.getAsObject();
-    incoming.push({ id: r.id, from: r.from_id, fromName: r.from_name, fromId: r.from_id_num, message: r.message });
+    incoming.push({ id: r.id, from: r.from_id, fromUserId: r.from_id, fromName: r.from_name, fromId: r.from_id_num, fromNumericId: r.from_id_num, message: r.message });
   }
   stmt.free();
   res.json({ ok: true, incoming });
@@ -408,12 +428,15 @@ app.get('/api/friend/list', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
   const stmt = sqlDb.prepare(
-    `SELECT DISTINCT u.id, u.numeric_id, u.display_name FROM friends f
+    `SELECT DISTINCT u.id, u.numeric_id, u.display_name, u.email FROM friends f
      JOIN users u ON u.id = CASE WHEN f.from_id = $u THEN f.user_id ELSE f.from_id END
      WHERE f.from_id = $u2 OR f.user_id = $u3`);
   stmt.bind({ $u: uid, $u2: uid, $u3: uid });
   const friends: any[] = [];
-  while (stmt.step()) friends.push(stmt.getAsObject());
+  while (stmt.step()) {
+    const r = stmt.getAsObject();
+    friends.push({ friendId: r.id, friendName: r.display_name, friendEmail: r.email || '', id: r.id, numericId: r.numeric_id, displayName: r.display_name, email: r.email || '' });
+  }
   stmt.free();
   res.json({ ok: true, friends });
 });
@@ -443,7 +466,7 @@ app.post('/api/hire/list', (req, res) => {
   sqlDb.run(`INSERT INTO hires (id, owner_id, agent_id, name, description, price_per_task, instance_id, status, created_at) VALUES ($id,$o,$a,$n,$d,$p,$i,'active',$c)`,
     { $id: id, $o: uid, $a: agentId || '', $n: name || '灵犀员工', $d: desc || '', $p: pricePerTask || 0, $i: instanceId || '', $c: Date.now() });
   saveDB();
-  res.json({ ok: true, listing: { id, name: name || '灵犀员工', desc: desc || '', pricePerTask: pricePerTask || 0 } });
+  res.json({ ok: true, listing: { id, name: name || '灵犀员工', description: desc || '', desc: desc || '', pricePerTask: pricePerTask || 0 } });
 });
 
 app.get('/api/hire/market', (req, res) => {
@@ -454,7 +477,7 @@ app.get('/api/hire/market', (req, res) => {
   const list: any[] = [];
   while (stmt.step()) {
     const r = stmt.getAsObject();
-    list.push({ id: r.id, name: r.name, desc: r.description, pricePerTask: r.price_per_task, ownerName: r.owner_name, ownerId: r.owner_id, agentId: r.agent_id, instanceId: r.instance_id });
+    list.push({ id: r.id, name: r.name, description: r.description, desc: r.description, pricePerTask: r.price_per_task, ownerName: r.owner_name, ownerId: r.owner_id, agentId: r.agent_id, instanceId: r.instance_id });
   }
   stmt.free();
   res.json({ ok: true, list });
@@ -532,7 +555,7 @@ app.post('/api/instances/heartbeat', (req, res) => {
     sqlDb.run(`DELETE FROM instance_users WHERE instance_id = $i`, { $i: instanceId });
     for (const u of users) {
       sqlDb.run(`INSERT OR REPLACE INTO instance_users (instance_id, user_id, numeric_id, display_name, email) VALUES ($i,$uid,$nid,$dn,$em)`,
-        { $i: instanceId, $uid: u.userId, $nid: u.numericId, $dn: u.displayName || '', $em: u.email || '' });
+        { $i: instanceId, $uid: u.userId ?? u.user_id, $nid: u.numericId ?? u.numeric_id, $dn: u.displayName ?? u.display_name ?? '', $em: u.email ?? '' });
     }
   }
 
