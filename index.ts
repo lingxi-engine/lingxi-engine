@@ -822,7 +822,17 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     res.json({ ok: true, user });
   });
 
-  // ── V7: Admin 管理接口 ──
+    // ── v2.4.1: /api/user/me 兼容别名（旧前端/客户端 checkAuthStatus 调用，避免 404 误清登录态）──
+  app.get('/api/user/me', jwtAuth({ required: true }), (req, res) => {
+    try {
+      const user = { ...(req as any).user };
+      if (!user.id && user.sub) user.id = String(user.sub);
+      if (user.numeric_id === undefined && user.numericId !== undefined) user.numeric_id = user.numericId;
+      res.json({ ok: true, user });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+// ── V7: Admin 管理接口 ──
   app.use('/api/admin/*', adminAuth);
   app.post('/api/admin/invite-codes', (req, res) => {
     try {

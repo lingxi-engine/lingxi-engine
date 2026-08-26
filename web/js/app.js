@@ -3024,25 +3024,8 @@ async function doRechargeModal() {
 }
 
 async function addWalletCredits() {
-  const token = localStorage.getItem('authToken');
-  if (!token) { toast(t('auth.loginFirst')); return; }
-  const amount = parseFloat((document.getElementById('walletAmount')||{}).value);
-  const currency = (document.getElementById('walletCurrency')||{}).value || 'USD';
-  if (!amount || amount <= 0) { toast('请输入有效金额'); return; }
-  if (amount > 100000) { toast('单次金额不能超过 100000'); return; }
-  const userId = await getCurrentUserId();
-  if (!userId) { toast(t('profile.noUserInfo')); return; }
-  try {
-    let d = null;
-    try { d = await platformApi('/api/user/credits/add', 'POST', { userId, amount, currency }); } catch(e) {}
-    if (!d || !d.ok) { d = await api('/api/credits/add', 'POST', { userId, amount, currency }); }
-    if (d && d.ok) {
-      toast('充值成功：+' + d.added + ' 积分（' + (d.currency||currency) + ' ' + amount + ' · 测试模式）');
-      loadProfileCard();
-    } else {
-      toast('充值失败：' + (d?.error || '未知错误'));
-    }
-  } catch(e) { toast('充值失败：' + e.message); }
+  // v2.4.2 修复：左侧栏快捷充值改走钱包接口（原为积分接口，钱充错口袋）
+  openRechargeModal();
 }
 
 // ── 编辑资料 ──

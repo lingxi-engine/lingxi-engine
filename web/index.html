@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
@@ -466,7 +466,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
             <option value="CNY">人民币 CNY</option>
           </select>
           <input id="walletAmount" type="number" min="1" max="100000" placeholder="金额" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
-          <button class="btn-sm primary" onclick="addWalletCredits()" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px">充值</button>
+          <button class="btn-sm primary" onclick="openRechargeModal()" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px">充值</button>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           <button class="btn-sm" onclick="document.getElementById('walletAmount').value=10">$10</button>
@@ -1037,7 +1037,7 @@ if (ov) ov.classList.remove('show');
 });
 </script>
 <script src="js/i18n.js?v=20260825b"></script>
-<script src="js/app.js?v=20260827a"></script>
+<script src="js/app.js?v=20260827c"></script>
 <script>
 // ── 包装 switchPanel 同步更新底部工具栏 ──
 (function(){
