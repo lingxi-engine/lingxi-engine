@@ -1,9 +1,9 @@
-# Lingxi Engine pack script v2 (2026-08-26 fixed)
+﻿# Lingxi Engine pack script v2 (2026-08-26 fixed)
 # Usage: powershell -ExecutionPolicy Bypass -File .\_pack_release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.12.tar.gz"
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.13.tar.gz"
 
 # Exclude rules (NOTE: --exclude=storage would match src/storage/, use exact paths)
 # NOTE: do NOT add --exclude=./mobile - bsdtar matches it against src/mobile/* too (prefix match)
@@ -64,3 +64,4 @@ try {
 } finally {
     Pop-Location
 }
+
