@@ -28,6 +28,15 @@ import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
  * 与 ws-handler 的 shouldAutoDecompose 类似，但更宽泛——覆盖"分析文档/修复/写/改"等常见干活指令。
  * 用于决定 generateReply 是否开启 requireCompletion 持续执行模式。
  */
+
+/** force_complete 强制完成模式：环境变量 FORCE_COMPLETE=1/true/yes/on 开启 */
+function envBoolForceComplete(): boolean {
+  const v = process.env.FORCE_COMPLETE;
+  if (!v) return false;
+  const s = v.trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+}
+
 function _looksLikeTask(content: string): boolean {
   if (!content) return false;
   const t = content.trim();
@@ -256,7 +265,7 @@ export class MessageRouter {
     onBroadcast?: (event: any) => void,
     customPrompt?: string,
     signal?: AbortSignal,
-    options?: { skipPersist?: boolean; requireCompletion?: boolean }
+    options?: { skipPersist?: boolean }
   ): Promise<string> {
     const agent = this.agentManager.get(agentId);
     if (!agent) throw new Error('Agent not found: ' + agentId);
@@ -319,18 +328,10 @@ export class MessageRouter {
     // ⭐ 用实际 resolved 的模型名构建 system prompt，而非 env 变量原始值
     const messages: ChatMessage[] = [
       { role: 'system', content: this.buildSystemPrompt(agent, effectiveTaskGoal, chatId, { tool: toolClient.resolvedModel, reply: replyClient.resolvedModel }) + ragContext + modePrompt + clarifyHint },
-      ...recentMessages.map(m => {
-        let metaReasoning: string | undefined;
-        try {
-          const meta = m.metadata ? (typeof m.metadata === 'string' ? JSON.parse(m.metadata) : m.metadata) : null;
-          if (meta?.reasoning_content) metaReasoning = meta.reasoning_content;
-        } catch { /* ignore */ }
-        return {
-          role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-          content: m.content,
-          ...(metaReasoning ? { reasoning_content: metaReasoning } : {}),
-        };
-      }),
+      ...recentMessages.map(m => ({
+        role: (m.sender_type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+        content: m.content,
+      })),
     ];
 
     // ── 上下文压缩：超限时用工具模型摘要旧消息 ──
@@ -344,9 +345,6 @@ export class MessageRouter {
     const messagesFinal = compactResult.messages as ChatMessage[];
 
     let finalContent = '';
-    // ⭐ 修复：thinking 模型要求 assistant 消息原样回传 reasoning_content（否则 400）
-    // 工具循环执行后提取最后一条 assistant 的 reasoning_content，落库时写入 metadata
-    let toolLoopReasoning: string | undefined;
 
     // ── 判断是否有工具可用 ──
     const agentTools = this.toolRegistry ? this.toolRegistry.listToolsForAgent(agentId) : [];
@@ -381,11 +379,11 @@ export class MessageRouter {
         registry: this.toolRegistry!,
         agentId,
         chatId,
-        maxIterations: isTaskMode ? 50 : 15,
+        maxIterations: isTaskMode ? (envBoolForceComplete() ? 200 : 50) : 15,
         temperature: 0.7,
         maxTokens: 16384,
-        // 修复：允许调用方显式覆盖（如 Orchestrator 单次步骤关闭持续执行，避免内部空转追问）
-        requireCompletion: options?.requireCompletion ?? isTaskMode,
+        requireCompletion: isTaskMode || envBoolForceComplete(),
+        forceComplete: envBoolForceComplete(),
         signal: controller.signal,
         onToolCall: onBroadcast ? (e) => onBroadcast({ type: 'tool.call', ...e }) : undefined,
         onToolResult: onBroadcast ? (e) => onBroadcast({ type: 'tool.result', ...e }) : undefined,
@@ -401,11 +399,6 @@ export class MessageRouter {
         throw abortErr;
       }
         finalContent = result.finalContent;
-        // ⭐ 修复：提取工具循环中最后一条带 reasoning_content 的 assistant 消息（thinking 模型回传必需）
-        try {
-          const lastAsst = [...(result.messages || [])].reverse().find((m: any) => m.role === 'assistant' && m.reasoning_content);
-          if (lastAsst) toolLoopReasoning = lastAsst.reasoning_content;
-        } catch { /* ignore */ }
         // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
         // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作
         if (replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {
@@ -602,7 +595,7 @@ export class MessageRouter {
     if (options?.skipPersist) {
       return finalContent;
     }
-    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now(), metadata: toolLoopReasoning ? { reasoning_content: toolLoopReasoning } : undefined });
+    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
 
     // 更新记忆（P0-1: 写入前过滤指令性内容，防止对话中的 Prompt 注入持久化为记忆）
     const exchangeSummary = `[${new Date().toLocaleString('zh-CN')}] ${agent.displayName} 在 ${chatId} 回复说: ${sanitizeMemoryInput(finalContent.slice(0, 200))}`;
@@ -685,20 +678,15 @@ export class MessageRouter {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      // 修复：kimi/moonshot 系模型不支持 temperature 参数（实测 kimi-k3 报 400 InvalidParameter），
-      // 按模型名裁剪该参数，避免任务规划阶段直接失败
-      const reqBody: Record<string, unknown> = {
+      const resp = await client.chat.completions.create({
         model: resolvedModel,
         messages: [
           { role: 'system', content: opts?.systemPrompt || '你是灵犀引擎的任务规划器。严格按用户要求输出内容，不要输出任何工具调用标记（如 <｜DSML｜｜...>），不要多余解释。' },
           { role: 'user', content: prompt },
         ],
+        temperature: opts?.temperature ?? 0.3,
         max_tokens: opts?.maxTokens ?? 4096,
-      };
-      if (!/kimi|moonshot|k3|k2\.6|k2\.7/i.test(resolvedModel)) {
-        reqBody.temperature = opts?.temperature ?? 0.3;
-      }
-      const resp = await client.chat.completions.create(reqBody as any, { signal: controller.signal });
+      }, { signal: controller.signal });
       if (resp.usage) UsageTracker.record({ model: resolvedModel, promptTokens: resp.usage.prompt_tokens, completionTokens: resp.usage.completion_tokens, type: 'reply' });
       let content = resp.choices[0]?.message?.content || '';
       if (content.includes('｜DSML｜')) content = this.stripDsml(content);

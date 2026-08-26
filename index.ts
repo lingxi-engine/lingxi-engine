@@ -32,7 +32,7 @@ import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
@@ -89,9 +89,6 @@ import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createAgiRoutes } from './src/routes/agi.js';
-import { GoalExecutor } from './src/core/goal-executor.js';
-import { Watchdog, writeWatchdogPidFile, touchWatchdogAlive } from './src/core/watchdog.js';
-import { createForceCompleteRoutes } from './src/routes/force-complete.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
 
@@ -462,17 +459,10 @@ setSearchManager(searchManagerInstance);
   (globalThis as any).__registerAgentMessageHandler = registerAgentMessageHandlerForAgent;
 
   // ── V5 P1: 审批管理器 ──
-  const approvalManager = new ApprovalManager(10000);
+  const approvalManager = new ApprovalManager(300000);
   console.log('[Approval] 审批管理器已初始化 (timeout=5min)');
   // 注入到 toolRegistry，使危险工具调用走审批流
   toolRegistry.setApprovalManager(approvalManager);
-  // v2: 审批请求实时推送到前端（当前界面弹窗 + 10 秒倒计时自动通过）
-  approvalManager.onRequest((req: any) => {
-    try { broadcast({ type: 'approval.requested', approval: req }); } catch (_e) {}
-  });
-  approvalManager.onDecide((req: any) => {
-    try { broadcast({ type: 'approval.decided', approval: req }); } catch (_e) {}
-  });
 
   // ── V5 P1: Hook 管理器 ──
   const hookManager = new HookManager(dataDir);
@@ -595,6 +585,8 @@ setSearchManager(searchManagerInstance);
   app.use('/api', jwtAuth({ required: false }));
   // ── 危险操作鉴权：破坏性/配置类/工具执行类路由必须登录（挂在具体路由上） ──
   const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
+// v2.3.1: 市场浏览类接口使用可选鉴权（公网可浏览，登录用户可发布/雇佣）
+const optAuth = jwtAuth({ required: false }) as unknown as import('express').RequestHandler;
   // ── 认证接口限流 ──
   app.use('/api/auth', authRateLimit);
   // ── v2.0.4: 通用 API 限流（30次/分钟）──
@@ -1735,37 +1727,43 @@ setSearchManager(searchManagerInstance);
   });
 
   // ── AI 员工市场 + 雇佣系统 API ──
-  app.get('/api/market/list', requireAuth, (_req, res) => {
+  app.get('/api/market/list', optAuth, (req, res) => {
     try {
-      const stmt = getDB().prepare('SELECT * FROM agent_market WHERE status = ? ORDER BY rating DESC, hire_count DESC');
-      stmt.bind(['active']);
+      const type = (req.query.type as string) || '';
+      const stmt = getDB().prepare("SELECT * FROM agent_market WHERE status = ? AND (? = '' OR item_type = ?) ORDER BY rating DESC, hire_count DESC");
+      stmt.bind(['active', type, type]);
       const rows: any[] = [];
       while (stmt.step()) rows.push(stmt.getAsObject());
       stmt.free();
       res.json({ ok: true, listings: rows });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
-  app.post('/api/market/publish', requireAuth, (req, res) => {
+  app.post('/api/market/publish', optAuth, (req, res) => {
     try {
-      const { agentId, publisherId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
+      const { agentId, publisherId, title, description, category, price, currency, tags, duration, durationUnit, itemType, previewUrl, fileUrl, license, coverUrl } = req.body || {};
+      const currencyOk = ['credits','usd','cny'].includes(currency) ? currency : 'credits';
       if (!agentId || !publisherId || !title) return res.status(400).json({ error: 'agentId/publisherId/title 必填' });
       // v2.0.12 B1/B2: 价格校验（最低10积分避免抽成取整后卖方到账0，上限100000）
-      const priceNum = Math.floor(Number(price) || 0);
-      if (priceNum < 10) return res.status(400).json({ error: '发布价格最低 10 积分' });
-      if (priceNum > 100000) return res.status(400).json({ error: '价格不能超过 100000 积分' });
+      const rawPrice = Number(price) || 0;
+      let priceNum = currencyOk === 'usd' ? Math.round(rawPrice * 100) / 100 : currencyOk === 'cny' ? Math.round(rawPrice * 100) / 100 : Math.floor(rawPrice);
+      const minPrice = currencyOk === 'usd' ? 0.1 : currencyOk === 'cny' ? 1 : 10;
+      const maxPrice = currencyOk === 'usd' ? 100000 : currencyOk === 'cny' ? 500000 : 100000;
+      if (priceNum < minPrice) return res.status(400).json({ error: '发布价格最低 ' + minPrice + (currencyOk === 'credits' ? ' 积分' : '') });
+      if (priceNum > maxPrice) return res.status(400).json({ error: '价格不能超过 ' + maxPrice + (currencyOk === 'credits' ? ' 积分' : '') });
       // v2.0.12: 自定义时长（0=永久买断）
       const durNum = Math.max(0, Math.floor(Number(duration) || 0));
       const unitOk = ['minute', 'hour', 'day'].includes(durationUnit) ? durationUnit : 'hour';
       const unit = durNum > 0 ? unitOk : 'permanent';
       const d = getDB();
       const id = 'ml-' + Date.now().toString(36);
-      d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,tags,created_at,duration,duration_unit) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-        [id, agentId, publisherId, title, description||'', category||'通用', priceNum, JSON.stringify(tags||[]), Date.now(), durNum, unit]);
+            const typeOk = ['agent','music','video','bounty','asset','mcp','skill'].includes(itemType) ? itemType : 'agent';
+      d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,currency,tags,created_at,duration,duration_unit,item_type,preview_url,file_url,license,cover_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        [id, agentId, publisherId, title, description||'', category||'通用', priceNum, currencyOk, JSON.stringify(tags||[]), Date.now(), durNum, unit, typeOk, previewUrl||'', fileUrl||'', license||'', coverUrl||'']);
       res.json({ ok: true, id });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 雇佣AI员工：扣积分 → 创建工作群 → 双方agent入群 → 记录雇佣关系 */
-  app.post('/api/market/hire', requireAuth, (req, res) => {
+  app.post('/api/market/hire', optAuth, (req, res) => {
     try {
       const { listingId, buyerId } = req.body || {};
       if (!listingId || !buyerId) return res.status(400).json({ error: 'listingId/buyerId 必填' });
@@ -1778,14 +1776,21 @@ setSearchManager(searchManagerInstance);
       // v2.0.12 B3: 禁止自雇 + 检查上架状态
       if (listing.status !== 'active') return res.status(400).json({ error: '该商品已下架或不可雇佣' });
       if (String(listing.publisher_id) === String(buyerId)) return res.status(400).json({ error: '不能雇佣自己发布的员工' });
-      // 1. 扣买方积分
-      const price = listing.price || 10;
-      const spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
-      if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
-      
-      // 2. 给卖方加分（90%，10%平台税）
-      const sellerPayout = Math.floor(price * 0.9);
-      if (typeof addCredits === 'function') addCredits(listing.publisher_id, sellerPayout);
+      // 1. 结算（按币种：credits 积分 / usd 美元 / cny 人民币），90% 给卖家，10% 平台税
+      const price = Number(listing.price) || 0;
+      const hireCurrency = listing.currency || 'credits';
+      let spendResult: any = null;
+      if (hireCurrency === 'usd' || hireCurrency === 'cny') {
+        spendResult = spendWalletBalance(buyerId, hireCurrency, price, '购买/雇佣: ' + (listing.title || ''));
+        if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
+        const sellerPayout = Math.round(price * 0.9 * 100) / 100;
+        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(90%): ' + (listing.title || ''));
+      } else {
+        spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
+        if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
+        const sellerPayout = Math.floor(price * 0.9);
+        if (typeof addCredits === 'function') addCredits(listing.publisher_id, sellerPayout);
+      }
       
       // 3. 创建工作群组 chat
       const chatId = 'chat-hire-' + Date.now().toString(36);
@@ -1842,7 +1847,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
-  app.get('/api/credits/balance', requireAuth, (req, res) => {
+  app.get('/api/credits/balance', optAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1851,7 +1856,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 积分变动历史 */
-  app.get('/api/credits/history', requireAuth, (req, res) => {
+  app.get('/api/credits/history', optAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1868,6 +1873,114 @@ setSearchManager(searchManagerInstance);
       res.json({ ok: true, balance: newBal });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+  /** 钱包：查询余额 + 流水（USD / CNY） */
+  app.get('/api/wallet', optAuth, (req, res) => {
+    try {
+      const userId = (req.query.userId as string) || '';
+      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      const wallet = getWallet(userId);
+      const tx = listWalletTx(userId, 50);
+      res.json({ ok: true, ...wallet, tx });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** 钱包：模拟充值（演示模式，未接真实支付） */
+  app.post('/api/wallet/recharge', optAuth, (req, res) => {
+    try {
+      const { userId, currency, amount } = req.body || {};
+      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
+      const cur = String(currency).toLowerCase();
+      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
+      const amt = Math.round(Number(amount) * 100) / 100;
+      if (!(amt > 0)) return res.status(400).json({ error: '金额必须大于 0' });
+      const bal = addWalletBalance(userId, cur as 'usd' | 'cny', amt, '模拟充值（未接真实支付）');
+      res.json({ ok: true, currency: cur, balance: bal, message: '模拟充值成功（演示模式，未产生真实扣款）' });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  /** 钱包：转账给他人 */
+  app.post('/api/wallet/pay', optAuth, (req, res) => {
+    try {
+      const { fromUserId, toUserId, currency, amount, reason } = req.body || {};
+      if (!fromUserId || !toUserId || !currency || !amount) return res.status(400).json({ error: 'fromUserId/toUserId/currency/amount 必填' });
+      const cur = String(currency).toLowerCase();
+      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
+      const amt = Math.round(Number(amount) * 100) / 100;
+      if (!(amt > 0)) return res.status(400).json({ error: '金额必须大于 0' });
+      const spend = spendWalletBalance(fromUserId, cur as 'usd' | 'cny', amt, reason || '转账给 ' + toUserId);
+      if (!spend.ok) return res.status(400).json({ error: spend.error, balance: spend.balance });
+      addWalletBalance(toUserId, cur as 'usd' | 'cny', amt, reason || '来自 ' + fromUserId + ' 的转账');
+      res.json({ ok: true, currency: cur, amount: amt, message: '转账成功' });
+  // v2.4.0: 冻结（发布商品/下单时调用）
+  app.post('/api/wallet/freeze', optAuth, (req, res) => {
+    try {
+      const { userId, currency, amount, refType, refId, note } = req.body || {};
+      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
+      const cur = String(currency).toLowerCase();
+      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
+      const amt = Number(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
+      ensureWallet(userId);
+      const w = getWallet(userId);
+      const bal = cur === 'usd' ? w.balanceUsd : w.balanceCny;
+      if (bal < amt) return res.status(400).json({ error: '可用余额不足，无法冻结' });
+      // 冻结：从可用扣减，frozen 增加（用 spend + 专门字段）
+      getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} - ?, frozen_${cur} = frozen_${cur} + ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), userId]);
+      const nw = getWallet(userId);
+      const nb = cur === 'usd' ? nw.balanceUsd : nw.balanceCny;
+      _walletTx(userId, cur, -amt, 'freeze', note || '冻结: ' + (refType || '') + (refId || ''), nb);
+      res.json({ ok: true, wallet: nw, frozen: cur === 'usd' ? nw.frozenUsd : nw.frozenCny });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // v2.4.0: 解冻（取消订单/下架时退回冻结额）
+  app.post('/api/wallet/unfreeze', optAuth, (req, res) => {
+    try {
+      const { userId, currency, amount, refType, refId, note } = req.body || {};
+      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
+      const cur = String(currency).toLowerCase();
+      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
+      const amt = Number(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
+      ensureWallet(userId);
+      const w = getWallet(userId);
+      const frozen = cur === 'usd' ? w.frozenUsd : w.frozenCny;
+      if (frozen < amt) return res.status(400).json({ error: '冻结金额不足，无法解冻' });
+      getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} + ?, frozen_${cur} = frozen_${cur} - ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), userId]);
+      const nw = getWallet(userId);
+      const nb = cur === 'usd' ? nw.balanceUsd : nw.balanceCny;
+      _walletTx(userId, cur, amt, 'unfreeze', note || '解冻: ' + (refType || '') + (refId || ''), nb);
+      res.json({ ok: true, wallet: nw });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // v2.4.0: 结算（交易完成：买家冻结额→卖家可用，占位模式直接转账）
+  app.post('/api/wallet/settle', optAuth, (req, res) => {
+    try {
+      const { buyerId, sellerId, currency, amount, refId, note } = req.body || {};
+      if (!buyerId || !sellerId || !currency || !amount) return res.status(400).json({ error: 'buyerId/sellerId/currency/amount 必填' });
+      const cur = String(currency).toLowerCase();
+      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
+      const amt = Number(amount);
+      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
+      // 买家解冻（若不足则直接从可用扣）
+      ensureWallet(buyerId); ensureWallet(sellerId);
+      const bw = getWallet(buyerId);
+      const bFrozen = cur === 'usd' ? bw.frozenUsd : bw.frozenCny;
+      if (bFrozen >= amt) {
+        getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} + ?, frozen_${cur} = frozen_${cur} - ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), buyerId]);
+        const nb = cur === 'usd' ? getWallet(buyerId).balanceUsd : getWallet(buyerId).balanceCny;
+        _walletTx(buyerId, cur, amt, 'unfreeze', note || '交易完成解冻: ' + (refId || ''), nb);
+      } else {
+        const spend = spendWalletBalance(buyerId, cur as 'usd' | 'cny', amt, note || '交易结算扣款: ' + (refId || ''));
+        if (!spend.ok) return res.status(400).json({ error: spend.error, balance: spend.balance });
+      }
+      // 卖家入账（占位模式：100% 到账；真实模式接支付通道后按抽成规则）
+      addWalletBalance(sellerId, cur as 'usd' | 'cny', amt, note || '交易结算收入: ' + (refId || ''));
+      res.json({ ok: true, buyer: getWallet(buyerId), seller: getWallet(sellerId), placeholder: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
   /** v2.0.12: 雇佣到期惰性检查——超过 expires_at 则标记 expired 并把被雇 agent 移出工作群（保留聊天记录） */
   function checkHireExpired(hire: any): boolean {
     if (!hire || hire.status !== 'active') return false;
@@ -1880,7 +1993,7 @@ setSearchManager(searchManagerInstance);
     return true;
   }
   /** 查看员工的雇佣关系 */
-  app.get('/api/employees', requireAuth, (req, res) => {
+  app.get('/api/employees', optAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1903,7 +2016,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 解雇员工 */
-  app.post('/api/employees/fire', requireAuth, (req, res) => {
+  app.post('/api/employees/fire', optAuth, (req, res) => {
     try {
       const { hireId } = req.body || {};
       if (!hireId) return res.status(400).json({ error: 'hireId 必填' });
@@ -1918,7 +2031,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 我的市场发布 */
-  app.get('/api/market/my-listings', requireAuth, (req, res) => {
+  app.get('/api/market/my-listings', optAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -1927,7 +2040,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 下架商品 */
-  app.post('/api/market/unpublish', requireAuth, (req, res) => {
+  app.post('/api/market/unpublish', optAuth, (req, res) => {
     try {
       const { listingId, userId } = req.body || {};
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
@@ -1943,7 +2056,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 重新上架 */
-  app.post('/api/market/republish', requireAuth, (req, res) => {
+  app.post('/api/market/republish', optAuth, (req, res) => {
     try {
       const { listingId, userId } = req.body || {};
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
@@ -1959,9 +2072,9 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 编辑商品 */
-  app.put('/api/market/:id', requireAuth, (req, res) => {
+  app.put('/api/market/:id', optAuth, (req, res) => {
     try {
-      const { userId, title, description, category, price, tags, duration, durationUnit } = req.body || {};
+      const { userId, title, description, category, price, tags, duration, durationUnit, itemType, previewUrl, fileUrl, license, coverUrl } = req.body || {};
       const listingId = req.params.id;
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
       const d = getDB();
@@ -1983,6 +2096,11 @@ setSearchManager(searchManagerInstance);
         sets.push('price = ?'); vals.push(p);
       }
       if (tags !== undefined) { sets.push('tags = ?'); vals.push(JSON.stringify(tags)); }
+      if (itemType !== undefined) { sets.push('item_type = ?'); vals.push(itemType); }
+      if (previewUrl !== undefined) { sets.push('preview_url = ?'); vals.push(previewUrl); }
+      if (fileUrl !== undefined) { sets.push('file_url = ?'); vals.push(fileUrl); }
+      if (license !== undefined) { sets.push('license = ?'); vals.push(license); }
+      if (coverUrl !== undefined) { sets.push('cover_url = ?'); vals.push(coverUrl); }
       if (duration !== undefined) { sets.push('duration = ?'); vals.push(Math.max(0, Math.floor(Number(duration) || 0))); }
       if (durationUnit !== undefined && ['minute', 'hour', 'day', 'permanent'].includes(durationUnit)) { sets.push('duration_unit = ?'); vals.push(durationUnit); }
       if (sets.length === 0) return res.json({ ok: true, message: '无需更新' });
@@ -1992,7 +2110,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 删除商品 */
-  app.delete('/api/market/:id', requireAuth, (req, res) => {
+  app.delete('/api/market/:id', optAuth, (req, res) => {
     try {
       const userId = req.body?.userId || req.query.userId;
       const listingId = req.params.id;
@@ -2009,7 +2127,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 评价雇佣 + rating 回写 listing */
-  app.post('/api/market/rate', requireAuth, (req, res) => {
+  app.post('/api/market/rate', optAuth, (req, res) => {
     try {
       const { orderId, rating, review, userId } = req.body || {};
       const r = Math.floor(Number(rating) || 0);
@@ -2035,7 +2153,7 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 我的订单 */
-  app.get('/api/market/my-orders', requireAuth, (req, res) => {
+  app.get('/api/market/my-orders', optAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
@@ -2602,7 +2720,6 @@ setSearchManager(searchManagerInstance);
   const authIfMatch = (pattern: RegExp) => (req: any, res: any, next: any) =>
     pattern.test(req.path) ? requireAuth(req, res, next) : next();
   app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
-  app.use('/api', authIfMatch(/^\/force-complete(\/|$)/), createForceCompleteRoutes());
   app.use('/api', authIfMatch(/^\/evaluations(\/|$)/), createEvaluationRoutes({ router, db } as any));  // AGI: 评测体系
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
@@ -2618,21 +2735,6 @@ setSearchManager(searchManagerInstance);
   app.use('/api', authIfMatch(/^\/upload(\/|$)/), createUploadRoutes({ db, dataDir } as any));
 
   // ── GoalTracker.onGoalStarted: 任务监控/AI自动执行 ──
-  
-  // ── 目标任务强制达成：接线 GoalExecutor（目标闭环执行引擎）+ Watchdog ──
-  try {
-    GoalExecutor.init(router, (event: any) => { try { broadcast(event); } catch (_e) {} });
-    console.log('[GoalExecutor] 目标任务执行引擎已接线（init + onGoalStarted + resumeAll 就绪）');
-  } catch (e: any) { console.error('[GoalExecutor] init 失败:', e?.message || e); }
-  try {
-    Watchdog.init((goalId: string) => {
-      console.log(`[Watchdog] 检测到目标 ${goalId} 可能卡死，尝试通过 GoalExecutor 重启`);
-      try { const g = GoalTracker.get(goalId); if (g) GoalExecutor.start(g, 0); } catch (_e) {}
-    });
-    writeWatchdogPidFile();
-    console.log('[Watchdog] 三层看门狗已启动（任务级→进程级→系统级）');
-  } catch (e: any) { console.error('[Watchdog] init 失败:', e?.message || e); }
-
   GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
     // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
     let chatId: string | null = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
@@ -2833,11 +2935,17 @@ setSearchManager(searchManagerInstance);
 
   // ── V5 P1: 审批 API ──
   app.get('/api/approval/pending', requireAuth, (req, res) => {
+    // P1 修复: 审批列表仅管理员可查看
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批列表' });
     try { res.json({ ok: true, pending: approvalManager.getPending() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.post('/api/approval/:id', requireAuth, (req, res) => {
+    // P1 修复: 审批操作仅管理员可执行
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可执行审批操作' });
     try {
       const { action, by } = req.body;
       if (action === 'approve') approvalManager.approve(String(req.params.id), by);
@@ -2848,6 +2956,9 @@ setSearchManager(searchManagerInstance);
   });
 
   app.get('/api/approval/history', requireAuth, (req, res) => {
+    // P1 修复: 审批历史仅管理员可查看
+    const roles = (req as any).user?.roles || [];
+    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可查看审批历史' });
     try {
       const limit = parseInt(req.query.limit as string) || 50;
       res.json({ ok: true, history: approvalManager.getHistory(limit) });
@@ -4364,12 +4475,7 @@ setSearchManager(searchManagerInstance);
     },
   }));
 
-  
-  // 启动后断点续跑未完成任务
-  setTimeout(() => {
-    try { GoalExecutor.resumeAll(); } catch (e: any) { console.error('[GoalExecutor] resumeAll 启动失败:', e?.message || e); }
-  }, 3000);
-server.listen(port, '0.0.0.0', () => {
+  server.listen(port, '0.0.0.0', () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');
     console.log(' HTTP: http://localhost:' + port);

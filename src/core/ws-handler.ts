@@ -327,9 +327,7 @@ export function handleWSMessage(
                 undefined,
                 fullPrompt,
                 merged.signal,
-                // 修复：步骤是单次执行指令（customPrompt 非空会被误判为任务模式触发持续执行追问空转），
-                // 显式关闭 requireCompletion，AI 输出即完成该步
-                { skipPersist: true, requireCompletion: false }
+                { skipPersist: true }
               );
             } catch (stepErr: any) {
               stepSuccess = false;
@@ -376,7 +374,7 @@ export function handleWSMessage(
               name: step.name,
               prompt: step.prompt,
               dependsOn: step.dependsOn || [],
-              timeout: (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '300', 10)) * 1000,
+              timeout: (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '120', 10)) * 1000,
             });
           }
 

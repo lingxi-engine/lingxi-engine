@@ -204,7 +204,7 @@ export class TaskStore {
     const dir = getCheckpointDir();
     const all: TaskCheckpoint[] = [];
     try {
-      const files: string[] = require('fs').readdirSync(dir).filter((f: string) => f.endsWith('.checkpoint.json'));
+      const files = require('fs').readdirSync(dir).filter((f: string) => f.endsWith('.checkpoint.json'));
       for (const f of files) {
         try {
           const cp = JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as TaskCheckpoint;

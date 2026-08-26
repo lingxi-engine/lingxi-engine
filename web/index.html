@@ -328,14 +328,10 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 }
 
 /* ═══ 覆盖功能版 CSS 冲突（强制 v9 三栏布局）═══ */
-.main-area{display:flex !important;flex:1 !important;overflow:hidden !important;position:relative !important}
+.main-area{display:flex !important;flex:1 !important;overflow:hidden !important;position:static !important}
 .sidebar{width:260px !important;min-width:260px !important;position:static !important;display:flex !important;flex-direction:column !important;transform:none !important;transition:none !important;z-index:auto !important}
 .content{flex:1 !important;display:flex !important;flex-direction:column !important;overflow:hidden !important;position:static !important}
-.rightbar{width:var(--rbw,300px) !important;min-width:280px !important;max-width:560px !important;position:absolute !important;right:0;top:0;bottom:0;z-index:100 !important;display:flex !important;flex-direction:column !important;transform:translateX(100%) !important;transition:transform .2s !important;box-shadow:0 0 20px rgba(0,0,0,.5)}
-.rightbar.show{transform:translateX(0) !important}
-/* rightbar drag resize handle */
-.rightbar-resize{position:absolute;left:-4px;top:0;bottom:0;width:8px;cursor:col-resize;z-index:101;background:transparent}
-.rightbar-resize:hover,.rightbar-resize:active{background:rgba(120,180,255,.25)}
+.rightbar{width:300px !important;min-width:300px !important;position:static !important;display:flex !important;flex-direction:column !important;transform:none !important;transition:none !important;z-index:auto !important}
 .bottom-toolbar{position:static !important;transform:none !important}
 .content-panel.active{display:flex !important}
 
@@ -433,7 +429,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <span class="status-dot" id="wsState">🟢 已连接</span>
   <button class="btn-sm green" id="loginBtn" onclick="showLoginModal()" data-i18n="nav.login">登录</button>
   <button class="btn-sm" id="registerBtn" onclick="showRegisterModal()" data-i18n="nav.register">注册</button>
-<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><b id="userNameLabel" style="color:#4f9cf9;font-weight:600;white-space:nowrap">👤</b><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
+<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><span id="userInfoName" style="font-size:13px;font-weight:600;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
 </nav>
 
 <!-- ═══ 主体 ═══ -->
@@ -459,7 +455,27 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
       <div class="pd-row"><span class="pd-label" data-i18n="profile.userId">用户 ID</span><span class="pd-val" id="pdId" data-i18n="common.loading">加载中...</span></div>
       <div class="pd-row"><span class="pd-label" data-i18n="profile.email">邮箱</span><span class="pd-val" id="pdEmail" data-i18n="common.loading">加载中...</span></div>
       <div class="pd-row"><span class="pd-label" data-i18n="profile.credits">积分</span><span class="pd-val coins" id="pdCredits" data-i18n="common.loading">加载中...</span><span class="pd-note green" data-i18n="profile.creditsNote">可用于雇佣等消费</span></div>
-      <div class="pd-row"><span class="pd-label" data-i18n="profile.wallet">钱包</span><span class="pd-val">¥ --</span><span class="pd-note" data-i18n="profile.walletNote">功能暂未开放，敬请期待</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--border);padding-top:10px;margin-top:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:13px;font-weight:600">💰 钱包（模拟充值）</span>
+          <span style="font-size:10px;color:var(--text3)">测试模式 · 未接真实支付</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="walletCurrency" style="flex:0 0 92px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+            <option value="USD">美元 USD</option>
+            <option value="CNY">人民币 CNY</option>
+          </select>
+          <input id="walletAmount" type="number" min="1" max="100000" placeholder="金额" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+          <button class="btn-sm primary" onclick="addWalletCredits()" style="background:var(--accent);color:#fff;border-color:var(--accent);padding:6px 14px;border-radius:8px;cursor:pointer;font-size:12px">充值</button>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=10">$10</button>
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=50">$50</button>
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=100">$100</button>
+          <span style="font-size:10px;color:var(--text3);align-self:center">1 USD ≈ 100 积分 · 1 CNY ≈ 14 积分（快捷按钮需选 USD）</span>
+        </div>
+      </div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.wallet">钱包</span><span class="pd-val" id="pdWallet">$0.00 / ¥0.00</span><span class="pd-note" style="color:var(--accent);cursor:pointer" onclick="openRechargeModal()">➕ 充值</span></div>
       <div class="pd-row"><span class="pd-label" data-i18n="profile.rating">信用评分</span><span class="pd-val" id="pdRating" data-i18n="common.loading">加载中...</span></div>
       <div class="pd-row"><span class="pd-label" data-i18n="profile.usage">累计用量</span><span class="pd-val" id="pdUsage" data-i18n="common.loading">加载中...</span></div>
       <div class="pd-bio" id="pdBio" data-i18n="common.loading">加载中...</div>
@@ -556,7 +572,11 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
             <input id="pubTitle" data-i18n-ph="market.empName" placeholder="员工名称" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
             <textarea id="pubDesc" data-i18n-ph="market.empDesc" placeholder="描述这位员工的能力..." rows="2" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px;resize:vertical"></textarea>
             <div style="display:flex;gap:8px">
-              <input id="pubPrice" type="number" value="10" data-i18n-ph="market.points" placeholder="积分" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px;width:90px">
+              <select id="pubItemType" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px">
+<option value="agent">🤖 AI员工</option><option value="music">🎵 音乐成品</option><option value="video">🎬 视频成品</option><option value="bounty">🛡️ 漏洞悬赏</option><option value="asset">🎮 游戏素材</option><option value="mcp">🔌 MCP服务</option><option value="skill">🧩 技能包</option></select>
+<select id="pubCurrency" onchange="document.getElementById('pubPrice').placeholder=this.value==='usd'?'美元':this.value==='cny'?'人民币':'积分'" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px">
+<option value="credits">🪙 积分</option><option value="usd">💵 美元</option><option value="cny">💰 人民币</option></select>
+<input id="pubPrice" type="number" value="10" data-i18n-ph="market.points" placeholder="积分" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px;width:90px">
               <select id="pubCategory" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px"><option data-i18n="market.cat.code">编程</option><option data-i18n="market.cat.write">写作</option><option data-i18n="market.cat.translate">翻译</option><option data-i18n="market.cat.data">数据分析</option><option data-i18n="market.cat.general">通用</option></select>
               <input id="pubTags" data-i18n-ph="market.tags" placeholder="标签（逗号分隔）" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px">
             </div>
@@ -694,7 +714,6 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
   <!-- ═══ 右侧栏：任务监控 + 目标任务 ═══ -->
   <aside class="rightbar" id="rightbar">
-    <div class="rightbar-resize" id="rightbarResize" title="drag to resize"></div>
     <div class="right-head">
       <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks" data-i18n="right.tasks">任务监控</button>
       <button onclick="switchTab('goals',this)" id="rbTabGoals" data-i18n="right.goals">目标任务</button>
@@ -912,7 +931,7 @@ function switchTheme(name,btn){
       <div class="card"><h4 data-i18n="admin.card.mcp">🔌 MCP</h4><button onclick="adminMCP()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><button onclick="showAddMCP()" class="btn green" style="width:100%;margin-top:4px;font-size:11px" data-i18n="common.add">+ 添加</button><pre id="adminMCPOut">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.subagent">🤖 SubAgent</h4><button onclick="adminSubAgents()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminSubOut">-</pre></div>
       <div class="card"><h4 data-i18n="admin.card.plugins">🧩 插件</h4><button onclick="adminPlugins()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminPluginsOut">-</pre></div>
-      <!-- 审批卡片已移至主界面弹窗 (2026-08-25) -->
+      <div class="card"><h4 data-i18n="admin.card.approval">✅ 审批</h4><button onclick="loadApprovals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="approvalList" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.token">📊 Token</h4><button onclick="loadUsage()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="usageStats" style="font-size:12px">-</div></div>
       <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural" data-i18n="admin.voiceXiaoxiao">晓晓</option><option value="zh-CN-YunxiNeural" data-i18n="admin.voiceYunxi">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
       <div class="card"><h4 data-i18n="admin.card.logs">📋 日志</h4><button onclick="loadLogs()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="admin.viewRecent">查看最近</button><pre id="logsOut" style="font-size:10px;max-height:200px;overflow:auto">-</pre></div>
@@ -1006,33 +1025,6 @@ function switchTheme(name,btn){
 <!-- ═══ TOAST ═══ -->
 <div id="toast" class="msg-toast"></div>
 <script>
-// ── rightbar draggable resize (remembered) ──
-(function(){
-  var rb = document.getElementById('rightbar');
-  var h = document.getElementById('rightbarResize');
-  if (!rb || !h) return;
-  var saved = parseInt(localStorage.getItem('rightbarWidth'), 10);
-  if (saved >= 280 && saved <= 560) rb.style.setProperty('--rbw', saved + 'px');
-  var dragging = false, startX = 0, startW = 0;
-  h.addEventListener('mousedown', function(e){
-    dragging = true; startX = e.clientX; startW = rb.offsetWidth;
-    document.body.style.userSelect = 'none';
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', function(e){
-    if (!dragging) return;
-    var w = Math.min(560, Math.max(280, startW + (e.clientX - startX)));
-    rb.style.setProperty('--rbw', w + 'px');
-  });
-  document.addEventListener('mouseup', function(){
-    if (!dragging) return;
-    dragging = false;
-    document.body.style.userSelect = '';
-    localStorage.setItem('rightbarWidth', rb.offsetWidth);
-  });
-})();
-</script>
-<script>
 // ── 点击侧栏外关闭 ──
 document.addEventListener('click', function(e) {
 const s = document.getElementById('sidebar');
@@ -1045,7 +1037,7 @@ if (ov) ov.classList.remove('show');
 });
 </script>
 <script src="js/i18n.js?v=20260825b"></script>
-<script src="js/app.js?v=20260826c"></script>
+<script src="js/app.js?v=20260825c"></script>
 <script>
 // ── 包装 switchPanel 同步更新底部工具栏 ──
 (function(){
@@ -1127,27 +1119,25 @@ if ('serviceWorker' in navigator && window.isSecureContext) {
 <!-- MULTI-AI -->
 <div id="multiAIOverlay" class="panel-overlay" onclick="hideMultiAI()"></div>
 <div class="settings-panel" id="multiAIPanel" style="max-width:640px;resize:horizontal;overflow-x:auto"><div class="panel-header"><h2 data-i18n="multiAI.title">🔀 多AI交互</h2><button onclick="hideMultiAI()">×</button></div><div class="panel-body" style="padding:10px"><div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px" data-i18n="multiAI.mode">协作模式</label><select id="multiAIMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px"><option value="free" data-i18n="mode.free">自由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="chain" data-i18n="mode.chain">链式</option><option value="vote" data-i18n="mode.vote">投票</option></select></div><div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><label style="font-size:11px;color:var(--text3)" data-i18n="multiAI.selectModels">选择模型（可多选）</label><div style="display:flex;gap:4px"><button class="btn-sm" onclick="multiAISelectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.selectAll">全选</button><button class="btn-sm" onclick="multiAIDeselectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.deselectAll">取消全选</button></div></div><div id="multiAIModels" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div></div><div id="multiAIChat" style="height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:8px;font-size:13px;background:var(--bg)"></div><div style="display:flex;gap:6px"><input id="multiAIInput" data-i18n-ph="multiAI.inputPh" placeholder="输入消息..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')multiAISend()"><button class="btn primary" onclick="multiAISend()" data-i18n="common.send">发送</button></div></div></div>
-
-<!-- ═══ 审批弹窗（10秒无操作自动通过）═══ -->
-<div id="approvalModal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:#1e1e2e;border:1px solid #333;border-radius:12px;padding:20px;max-width:460px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-      <h3 style="margin:0;font-size:15px">⚠️ 需要审批</h3>
-      <span id="approvalRisk" style="font-size:11px;padding:2px 8px;border-radius:10px;background:#3a3a1a;color:#faad14;border:1px solid #faad14">中风险</span>
+<!-- v2.4.0 充值弹窗（模拟） -->
+<div id="rechargeOverlay" class="panel-overlay" style="display:none" onclick="closeRechargeModal()"></div>
+<div id="rechargeModal" class="settings-panel" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:999;width:320px">
+  <div class="panel-header"><h2>💰 钱包充值（模拟）</h2><button onclick="closeRechargeModal()">×</button></div>
+  <div class="panel-body">
+    <p style="font-size:12px;color:var(--text3);margin-bottom:8px">演示模式，未接入真实支付。后续可接支付宝/微信/Stripe。</p>
+    <div class="row"><label>币种</label>
+      <select id="rcCurrency">
+        <option value="usd">💵 美元 USD</option>
+        <option value="cny">💰 人民币 CNY</option>
+      </select>
     </div>
-    <div id="approvalDesc" style="font-size:13px;color:#ddd;margin-bottom:8px;word-break:break-all">操作描述</div>
-    <div style="font-size:11px;color:#888;margin-bottom:4px">工具：<span id="approvalTool">-</span></div>
-    <pre id="approvalParams" style="font-size:11px;background:#111;border:1px solid #333;border-radius:6px;padding:8px;max-height:140px;overflow:auto;color:#aaa;white-space:pre-wrap;word-break:break-all">-</pre>
-    <div style="margin:14px 0 6px;text-align:center">
-      <div style="font-size:24px;font-weight:700;color:#4ade80"><span id="approvalCountdown">10</span>s</div>
-      <div style="height:6px;background:#111;border-radius:3px;margin-top:6px;overflow:hidden"><div id="approvalProgress" style="height:100%;width:100%;background:#4ade80;transition:width 1s linear"></div></div>
-      <div style="font-size:11px;color:#888;margin-top:6px">⏱ 10 秒内未操作将自动通过</div>
-    </div>
+    <div class="row"><label>金额</label><input id="rcAmount" type="number" value="100" min="1" step="0.01"></div>
     <div style="display:flex;gap:8px;margin-top:12px">
-      <button onclick="respondApproval(currentApprovalId,'accept')" style="flex:1;padding:8px;background:#2a4a2a;border:1px solid #4ade80;color:#4ade80;border-radius:6px;cursor:pointer;font-size:13px">✅ 通过</button>
-      <button onclick="respondApproval(currentApprovalId,'reject')" style="flex:1;padding:8px;background:#4a2a2a;border:1px solid #ef4444;color:#ef4444;border-radius:6px;cursor:pointer;font-size:13px">❌ 拒绝</button>
+      <button class="btn-sm" style="flex:1" onclick="closeRechargeModal()">取消</button>
+      <button class="btn-sm" style="flex:1;background:var(--accent);color:#fff" onclick="doRechargeModal()">✅ 充值</button>
     </div>
   </div>
 </div>
+
 </body>
 </html>

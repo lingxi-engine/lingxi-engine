@@ -1,20 +1,34 @@
 /**
- * GoalExecutor — 目标任务闭环自治执行引擎 v1.0
+ * GoalExecutor — 目标任务闭环自治执行引擎 v2.0（架构升级版）
  *
  * 架构：Supervisor(监督循环) + Executor(执行器) + Verifier(验收裁判)
  *   - Executor：每轮通过 router.generateReply（taskGoal 模式，带工具循环）实际干活
- *   - Verifier：独立裁判调用（generateOneShot, temperature=0），逐条对照验收标准，
- *     强制输出结构化 JSON：{done, satisfied[], remaining[], progress, nextAction}
- *   - Supervisor：未完成 → 把剩余验收项 + 裁判建议拼进下一轮指令继续跑；完成判定权只在 Verifier
+ *   - Verifier：独立裁判调用（generateOneShot, temperature=0），逐条对照验收标准
+ *   - Supervisor：未完成 → 把剩余验收项 + 裁判建议拼进下一轮指令继续跑
  *
- * 护栏：
- *   - 最大轮数 GOAL_MAX_ROUNDS（默认 30）
- *   - 单轮超时由 router 的 TASK_TIMEOUT_SECONDS 控制（默认 600s）
- *   - 总时限 GOAL_TOTAL_TIMEOUT_MINUTES（默认 120 分钟）
- *   - 轮间异常指数退避（30s→60s→120s…封顶 5 分钟），连续失败 5 次判 failed
- *   - 连续 3 轮零进度判 stuck（防止无意义烧 token）
+ * v2.0 架构升级（让几十小时长任务可强制完成）：
+ *  ═══ 1. 放开硬上限 ═══
+ *   - MAX_ROUNDS 默认 50 → 500（可 GOAL_MAX_ROUNDS 覆盖），支持几十小时任务
+ *   - TOTAL_TIMEOUT 默认 180 分钟 → 默认不设上限（GOAL_TOTAL_TIMEOUT_MINUTES=0 表示不限）
+ *   ═══ 2. 文件级 checkpoint（TaskStore）═══
+ *   - 每轮结束把执行状态写入 checkpoint 文件，进程崩溃后精确恢复
+ *   - 与 SQLite(project_goals) 互补，SQLite 存目标定义，checkpoint 存执行状态
+ *   ═══ 3. 三层看门狗（Watchdog）═══
+ *   - 每轮上报心跳，卡死/崩溃自动触发恢复（断点续传）
+ *   ═══ 4. 上下文滚动压缩（ContextRoller）═══
+ *   - 每阶段压缩历史摘要落盘，后续阶段只读摘要，防上下文爆掉
+ *   ═══ 5. 强制完成模式（force_complete）═══
+ *   - 用户声明后自动关闭提前收敛，跑满直到产出落盘
+ *   - 失败降级而非放弃，绝不阻塞整体交付
+ *
+ * 护栏（v2.0 可配置）：
+ *   - 最大轮数 GOAL_MAX_ROUNDS（默认 500）
+ *   - 单轮超时由 router 的 TASK_TIMEOUT_SECONDS 控制
+ *   - 总时限 GOAL_TOTAL_TIMEOUT_MINUTES（默认 0 = 不限）
+ *   - 轮间异常指数退避，连续失败 MAX_CONSECUTIVE_FAILURES 判 failed
+ *   - 连续零进度 ZERO_PROGRESS_LIMIT 判 stuck（防烧 token，force_complete 时跳过）
  *   - 用户随时 stop（AbortController 全链路中断）
- *   - 状态持久化到 project_goals（exec_* 列），重启后 resumeAll 断点续跑
+ *   - 状态持久化到 checkpoint 文件，重启后 resumeAll 断点续跑
  *
  * 核心理念：持续性由引擎层强制保证，不靠提示词。
  */
@@ -23,12 +37,17 @@ import { getDB, listChats } from '../storage/db.js';
 import { GoalTracker } from './goal-tracker.js';
 import type { ProjectGoal } from './goal-tracker.js';
 import type { MessageRouter } from './router.js';
+import { TaskStore } from './task-store.js';
+import { Watchdog } from './watchdog.js';
+import { ContextRoller } from './context-roller.js';
 
 // ── 可配置护栏（环境变量覆盖）──
-const MAX_ROUNDS = Math.max(1, parseInt(process.env.GOAL_MAX_ROUNDS || '50', 10));
-const TOTAL_TIMEOUT_MS = Math.max(1, parseInt(process.env.GOAL_TOTAL_TIMEOUT_MINUTES || '180', 10)) * 60_000;
-const MAX_CONSECUTIVE_FAILURES = 8;
-const ZERO_PROGRESS_LIMIT = 5;
+// v2.0: 默认 500 轮，支持几十小时长任务；GOAL_MAX_ROUNDS 可覆盖
+const MAX_ROUNDS = Math.max(1, parseInt(process.env.GOAL_MAX_ROUNDS || '500', 10));
+// v2.0: 默认不设总时限（0 = 不限）；GOAL_TOTAL_TIMEOUT_MINUTES 设置后生效
+const TOTAL_TIMEOUT_MS = Math.max(0, parseInt(process.env.GOAL_TOTAL_TIMEOUT_MINUTES || '0', 10)) * 60_000;
+const MAX_CONSECUTIVE_FAILURES = Math.max(3, parseInt(process.env.GOAL_MAX_FAILURES || '8', 10));
+const ZERO_PROGRESS_LIMIT = Math.max(3, parseInt(process.env.GOAL_ZERO_PROGRESS_LIMIT || '5', 10));
 const BACKOFF_BASE_MS = 30_000;
 const BACKOFF_CAP_MS = 5 * 60_000;
 
@@ -42,6 +61,7 @@ interface ExecInfo {
   status: ExecStatus;
   startedAt: number;
   lastError?: string;
+  forceComplete: boolean;
 }
 
 interface Verdict {
@@ -63,13 +83,19 @@ export class GoalExecutor {
     GoalExecutor.broadcast = broadcast;
   }
 
+  /** 是否开启强制完成模式（全局开关，可被单任务覆盖） */
+  static isForceCompleteMode(): boolean {
+    return envBool(process.env.FORCE_COMPLETE);
+  }
+
   // ─────────────────────────── 公开 API ───────────────────────────
 
   /**
    * 启动目标的闭环执行（异步，立即返回）
    * @param resumeRound 断点续跑时的起始轮次
+   * @param forceComplete 强制完成模式（覆盖全局开关）
    */
-  static start(goal: ProjectGoal, resumeRound = 0): boolean {
+  static start(goal: ProjectGoal, resumeRound = 0, forceComplete?: boolean): boolean {
     if (GoalExecutor.running.has(goal.id)) {
       console.log(`[GoalExecutor] 目标 "${goal.title}" 已在执行中，跳过重复启动`);
       return false;
@@ -85,6 +111,7 @@ export class GoalExecutor {
       GoalExecutor.saveExec(goal.id, 'failed', resumeRound, 0, '缺少会话或会话内无 Agent');
       return false;
     }
+    const fc = forceComplete ?? GoalExecutor.isForceCompleteMode();
     const exec: ExecInfo = {
       goalId: goal.id,
       controller: new AbortController(),
@@ -92,12 +119,16 @@ export class GoalExecutor {
       progress: 0,
       status: 'executing',
       startedAt: Date.now(),
+      forceComplete: fc,
     };
     GoalExecutor.running.set(goal.id, exec);
+    // v2.0: 上报看门狗心跳
+    Watchdog.beat(goal.id, 'executing', resumeRound, 0);
     GoalExecutor.loop(goal.id, chatId, agentId, exec).catch((e: any) => {
       console.error(`[GoalExecutor] 监督循环未捕获异常:`, e?.message || e);
     }).finally(() => {
       GoalExecutor.running.delete(goal.id);
+      Watchdog.clear(goal.id);
     });
     return true;
   }
@@ -109,6 +140,7 @@ export class GoalExecutor {
     exec.controller.abort();
     GoalExecutor.saveExec(goalId, 'stopped', exec.round, exec.progress, '用户手动停止');
     GoalExecutor.emit(goalId, 'stopped', exec.round, exec.progress, '已停止');
+    TaskStore.setStatus(goalId, 'stopped', '用户手动停止');
     console.log(`[GoalExecutor] 目标 ${goalId} 已被用户停止（第 ${exec.round} 轮，进度 ${exec.progress}%）`);
     return true;
   }
@@ -124,6 +156,16 @@ export class GoalExecutor {
       return {
         running: true, status: exec.status, round: exec.round, progress: exec.progress,
         maxRounds: MAX_ROUNDS, elapsedMs: Date.now() - exec.startedAt, lastError: exec.lastError,
+        forceComplete: exec.forceComplete,
+      };
+    }
+    // v2.0: 优先读 checkpoint 文件（更精确）
+    const cp = TaskStore.load(goalId);
+    if (cp) {
+      return {
+        running: false, status: cp.status, round: cp.round, progress: cp.progress,
+        maxRounds: MAX_ROUNDS, forceComplete: cp.forceComplete, lastError: cp.lastError,
+        stepProgress: `${cp.steps.filter(s => s.status === 'done').length}/${cp.steps.length}`,
       };
     }
     try {
@@ -145,27 +187,42 @@ export class GoalExecutor {
     return { running: false, status: 'idle', round: 0, progress: 0, maxRounds: MAX_ROUNDS };
   }
 
-  /** 重启后断点续跑：恢复所有 exec_status=executing 或 goal status=in_progress 的目标 */
+  /** 重启后断点续跑：恢复 checkpoint 文件 + SQLite 中未完成的目标 */
   static resumeAll(): void {
+    let resumed = 0;
+    // v2.0: 优先从 checkpoint 文件恢复
+    const cps = TaskStore.listIncomplete();
+    for (const cp of cps) {
+      const goal = GoalTracker.get(cp.goalId);
+      if (!goal) continue;
+      const resumeRound = Math.max(0, cp.round - 1);
+      console.log(`[GoalExecutor] 续跑目标 "${goal.title}"（从 checkpoint 第 ${resumeRound + 1} 轮开始）`);
+      GoalExecutor.start(goal, resumeRound, cp.forceComplete);
+      resumed++;
+    }
+    // 再从 SQLite 恢复（无 checkpoint 文件的历史目标）
     try {
       const db = getDB();
       const stmt = db.prepare(`SELECT id FROM project_goals WHERE status = 'in_progress' AND (exec_status IS NULL OR exec_status IN ('executing', 'verifying'))`);
       const ids: string[] = [];
-      while (stmt.step()) ids.push((stmt.getAsObject() as any).id);
+      while (stmt.step()) {
+        const id = (stmt.getAsObject() as any).id;
+        if (!TaskStore.has(id)) ids.push(id); // 跳过已有 checkpoint 的（避免重复）
+      }
       stmt.free();
-      if (ids.length === 0) return;
-      console.log(`[GoalExecutor] 发现 ${ids.length} 个未完成目标，准备断点续跑`);
       for (const id of ids) {
         const goal = GoalTracker.get(id);
         if (!goal) continue;
         const status = GoalExecutor.getStatus(id);
         const resumeRound = Math.max(0, (status.round || 0) - 1);
-        console.log(`[GoalExecutor] 续跑目标 "${goal.title}"（从第 ${resumeRound + 1} 轮开始）`);
+        console.log(`[GoalExecutor] 续跑目标 "${goal.title}"（从 SQLite 第 ${resumeRound + 1} 轮开始）`);
         GoalExecutor.start(goal, resumeRound);
+        resumed++;
       }
     } catch (e: any) {
-      console.error('[GoalExecutor] resumeAll 失败:', e?.message || e);
+      console.error('[GoalExecutor] SQLite resumeAll 失败:', e?.message || e);
     }
+    console.log(`[GoalExecutor] 断点恢复完成，共续跑 ${resumed} 个目标`);
   }
 
   // ─────────────────────────── Supervisor 监督循环 ───────────────────────────
@@ -183,7 +240,7 @@ export class GoalExecutor {
       if (!goal) { GoalExecutor.finish(exec, 'failed', '目标已被删除'); return; }
       if (goal.status === 'cancelled') { GoalExecutor.finish(exec, 'stopped', '目标已被取消'); return; }
       if (goal.status === 'done') { GoalExecutor.finish(exec, 'done', '目标已标记完成'); return; }
-      if (Date.now() - exec.startedAt > TOTAL_TIMEOUT_MS) {
+      if (TOTAL_TIMEOUT_MS > 0 && Date.now() - exec.startedAt > TOTAL_TIMEOUT_MS) {
         GoalExecutor.finish(exec, 'stuck', `总时限 ${Math.round(TOTAL_TIMEOUT_MS / 60000)} 分钟已到`);
         return;
       }
@@ -191,6 +248,9 @@ export class GoalExecutor {
       exec.round += 1;
       exec.status = 'executing';
       GoalExecutor.saveExec(goalId, 'executing', exec.round, exec.progress);
+      // v2.0: 文件级 checkpoint + 看门狗心跳
+      TaskStore.setRound(goalId, exec.round);
+      Watchdog.beat(goalId, 'executing', exec.round, exec.progress);
       GoalExecutor.emit(goalId, 'executing', exec.round, exec.progress, `第 ${exec.round}/${MAX_ROUNDS} 轮执行中`);
       console.log(`[GoalExecutor] ▶ 目标 "${goal.title}" 第 ${exec.round}/${MAX_ROUNDS} 轮开始`);
 
@@ -208,9 +268,16 @@ export class GoalExecutor {
         exec.lastError = e?.message || String(e);
         console.error(`[GoalExecutor] 第 ${exec.round} 轮执行失败 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}):`, exec.lastError);
         GoalExecutor.emit(goalId, 'executing', exec.round, exec.progress, `第 ${exec.round} 轮失败: ${exec.lastError}`);
+        Watchdog.beat(goalId, 'executing', exec.round, exec.progress);
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          GoalExecutor.finish(exec, 'failed', `连续 ${MAX_CONSECUTIVE_FAILURES} 轮执行失败: ${exec.lastError}`);
-          return;
+          // v2.0: force_complete 模式下不因连续失败放弃，降级继续
+          if (exec.forceComplete) {
+            console.warn(`[GoalExecutor] force_complete 模式：连续 ${consecutiveFailures} 轮失败，降级继续而非放弃`);
+            consecutiveFailures = 0;
+          } else {
+            GoalExecutor.finish(exec, 'failed', `连续 ${MAX_CONSECUTIVE_FAILURES} 轮执行失败: ${exec.lastError}`);
+            return;
+          }
         }
         await GoalExecutor.backoff(consecutiveFailures, exec.controller.signal);
         continue;
@@ -220,6 +287,7 @@ export class GoalExecutor {
       exec.status = 'verifying';
       GoalExecutor.saveExec(goalId, 'verifying', exec.round, exec.progress);
       GoalExecutor.emit(goalId, 'verifying', exec.round, exec.progress, '验收裁判评估中');
+      Watchdog.beat(goalId, 'verifying', exec.round, exec.progress);
 
       let verdict: Verdict | null = null;
       try {
@@ -248,16 +316,26 @@ export class GoalExecutor {
         verdict ? `验收未通过，剩余 ${lastRemaining.length} 项，继续第 ${exec.round + 1} 轮` : '验收结果解析失败，继续下一轮');
       console.log(`[GoalExecutor] 第 ${exec.round} 轮验收: 进度 ${exec.progress}%，剩余 ${lastRemaining.length} 项`);
 
-      if (zeroProgressRounds >= ZERO_PROGRESS_LIMIT) {
+      // v2.0: 零进度保护——force_complete 模式下跳过零进度终止（强制跑满）
+      if (zeroProgressRounds >= ZERO_PROGRESS_LIMIT && !exec.forceComplete) {
         GoalExecutor.finish(exec, 'stuck', `连续 ${ZERO_PROGRESS_LIMIT} 轮零进度，已暂停以防烧 token（可调整目标后重新启动）`);
         return;
+      }
+      if (zeroProgressRounds >= ZERO_PROGRESS_LIMIT && exec.forceComplete) {
+        console.warn(`[GoalExecutor] force_complete 模式：连续 ${zeroProgressRounds} 轮零进度，仍强制继续`);
+        zeroProgressRounds = 0; // 重置，继续跑
       }
       // 轮间短停顿，避免打满 API 限流
       await GoalExecutor.sleep(3000, exec.controller.signal);
     }
 
     if (!terminated && exec.round >= MAX_ROUNDS) {
-      GoalExecutor.finish(exec, 'stuck', `达到最大轮数 ${MAX_ROUNDS}，仍未通过验收`);
+      // v2.0: force_complete 模式达到轮数上限时，不判失败，而是标记"达到轮数上限需人工确认"
+      if (exec.forceComplete) {
+        GoalExecutor.finish(exec, 'stuck', `达到最大轮数 ${MAX_ROUNDS}（强制完成模式），产出已落盘，请检查结果`);
+      } else {
+        GoalExecutor.finish(exec, 'stuck', `达到最大轮数 ${MAX_ROUNDS}，仍未通过验收`);
+      }
     }
   }
 
@@ -270,6 +348,9 @@ export class GoalExecutor {
     const db = getDB();
     const msgId = 'goal-exec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
 
+    // v2.0: 注入历史阶段摘要（上下文滚动压缩）
+    const historyContext = ContextRoller.buildHistoryContext(goal.id);
+
     let content: string;
     if (round === 1) {
       content = goal.acceptanceCriteria
@@ -280,14 +361,14 @@ export class GoalExecutor {
         ? `\n\n上一轮验收后仍未满足的项目（本轮必须优先完成这些）：\n${remaining.map((r, i) => `${i + 1}. ${r}`).join('\n')}`
         : '';
       const adviceText = nextAction ? `\n\n验收裁判建议：${nextAction}` : '';
-      content = `继续执行目标任务：「${goal.title}」（第 ${round} 轮）\n\n上一轮工作已完成部分进展，但验收未全部通过。${remainText}${adviceText}\n\n要求：\n1. 针对未满足的项目实际执行（调用工具、生成结果），不要只写计划或重复已做过的事\n2. 不要停下来问用户问题，自主判断并执行\n3. 遇到困难换一种方式继续，不要放弃不要停\n4. 完成后简要说明本轮做了什么、结果如何`;
+      content = `继续执行目标任务：「${goal.title}」（第 ${round} 轮）\n\n上一轮工作已完成部分进展，但验收未全部通过。${remainText}${adviceText}${historyContext}\n\n要求：\n1. 针对未满足的项目实际执行（调用工具、生成结果），不要只写计划或重复已做过的事\n2. 不要停下来问用户问题，自主判断并执行\n3. 遇到困难换一种方式继续，不要放弃不要停\n4. 完成后简要说明本轮做了什么、结果如何`;
     }
 
     // 注入指令消息（聊天可见）
     db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-executor', content, type: 'text', timestamp: Date.now() });
     GoalExecutor.broadcast?.({ type: 'message.new', chatId, from: 'goal-executor', senderId: 'goal-executor', senderType: 'user', content, timestamp: Date.now() });
 
-    // 执行：taskGoal 模式（10 分钟超时、30 次工具迭代上限、system prompt 注入目标上下文）
+    // 执行：taskGoal 模式（工具循环，v2.0 支持更长迭代）
     const output = await router.generateReply(
       chatId, agentId, msgId,
       undefined,                          // onChunk（非流式）
@@ -295,6 +376,11 @@ export class GoalExecutor {
       goal.title,                         // taskGoal：任务模式
       (e: any) => GoalExecutor.broadcast?.({ ...e, chatId }),
     );
+
+    // v2.0: 本轮产出落盘到 context-roller（供后续阶段引用，防上下文爆）
+    if (output && output.trim().length > 50) {
+      ContextRoller.roll(goal.id, round, `第${round}轮执行产出摘要：${output.slice(0, 800)}`, output.length);
+    }
 
     // AI 回复广播（generateReply 内部已落库）
     if (output) {
@@ -380,6 +466,9 @@ ${roundOutput.slice(0, 6000)}
     exec.status = status;
     GoalExecutor.saveExec(exec.goalId, status, exec.round, exec.progress, message);
     GoalExecutor.emit(exec.goalId, status, exec.round, exec.progress, message);
+    // v2.0: 同步 checkpoint 状态
+    TaskStore.setStatus(exec.goalId, status as any, message);
+    Watchdog.complete(exec.goalId);
     const icon = status === 'done' ? '🎉' : status === 'failed' ? '❌' : '⚠️';
     console.log(`[GoalExecutor] ${icon} 目标 ${exec.goalId} 结束: ${status}（第 ${exec.round} 轮，进度 ${exec.progress}%）${message}`);
     if (status === 'done') {
@@ -431,4 +520,11 @@ ${roundOutput.slice(0, 6000)}
       signal?.addEventListener('abort', onAbort);
     });
   }
+}
+
+/** 解析环境变量布尔值 */
+function envBool(v: string | undefined): boolean {
+  if (!v) return false;
+  const s = v.trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
 }

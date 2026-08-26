@@ -637,6 +637,41 @@ function _dbInit(db: any) {
   } catch (e: any) {
     console.warn('[DB] v2.0.12 migration warning:', e.message);
   }
+
+  // ---- v2.3.1: 迁移：市场多品类支持（音乐/视频/漏洞悬赏/游戏素材/MCP） ----
+  try {
+    const mkCols2 = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!mkCols2.includes('item_type')) { db.run(`ALTER TABLE agent_market ADD COLUMN item_type TEXT NOT NULL DEFAULT 'agent'`); console.log('[DB] v2.3.1 migration: added item_type to agent_market'); }
+    if (!mkCols2.includes('preview_url')) { db.run(`ALTER TABLE agent_market ADD COLUMN preview_url TEXT DEFAULT ''`); console.log('[DB] v2.3.1 migration: added preview_url to agent_market'); }
+    if (!mkCols2.includes('file_url')) { db.run(`ALTER TABLE agent_market ADD COLUMN file_url TEXT DEFAULT ''`); console.log('[DB] v2.3.1 migration: added file_url to agent_market'); }
+    if (!mkCols2.includes('license')) { db.run(`ALTER TABLE agent_market ADD COLUMN license TEXT DEFAULT ''`); console.log('[DB] v2.3.1 migration: added license to agent_market'); }
+    if (!mkCols2.includes('cover_url')) { db.run(`ALTER TABLE agent_market ADD COLUMN cover_url TEXT DEFAULT ''`); console.log('[DB] v2.3.1 migration: added cover_url to agent_market'); }
+    // v2.4.0: 钱包（USD/CNY 双币种，模拟结算）+ 市场币种
+    db.run(`CREATE TABLE IF NOT EXISTS wallets (
+      user_id TEXT PRIMARY KEY,
+      balance_usd REAL NOT NULL DEFAULT 0,
+      balance_cny REAL NOT NULL DEFAULT 0,
+      frozen_usd REAL NOT NULL DEFAULT 0,
+      frozen_cny REAL NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL DEFAULT 0
+    )`);
+    db.run(`CREATE TABLE IF NOT EXISTS wallet_tx (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      currency TEXT NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL,
+      reason TEXT DEFAULT '',
+      balance_after REAL NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`);
+    try { db.run(`CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_tx(user_id, created_at DESC)`); } catch (_e) {}
+    const mkCols3 = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
+    if (!mkCols3.includes('currency')) { db.run(`ALTER TABLE agent_market ADD COLUMN currency TEXT NOT NULL DEFAULT 'credits'`); console.log('[DB] v2.4.0 migration: added currency to agent_market'); }
+    console.log('[DB] v2.4.0 migration: wallets ready');
+  } catch (e: any) {
+    console.warn('[DB] v2.3.1 migration warning:', e.message);
+  }
 }
 
 // —— 辅助：带参数的 SELECT 查询（sql.js exec 不支持参数绑定）
@@ -695,6 +730,15 @@ export function getUser(id: string) {
 export function getUserByEmail(email: string) {
   const stmt = _db.prepare("SELECT * FROM users WHERE email = ?");
   stmt.bind([email]);
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  stmt.free();
+  return undefined;
+}
+
+
+export function getUserByDisplayName(displayName: string) {
+  const stmt = _db.prepare("SELECT * FROM users WHERE display_name = ?");
+  stmt.bind([displayName]);
   if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
   stmt.free();
   return undefined;
@@ -1184,6 +1228,71 @@ export function getCreditHistory(userId: string, limit: number = 50): any[] {
   } catch { return []; }
 }
 
+// ———— 钱包（USD / CNY 双币种，模拟结算，未接真实支付）————
+export function ensureWallet(userId: string): void {
+  try {
+    _db.run("INSERT OR IGNORE INTO wallets (user_id, balance_usd, balance_cny, frozen_usd, frozen_cny, updated_at) VALUES (?, 0, 0, 0, 0, ?)", [userId, Date.now()]);
+  } catch (e: any) { console.warn('[Wallet] ensure failed:', e.message); }
+}
+
+export function getWallet(userId: string): { balanceUsd: number; balanceCny: number; frozenUsd: number; frozenCny: number } {
+  try {
+    ensureWallet(userId);
+    const row = queryOne("SELECT balance_usd, balance_cny, frozen_usd, frozen_cny FROM wallets WHERE user_id = ?", [userId]);
+    return {
+      balanceUsd: row ? Number(row[0]) || 0 : 0,
+      balanceCny: row ? Number(row[1]) || 0 : 0,
+      frozenUsd: row ? Number(row[2]) || 0 : 0,
+      frozenCny: row ? Number(row[3]) || 0 : 0,
+    };
+  } catch { return { balanceUsd: 0, balanceCny: 0, frozenUsd: 0, frozenCny: 0 }; }
+}
+
+export function _walletTx(userId: string, currency: string, amount: number, type: string, reason: string, balanceAfter: number): void {
+  try {
+    const id = 'wtx_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+    _db.run("INSERT INTO wallet_tx (id, user_id, currency, amount, type, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, userId, currency, amount, type, reason || '', balanceAfter, Date.now()]);
+  } catch {}
+}
+
+export function addWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): number {
+  if (!['usd', 'cny'].includes(currency) || amount <= 0) return 0;
+  ensureWallet(userId);
+  _db.run(`UPDATE wallets SET balance_${currency} = balance_${currency} + ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
+  const w = getWallet(userId);
+  const bal = currency === 'usd' ? w.balanceUsd : w.balanceCny;
+  _walletTx(userId, currency, amount, 'income', note || '钱包入账', bal);
+  return bal;
+}
+
+export function spendWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
+  if (!['usd', 'cny'].includes(currency) || amount <= 0) return { ok: false, balance: 0, error: '不支持的币种或金额' };
+  ensureWallet(userId);
+  const w = getWallet(userId);
+  const bal = currency === 'usd' ? w.balanceUsd : w.balanceCny;
+  if (bal < amount) return { ok: false, balance: bal, error: (currency === 'usd' ? '美元' : '人民币') + '余额不足，需要 ' + amount + '，当前 ' + bal };
+  _db.run(`UPDATE wallets SET balance_${currency} = balance_${currency} - ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
+  const newW = getWallet(userId);
+  const newBal = currency === 'usd' ? newW.balanceUsd : newW.balanceCny;
+  _walletTx(userId, currency, -amount, 'expense', note || '钱包支出', newBal);
+  return { ok: true, balance: newBal };
+}
+
+export function listWalletTx(userId: string, limit: number = 50): any[] {
+  try {
+    const stmt = _db.prepare("SELECT id, user_id, currency, amount, type, reason, balance_after, created_at FROM wallet_tx WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
+    stmt.bind([userId, limit]);
+    const rows: any[] = [];
+    while (stmt.step()) {
+      const r = stmt.getAsObject();
+      rows.push({ id: r.id, currency: r.currency, amount: r.amount, type: r.type, reason: r.reason, balanceAfter: r.balance_after, createdAt: r.created_at });
+    }
+    stmt.free();
+    return rows;
+  } catch { return []; }
+}
+
 // ———— 雇佣 CRUD ————
 
 export function createHire(params: {
@@ -1229,6 +1338,7 @@ export class DB {
   getUser(id: string) { return getUser(id); }
   getUserByEmail(email: string) { return getUserByEmail(email); }
   getUserByNumericId(numericId: number) { return getUserByNumericId(numericId); }
+  getUserByDisplayName(displayName: string) { return getUserByDisplayName(displayName); }
   listUsers() { return listUsers(); }
   searchUsers(keyword: string, limit?: number) { return searchUsers(keyword, limit); }
   createAgent(id: string, userId: string, displayName: string, personality: string, autonomy: string, model?: string) {
@@ -1332,6 +1442,11 @@ export class DB {
   addCredits(userId: string, amount: number, note?: string) { return addCredits(userId, amount, note); }
   spendCredits(userId: string, amount: number) { return spendCredits(userId, amount); }
   getCreditHistory(userId: string, limit?: number) { return getCreditHistory(userId, limit); }
+  // ———— 钱包 ————
+  getWallet(userId: string) { return getWallet(userId); }
+  addWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string) { return addWalletBalance(userId, currency, amount, note); }
+  spendWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string) { return spendWalletBalance(userId, currency, amount, note); }
+  listWalletTx(userId: string, limit?: number) { return listWalletTx(userId, limit); }
   // ———— 雇佣 ————
   createHire(params: Parameters<typeof createHire>[0]) { return createHire(params); }
   getHire(id: string) { return getHire(id); }

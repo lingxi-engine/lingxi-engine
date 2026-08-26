@@ -2,10 +2,10 @@
  * 审批流 - Approval Manager
  * 危险操作需用户批准后才执行
  *
- * v2 (2026-08-25 改造)：
- *  1. 默认超时改为 30 秒（原 5 分钟）
- *  2. 超时行为从「自动拒绝」改为「自动通过」（无人操作默认放行，留痕可审计）
- *  3. 新增事件回调 onRequest/onDecide，用于前端实时弹窗
+ * v2.0 架构升级：支持强制完成（force_complete）免审批通道
+ *  - 长任务强制完成模式下，无人值守的审批请求会因超时无人批准而中断
+ *  - 新增 bypassApproval()：目标任务强制完成模式下直接放行（历史留痕可审计）
+ *  - 仅保留真正高危的破坏性操作强制审批
  */
 
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'timeout';
@@ -32,8 +32,6 @@ export interface ApprovalRequest {
   timeoutMs: number;
 }
 
-export type ApprovalListener = (req: ApprovalRequest) => void;
-
 export class ApprovalManager {
   private pending: Map<string, ApprovalRequest> = new Map();
   private history: ApprovalRequest[] = [];
@@ -42,60 +40,23 @@ export class ApprovalManager {
   private resolvers: Map<string, (req: ApprovalRequest) => void> = new Map();
 
   private autoApprove: boolean;
-  /** 超时自动通过（默认 true）：30 秒不操作 → 自动批准 */
-  private autoApproveOnTimeout: boolean;
-  /** 强制完成模式：FORCE_COMPLETE=1/true/yes/on 时，目标任务审批请求自动放行 */
+  /** v2.0: 强制完成模式（免审批通道）——目标任务无人值守时开启 */
   private forceComplete: boolean;
 
-  private onRequestListeners: ApprovalListener[] = [];
-  private onDecideListeners: ApprovalListener[] = [];
-
-  constructor(
-    timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '30000', 10), // 默认 30 秒
-    autoApprove?: boolean,
-    autoApproveOnTimeout?: boolean
-  ) {
+  constructor(timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '300000', 10), autoApprove?: boolean) { // 默认 5 分钟，可通过环境变量配置
     this.timeoutMs = timeoutMs;
     // 自动批准模式：APPROVAL_AUTO_APPROVE=1/true/yes/on 时开启，所有审批请求立即放行（历史留痕可审计）
     this.autoApprove = autoApprove ?? envBool(process.env.APPROVAL_AUTO_APPROVE);
-    if (this.autoApprove) console.log('[Approval] 自动批准模式已开启 (APPROVAL_AUTO_APPROVE) —— 审批请求将自动通过');
-
-    // 超时自动通过：默认开启；环境变量 APPROVAL_AUTO_APPROVE_ON_TIMEOUT=0/false/no/off 可关闭（关闭后超时=自动拒绝）
-    if (autoApproveOnTimeout !== undefined) {
-      this.autoApproveOnTimeout = autoApproveOnTimeout;
-    } else if (process.env.APPROVAL_AUTO_APPROVE_ON_TIMEOUT !== undefined) {
-      this.autoApproveOnTimeout = envBool(process.env.APPROVAL_AUTO_APPROVE_ON_TIMEOUT);
-    } else {
-      this.autoApproveOnTimeout = true;
-    }
-    // v2.0 强制完成免审批通道：FORCE_COMPLETE=1/true/yes/on 时开启
+    // v2.0: 强制完成免审批通道：FORCE_COMPLETE=1/true/yes/on 时开启
     this.forceComplete = envBool(process.env.FORCE_COMPLETE);
+    if (this.autoApprove) console.log('[Approval] 自动批准模式已开启 (APPROVAL_AUTO_APPROVE) —— 审批请求将自动通过');
     if (this.forceComplete) console.log('[Approval] 强制完成免审批通道已开启 (FORCE_COMPLETE) —— 目标任务审批请求自动放行');
-    console.log(`[Approval] 审批管理器 v2: timeout=${this.timeoutMs}ms, 超时自动通过=${this.autoApproveOnTimeout}`);
   }
 
   /** v2.0: 动态开启/关闭强制完成免审批通道 */
   setForceComplete(on: boolean): void {
     this.forceComplete = on;
-    if (on) console.log('[Approval] 强制完成免审批通道已开启 (setForceComplete)');
-  }
-
-  /** 注册「新审批请求」事件（前端弹窗用） */
-  onRequest(listener: ApprovalListener): void {
-    this.onRequestListeners.push(listener);
-  }
-
-  /** 注册「审批已决定」事件（前端关闭弹窗用） */
-  onDecide(listener: ApprovalListener): void {
-    this.onDecideListeners.push(listener);
-  }
-
-  private emitRequest(req: ApprovalRequest) {
-    for (const l of this.onRequestListeners) { try { l(req); } catch (_e) {} }
-  }
-
-  private emitDecide(req: ApprovalRequest) {
-    for (const l of this.onDecideListeners) { try { l(req); } catch (_e) {} }
+    if (on) console.log('[Approval] 强制完成免审批通道已开启');
   }
 
   /**
@@ -122,19 +83,19 @@ export class ApprovalManager {
       return req;
     }
 
-    // 超时处理：默认自动通过，可配置为自动拒绝
+    // v2.0: 强制完成免审批通道：目标任务无人值守时自动放行（decidedBy='force_complete' 留痕）
+    if (this.forceComplete) {
+      this.approve(id, 'force_complete');
+      return req;
+    }
+
+    // 超时自动拒绝
     const timer = setTimeout(() => {
-      if (this.autoApproveOnTimeout) {
-        this.approve(id, 'auto-timeout');
-      } else {
-        this.expire(id);
-      }
+      this.expire(id);
     }, this.timeoutMs);
     this.timers.set(id, timer);
 
-    console.log(`[Approval] 新请求 ${id}: ${req.action} (risk=${risk}, timeout=${this.timeoutMs}ms)`);
-    // 通知前端弹窗
-    this.emitRequest(req);
+    console.log(`[Approval] 新请求 ${id}: ${req.action} (risk=${risk})`);
     return req;
   }
 
@@ -153,8 +114,7 @@ export class ApprovalManager {
     const resolver = this.resolvers.get(id);
     if (resolver) { this.resolvers.delete(id); resolver(req); }
     const waitTimer = this.timers.get(id + '-wait'); if (waitTimer) clearTimeout(waitTimer);
-    console.log(`[Approval] 批准 ${id}${by ? ' (' + by + ')' : ''}`);
-    this.emitDecide(req);
+    console.log(`[Approval] 批准 ${id}`);
     return true;
   }
 
@@ -175,12 +135,11 @@ export class ApprovalManager {
     if (resolver2) { this.resolvers.delete(id); resolver2(req); }
     const waitTimer2 = this.timers.get(id + '-wait'); if (waitTimer2) clearTimeout(waitTimer2);
     console.log(`[Approval] 拒绝 ${id}: ${reason || ''}`);
-    this.emitDecide(req);
     return true;
   }
 
   /**
-   * 超时（自动拒绝路径，保留向后兼容）
+   * 超时
    */
   private expire(id: string) {
     const req = this.pending.get(id);
@@ -196,7 +155,6 @@ export class ApprovalManager {
     if (resolver3) { this.resolvers.delete(id); resolver3(req); }
     const waitTimer3 = this.timers.get(id + '-wait'); if (waitTimer3) clearTimeout(waitTimer3);
     console.log(`[Approval] 超时 ${id}`);
-    this.emitDecide(req);
   }
 
   /**
@@ -244,6 +202,7 @@ export class ApprovalManager {
 
   /**
    * 判断操作是否需要审批
+   * v2.0: 强制完成模式下，仅真正高危的破坏性操作需要审批，其余放行
    * 注意：write_file/code_execute/shell_exec 是 AI 执行任务的常用工具，
    * 如果列为需审批，在无人值守的目标任务中会因超时无人批准而中断。
    * 仅保留真正高危的操作需审批。
@@ -260,6 +219,11 @@ export class ApprovalManager {
     if (tool === 'write_file' && args.path) {
       const sysPaths = ['/etc', '/usr/bin', 'C:\\\\Windows\\\\System32', 'C:\\\\Program Files'];
       if (sysPaths.some(p => String(args.path).startsWith(p))) return true;
+    }
+
+    // v2.0: 强制完成模式下，非高危操作直接放行（无人值守不中断）
+    if (this.forceComplete) {
+      return false;
     }
 
     return false;

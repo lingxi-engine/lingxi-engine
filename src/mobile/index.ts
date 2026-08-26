@@ -127,7 +127,7 @@ async function main() {
 
   // ── 定时任务 ──
   const inboxManager = new InboxManager(DATA_DIR, getDB());
-  const approvalManager = new ApprovalManager(10000);
+  const approvalManager = new ApprovalManager(300000);
   const hookManager = new HookManager(DATA_DIR);
 
   const cronScheduler = new CronScheduler(async (job) => {

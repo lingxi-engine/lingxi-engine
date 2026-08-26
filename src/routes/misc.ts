@@ -2,7 +2,7 @@
  * 杂项路由 — 联邦通信、Mesh、标签、时间、工作区模式、群聊模式
  */
 import { Router } from 'express';
-import { getDB, getChatMode, setChatMode, CHAT_MODES, listUsers, addMessage } from '../storage/db.js';
+import { getDB, getChatMode, setChatMode, CHAT_MODES, listUsers, addMessage, addCredits, getUserCredits } from '../storage/db.js';
 import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, setUsersProvider, type PeerMessage } from '../core/instance-mesh.js';
 import { processUserMessage } from '../core/ws-handler.js';
 import { readFileSync } from 'fs';
@@ -102,6 +102,22 @@ export function createMiscRoutes(ctx: ServerContext): Router {
       const resp = await fetch(peer.baseUrl + '/api/federation/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId, content, senderId, senderName, fromInstance: process.env.INSTANCE_ID || 'local' }), signal: AbortSignal.timeout(15000) });
       const data = await resp.json();
       res.json(data);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── 钱包：模拟充值（测试模式，未接真实支付）──
+  const CREDIT_RATES: Record<string, number> = { USD: 100, CNY: 14 };
+  router.post('/credits/add', (req, res) => {
+    try {
+      const { userId, amount, currency } = req.body || {};
+      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      const amt = Number(amount);
+      if (!amt || amt <= 0 || amt > 100000) return res.status(400).json({ error: '金额无效' });
+      const cur = String(currency || 'USD').toUpperCase();
+      const rate = CREDIT_RATES[cur] || CREDIT_RATES.USD;
+      const credits = Math.round(amt * rate);
+      const balance = addCredits(userId, credits, '模拟充值 ' + cur + ' ' + amt + '（测试模式）');
+      res.json({ ok: true, added: credits, balance, currency: cur, amount: amt, testMode: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 

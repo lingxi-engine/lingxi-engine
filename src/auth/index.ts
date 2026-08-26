@@ -195,6 +195,32 @@ export async function loginWithEmail(email: string, password: string): Promise<L
   return _createSession(user);
 }
 
+// ── 登录（用户名或邮箱 + 密码）──
+// 修复：前端登录框只有一个用户名输入框，用户可能输入邮箱或显示名（username）
+// 之前只按邮箱查，导致"用户名正确但邮箱框被隐藏"时永远登录失败
+
+export async function loginWithUsernameOrEmail(identifier: string, password: string): Promise<LoginResult> {
+  // 先尝试按邮箱查
+  let user = db.getUserByEmail(identifier);
+  // 邮箱查不到 → 按显示名/用户名查
+  if (!user) {
+    user = db.getUserByDisplayName(identifier);
+  }
+  if (!user) throw new Error('邮箱或密码错误');
+  if (!user.password_hash) throw new Error('该账号未设置密码，请使用验证码登录');
+  // DEV_AUTO_VERIFY 逻辑
+  if (process.env.DEV_AUTO_VERIFY === 'true' && user.status !== 'verified') {
+    try {
+      const { getDB } = await import('../storage/db.js');
+      getDB().run("UPDATE users SET email_verified = 1 WHERE id = ?", [user.id]);
+      user.email_verified = 1;
+    } catch (e) { console.warn('[Auth] 自动验证失败:', (e as Error).message); }
+  }
+  if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('邮箱或密码错误');
+  if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
+  return _createSession(user);
+}
+
 // ── 登录（数字 ID + 密码）──
 
 export function loginWithNumericId(numericId: number, password: string): LoginResult {

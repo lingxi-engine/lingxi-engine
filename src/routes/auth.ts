@@ -2,6 +2,8 @@
  * 认证路由 — V7 持久身份系统
  * 
  * 修复 Bug #1: loginWithEmail 是 async，路由层必须 await
+ * 修复 Bug #2: 登录支持用户名或邮箱（前端登录框只有一个输入框，用户可能输的是显示名）
+ * 修复 Bug #3: /me 端点支持云平台账号（ouid-N）本地建档，返回完整用户信息
  */
 import { Router } from 'express';
 import * as auth from '../auth/index.js';
@@ -71,12 +73,12 @@ export function createAuthRoutes(ctx: ServerContext): Router {
     }
   });
 
-  // ── V7: 登录（邮箱 + 密码） ── Bug #1 修复: 加 await
+  // ── V7: 登录（用户名或邮箱 + 密码） ── 修复: 支持用户名登录
   router.post('/login', async (req, res) => {
     try {
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
-      const result = await auth.loginWithEmail(email, password);
+      const result = await auth.loginWithUsernameOrEmail(email, password);
       res.json({ ok: true, ...result });
     } catch (err: any) {
       res.status(401).json({ error: err.message });
@@ -148,35 +150,44 @@ export function createAuthRoutes(ctx: ServerContext): Router {
   });
 
   // ── V7: 当前用户信息（需 JWT） ──
-  router.get('/me', jwtAuth({ required: true }), (req, res) => {
+  // 修复: 云平台账号(ouid-N)本地建档，让个人中心/编辑资料/头像都能查到
+  router.get('/me', jwtAuth({ required: true }), async (req, res) => {
+    const payload = (req as any).user;
+    const uid = payload?.sub;
     try {
-      const user = (req as any).user;
-      const uid = user?.sub || '';
-      // 从 DB 查完整用户信息（JWT payload 只有 sub/numeric_id，没有 display_name/email/credits）
-      const full = uid ? ctx.db.getUser(uid) || ctx.db.getUserByNumericId(Number(uid)) || null : null;
-      let credits = 0;
-      try { if (full) credits = ctx.db.getUserCredits(full.id).credits; } catch {}
-      res.json({
-        ok: true,
-        user: {
-          ...user,
-          id: user.sub,
-          sub: user.sub,
-          numeric_id: full?.numeric_id ?? user.numeric_id ?? 0,
-          display_name: full?.display_name || user.display_name || '',
-          username: full?.display_name || user.username || user.display_name || '',
-          email: full?.email || user.email || '',
-          email_verified: full?.email_verified || 0,
-          avatar_url: full?.avatar_url || '',
-          bio: full?.bio || '',
-          status: full?.status || user.status || 'offline',
-          created_at: full?.created_at || null,
-          credits,
-        },
-      });
-    } catch (err: any) {
-      res.status(500).json({ ok: false, error: { code: 'me_error', message: err.message } });
+      // [平台统一] 云平台账号(ouid-N)本地建档：让个人中心/编辑资料/头像都能查到
+      if (uid && /^ouid-\d+$/.test(String(uid))) {
+        const token = String(req.headers?.authorization || '').replace('Bearer ', '');
+        const { ensurePlatformUser } = await import('./profile.js');
+        await ensurePlatformUser(ctx.db, String(uid), token || undefined);
+      }
+      const user = uid ? ctx.db.getUser(String(uid)) : null;
+      if (user) {
+        return res.json({
+          ok: true,
+          user: {
+            id: user.id,
+            sub: user.id,
+            numeric_id: user.numeric_id,
+            numericId: user.numeric_id,
+            email: user.email,
+            display_name: user.display_name,
+            displayName: user.display_name,
+            username: user.display_name,
+            avatar_url: user.avatar_url,
+            avatarUrl: user.avatar_url,
+            bio: user.bio,
+            status: user.status,
+            email_verified: user.email_verified,
+            roles: payload?.roles || ['user'],
+          },
+        });
+      }
+    } catch (e: any) {
+      console.warn('[Auth /me] 查库失败，降级返回 payload:', e.message);
     }
+    // 本地无档案（如纯云平台 token 且平台不可达）→ 返回 payload 兜底
+    res.json({ ok: true, user: { ...payload, id: payload?.sub } });
   });
 
   // ── V7: Admin 管理接口 ──

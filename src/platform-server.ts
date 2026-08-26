@@ -51,9 +51,6 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   display_name TEXT NOT NULL,
   avatar_url TEXT DEFAULT '',
-  bio TEXT DEFAULT '',
-  email_verified INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'active',
   created_at INTEGER NOT NULL,
   registered_instance TEXT DEFAULT ''
 );
@@ -134,19 +131,6 @@ async function initDB() {
   migrateFromJson();
 }
 
-// 老库迁移: users 表补列（ALTER TABLE 幂等）
-function migrateUsersTable() {
-  try {
-    const cols = (sqlDb.exec("PRAGMA table_info(users)")[0]?.values || []).map((v: any) => v[1]);
-    if (!cols.includes('bio')) sqlDb.run("ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''");
-    if (!cols.includes('email_verified')) sqlDb.run("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0");
-    if (!cols.includes('status')) sqlDb.run("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'");
-    console.log('[DB] migrateUsersTable: 老库 users 表结构已对齐 (bio/email_verified/status)');
-  } catch (e: any) {
-    console.error('[DB] migrateUsersTable 失败:', e.message);
-  }
-}
-
 function saveDB() {
   try {
     const data = sqlDb.export();
@@ -161,6 +145,22 @@ let _saveTimer: ReturnType<typeof setTimeout> | null = null;
 function scheduleSave() {
   if (_saveTimer) return;
   _saveTimer = setTimeout(() => { _saveTimer = null; saveDB(); }, 10_000);
+}
+
+// [平台统一] users 表补资料列（老库平滑迁移；新库 CREATE TABLE 已含）
+function migrateUsersTable() {
+  try {
+    const cols = sqlDb.exec("PRAGMA table_info(users)")[0]?.values?.map((r: any) => r[1]) || [];
+    const addIf = (col: string, def: string) => {
+      if (!cols.includes(col)) sqlDb.run(`ALTER TABLE users ADD COLUMN ${col} ${def}`);
+    };
+    addIf('avatar_url', 'TEXT DEFAULT ""');
+    addIf('bio', 'TEXT DEFAULT ""');
+    addIf('email_verified', 'INTEGER DEFAULT 0');
+    addIf('status', 'TEXT DEFAULT "active"');
+  } catch (e: any) {
+    console.error('[DB] migrateUsersTable 失败:', e.message);
+  }
 }
 
 function migrateFromJson() {
@@ -270,7 +270,11 @@ app.post('/api/user/register', (req, res) => {
   sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, 1000)`, { $u: userId });
   saveDB();  // P1-8: 关键操作立即保存，不依赖 scheduleSave 的 10 秒延迟
 
-  res.json({ ok: true, user: { id: userId, numeric_id: numericId, numericId, email: em, display_name: dn, displayName: dn, avatar_url: '', avatarUrl: '', bio: '', email_verified: 0, status: 'active', credits: 1000 }, token: genJwt(userId) });
+  res.json({ ok: true, user: {
+    id: userId, numericId, email: em, displayName: dn, credits: 1000,
+    avatarUrl: '', bio: '', status: 'active', emailVerified: false,
+    avatar_url: '', email_verified: 0,
+  }, token: genJwt(userId) });
 });
 
 app.post('/api/user/login', (req, res) => {
@@ -278,36 +282,51 @@ app.post('/api/user/login', (req, res) => {
   if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
   const em = String(email).trim().toLowerCase();
   // P0-1 修复: 参数化查询
-  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, avatar_url, bio, email_verified, status, password_hash FROM users WHERE email = $em");
+  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, password_hash FROM users WHERE email = $em");
   stmt.bind({ $em: em });
   if (!stmt.step()) { stmt.free(); return res.status(401).json({ error: '邮箱或密码错误' }); }
   const row = stmt.getAsObject();
   stmt.free();
-  const { id, numeric_id: nid, email: em2, display_name: dn, avatar_url: av, bio: bioTxt, email_verified: ev, status: st, password_hash: ph } = row as any;
+  const { id, numeric_id: nid, email: em2, display_name: dn, password_hash: ph } = row as any;
   if (!verifyPw(String(password), ph)) return res.status(401).json({ error: '邮箱或密码错误' });
   // P0-1 修复: 参数化查询
   const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
   crStmt.bind({ $u: id });
   const credits = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
   crStmt.free();
-  res.json({ ok: true, user: { id, numeric_id: nid, numericId: nid, email: em2, display_name: dn, displayName: dn, avatar_url: av || '', avatarUrl: av || '', bio: bioTxt || '', email_verified: ev || 0, status: st || 'active', credits }, token: genJwt(id as string) });
+  res.json({ ok: true, user: {
+    id, numericId: nid, email: em2, displayName: dn, credits,
+    avatarUrl: '', bio: '', status: 'active', emailVerified: false,
+    avatar_url: '', email_verified: 0,
+  }, token: genJwt(id as string) });
 });
 
 app.get('/api/user/me', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
   // P0-1 修复: 参数化查询
-  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, avatar_url, bio, email_verified, status FROM users WHERE id = $u");
+  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name FROM users WHERE id = $u");
   stmt.bind({ $u: uid });
   if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '用户不存在' }); }
   const row = stmt.getAsObject();
   stmt.free();
-  const { id, numeric_id: nid, email: em, display_name: dn, avatar_url: av, bio: bioTxt, email_verified: ev, status: st } = row as any;
+  const { id, numeric_id: nid, email: em, display_name: dn } = row as any;
   const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
   crStmt.bind({ $u: uid });
   const credits = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
   crStmt.free();
-  res.json({ ok: true, user: { id, numeric_id: nid, numericId: nid, email: em, display_name: dn, displayName: dn, avatar_url: av || '', avatarUrl: av || '', bio: bioTxt || '', email_verified: ev || 0, status: st || 'active', credits } });
+  const avStmt = sqlDb.prepare("SELECT avatar_url, bio, status FROM users WHERE id = $u");
+  avStmt.bind({ $u: uid });
+  const avRow = avStmt.step() ? avStmt.getAsObject() : null;
+  avStmt.free();
+  const avatarUrl = (avRow?.avatar_url as string) || '';
+  const bio = (avRow?.bio as string) || '';
+  const status = (avRow?.status as string) || 'active';
+  res.json({ ok: true, user: {
+    id, numericId: nid, email: em, displayName: dn, credits,
+    avatarUrl, bio, status,
+    avatar_url: avatarUrl, email_verified: 0,
+  } });
 });
 
 app.get('/api/user/credits', (req, res) => {
@@ -320,6 +339,26 @@ app.get('/api/user/credits', (req, res) => {
   res.json({ ok: true, credits: balance });
 });
 
+// 模拟充值（测试模式，未接真实支付）
+const CREDIT_RATES: Record<string, number> = { USD: 100, CNY: 14 };
+app.post('/api/user/credits/add', (req, res) => {
+  const uid = authUser(req);
+  if (!uid) return res.status(401).json({ error: '未登录' });
+  const { amount, currency } = req.body || {};
+  const amt = Number(amount);
+  if (!amt || amt <= 0 || amt > 100000) return res.status(400).json({ error: '金额无效' });
+  const cur = String(currency || 'USD').toUpperCase();
+  const rate = CREDIT_RATES[cur] || CREDIT_RATES.USD;
+  const credits = Math.round(amt * rate);
+  sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $c) ON CONFLICT(user_id) DO UPDATE SET balance = balance + $c`, { $u: uid, $c: credits });
+  saveDB();
+  const stmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
+  stmt.bind({ $u: uid });
+  const balance = stmt.step() ? (stmt.getAsObject().balance as number) : credits;
+  stmt.free();
+  res.json({ ok: true, added: credits, balance, currency: cur, amount: amt, testMode: true });
+});
+
 // ============ 用户搜索 ============
 app.get('/api/user/search', (req, res) => {
   const uid = authUser(req);
@@ -330,10 +369,7 @@ app.get('/api/user/search', (req, res) => {
   const stmt = sqlDb.prepare(`SELECT id, numeric_id, display_name, email FROM users WHERE CAST(numeric_id AS TEXT) LIKE $q OR display_name LIKE $q2 OR email LIKE $q3 LIMIT 20`);
   stmt.bind({ $q: like, $q2: like, $q3: like });
   const results: any[] = [];
-  while (stmt.step()) {
-    const r = stmt.getAsObject();
-    results.push({ id: r.id, numeric_id: r.numeric_id, numericId: r.numeric_id, display_name: r.display_name, displayName: r.display_name, email: r.email });
-  }
+  while (stmt.step()) results.push(stmt.getAsObject());
   stmt.free();
   res.json({ ok: true, results });
 });
@@ -347,7 +383,7 @@ app.get('/api/user/find', (req, res) => {
   if (stmt.step()) {
     const u = stmt.getAsObject();
     stmt.free();
-    res.json({ ok: true, found: true, user: { id: u.id, numeric_id: u.numeric_id, numericId: u.numeric_id, display_name: u.display_name, displayName: u.display_name, email: u.email } });
+    res.json({ ok: true, found: true, user: u });
   } else {
     stmt.free();
     res.json({ ok: true, found: false });
@@ -395,7 +431,7 @@ app.get('/api/friend/requests', (req, res) => {
   const incoming: any[] = [];
   while (stmt.step()) {
     const r = stmt.getAsObject();
-    incoming.push({ id: r.id, from: r.from_id, fromUserId: r.from_id, fromName: r.from_name, fromId: r.from_id_num, fromNumericId: r.from_id_num, message: r.message });
+    incoming.push({ id: r.id, from: r.from_id, fromName: r.from_name, fromId: r.from_id_num, fromUserId: r.from_id_num, message: r.message });
   }
   stmt.free();
   res.json({ ok: true, incoming });
@@ -428,14 +464,18 @@ app.get('/api/friend/list', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
   const stmt = sqlDb.prepare(
-    `SELECT DISTINCT u.id, u.numeric_id, u.display_name, u.email FROM friends f
+    `SELECT DISTINCT u.id, u.numeric_id, u.display_name FROM friends f
      JOIN users u ON u.id = CASE WHEN f.from_id = $u THEN f.user_id ELSE f.from_id END
      WHERE f.from_id = $u2 OR f.user_id = $u3`);
   stmt.bind({ $u: uid, $u2: uid, $u3: uid });
   const friends: any[] = [];
   while (stmt.step()) {
     const r = stmt.getAsObject();
-    friends.push({ friendId: r.id, friendName: r.display_name, friendEmail: r.email || '', id: r.id, numericId: r.numeric_id, displayName: r.display_name, email: r.email || '' });
+    friends.push({
+      friendId: String(r.id), friendName: r.display_name, friendEmail: r.email || '',
+      id: r.id, numeric_id: r.numeric_id, display_name: r.display_name,
+      numericId: r.numeric_id, displayName: r.display_name,
+    });
   }
   stmt.free();
   res.json({ ok: true, friends });
@@ -457,186 +497,6 @@ app.post('/api/friend/remove', (req, res) => {
   res.json({ ok: true });
 });
 
-// ============ 兼容别名路由（前端旧路径 /api/auth/* 与 /api/lan/* → 映射到平台实际路由） ============
-// 说明: 前端 platformApi 曾用 /api/auth/login 等路径，平台实际是 /api/user/login；
-//       404 时前端 fallback 不触发（只 catch 网络异常），导致登录/注册/好友功能在云平台模式全挂。
-//       这里注册同名别名，兼容旧前端调用。2026-08-27 修复。
-
-// 注册兼容: POST /api/auth/register（前端 payload 用 display_name）
-app.post('/api/auth/register', (req, res) => {
-  const { email, password } = req.body || {};
-  const displayName = req.body?.display_name || req.body?.displayName || '';
-  if (!email || !password || password.length < 6)
-    return res.status(400).json({ error: '邮箱和密码(至少6位)必填' });
-  const em = String(email).trim().toLowerCase();
-  const existStmt = sqlDb.prepare("SELECT id FROM users WHERE email = $em");
-  existStmt.bind({ $em: em });
-  const exists = existStmt.step();
-  existStmt.free();
-  if (exists) return res.status(409).json({ error: '该邮箱已注册' });
-  const maxR = sqlDb.exec("SELECT COALESCE(MAX(numeric_id), 9999) FROM users");
-  const numericId = (maxR[0]?.values[0]?.[0] as number || 9999) + 1;
-  const userId = 'ouid-' + numericId;
-  const dn = displayName || '用户' + numericId;
-  const now = Date.now();
-  sqlDb.run(`INSERT INTO users (id, numeric_id, email, password_hash, display_name, created_at) VALUES ($id,$nid,$em,$ph,$dn,$now)`,
-    { $id: userId, $nid: numericId, $em: em, $ph: hashPw(String(password)), $dn: dn, $now: now });
-  sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, 1000)`, { $u: userId });
-  saveDB();
-  res.json({ ok: true, user: { id: userId, numeric_id: numericId, numericId, email: em, display_name: dn, displayName: dn, avatar_url: '', avatarUrl: '', bio: '', email_verified: 0, status: 'active', credits: 1000 }, token: genJwt(userId) });
-});
-
-// 注册兼容: POST /api/auth/login（前端传 { email: username, password }）
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
-  const em = String(email).trim().toLowerCase();
-  const stmt = sqlDb.prepare("SELECT id, numeric_id, email, display_name, avatar_url, bio, email_verified, status, password_hash FROM users WHERE email = $em");
-  stmt.bind({ $em: em });
-  if (!stmt.step()) { stmt.free(); return res.status(401).json({ error: '邮箱或密码错误' }); }
-  const row = stmt.getAsObject();
-  stmt.free();
-  const { id, numeric_id: nid, email: em2, display_name: dn, avatar_url: av, bio: bioTxt, email_verified: ev, status: st, password_hash: ph } = row as any;
-  if (!verifyPw(String(password), ph)) return res.status(401).json({ error: '邮箱或密码错误' });
-  const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
-  crStmt.bind({ $u: id });
-  const credits = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
-  crStmt.free();
-  res.json({ ok: true, user: { id, numeric_id: nid, numericId: nid, email: em2, display_name: dn, displayName: dn, avatar_url: av || '', avatarUrl: av || '', bio: bioTxt || '', email_verified: ev || 0, status: st || 'active', credits }, token: genJwt(id as string) });
-});
-
-// 兼容: GET /api/lan/search → /api/user/search
-app.get('/api/lan/search', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const q = String(req.query.q || '').trim();
-  if (!q) return res.json({ ok: true, results: [] });
-  const like = `%${q}%`;
-  const stmt = sqlDb.prepare(`SELECT id, numeric_id, display_name, email FROM users WHERE CAST(numeric_id AS TEXT) LIKE $q OR display_name LIKE $q2 OR email LIKE $q3 LIMIT 20`);
-  stmt.bind({ $q: like, $q2: like, $q3: like });
-  const results: any[] = [];
-  while (stmt.step()) {
-    const r = stmt.getAsObject();
-    results.push({ id: r.id, numeric_id: r.numeric_id, numericId: r.numeric_id, display_name: r.display_name, displayName: r.display_name, email: r.email });
-  }
-  stmt.free();
-  res.json({ ok: true, results });
-});
-
-// 兼容: POST /api/lan/friend-request → /api/friend/request
-app.post('/api/lan/friend-request', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const { toNumericId, message } = req.body || {};
-  const stmt = sqlDb.prepare(`SELECT id FROM users WHERE numeric_id = $n`);
-  stmt.bind({ $n: Number(toNumericId) });
-  if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '用户不存在' }); }
-  const toId = stmt.getAsObject().id as string;
-  stmt.free();
-  if (toId === uid) return res.status(400).json({ error: '不能加自己' });
-  const f1Stmt = sqlDb.prepare("SELECT 1 FROM friends WHERE from_id = $a AND user_id = $b");
-  f1Stmt.bind({ $a: uid, $b: toId });
-  const f1 = f1Stmt.step();
-  f1Stmt.free();
-  const f2Stmt = sqlDb.prepare("SELECT 1 FROM friends WHERE from_id = $a AND user_id = $b");
-  f2Stmt.bind({ $a: toId, $b: uid });
-  const f2 = f2Stmt.step();
-  f2Stmt.free();
-  if (f1 || f2) return res.json({ ok: true, already: true });
-  const frId = 'fr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-  sqlDb.run(`INSERT INTO friend_requests (id, from_id, to_id, status, message, created_at) VALUES ($id,$f,$t,'pending',$m,$c)`,
-    { $id: frId, $f: uid, $t: toId, $m: message || '', $c: Date.now() });
-  saveDB();
-  res.json({ ok: true });
-});
-
-// 兼容: GET /api/lan/friend-requests → /api/friend/requests
-app.get('/api/lan/friend-requests', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const stmt = sqlDb.prepare(
-    `SELECT fr.id, fr.from_id, fr.message, u.display_name as from_name, u.numeric_id as from_id_num
-     FROM friend_requests fr LEFT JOIN users u ON fr.from_id = u.id
-     WHERE fr.to_id = $u AND fr.status = 'pending' ORDER BY fr.created_at DESC`);
-  stmt.bind({ $u: uid });
-  const incoming: any[] = [];
-  while (stmt.step()) {
-    const r = stmt.getAsObject();
-    incoming.push({ id: r.id, from: r.from_id, fromUserId: r.from_id, fromName: r.from_name, fromId: r.from_id_num, fromNumericId: r.from_id_num, message: r.message });
-  }
-  stmt.free();
-  res.json({ ok: true, incoming });
-});
-
-// 兼容: POST /api/lan/friend-respond → /api/friend/respond
-app.post('/api/lan/friend-respond', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const { requestId, action } = req.body || {};
-  const stmt = sqlDb.prepare(`SELECT id, from_id, status FROM friend_requests WHERE id = $id AND to_id = $u`);
-  stmt.bind({ $id: requestId, $u: uid });
-  if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '请求不存在' }); }
-  const fr = stmt.getAsObject();
-  stmt.free();
-  if (fr.status !== 'pending') return res.json({ ok: true, alreadyProcessed: true });
-  const status = action === 'accept' ? 'accepted' : 'rejected';
-  sqlDb.run(`UPDATE friend_requests SET status = $s WHERE id = $id`, { $s: status, $id: requestId });
-  if (action === 'accept') {
-    const now = Date.now();
-    sqlDb.run(`INSERT OR IGNORE INTO friends (from_id, user_id, created_at) VALUES ($a,$b,$n)`, { $a: uid, $b: fr.from_id, $n: now });
-    sqlDb.run(`INSERT OR IGNORE INTO friends (from_id, user_id, created_at) VALUES ($a,$b,$n)`, { $a: fr.from_id, $b: uid, $n: now });
-  }
-  saveDB();
-  res.json({ ok: true });
-});
-
-// 兼容: GET /api/lan/friends → /api/friend/list
-app.get('/api/lan/friends', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const stmt = sqlDb.prepare(
-    `SELECT DISTINCT u.id, u.numeric_id, u.display_name, u.email FROM friends f
-     JOIN users u ON u.id = CASE WHEN f.from_id = $u THEN f.user_id ELSE f.from_id END
-     WHERE f.from_id = $u2 OR f.user_id = $u3`);
-  stmt.bind({ $u: uid, $u2: uid, $u3: uid });
-  const friends: any[] = [];
-  while (stmt.step()) {
-    const r = stmt.getAsObject();
-    friends.push({ friendId: r.id, friendName: r.display_name, friendEmail: r.email || '', id: r.id, numericId: r.numeric_id, displayName: r.display_name, email: r.email || '' });
-  }
-  stmt.free();
-  res.json({ ok: true, friends });
-});
-
-// 兼容: DELETE /api/lan/friends/:id → 删除好友（前端路径传 fid，可能是 numericId 或 userId）
-app.delete('/api/lan/friends/:id', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const fid = String(req.params.id || '');
-  let targetId = fid;
-  // 如果是纯数字，先解析为 userId
-  if (/^\d+$/.test(fid)) {
-    const stmt = sqlDb.prepare(`SELECT id FROM users WHERE numeric_id = $n`);
-    stmt.bind({ $n: Number(fid) });
-    if (stmt.step()) targetId = stmt.getAsObject().id as string;
-    stmt.free();
-  }
-  sqlDb.run(`DELETE FROM friends WHERE (from_id = $a AND user_id = $b) OR (from_id = $b2 AND user_id = $a2)`,
-    { $a: uid, $b: targetId, $a2: uid, $b2: targetId });
-  saveDB();
-  res.json({ ok: true });
-});
-
-// 兼容: DELETE /api/lan/friend-request/:id → 撤回好友请求
-app.delete('/api/lan/friend-request/:id', (req, res) => {
-  const uid = authUser(req);
-  if (!uid) return res.status(401).json({ error: '未登录' });
-  const rid = String(req.params.id || '');
-  sqlDb.run(`DELETE FROM friend_requests WHERE id = $id AND from_id = $u`, { $id: rid, $u: uid });
-  saveDB();
-  res.json({ ok: true });
-});
-
 // ============ 雇佣 ============
 app.post('/api/hire/list', (req, res) => {
   const uid = authUser(req);
@@ -646,7 +506,7 @@ app.post('/api/hire/list', (req, res) => {
   sqlDb.run(`INSERT INTO hires (id, owner_id, agent_id, name, description, price_per_task, instance_id, status, created_at) VALUES ($id,$o,$a,$n,$d,$p,$i,'active',$c)`,
     { $id: id, $o: uid, $a: agentId || '', $n: name || '灵犀员工', $d: desc || '', $p: pricePerTask || 0, $i: instanceId || '', $c: Date.now() });
   saveDB();
-  res.json({ ok: true, listing: { id, name: name || '灵犀员工', description: desc || '', desc: desc || '', pricePerTask: pricePerTask || 0 } });
+  res.json({ ok: true, listing: { id, name: name || '灵犀员工', desc: desc || '', description: desc || '', pricePerTask: pricePerTask || 0 } });
 });
 
 app.get('/api/hire/market', (req, res) => {
@@ -657,7 +517,7 @@ app.get('/api/hire/market', (req, res) => {
   const list: any[] = [];
   while (stmt.step()) {
     const r = stmt.getAsObject();
-    list.push({ id: r.id, name: r.name, description: r.description, desc: r.description, pricePerTask: r.price_per_task, ownerName: r.owner_name, ownerId: r.owner_id, agentId: r.agent_id, instanceId: r.instance_id });
+    list.push({ id: r.id, name: r.name, desc: r.description, pricePerTask: r.price_per_task, ownerName: r.owner_name, ownerId: r.owner_id, agentId: r.agent_id, instanceId: r.instance_id });
   }
   stmt.free();
   res.json({ ok: true, list });
@@ -735,7 +595,11 @@ app.post('/api/instances/heartbeat', (req, res) => {
     sqlDb.run(`DELETE FROM instance_users WHERE instance_id = $i`, { $i: instanceId });
     for (const u of users) {
       sqlDb.run(`INSERT OR REPLACE INTO instance_users (instance_id, user_id, numeric_id, display_name, email) VALUES ($i,$uid,$nid,$dn,$em)`,
-        { $i: instanceId, $uid: u.userId ?? u.user_id, $nid: u.numericId ?? u.numeric_id, $dn: u.displayName ?? u.display_name ?? '', $em: u.email ?? '' });
+        { $i: instanceId,
+          $uid: u.userId ?? u.id ?? '',
+          $nid: u.numericId ?? u.numeric_id ?? 0,
+          $dn: u.displayName ?? u.display_name ?? '',
+          $em: u.email ?? u.email ?? '' });
     }
   }
 

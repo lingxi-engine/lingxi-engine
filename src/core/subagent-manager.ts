@@ -148,7 +148,7 @@ export class SubAgentManager {
       status: 'pending',
       model: opts.model || this.aiModel,
       createdAt: Date.now(),
-      timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '600', 10),
+      timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '1800', 10),
       toolRegistry: opts.toolRegistry,
       agentIdForTools: opts.agentIdForTools || opts.parentId,
       onProgress: opts.onProgress,
@@ -285,7 +285,7 @@ export class SubAgentManager {
     }
 
     try {
-      const timeoutMs = opts?.timeoutMs || 120000;
+      const timeoutMs = opts?.timeoutMs || parseInt(process.env.SUBAGENT_MSG_TIMEOUT_MS || '300000', 10);
       const reply = await Promise.race([
         handler(msg),
         new Promise<string>((_, reject) =>
@@ -384,7 +384,7 @@ export class SubAgentManager {
             registry: task.toolRegistry,
             agentId: task.agentIdForTools,
             chatId: task.parentChatId,
-            maxIterations: 20,
+            maxIterations: parseInt(process.env.SUBAGENT_MAX_ITERATIONS || '50', 10),
             temperature: 0.5,
             maxTokens: 8192,
             signal: controller.signal,

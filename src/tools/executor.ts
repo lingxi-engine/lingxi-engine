@@ -25,7 +25,6 @@ import type { ToolRegistry } from "./registry.js";
 export interface ChatMessage {
   role: "system" | "user" | "assistant" | "tool";
   content?: string;
-  reasoning_content?: string;
   tool_calls?: ToolCallInMessage[];
   tool_call_id?: string;
   name?: string;
@@ -43,7 +42,6 @@ interface OpenAIChatResponse {
     message: {
       role: string;
       content?: string | null;
-      reasoning_content?: string;
       tool_calls?: Array<{
         id: string;
         type: "function";
@@ -99,6 +97,11 @@ export interface RunToolsOptions {
   /** P1-6: 摘要专用模型（轻量），未设置时用主 model */
   summaryModel?: string;
   /**
+   * force_complete 强制完成模式：true 时，工具连续失败不轻易放弃，迭代上限更高。
+   * 由 FORCE_COMPLETE 环境变量或 GoalExecutor 传入。
+   */
+  forceComplete?: boolean;
+  /**
    * AGI 持续执行模式：true 时，AI 输出文字但没调工具时不会立即结束，
    * 而是强制追问"任务是否真的完成？"直到出现明确的完成信号或达到额外追问上限。
    * 解决"干一点就停"的根因——AI 做了一部分后主观判定完成导致回合提前结束。
@@ -125,22 +128,6 @@ export interface RunToolsResult {
 
 export function buildToolsForAgent(registry: ToolRegistry, agentId: string): ToolDefinition[] {
   return registry.listToolsForAgent(agentId);
-}
-
-/**
- * 判断模型是否为 thinking/推理模式（此类模型 API 不接受 tool_choice 参数，
- * 传入会返回 400: "Thinking mode does not support this tool_choice"）
- */
-function isThinkingModel(model: string): boolean {
-  if (!model) return false;
-  const m = model.toLowerCase();
-  if (m.includes('thinking') || m.includes('-think') || m.includes('_think')) return true;
-  if (m.includes('reasoner')) return true;
-  if (/\b(r1|o1|o3|o4)\b/.test(m)) return true;
-  if (m.includes('gpt-5') || m.includes('gpt-oss')) return true;
-  // deepseek 官方 reasoning 系列
-  if (m.includes('deepseek') && (m.includes('reason') || m.includes('r1'))) return true;
-  return false;
 }
 
 export function buildOpenAITools(tools: ToolDefinition[]): Record<string, unknown>[] {
@@ -193,19 +180,7 @@ export function stripDsmlMarkup(text: string): string {
 function isCompletionSignal(content: string): boolean {
   if (!content) return false;
   const t = content.trim();
-  // ① 先查反问/请示信号 —— 命中即未完成，绝不判为完成
-  //    （修复：原实现先查完成信号，导致"任务已完成第一步，是否继续？"被误判整体完成、提前收工）
-  const askingPatterns = [
-    /(需要我|要我|是否需要|要不要|需不需要)(继续|接着|下一步)/,
-    /(还需要|还需要做什么|还有什么需要|还有什么要做的)/,
-    /是否(需要|要我|要)/,
-    /(?:继续|接着|下一步)(?:吗|么|吧)?\s*[?？]?\s*$/,
-    /\?\s*$/,
-  ];
-  for (const p of askingPatterns) {
-    if (p.test(t)) return false;
-  }
-  // ② 再查明确完成信号
+  // 明确完成信号
   const donePatterns = [
     /(任务|工作|全部|所有|目标)(已经|已|均已|都)(完成|做完|搞定|结束|处理完|执行完)/,
     /^任务完成/,
@@ -218,11 +193,15 @@ function isCompletionSignal(content: string): boolean {
   for (const p of donePatterns) {
     if (p.test(t)) return true;
   }
-  // ③ 兜底：两条以上"完成性证据"才算完成（避免真做完但没写"任务完成"被白追问）
-  const evidence = [/成功/, /已生成/, /已写入/, /已保存/, /已修复/, /已删除/, /测试通过/, /已更新/, /已完成/, /已解决/, /全部处理/];
-  let evidenceHits = 0;
-  for (const p of evidence) {
-    if (p.test(t)) { evidenceHits++; if (evidenceHits >= 2) return true; }
+  // 反问/请示（这些不是完成，是停下来等用户）
+  const askingPatterns = [
+    /(需要我|要我|是否需要|要不要)(继续|接着|下一步)/,
+    /(还需要|还需要做什么|还有什么需要)/,
+    /是否(需要|要我)/,
+    /\?\s*$/,
+  ];
+  for (const p of askingPatterns) {
+    if (p.test(t)) return false;
   }
   return false;
 }
@@ -359,6 +338,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     maxTokens = 16384,
     signal,
     requireCompletion = false,
+    forceComplete = false,
     onToolCall,
     onToolResult,
     onThink,
@@ -375,10 +355,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
-  const MAX_IDLE_ROUNDS = 5;
+  const MAX_IDLE_ROUNDS = 3;
   let idleRounds = 0;
-  // thinking 模型兼容：一旦 API 报 tool_choice 不支持，置位后后续轮次都不再传该参数
-  let toolChoiceBlocked = false;
 
   const availableTools = buildToolsForAgent(registry, agentId);
   const openaiTools = availableTools.length > 0 ? buildOpenAITools(availableTools) : undefined;
@@ -400,12 +378,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     };
     if (openaiTools) {
       requestParams.tools = openaiTools;
-      // 修复：任务模式（requireCompletion）首轮强制工具调用，阻止模型"用嘴停轮"；
-      // 后续轮次恢复 auto（若模型不支持 required，首轮失败后自动回退 auto，最多浪费一轮）
-      // thinking/推理模型不支持 tool_choice 参数（API 返回 400: Thinking mode does not support this tool_choice），跳过
-      if (!isThinkingModel(model) && !toolChoiceBlocked) {
-        requestParams.tool_choice = (requireCompletion && i === 0) ? "required" : "auto";
-      }
+      requestParams.tool_choice = "auto";
     }
 
     let aiResponse: OpenAIChatResponse;
@@ -415,20 +388,6 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
-      // tool_choice 相关 400：置位标志 + 移除参数后重试一次（thinking 模型兼容兜底）
-      if (/tool_choice|tool choice|Thinking mode/i.test(errMsg)) {
-        toolChoiceBlocked = true;
-        delete requestParams.tool_choice;
-        console.warn('[Executor] 检测到 tool_choice 不被支持，已置位阻塞标志并移除该参数重试');
-        result.consecutiveErrors = 0;
-        continue;
-      }
-      // 修复：429 配额/限流识别 —— 这类错误重试无用，连续 2 次即终止并给出可操作提示（不再傻等 5 次）
-      const isQuotaError = /429|usage limit|rate limit|quota|weekly limit|reached your/i.test(errMsg);
-      if (isQuotaError && result.consecutiveErrors >= 2) {
-        result.finalContent = `任务中断：API 配额/限流耗尽（${errMsg.substring(0, 200)}）。请稍后重试，或在设置中切换到其他模型。`;
-        break;
-      }
       if (result.consecutiveErrors >= 5) {
         result.finalContent = `AI 调用连续失败 5 次: ${errMsg}。请检查 API Key 和网络连接。`;
         break;
@@ -465,7 +424,6 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     const assistantEntry: ChatMessage = {
       role: "assistant",
       content: assistantMsg.content ?? "",
-      reasoning_content: reasoningContent || undefined,
     };
 
     // ── 提取工具调用 (3 层 fallback) ──
@@ -527,9 +485,10 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // 这是解决"干一点就停"的核心：不能把"AI 这轮没调工具"当成"任务完成"。
       if (requireCompletion && !isCompletionSignal(textContent) && idleRounds < MAX_IDLE_ROUNDS) {
         idleRounds += 1;
-                // 修复：system 角色注入（模型更服从）；删除"如果你认为确实做完了请明确输出任务完成"的诱导措辞（防止提前收工）
-        const nudge = `系统提示：任务尚未完成，请继续检查工作、继续调用工具推进，不要停下，也不要询问用户。`;
-        result.messages.push({ role: "system", content: nudge } as ChatMessage);
+        const nudge = idleRounds === 1
+          ? "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。"
+          : `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请明确输出"任务完成"并说明已满足的条件；否则请继续调用工具推进剩余工作，不要停。`;
+        result.messages.push({ role: "user", content: nudge } as ChatMessage);
         console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}），注入追问继续`);
         continue;
       }
@@ -537,9 +496,6 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       result.finalContent = textContent;
       break;
     }
-
-    // ⭐ 修复：本轮有工具调用 → 重置 idleRounds，避免"干完活继续累计追问次数"导致误停
-    idleRounds = 0;
 
     // 记录 tool_calls（已验证过的条目）
     assistantEntry.tool_calls = toolCalls.map((tc) => ({
@@ -590,15 +546,16 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // ⭐ 连续工具失败检测：工具连续失败 3 次则停止循环，避免死循环卡住
       if (!callResult.success) {
         consecutiveToolFailures++;
-        if (consecutiveToolFailures >= 6) {
+        const FAIL_LIMIT = forceComplete ? 20 : 6;
+      if (consecutiveToolFailures >= FAIL_LIMIT) {
           console.warn(`[Executor] 工具连续失败 ${consecutiveToolFailures} 次，停止循环`);
           result.finalContent = `工具连续失败 ${consecutiveToolFailures} 次，已停止执行。最后错误: ${callResult.error || '未知'}。建议换一种方式或拆小任务重试。`;
           i = maxIterations; // 强制退出外层循环
           break; // 退出内层循环
         }
         // 连续失败 3 次后注入纠正提示，给 AI 自我修复机会而非直接终止
-        if (consecutiveToolFailures === 3) {
-          console.warn(`[Executor] 工具已连续失败 3 次，注入纠正提示`);
+        if (consecutiveToolFailures === 3 || (forceComplete && consecutiveToolFailures % 3 === 0)) {
+          console.warn(`[Executor] 工具已连续失败 ${consecutiveToolFailures} 次，注入纠正提示`);
           result.messages.push({
             role: 'user',
             content: `系统提示：最近连续 3 次工具调用失败。请分析失败原因（参数格式？路径不存在？权限不足？），换一种方式或换一个工具继续完成任务，不要放弃。`,

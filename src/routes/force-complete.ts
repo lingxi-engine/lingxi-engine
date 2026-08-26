@@ -81,7 +81,7 @@ export function createForceCompleteRoutes(): Router {
     if (!goal) return res.status(404).json({ ok: false, error: '目标不存在' });
     TaskStore.setForceComplete(id, true);
     if (!GoalExecutor.isRunning(id)) {
-      GoalExecutor.start(goal, 0);
+      GoalExecutor.start(goal, 0, true);
     }
     res.json({ ok: true, message: `目标 "${goal.title}" 已开启强制完成并开始执行` });
   });

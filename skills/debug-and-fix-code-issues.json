@@ -1,0 +1,14 @@
+{
+  "name": "debug-and-fix-code-issues",
+  "displayName": "代码问题排查与修复",
+  "description": "当用户报告功能异常或 bug 时，检查代码定位根因并修复。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到用户报告功能异常或 bug 时，先阅读相关代码定位根因。按以下步骤：1) 用 list_dir 查看项目结构；2) 用 read_file 阅读相关前端/后端文件；3) 用 shell_exec 运行测试或构建验证；4) 定位到具体 bug 后，用 write_file 修复；5) 修复后复查一遍，确保无遗漏。如果是登录/认证问题，重点检查前端表单提交、后端路由、数据库查询。如果用户提出多个问题，逐一排查并汇总修复清单。",
+  "autoCreated": true,
+  "createdAt": 1787780652688
+}
