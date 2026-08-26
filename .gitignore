@@ -233,3 +233,4 @@ _verify_pack.ps1
 *.patch-ctor
 fix-task-interrupt*.cjs
 scripts/fix-task-interrupt*.cjs
+"storage/"  

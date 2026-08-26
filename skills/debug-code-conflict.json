@@ -1,0 +1,13 @@
+{
+  "name": "debug-code-conflict",
+  "displayName": "代码冲突与缺失排查",
+  "description": "排查工作区中模块冲突或信息缺失问题，定位代码逻辑错误。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求排查代码库中模块冲突、信息缺失或逻辑问题时，首先使用 list_dir 了解项目结构，然后使用 read_file 查看相关的后端路由、前端组件和状态管理代码。使用 shell_exec 执行 grep 或其他搜索命令来查找特定变量或函数的引用。对比不同模块的数据流，找出冲突点或缺失的配置/数据，最后给出明确的问题定位和修复建议。",
+  "autoCreated": true,
+  "createdAt": 1787765527638
+}
