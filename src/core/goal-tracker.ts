@@ -253,5 +253,23 @@ export function initGoalTrackerTable(): void {
     )
   `);
   db.run('CREATE INDEX IF NOT EXISTS idx_goals_project ON project_goals(project_id)');
+
+  // —— v2.0.13: 迁移：给 project_goals 补 GoalExecutor 闭环执行状态列（老库无此列导致 resumeAll 报 no such column）——
+  try {
+    const goalCols = db.exec(`PRAGMA table_info(project_goals)`)[0]?.values?.map((r: any) => r[1]) || [];
+    const addIf = (col: string, def: string) => {
+      if (!goalCols.includes(col)) {
+        db.run(`ALTER TABLE project_goals ADD COLUMN ${col} ${def}`);
+        console.log(`[GoalTracker] v2.0.13 migration: added ${col} to project_goals`);
+      }
+    };
+    addIf('exec_status', 'TEXT');
+    addIf('exec_round', 'INTEGER DEFAULT 0');
+    addIf('exec_progress', 'INTEGER DEFAULT 0');
+    addIf('exec_log', 'TEXT');
+  } catch (e: any) {
+    console.warn('[GoalTracker] v2.0.13 migration warning:', e.message);
+  }
+
   console.log('[GoalTracker] 数据库表已初始化');
 }
