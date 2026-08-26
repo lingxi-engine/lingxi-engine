@@ -234,3 +234,14 @@ _verify_pack.ps1
 fix-task-interrupt*.cjs
 scripts/fix-task-interrupt*.cjs
 "storage/"  
+
+tsc_after.txt
+tsc_full.txt
+
+storage/*.pid
+storage/*.db
+storage/*.sqlite*
+storage/logs/
+storage/avatars/
+storage/uploads/
+
