@@ -957,6 +957,9 @@ async function switchChat(chatId) {
 }
 
 // 侧边栏开关（index.html 的 toggleSidebar 引用此函数）
+
+// 点击遮罩关闭侧边栏（index.html sidebarOverlay 引用）
+function hideSidebar() { toggleSidebar(false); }
 function toggleSidebar(force) {
   const sb = document.getElementById('sidebar');
   const ov = document.getElementById('sidebarOverlay');
@@ -3098,7 +3101,12 @@ async function doUploadAvatar(input) {
 async function showCreditsDetail() {
   var token = localStorage.getItem('authToken');
   if (!token) { toast(t('auth.loginFirst')); return; }
-  var userId = clientId || '';
+  var userId = '';
+  try {
+    var _meC = await platformApi('/api/user/me', 'GET');
+    if (_meC && _meC.ok && _meC.user) userId = _meC.user.id || _meC.user.sub || clientId || '';
+  } catch(_e) {}
+  if (!userId) userId = clientId || '';
   if (!userId) { toast(t('profile.noUserInfo')); return; }
   // 获取积分余额
   var credits = 0, totalEarned = 0, totalSpent = 0;
