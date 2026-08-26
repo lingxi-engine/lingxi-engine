@@ -89,6 +89,9 @@ import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createAgiRoutes } from './src/routes/agi.js';
+import { GoalExecutor } from './src/core/goal-executor.js';
+import { Watchdog, writeWatchdogPidFile, touchWatchdogAlive } from './src/core/watchdog.js';
+import { createForceCompleteRoutes } from './src/routes/force-complete.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
 
@@ -2599,6 +2602,7 @@ setSearchManager(searchManagerInstance);
   const authIfMatch = (pattern: RegExp) => (req: any, res: any, next: any) =>
     pattern.test(req.path) ? requireAuth(req, res, next) : next();
   app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
+  app.use('/api', authIfMatch(/^\/force-complete(\/|$)/), createForceCompleteRoutes());
   app.use('/api', authIfMatch(/^\/evaluations(\/|$)/), createEvaluationRoutes({ router, db } as any));  // AGI: 评测体系
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
@@ -2614,6 +2618,21 @@ setSearchManager(searchManagerInstance);
   app.use('/api', authIfMatch(/^\/upload(\/|$)/), createUploadRoutes({ db, dataDir } as any));
 
   // ── GoalTracker.onGoalStarted: 任务监控/AI自动执行 ──
+  
+  // ── 目标任务强制达成：接线 GoalExecutor（目标闭环执行引擎）+ Watchdog ──
+  try {
+    GoalExecutor.init(router, (event: any) => { try { broadcast(event); } catch (_e) {} });
+    console.log('[GoalExecutor] 目标任务执行引擎已接线（init + onGoalStarted + resumeAll 就绪）');
+  } catch (e: any) { console.error('[GoalExecutor] init 失败:', e?.message || e); }
+  try {
+    Watchdog.init((goalId: string) => {
+      console.log(`[Watchdog] 检测到目标 ${goalId} 可能卡死，尝试通过 GoalExecutor 重启`);
+      try { const g = GoalTracker.get(goalId); if (g) GoalExecutor.start(g, 0); } catch (_e) {}
+    });
+    writeWatchdogPidFile();
+    console.log('[Watchdog] 三层看门狗已启动（任务级→进程级→系统级）');
+  } catch (e: any) { console.error('[Watchdog] init 失败:', e?.message || e); }
+
   GoalTracker.onGoalStarted = (goal: ProjectGoal) => {
     // 从 projectId 提取 chatId（格式: project-<chatId> 或 default）
     let chatId: string | null = goal.projectId.startsWith('project-') ? goal.projectId.slice(8) : null;
@@ -4345,7 +4364,12 @@ setSearchManager(searchManagerInstance);
     },
   }));
 
-  server.listen(port, '0.0.0.0', () => {
+  
+  // 启动后断点续跑未完成任务
+  setTimeout(() => {
+    try { GoalExecutor.resumeAll(); } catch (e: any) { console.error('[GoalExecutor] resumeAll 启动失败:', e?.message || e); }
+  }, 3000);
+server.listen(port, '0.0.0.0', () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');
     console.log(' HTTP: http://localhost:' + port);

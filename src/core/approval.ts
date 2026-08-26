@@ -44,6 +44,8 @@ export class ApprovalManager {
   private autoApprove: boolean;
   /** 超时自动通过（默认 true）：30 秒不操作 → 自动批准 */
   private autoApproveOnTimeout: boolean;
+  /** 强制完成模式：FORCE_COMPLETE=1/true/yes/on 时，目标任务审批请求自动放行 */
+  private forceComplete: boolean;
 
   private onRequestListeners: ApprovalListener[] = [];
   private onDecideListeners: ApprovalListener[] = [];
@@ -66,7 +68,16 @@ export class ApprovalManager {
     } else {
       this.autoApproveOnTimeout = true;
     }
+    // v2.0 强制完成免审批通道：FORCE_COMPLETE=1/true/yes/on 时开启
+    this.forceComplete = envBool(process.env.FORCE_COMPLETE);
+    if (this.forceComplete) console.log('[Approval] 强制完成免审批通道已开启 (FORCE_COMPLETE) —— 目标任务审批请求自动放行');
     console.log(`[Approval] 审批管理器 v2: timeout=${this.timeoutMs}ms, 超时自动通过=${this.autoApproveOnTimeout}`);
+  }
+
+  /** v2.0: 动态开启/关闭强制完成免审批通道 */
+  setForceComplete(on: boolean): void {
+    this.forceComplete = on;
+    if (on) console.log('[Approval] 强制完成免审批通道已开启 (setForceComplete)');
   }
 
   /** 注册「新审批请求」事件（前端弹窗用） */

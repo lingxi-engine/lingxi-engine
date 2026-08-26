@@ -14,6 +14,7 @@
  */
 import { Router } from 'express';
 import { GoalTracker } from '../core/goal-tracker.js';
+import { GoalExecutor } from '../core/goal-executor.js';
 import { processUserMessage } from '../core/ws-handler.js';
 import type { ServerContext } from '../server/context.js';
 
@@ -23,6 +24,19 @@ const DEFAULT_PROJECT = 'default';
 export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
   const router = Router();
   const { outcomeTracker } = ctx;
+
+  // -- 目标任务强制达成：目标标记 in_progress 时自动触发 GoalExecutor 闭环执行 --
+  if (!GoalTracker.onGoalStarted) {
+    GoalTracker.onGoalStarted = (goal: any) => {
+      try {
+        console.log('[GoalExecutor] 目标 "' + goal.title + '" 标记进行中，自动启动闭环执行');
+        GoalExecutor.start(goal);
+      } catch (e: any) {
+        console.error('[GoalExecutor] onGoalStarted 自动执行失败:', e?.message || e);
+      }
+    };
+    console.log('[GoalExecutor] 已注册「目标进行中 → 自动闭环执行」回调');
+  }
 
   // ══════ 目标追踪 API ══════
 
@@ -201,6 +215,60 @@ export function createGoalOutcomeRoutes(ctx: ServerContext): Router {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ══════ 目标任务强制达成：执行控制 API ══════
+
+  /**
+   * 启动目标闭环执行（无人值守强制达成）
+   * POST /api/goals/:id/execute
+   */
+  router.post('/goals/:id/execute', (req, res) => {
+    try {
+      const goal = GoalTracker.get(req.params.id);
+      if (!goal) return res.status(404).json({ error: '目标不存在' });
+      const resumeRound = (req.body && req.body.resumeRound) || 0;
+      const ok = GoalExecutor.start(goal, resumeRound);
+      if (!ok) return res.status(409).json({ error: '目标已处于执行中或引擎未就绪' });
+      res.json({ ok: true, message: '目标已启动闭环执行', goalId: goal.id });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  /**
+   * 停止目标执行
+   * POST /api/goals/:id/stop
+   */
+  router.post('/goals/:id/stop', (req, res) => {
+    try {
+      const goal = GoalTracker.get(req.params.id);
+      if (!goal) return res.status(404).json({ error: '目标不存在' });
+      const ok = GoalExecutor.stop(goal.id);
+      res.json({ ok: true, stopped: ok, message: ok ? '目标已停止' : '目标未在执行' });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  /**
+   * 查询目标执行状态（含断点续跑信息）
+   * GET /api/goals/:id/status
+   */
+  router.get('/goals/:id/status', (req, res) => {
+    try {
+      const goal = GoalTracker.get(req.params.id);
+      if (!goal) return res.status(404).json({ error: '目标不存在' });
+      const status = GoalExecutor.getStatus(goal.id);
+      res.json({ ok: true, goalId: goal.id, status });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  /**
+   * 断点续跑所有未完成目标
+   * POST /api/goals/resume-all
+   */
+  router.post('/goals/resume-all', (_req, res) => {
+    try {
+      GoalExecutor.resumeAll();
+      res.json({ ok: true, message: '已触发未完成目标断点续跑' });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ══════ 评分卡 API ══════
