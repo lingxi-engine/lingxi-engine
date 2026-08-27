@@ -2744,14 +2744,17 @@ async function testTTS() {
 let authToken = null;
 const PLATFORM_URL = 'http://47.93.157.83:8080';  // v2.0.12: 接回云平台，恢复中心化账号体系。如需纯本地模式，改为 ''
 
-// 通用 API：本地（不要带平。token，本地引。JWT 与平台不一致）
+// 通用 API：本地（不带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  // 自动携带 JWT token（如果已登录。
-  const token = localStorage.getItem('authToken');
-  if (token) opts.headers['Authorization'] = 'Bearer ' + token;
-  const r = await fetch(url, opts); return r.json();
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    let d = null; try { d = await r.json(); } catch (e) {}
+    console.warn('[api]', method || 'GET', url, r.status, d && d.error ? (d.error.code || d.error.message || d.error) : '');
+    return d || { ok: false, error: { code: 'HTTP_' + r.status, message: r.statusText } };
+  }
+  return r.json();
 }
 // 云平。API：注。登录/市场
 async function platformApi(url, method, body) {
