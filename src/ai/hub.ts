@@ -362,7 +362,7 @@ export class AIHub {
       baseURL,
     });
     this.providers.set(cfg.id, { client, config: { ...cfg, baseUrl: baseURL } });
-    console.log(`[AI Hub] 动态注册 Provider: ${cfg.id} (${cfg.models.length} 模型, ${baseURL})`);
+    console.log(`[AI Hub] 动态注册 Provider: ${cfg.id} (${(cfg.models || []).length} 模型, ${baseURL})`);
   }
 
   /** 移除一个 Provider */

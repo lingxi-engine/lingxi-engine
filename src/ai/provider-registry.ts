@@ -142,7 +142,7 @@ export class ProviderRegistry {
   listModels(): { id: string; provider: string; providerName: string; isLocal: boolean }[] {
     const result: { id: string; provider: string; providerName: string; isLocal: boolean }[] = [];
     for (const [, entry] of this.providers) {
-      if (!entry.enabled) continue;
+      if (!entry.enabled || !entry.models) continue;
       for (const model of entry.models) {
         result.push({ id: model, provider: entry.id, providerName: entry.name, isLocal: entry.isLocal });
       }
@@ -157,7 +157,7 @@ export class ProviderRegistry {
   getClient(model: string): { client: OpenAI; resolvedModel: string; providerId: string } | null {
     // 1. 精确匹配
     for (const [providerId, entry] of this.providers) {
-      if (!entry.enabled) continue;
+      if (!entry.enabled || !entry.models) continue;
       if (entry.models.some(m => model === m)) {
         return { client: entry.client, resolvedModel: model, providerId };
       }
@@ -165,7 +165,7 @@ export class ProviderRegistry {
 
     // 2. 模糊匹配
     for (const [providerId, entry] of this.providers) {
-      if (!entry.enabled) continue;
+      if (!entry.enabled || !entry.models) continue;
       if (entry.models.some(m => model.includes(m) || m.includes(model))) {
         return { client: entry.client, resolvedModel: model, providerId };
       }
@@ -173,7 +173,7 @@ export class ProviderRegistry {
 
     // 3. fallback：第一个有模型的启用的 provider
     for (const [providerId, entry] of this.providers) {
-      if (!entry.enabled || entry.models.length === 0) continue;
+      if (!entry.enabled || !entry.models || entry.models.length === 0) continue;
       return { client: entry.client, resolvedModel: entry.models[0], providerId };
     }
 
@@ -185,7 +185,7 @@ export class ProviderRegistry {
    */
   addModel(providerId: string, model: string): void {
     const entry = this.providers.get(providerId);
-    if (entry && !entry.models.includes(model)) {
+    if (entry && entry.models && !entry.models.includes(model)) {
       entry.models.push(model);
       this.persist();
     }
@@ -196,7 +196,7 @@ export class ProviderRegistry {
    */
   removeModel(providerId: string, model: string): boolean {
     const entry = this.providers.get(providerId);
-    if (!entry) return false;
+    if (!entry || !entry.models) return false;
     const idx = entry.models.indexOf(model);
     if (idx === -1) return false;
     entry.models.splice(idx, 1);

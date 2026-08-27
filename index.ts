@@ -321,7 +321,7 @@ setSearchManager(searchManagerInstance);
           apiKey: p.apiKey || '', baseUrl: p.baseUrl,
           models: p.models, isLocal: p.isLocal,
         });
-        console.log(`[ProviderSync] 恢复 → AIHub: ${p.id} (${p.models.length} 模型)`);
+        console.log(`[ProviderSync] 恢复 → AIHub: ${p.id} (${(p.models || []).length} 模型)`);
       } catch (e) { console.warn(`[ProviderSync] ${p.id} 同步失败:`, (e as Error).message); }
     }
   }
