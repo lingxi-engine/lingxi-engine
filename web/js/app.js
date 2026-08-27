@@ -2571,6 +2571,9 @@ const PROVIDER_PRESETS = {
   fireworks: {name:'Fireworks',url:'https://api.fireworks.ai/inference/v1',models:'accounts/fireworks/models/llama-v3p3-70b-instruct',keyHint:'API Key'},
   perplexity: {name:'Perplexity',url:'https://api.perplexity.ai',models:'llama-3.1-sonar-large-128k-online',keyHint:'pplx-xxx'},
   ollama: {name:'Ollama',url:'http://localhost:11434/v1',models:'',keyHint:'__hintLocal__'},
+  'llama-cpp': {name:'llama.cpp',url:'http://localhost:8080/v1',models:'',keyHint:'__hintLocal__'},
+  vllm: {name:'vLLM',url:'http://localhost:8000/v1',models:'',keyHint:'__hintLocal__'},
+  'lm-studio': {name:'LM Studio',url:'http://localhost:1234/v1',models:'',keyHint:'__hintLocal__'},
   custom: {name:'__custom__',url:'',models:'',keyHint:'API Key'},
 };
 function onProviderTypeChange() {
