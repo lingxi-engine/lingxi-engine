@@ -955,6 +955,8 @@ function toggleSidebar(force) {
   sb.classList.toggle('show', show);
   if (ov) ov.classList.toggle('show', show);
 }
+// 移动端遮罩点击关闭侧栏（index.html #sidebarOverlay 的 onclick 调用）
+function hideSidebar() { toggleSidebar(false); }
 
 // 移动端返回列。
 function mobileBack() {
@@ -1337,10 +1339,14 @@ function clearQueue() {
 function maybeFlushQueue(chatId) {
   if (!sendQueue.length) return;
   if (!ws || ws.readyState !== 1) return;
-  const next = sendQueue[0];
-  if (next.chatId !== chatId) return;      // 。flush 刚结束的那个聊天
-  if (isChatGenerating(next.chatId)) return; // 仍在生成（多 Agent 并发），等下一。end
-  sendQueue.shift();
+  // 找到队列中第一个"其聊天已不在生成中"的消息发送。
+  // 原实现只看队首，若队首属于别的聊天，会挡住后面已结束聊天的消息，导致永久卡队列。
+  let nextIdx = -1;
+  for (let i = 0; i < sendQueue.length; i++) {
+    if (!isChatGenerating(sendQueue[i].chatId)) { nextIdx = i; break; }
+  }
+  if (nextIdx === -1) return; // 所有排队消息的聊天都还在生成中，继续等
+  const next = sendQueue.splice(nextIdx, 1)[0];
   // 支持文件类排队消息（。fileType/originalName）和普通文本消。
   var sendPayload = { type: 'message', chatId: next.chatId, content: next.content };
   if (next.fileType) { sendPayload.fileType = next.fileType; sendPayload.originalName = next.originalName; }
@@ -3308,7 +3314,7 @@ async function showForgotPassword() {
     var r = await api('/api/auth/forgot-password', 'POST', { email: email });
     document.getElementById('authMsg').innerHTML = '<span style="color:#4ade80">' + t('auth.resetSent', {email: esc(email)}) + '</span>';
   } catch(e) {
-    document.getElementById('authMsg').innerHTML = '<span style="color:#ef4444">。' + (e.message || t('err.sendFail')) + '</span>';
+    document.getElementById('authMsg').innerHTML = '<span style="color:#ef4444">' + esc(e.message || t('err.sendFail')) + '</span>';
   }
 }
 

@@ -233,6 +233,10 @@ export class SubAgentManager {
    * 处理器应返回 Agent 的回复内容
    */
   registerAgentMessageHandler(agentId: string, handler: AgentMessageHandler): void {
+    if (this.messageHandlers.has(agentId)) {
+      console.log(`[SubAgent] Agent ${agentId} 消息处理器已存在，跳过重复注册`);
+      return;
+    }
     this.messageHandlers.set(agentId, handler);
     console.log(`[SubAgent] Agent ${agentId} 消息处理器已注册`);
   }
