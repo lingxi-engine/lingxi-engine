@@ -1,4 +1,4 @@
-# Lingxi Engine pack script v2 (2026-08-26 fixed)
+# Lingxi Engine pack script v3 (2026-08-27: 补漏 tsc_*.txt / *.pre-* / *.pid)
 # Usage: powershell -ExecutionPolicy Bypass -File .\_pack_release.ps1
 $ErrorActionPreference = "Stop"
 
@@ -45,7 +45,10 @@ $excludes = @(
     '--exclude=_*.ps1',
     '--exclude=_*.sh',
     '--exclude=./_*.txt',
-    '--exclude=./_verify_*.js'
+    '--exclude=./_verify_*.js',
+    '--exclude=tsc_*.txt',
+    '--exclude=*.pre-*',
+    '--exclude=*.pid'
 )
 
 # Pack
@@ -72,5 +75,3 @@ try {
 } finally {
     Pop-Location
 }
-
-
