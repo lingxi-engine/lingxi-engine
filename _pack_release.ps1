@@ -37,7 +37,11 @@ $excludes = @(
     '--exclude=./_archive',
     '--exclude=./_add_market_routes.cjs',
     '--exclude=./_pack_release.ps1',
-    '--exclude=./_junk*'
+    '--exclude=./_junk*',
+    '--exclude=*.func',
+    '--exclude=_*.py',
+    '--exclude=_*.cjs',
+    '--exclude=_*.mjs'
 )
 
 # Pack
