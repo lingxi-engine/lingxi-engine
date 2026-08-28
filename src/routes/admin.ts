@@ -471,6 +471,7 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   // ── 一键升级接口 ──
   // v2.0.7 安全加固：该端点会在服务器上执行下载+安装脚本，必须显式携带 ADMIN_TOKEN，
   // admin-auto 免登录兜底不授权此操作（公网/内网都一样），未配置 ADMIN_TOKEN 时端点直接禁用
+  // v2.0.13 跨平台：安装目录与默认升级脚本按平台分流（win 桌面 / mac 桌面 ~/lingxi-engine / linux 服务器 /opt + pm2）
   router.post('/update', async (req, res) => {
     try {
       const adminToken = process.env.ADMIN_TOKEN;
@@ -481,14 +482,24 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         return res.status(401).json({ ok: false, error: '升级需要 ADMIN_TOKEN 授权' });
       }
       const { execSync } = await import('child_process');
-      const updateUrl = process.env.UPDATE_URL || 'http://47.93.157.83:8080/lingxi-engine.tar.gz';
-      const installScript = process.env.UPDATE_SCRIPT || 'cd /opt/lingxi-engine && curl -fsSL ' + updateUrl + ' -o /tmp/lingxi-update.tar.gz && tar xzf /tmp/lingxi-update.tar.gz --overwrite && npm install --no-audit --no-fund 2>&1 | tail -3 && pm2 restart lingxi';
+      const updateUrl = process.env.UPDATE_URL || 'http://47.93.157.83:8080/public/lingxi-engine.tar.gz';
+      const isWin = process.platform === 'win32';
+      const isMac = process.platform === 'darwin';
+      const installDir = process.env.LINGXI_INSTALL_DIR
+        || (isWin ? ((process.env.USERPROFILE || 'C:\\Users') + '\\lingxi-engine')
+          : isMac ? ((process.env.HOME || '/tmp') + '/lingxi-engine')
+          : '/opt/lingxi-engine');
+      // 默认升级脚本：下载 tarball → 解压（strip-components 与 deploy.sh 对齐）→ npm install；
+      // linux 服务器场景追加 pm2 重启（失败不阻断，文件已更新）；mac 桌面版由桌面壳守护自动拉起新版
+      const defaultScript = isWin
+        ? 'cd /d "' + installDir + '" && curl -fsSL ' + updateUrl + ' -o lingxi-update.tar.gz && tar xzf lingxi-update.tar.gz --strip-components=1 && npm install --no-audit --no-fund'
+        : 'cd "' + installDir + '" && curl -fsSL ' + updateUrl + ' -o /tmp/lingxi-update.tar.gz && tar xzf /tmp/lingxi-update.tar.gz --strip-components=1 && npm install --no-audit --no-fund 2>&1 | tail -3' + (isMac ? '' : ' && (pm2 restart lingxi 2>/dev/null || true)');
+      const installScript = process.env.UPDATE_SCRIPT || defaultScript;
 
-      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: process.env.npm_package_version || '2.0.7' });
+      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: process.env.npm_package_version || '2.0.13' });
 
       setTimeout(() => {
         try {
-          const installDir = process.env.LINGXI_INSTALL_DIR || (process.platform === 'win32' ? (process.env.USERPROFILE + '\\lingxi-engine') : '/opt/lingxi-engine');
           execSync(installScript, { timeout: 120000, stdio: 'pipe', cwd: installDir });
         } catch (e: any) {
           console.error('[Update] 升级失败:', e.message);

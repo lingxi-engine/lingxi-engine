@@ -48,7 +48,10 @@ $excludes = @(
     '--exclude=./_verify_*.js',
     '--exclude=tsc_*.txt',
     '--exclude=*.pre-*',
-    '--exclude=*.pid'
+    '--exclude=*.pid',
+    '--exclude=./$HOME',
+    '--exclude=tmp_server_clean.sh',
+    '--exclude=*.txt'
 )
 
 # Pack

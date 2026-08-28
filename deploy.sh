@@ -145,7 +145,7 @@ else
     if [ "$IS_MAC" = true ]; then
         tar -xzf /tmp/lingxi-engine.tar.gz -C "$INSTALL_DIR" --strip-components=1
     else
-        $SUDO tar -xzf /tmp/lingxi-engine.tar.gz -C /opt/
+        $SUDO tar -xzf /tmp/lingxi-engine.tar.gz -C "$INSTALL_DIR" --strip-components=1
     fi
     rm -f /tmp/lingxi-engine.tar.gz
     if [ ! -f "$INSTALL_DIR/package.json" ]; then

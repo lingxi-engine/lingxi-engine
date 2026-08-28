@@ -9,7 +9,7 @@ import Capacitor
  * - 引擎就绪后加载 WebView
  * - 前后台切换管理引擎生命周期
  */
-@UIApplicationMain
+@main
 class AppDelegate: UIResponder, UIApplicationDelegate {
 
     var window: UIWindow?
@@ -63,11 +63,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // ── Capacitor 必需 ──
 
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        return CAPBridge.handleOpenUrl(url, options: options)
+        return ApplicationDelegateProxy.shared.application(app, open: url, options: options)
     }
 
     func application(_ application: UIApplication, continue userActivity: NSUserActivity,
                      restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void) -> Bool {
-        return CAPBridge.handleContinueActivity(userActivity, restorationHandler: restorationHandler)
+        return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 }

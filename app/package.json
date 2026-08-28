@@ -9,7 +9,8 @@
     "sync:ios": "npx cap sync ios",
     "open:android": "npx cap open android",
     "open:ios": "npx cap open ios",
-    "copy:engine": "node -e \"const fs=require('fs');fs.copyFileSync('../mobile-dist/lingxi-mobile.js','android/app/src/main/assets/nodejs-project/lingxi-mobile.js');console.log('Engine copied.')\""
+    "copy:engine": "node -e \"const fs=require('fs');fs.copyFileSync('../mobile-dist/lingxi-mobile.js','android/app/src/main/assets/nodejs-project/lingxi-mobile.js');console.log('Engine copied to Android.')\"",
+    "copy:engine:ios": "node -e \"const fs=require('fs');const p='ios/App/App/nodejs-project';fs.mkdirSync(p,{recursive:true});fs.copyFileSync('../mobile-dist/lingxi-mobile.js',p+'/lingxi-mobile.js');console.log('Engine copied to iOS.')\""
   },
   "dependencies": {
     "@capacitor/core": "^6.0.0",
