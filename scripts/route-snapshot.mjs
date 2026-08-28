@@ -19,6 +19,7 @@ const TARGETS = [
   join(ROOT, 'src', 'routes', 'workflows.ts'),
   join(ROOT, 'src', 'routes', 'wallet.ts'),
   join(ROOT, 'src', 'routes', 'market.ts'),
+  join(ROOT, 'src', 'routes', 'agents.ts'),
   // 迁移批次推进时在此追加: join(ROOT, 'src', 'routes', 'xxx.ts'),
 ];
 const BASELINE = join(ROOT, 'tests', 'baseline', 'routes-baseline.json');

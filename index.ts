@@ -32,7 +32,7 @@ import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
@@ -42,6 +42,7 @@ import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
 import { registerWorkflowsRoutes } from './src/routes/workflows.js';
 import { registerWalletRoutes } from './src/routes/wallet.js';
 import { registerMarketRoutes } from './src/routes/market.js';
+import { registerAgentsRoutes } from './src/routes/agents.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
@@ -600,28 +601,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 认证/用户路由：已迁移至 src/routes/auth-main.ts（巨石拆分批次1，原样抽取+依赖注入） ──
   registerAuthRoutes(app, { db, manager, defaultModel, requireAuth, broadcast });
 
-  app.post('/api/agents/register', requireAuth, (req, res) => {
-    try {
-      const { userId, displayName, personality, autonomy } = req.body;
-      if (!userId || !displayName) return res.status(400).json({ error: 'userId 和 displayName 必填' });
-      // P0-5 修复: 越权防护 — 校验 userId 是否为 JWT 持有者
-      const jwtUser = (req as any).user;
-      const jwtUserId = jwtUser?.sub || jwtUser?.id || '';
-      const jwtNumericId = String(jwtUser?.numeric_id || '');
-      if (jwtUserId && jwtUserId !== userId && jwtNumericId !== userId) {
-        return res.status(403).json({ error: '无权为他人创建 agent' });
-      }
-      const agent = manager.register(userId, displayName, personality || '你是一个友好的 AI 助手', autonomy || 'semi');
-      // 新 agent 补到已有私聊
-      try {
-        const synced = syncAgentToPrivateChats(userId);
-        if (synced > 0) console.log('[Friends] agent synced to', synced, 'private chats');
-      } catch(_e) {}
-      res.json({ ok: true, agent });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
+  // ─── Agent 路由：已迁移至 src/routes/agents.ts（巨石拆分批次6，原三段孤岛 L603-624/L762-781/L996-1022）───
+  registerAgentsRoutes(app, { db, manager, router, toolRegistry, requireAuth });
 
   // ── 好友/聊天路由：已迁移至 src/routes/friends-chats.ts（巨石拆分批次2，原样抽取+依赖注入） ──
   registerFriendsChatsRoutes(app, { db, requireAuth, broadcast });
@@ -757,27 +738,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
-
-  app.get('/api/agents/:id/memory', requireAuth, (req, res) => {
-    try {
-      const agent = db.getAgent(String(req.params.id));
-      if (!agent) return res.status(404).json({ error: 'Agent not found' });
-      res.json({ ok: true, memory: agent.memory_summary || '', personality: agent.personality || '' });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.put('/api/agents/:id/memory', requireAuth, (req, res) => {
-    try {
-      const { personality, memory } = req.body || {};
-      db.updateAgent(String(req.params.id), { personality: personality || undefined, memory_summary: memory || undefined });
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get('/api/agents', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, agents: manager.list() }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.get('/api/chats', requireAuth, (req, res) => {
@@ -992,33 +952,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       }
       res.json({ ok: true, imported, skipped });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  // ── Agent 更新 API ──
-  app.patch('/api/agents/:id', requireAuth, (req, res) => {
-    try {
-      const updates = req.body;
-      const agent = manager.update(String(req.params.id), updates);
-      res.json({ ok: true, agent });
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-
-  // ── Agent 绑定技能 API ──
-  app.post('/api/agents/:id/skills', requireAuth, (req, res) => {
-    try {
-      const { skillIds } = req.body;
-      if (!Array.isArray(skillIds)) return res.status(400).json({ error: 'skillIds 必须是数组' });
-      toolRegistry.bindSkills(String(req.params.id), skillIds);
-      res.json({ ok: true, agentId: String(req.params.id), skills: skillIds });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  // 鈹€鈹€ 璁板繂鍙嶆€?API 鈹€鈹€锛堝墠绔?reflectMemory() 璋冪敤锛?
-  app.post('/api/agents/:id/reflect', requireAuth, async (req, res) => {
-    try {
-      const agentId = String(req.params.id);
-      const chatId = (req.body && req.body.chatId) ? String(req.body.chatId) : undefined;
-      const result = await router.reflectAgent(agentId, chatId);
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
   });
 
 
