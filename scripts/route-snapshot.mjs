@@ -15,6 +15,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const TARGETS = [
   join(ROOT, 'index.ts'),
   join(ROOT, 'src', 'routes', 'auth-main.ts'),
+  join(ROOT, 'src', 'routes', 'friends-chats.ts'),
   // 迁移批次推进时在此追加: join(ROOT, 'src', 'routes', 'xxx.ts'),
 ];
 const BASELINE = join(ROOT, 'tests', 'baseline', 'routes-baseline.json');
