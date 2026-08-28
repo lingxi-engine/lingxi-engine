@@ -2,35 +2,42 @@
 /**
  * 路由快照工具 — 巨石拆分安全网
  * 用法:
- *   node scripts/route-snapshot.mjs save    # 抓取当前 index.ts 路由快照存为基线
+ *   node scripts/route-snapshot.mjs save    # 抓取当前路由快照存为基线
  *   node scripts/route-snapshot.mjs check   # 抓取当前路由并与基线比对，不一致则退出码 1
  * 提取规则: 静态正则匹配 app.METHOD('path' 形式（与迁移前后一致的提取口径）
+ * 扫描范围: index.ts + src/routes 下已挂载的迁移文件（TARGETS 列表，随批次推进追加）
  */
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const TARGET = join(ROOT, 'index.ts');
+const TARGETS = [
+  join(ROOT, 'index.ts'),
+  join(ROOT, 'src', 'routes', 'auth-main.ts'),
+  // 迁移批次推进时在此追加: join(ROOT, 'src', 'routes', 'xxx.ts'),
+];
 const BASELINE = join(ROOT, 'tests', 'baseline', 'routes-baseline.json');
 
 const METHODS = ['get', 'post', 'put', 'delete', 'patch', 'all'];
 
 function extractRoutes() {
-  const src = readFileSync(TARGET, 'utf8');
-  const routes = [];
-  const re = new RegExp("\\bapp\\.(" + METHODS.join('|') + ")\\(\\s*['\"`]([^'\"`]+)['\"`]", 'g');
-  let m;
-  while ((m = re.exec(src)) !== null) {
-    routes.push(`${m[1].toUpperCase()} ${m[2]}`);
+  const routesAll = [];
+  for (const TARGET of TARGETS) {
+    const src = readFileSync(TARGET, 'utf8');
+    const re = new RegExp("\\bapp\\.(" + METHODS.join('|') + ")\\(\\s*['\"`]([^'\"`]+)['\"`]", 'g');
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      routesAll.push(`${m[1].toUpperCase()} ${m[2]}`);
+    }
   }
   // 去重 + 排序，保证比对稳定性
-  return [...new Set(routes)].sort();
+  return [...new Set(routesAll)].sort();
 }
 
 const cmd = process.argv[2] || 'check';
 const routes = extractRoutes();
-console.log(`[route-snapshot] index.ts 提取到 ${routes.length} 条独立路由`);
+console.log(`[route-snapshot] 扫描 ${TARGETS.length} 个文件, 提取到 ${routes.length} 条独立路由`);
 
 if (cmd === 'save') {
   mkdirSync(dirname(BASELINE), { recursive: true });
