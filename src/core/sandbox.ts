@@ -35,13 +35,13 @@ export class SandboxManager {
       workDir,
       tools: ['read_file', 'write_file', 'list_dir', 'exec_command'],
       allowedPaths: [workDir],
-      deniedPaths: [
-        '/etc', '/usr', '/bin', '/opt', '/root', '/var', '/sys', '/proc',
-        // Windows 系统目录
+      deniedPaths: process.platform === 'win32' ? [
         'C:\\Windows', 'C:\\Program Files', 'C:\\Program Files (x86)',
         'C:\\ProgramData', 'C:\\System Volume Information',
-        'C:\\Users\\Administrator\\AppData',
+        (process.env.USERPROFILE || 'C:\\Users') + '\\AppData',
         'C:\\Users\\Default',
+      ] : [
+        '/etc', '/usr', '/bin', '/opt', '/root', '/var', '/sys', '/proc',
       ],
       maxFileSize: 1024 * 1024,
       memoryLimit: 256,

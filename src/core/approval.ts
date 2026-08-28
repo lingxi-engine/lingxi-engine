@@ -217,7 +217,9 @@ export class ApprovalManager {
 
     // 写系统关键目录需审批
     if (tool === 'write_file' && args.path) {
-      const sysPaths = ['/etc', '/usr/bin', 'C:\\\\Windows\\\\System32', 'C:\\\\Program Files'];
+      const sysPaths = process.platform === 'win32'
+        ? ['C:\\Windows', 'C:\\Windows\\System32', 'C:\\Program Files', 'C:\\Program Files (x86)']
+        : ['/etc', '/usr', '/bin', '/sbin', '/boot', '/sys', '/proc'];
       if (sysPaths.some(p => String(args.path).startsWith(p))) return true;
     }
 

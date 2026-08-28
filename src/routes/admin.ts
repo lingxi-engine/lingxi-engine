@@ -488,7 +488,8 @@ export function createAdminRoutes(ctx: ServerContext): Router {
 
       setTimeout(() => {
         try {
-          execSync(installScript, { timeout: 120000, stdio: 'pipe', cwd: '/opt/lingxi-engine' });
+          const installDir = process.env.LINGXI_INSTALL_DIR || (process.platform === 'win32' ? (process.env.USERPROFILE + '\\lingxi-engine') : '/opt/lingxi-engine');
+          execSync(installScript, { timeout: 120000, stdio: 'pipe', cwd: installDir });
         } catch (e: any) {
           console.error('[Update] 升级失败:', e.message);
         }
