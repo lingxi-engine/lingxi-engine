@@ -44,6 +44,7 @@ import { registerWalletRoutes } from './src/routes/wallet.js';
 import { registerMarketRoutes } from './src/routes/market.js';
 import { registerAgentsRoutes } from './src/routes/agents.js';
 import { registerSubAgentRoutes } from './src/routes/subagents.js';
+import { registerCustomProviderRoutes } from './src/routes/custom-providers.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
@@ -967,6 +968,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── AI 员工市场 + 雇佣系统路由（批次5: 迁移至 src/routes/market.ts） ──
   registerMarketRoutes(app, { optAuth, requireAuth });
   registerWalletRoutes(app, { optAuth, requireAuth });
+  registerCustomProviderRoutes(app, { INFERENCE_BACKENDS, customProviderManager, requireAuth });
 
   // ── P2-3: Provider 管理 API ──
   // 模型管理前端调用的别名（/api/ai/* → /api/providers/*）
@@ -1754,48 +1756,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       if (!name) return res.status(400).json({ error: 'name 必填' });
       const ok = await skillManager.installFromMarket(name);
       res.json({ ok });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── V5 P6: 自定义 Provider API ──
-  app.get('/api/custom-providers/backends', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, backends: INFERENCE_BACKENDS }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get('/api/custom-providers', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, providers: customProviderManager.list() }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/custom-providers', requireAuth, (req, res) => {
-    try {
-      const { id, name, baseURL, apiKey, models, autoDetect } = req.body;
-      if (!id || !baseURL) return res.status(400).json({ error: 'id/baseURL 必填' });
-      customProviderManager.add({ id, name: name || id, baseURL, apiKey, models, autoDetect });
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.delete('/api/custom-providers/:id', requireAuth, (req, res) => {
-    try { customProviderManager.remove(String(req.params.id)); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/custom-providers/test', requireAuth, async (req, res) => {
-    try {
-      const { baseURL, apiKey, models } = req.body;
-      const result = await customProviderManager.testConnection({ id: 'test', name: 'test', baseURL, apiKey, models });
-      res.json({ ok: result.ok, models: result.models, error: result.error });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/custom-providers/:id/detect', requireAuth, async (req, res) => {
-    try {
-      const p = customProviderManager.get(String(req.params.id));
-      if (!p) return res.status(404).json({ error: '不存在' });
-      const models = await customProviderManager.detectModels(p.baseURL, p.apiKey);
-      res.json({ ok: true, models });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
