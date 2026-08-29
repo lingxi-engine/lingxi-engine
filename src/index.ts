@@ -9,7 +9,7 @@ import './src/storage/db.js';
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync, readFileSync } from 'fs';
+import { existsSync, mkdirSync } from 'fs';
 import { randomInt, timingSafeEqual } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
@@ -28,9 +28,7 @@ import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { AgentManager } from './src/agents/manager.js';
 import { handleWSMessage, wsSubscriptions, processUserMessage } from './src/core/ws-handler.js';
 import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage, setUsersProvider } from './src/core/instance-mesh.js';
-import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
-import { verifyLanRequest } from './src/net/lan-transport.js';
-import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
+import { stopLanDiscovery } from './src/net/lan-discovery.js';
 import { ToolRegistry } from './src/tools/registry.js';
 import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager } from './src/tools/builtin.js';
 import { SearchManager } from './src/tools/search-providers.js';
@@ -683,240 +681,11 @@ setSearchManager(searchManagerInstance);
   setupMesh(ctx, port);
   app.use('/api', requireAuth, createMeshRoutes(ctx));
 
-  // ════════════════════════════════════════════════
-  // ── LAN 社交（v2.0.6 恢复） ──
-  // ════════════════════════════════════════════════
-  function getLocalLanUsers(): LanUser[] {
-    const agentByUser = new Map<string, string>();
-    for (const a of manager.list() as any[]) {
-      const owner = a.userId || a.user_id;
-      if (owner && !agentByUser.has(owner)) agentByUser.set(owner, a.id);
-    }
-    return (db.listUsers() as any[])
-      .filter((u) => u.numeric_id)
-      .map((u) => ({
-        id: u.id,
-        numericId: u.numeric_id,
-        displayName: u.display_name || u.username || u.id,
-        agentId: agentByUser.get(u.id),
-      }));
-  }
-
-  const lanSocial = new LanSocialHub({ router, manager, broadcast, getLocalUsers: getLocalLanUsers });
-  (globalThis as any).__lanSocial = lanSocial;
-  (ctx as any).lanSocial = lanSocial;
-
-  if ((process.env.LAN_DISCOVERY || 'on').toLowerCase() !== 'off') {
-    startLanDiscovery({
-      port,
-      version: (() => { try { return JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version || '0.0.0'; } catch { return '0.0.0'; } })(),
-      dataDir,
-      getUsers: getLocalLanUsers,
-      discoveryPort: process.env.LAN_DISCOVERY_PORT ? Number(process.env.LAN_DISCOVERY_PORT) : undefined,
-    });
-  }
-
-  // ── LAN 状态/邻居/搜索 ──
-  app.get('/api/lan/status', requireAuth, (_req, res) => {
-    res.json({ ok: true, ...getLanSelfInfo(), socialChannel: LAN_SOCIAL_CHANNEL });
-  });
-  app.get('/api/lan/peers', requireAuth, (_req, res) => {
-    const peers = getLanPeers().map((p) => ({
-      instanceId: p.instanceId, lanIp: p.lanIp, port: p.port, version: p.version, lastSeen: p.lastSeen,
-      users: p.users.map((u) => ({ numericId: u.numericId, displayName: u.displayName, userId: u.id, agentId: u.agentId })),
-    }));
-    res.json({ ok: true, peers, count: peers.length });
-  });
-  app.get('/api/lan/search', requireAuth, (req, res) => {
-    res.json({ ok: true, results: lanSocial.search((req.query.q as string) || '') });
-  });
-
-  // ── 全局用户搜索 ──
-  app.get('/api/users/search', requireAuth, async (req, res) => {
-    try {
-      const q = (req.query.q as string || '').trim();
-      if (!q) return res.json({ ok: true, results: [] });
-      const platformApiUrl = (globalThis as any).__platformApiUrl || '';
-      const platformAdminToken = (globalThis as any).__platformAdminToken || '';
-      let platformResults: any[] = [];
-      if (platformApiUrl && platformAdminToken) {
-        try {
-          const resp = await fetch(`${platformApiUrl}/api/admin/search?q=${encodeURIComponent(q)}&token=${platformAdminToken}`);
-          const d = await resp.json() as any;
-          if (d.ok && d.results) {
-            platformResults = d.results.map((u: any) => ({
-              numericId: u.id, displayName: u.username, email: u.email || '',
-              userId: String(u.id), status: u.status || 'active',
-              online: (u.status || 'active') !== 'offline' && (u.status || 'active') !== 'inactive',
-              source: 'platform',
-              points: u.points || 0, createdAt: u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-',
-            }));
-          }
-        } catch (e: any) { console.warn('[Platform] 用户搜索失败，回退本地:', e.message); }
-      }
-      const raw = getDB();
-      let localResults: any[] = [];
-      const nid = parseInt(q);
-      if (!isNaN(nid)) {
-        const s1 = raw.prepare('SELECT id, numeric_id, display_name, email, status, created_at FROM users WHERE numeric_id = ?');
-        s1.bind([nid]);
-        if (s1.step()) { localResults.push(s1.getAsObject()); }
-        s1.free();
-      }
-      const s2 = raw.prepare('SELECT id, numeric_id, display_name, email, status, created_at FROM users WHERE display_name LIKE ? OR id LIKE ? LIMIT 20');
-      s2.bind(['%' + q + '%', '%' + q + '%']);
-      while (s2.step()) { const row = s2.getAsObject(); if (!localResults.find(r => r.id === row.id)) localResults.push(row); }
-      s2.free();
-      let lanResults: any[] = [];
-      for (const peer of getLanPeers()) {
-        for (const u of peer.users) {
-          if (String(u.numericId) === q || (u.displayName || '').includes(q)) {
-            lanResults.push({ numericId: u.numericId, displayName: u.displayName, userId: u.id, lanIp: peer.lanIp, port: peer.port, source: 'lan' });
-          }
-        }
-      }
-      const platformIds = new Set(platformResults.map((r: any) => String(r.numericId)));
-      const localFiltered = localResults
-        .filter((r: any) => !platformIds.has(String(r.numeric_id)))
-        .map((r: any) => ({ numericId: r.numeric_id, displayName: r.display_name, email: r.email, userId: r.id, status: r.status, online: r.status === 'online', source: 'local', createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-' }));
-      res.json({ ok: true, results: [...platformResults, ...localFiltered, ...lanResults] });
-    } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
-  });
-
-  // ── LAN 好友路由 ──
-  app.post('/api/lan/friend-request', requireAuth, async (req, res) => {
-    try {
-      const fromUserId = (req as any).user?.sub;
-      const { toNumericId, message } = req.body || {};
-      if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
-      res.json(await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || ''));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.get('/api/lan/friend-requests', requireAuth, (req, res) => {
-    res.json({ ok: true, ...lanSocial.friendRequests((req as any).user?.sub || '') });
-  });
-  app.post('/api/lan/friend-respond', requireAuth, async (req, res) => {
-    try {
-      const { requestId, action } = req.body || {};
-      if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
-      res.json(await lanSocial.respondFriendRequest(requestId, action));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.get('/api/lan/friends', requireAuth, (req, res) => {
-    res.json({ ok: true, friends: lanSocial.friends((req as any).user?.sub || '') });
-  });
-  app.post('/api/lan/remove-friend', requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).user?.sub;
-      const { friendId } = req.body || {};
-      if (!userId || !friendId) return res.status(400).json({ error: 'userId/friendId 必填' });
-      res.json(await lanSocial.removeFriend!(userId, friendId));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-
-  // ── LAN 群组路由 ──
-  app.post('/api/lan/group-create', requireAuth, async (req, res) => {
-    try {
-      const ownerUserId = (req as any).user?.sub;
-      const { name, memberNumericIds, chatMode } = req.body || {};
-      if (!ownerUserId || !name) return res.status(400).json({ error: 'ownerUserId 和 name 必填' });
-      res.json(await lanSocial.createGroup(ownerUserId, name, Array.isArray(memberNumericIds) ? memberNumericIds.map(Number) : [], chatMode || 'free'));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.get('/api/lan/groups', requireAuth, (_req, res) => { res.json({ ok: true, groups: lanSocial.listGroups() }); });
-  app.get('/api/lan/group', requireAuth, (req, res) => {
-    const g = lanSocial.getGroup((req.query.groupId as string) || '');
-    if (!g) return res.status(404).json({ error: '群组不存在' });
-    res.json({ ok: true, group: g });
-  });
-  app.post('/api/lan/group-mode', requireAuth, async (req, res) => {
-    try { res.json(await lanSocial.setGroupMode(req.body.groupId, req.body.mode)); }
-    catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/group-message', requireAuth, async (req, res) => {
-    try {
-      const senderUserId = (req as any).user?.sub;
-      const { groupId, content } = req.body || {};
-      if (!senderUserId || !groupId || !content) return res.status(400).json({ error: 'senderUserId/groupId/content 必填' });
-      res.json(await lanSocial.sendHumanMessage(senderUserId, groupId, content));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/group-agent-topic', requireAuth, async (req, res) => {
-    try {
-      const senderUserId = (req as any).user?.sub;
-      const { groupId, topic } = req.body || {};
-      if (!senderUserId || !groupId || !topic) return res.status(400).json({ error: 'senderUserId/groupId/topic 必填' });
-      res.json(await lanSocial.postAgentTopic(senderUserId, groupId, topic));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/delete-group', requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).user?.sub;
-      const { groupId } = req.body || {};
-      if (!userId || !groupId) return res.status(400).json({ error: 'userId/groupId 必填' });
-      res.json(await lanSocial.deleteGroup!(userId, groupId));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/leave-group', requireAuth, async (req, res) => {
-    try {
-      const userId = (req as any).user?.sub;
-      const { groupId } = req.body || {};
-      if (!userId || !groupId) return res.status(400).json({ error: 'userId/groupId 必填' });
-      res.json(await lanSocial.leaveGroup!(userId, groupId));
-    } catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-
-  // ── LAN peer 回调（friends.ts 已有 friend-request/accept/remove，此处只补 group 相关） ──
-  const sendPeerResult = (res: any, result: any) => {
-    if (result && result.error) res.status(result.status || 400).json(result);
-    else res.json(result);
-  };
-  app.post('/api/lan/peer/group-invite', (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    sendPeerResult(res, lanSocial.handleGroupInvite(req.body));
-  });
-  app.post('/api/lan/peer/group-message', (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    sendPeerResult(res, lanSocial.handleGroupMessage(req.body));
-  });
-  app.post('/api/lan/peer/group-mode', (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    sendPeerResult(res, lanSocial.handleGroupMode(req.body));
-  });
-  app.post('/api/lan/peer/agent-invoke', async (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    try { sendPeerResult(res, await lanSocial.handleAgentInvoke(req.body)); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  app.post('/api/lan/peer/group-deleted', async (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    try { res.json(await lanSocial.deleteGroup!('', req.body.groupId)); }
-    catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/peer/group-member-left', async (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    try { res.json(await lanSocial.leaveGroup!(req.body.userId, req.body.groupId)); }
-    catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-
-  // ── 群邀请确认 ──
-  app.get('/api/lan/group-invites', requireAuth, (req, res) => {
-    try { res.json({ ok: true, invites: lanSocial.listPendingInvites((req as any).user?.sub || '') }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  app.post('/api/lan/group-invite/accept', requireAuth, async (req, res) => {
-    try { const userId = (req as any).user?.sub; res.json(await lanSocial.acceptGroupInvite(req.body.inviteId, userId)); }
-    catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/group-invite/reject', requireAuth, (req, res) => {
-    try { const userId = (req as any).user?.sub; res.json(lanSocial.rejectGroupInvite(req.body.inviteId, userId)); }
-    catch (err: any) { res.status(400).json({ error: err.message }); }
-  });
-  app.post('/api/lan/peer/group-invite-accepted', (req, res) => {
-    if (verifyLanRequest(req, res) === null) return;
-    try { res.json(lanSocial.handleGroupInviteAccepted(req.body)); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
+  // ==================================================
+  // -- LAN 社交（批次 10：迁移至 src/routes/lan.ts） --
+  // ==================================================
+  const { registerLanRoutes } = await import('./src/routes/lan.js');
+  registerLanRoutes(app, { db, manager, router, broadcast, requireAuth, port, dataDir });
 
   // ════════════════════════════════════════════════
   // ── HTTP 服务器启动 ──
