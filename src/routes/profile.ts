@@ -133,6 +133,36 @@ export function createProfileRoutes(ctx: ServerContext): Router {
       const userId = resolveUserId(req, {});
       if (!userId) return res.status(400).json({ error: '缺少 userId' });
 
+      // P1-2 修复: 查看他人资料需校验关系（本人/好友/同群成员/管理员）
+      const jwtUser = (req as any).user;
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id ?? '');
+      const isAdmin = (jwtUser?.roles || []).includes('admin');
+      if (userId && !isAdmin) {
+        const isSelf = userId === jwtSub || userId === jwtNumericId || userId === String(jwtNumericId);
+        if (!isSelf) {
+          let isFriend = false, isSameChat = false;
+          try {
+            const friends = db.listFriends ? db.listFriends(jwtSub || jwtNumericId) : [];
+            isFriend = friends.some((f: any) => String(f.user_id || f.id) === userId);
+          } catch {}
+          if (!isFriend) {
+            try {
+              const chats = db.listChats ? db.listChats() : [];
+              for (const c of chats) {
+                const parts = db.getChatParticipants(c.id) || [];
+                const meIn = parts.some((p: any) => String(p.user_id) === jwtSub || String(p.user_id) === jwtNumericId);
+                const targetIn = parts.some((p: any) => String(p.user_id) === userId);
+                if (meIn && targetIn) { isSameChat = true; break; }
+              }
+            } catch {}
+          }
+          if (!isFriend && !isSameChat) {
+            return res.status(403).json({ error: '无权查看此用户资料' });
+          }
+        }
+      }
+
       const user = await findUser(db, userId, bearerToken(req));
       if (!user) return res.status(404).json({ error: '用户不存在' });
 

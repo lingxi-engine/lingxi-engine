@@ -18,7 +18,16 @@ export function createUploadRoutes(ctx: ServerContext): Router {
     filename: (_req, file, cb) =>
       cb(null, Date.now() + '-' + Math.random().toString(36).slice(2, 8) + extname(file.originalname)),
   });
-  const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+  const upload = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req: any, file: any, cb: any) => {
+      const name = String(file.originalname || '').toLowerCase();
+      const blocked = /\.(exe|dll|bat|cmd|scr|sh|ps1|js|mjs|html?|svg|vbs|msi)$/;
+      if (blocked.test(name)) return cb(new Error('禁止上传可执行/脚本类文件'));
+      cb(null, true);
+    },
+  });
 
   router.post('/upload', upload.single('file'), (req, res) => {
     try {

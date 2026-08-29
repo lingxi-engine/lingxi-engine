@@ -6,12 +6,15 @@ import { getDB, getChatMode, setChatMode, CHAT_MODES, listUsers, addMessage, add
 import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, setUsersProvider, type PeerMessage } from '../core/instance-mesh.js';
 import { processUserMessage } from '../core/ws-handler.js';
 import { readFileSync } from 'fs';
+import { timingSafeEqual } from 'crypto';
+import { jwtAuth } from '../middleware/jwt-auth.js';
 import { join } from 'path';
 import type { ServerContext } from '../server/context.js';
 
 export function createMiscRoutes(ctx: ServerContext): Router {
   const router = Router();
   const { db, manager, router: msgRouter, broadcast, dataDir } = ctx;
+  const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
 
   // ── 群聊协作模式 ──
   router.get('/chats/:id/mode', (req, res) => {
@@ -28,13 +31,13 @@ export function createMiscRoutes(ctx: ServerContext): Router {
   });
 
   // ── 工作区模式 ──
-  router.get('/workspace-mode', (req, res) => {
+  router.get('/workspace-mode', requireAuth, (req, res) => {
     const mode = (globalThis as any).__workspaceMode || 'personal';
     const root = (globalThis as any).__workspaceRoot || process.cwd();
     res.json({ mode, collabMode: mode === 'collab', workspaceRoot: root });
   });
 
-  router.post('/workspace-mode', (req, res) => {
+  router.post('/workspace-mode', requireAuth, (req, res) => {
     const { mode, workspaceRoot } = req.body || {};
     const newMode = mode === 'collab' ? 'collab' : 'personal';
     const newRoot = workspaceRoot || process.cwd();
@@ -55,10 +58,12 @@ export function createMiscRoutes(ctx: ServerContext): Router {
   });
 
   // ── 联邦通信 ──
-  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || 'lingxi-federation-default';
+  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || '';
   function federationAuth(req: any, res: any, next: any) {
-    const secret = req.headers['x-federation-secret'] || req.body?.secret;
-    if (secret !== FEDERATION_SECRET) return res.status(403).json({ error: '联邦通信密钥错误' });
+    if (!FEDERATION_SECRET) return res.status(403).json({ error: '联邦通信未启用（请配置 FEDERATION_SECRET）' });
+    const secret = String(req.headers['x-federation-secret'] || req.body?.secret || '');
+    const a = Buffer.from(secret); const b = Buffer.from(FEDERATION_SECRET);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) return res.status(403).json({ error: '联邦通信密钥错误' });
     next();
   }
 
@@ -107,7 +112,7 @@ export function createMiscRoutes(ctx: ServerContext): Router {
 
   // ── 钱包：模拟充值（测试模式，未接真实支付）──
   const CREDIT_RATES: Record<string, number> = { USD: 100, CNY: 14 };
-  router.post('/credits/add', (req, res) => {
+  router.post('/credits/add', requireAuth, (req, res) => {
     try {
       const { userId, amount, currency } = req.body || {};
       if (!userId) return res.status(400).json({ error: 'userId 必填' });

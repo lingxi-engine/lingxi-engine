@@ -28,7 +28,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, readdirSync, statSync } from 'fs';
-import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
@@ -2424,109 +2424,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
 
 
-  app.get('/api/profile', requireAuth, async (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      // P1-2 修复: 查看他人资料需校验关系（本人/好友/同群成员/管理员）
-      const jwtUser = (req as any).user;
-      const jwtSub = String(jwtUser?.sub || '');
-      const jwtNumericId = String(jwtUser?.numeric_id || '');
-      const isAdmin = (jwtUser?.roles || []).includes('admin');
-      if (userId && !isAdmin) {
-        const isSelf = userId === jwtSub || userId === jwtNumericId;
-        if (!isSelf) {
-          let isFriend = false, isSameChat = false;
-          try {
-            const friends = db.listFriends ? db.listFriends(jwtSub || jwtNumericId) : [];
-            isFriend = friends.some((f: any) => String(f.user_id || f.id) === userId);
-          } catch {}
-          if (!isFriend) {
-            try {
-              const chats = db.listChats ? db.listChats() : [];
-              for (const c of chats) {
-                const parts = db.getChatParticipants(c.id) || [];
-                const meIn = parts.some((p: any) => String(p.user_id) === jwtSub || String(p.user_id) === jwtNumericId);
-                const targetIn = parts.some((p: any) => String(p.user_id) === userId);
-                if (meIn && targetIn) { isSameChat = true; break; }
-              }
-            } catch {}
-          }
-          if (!isFriend && !isSameChat) {
-            return res.status(403).json({ error: '无权查看此用户资料' });
-          }
-        }
-      }
-      const platformApiUrl = (globalThis as any).__platformApiUrl || '';
-      const platformAdminToken = (globalThis as any).__platformAdminToken || '';
-
-      // 优先从平台获取用户资料
-      if (platformApiUrl && platformAdminToken) {
-        try {
-          // 先用 admin token 获取用户详情
-          const resp = await fetch(`${platformApiUrl}/api/admin/users/${userId.replace(/^\D+/, '')}?token=${platformAdminToken}`);
-          const d = await resp.json() as any;
-          if (d.ok && d.user) {
-            const pu = d.user;
-            const usage = UsageTracker.getStats();
-            // 获取评价数（引擎本地）
-            const ratingStmt = getDB().prepare('SELECT COUNT(*) as count, AVG(rating) as avg FROM message_ratings WHERE user_id = ?');
-            ratingStmt.bind([String(pu.id)]);
-            const ratingRow = ratingStmt.step() ? ratingStmt.getAsObject() : { count: 0, avg: 0 };
-            ratingStmt.free();
-            return res.json({
-              ok: true,
-              profile: {
-                id: String(pu.id),
-                numeric_id: pu.id,
-                display_name: pu.username,
-                email: pu.email || '',
-                status: pu.status || 'active',
-                created_at: pu.created_at,
-              },
-              credits: pu.points || 0,
-              totalEarned: 0,
-              totalSpent: 0,
-              usage: usage.total,
-              ratings: { count: ratingRow.count || 0, avgRating: ratingRow.avg || 0 },
-            });
-          }
-        } catch (e: any) {
-          // 平台不可达，回退到本地
-        }
-      }
-
-      // 回退：本地 main.db 获取用户资料
-      let user = db.getUserByEmail(userId) || db.getUser(userId);
-      if (!user) {
-        return res.status(404).json({ ok: false, error: '用户不存在' });
-      }
-      const credits = getDB().prepare('SELECT * FROM user_credits WHERE user_id = ?');
-      credits.bind([user.id]);
-      const creditRow = credits.step() ? credits.getAsObject() : null;
-      credits.free();
-      const usage = UsageTracker.getStats();
-      const ratingStmt = getDB().prepare('SELECT COUNT(*) as count, AVG(rating) as avg FROM message_ratings WHERE user_id = ?');
-      ratingStmt.bind([user.id]);
-      const ratingRow = ratingStmt.step() ? ratingStmt.getAsObject() : { count: 0, avg: 0 };
-      ratingStmt.free();
-      res.json({
-        ok: true,
-        profile: {
-          id: user.id,
-          numeric_id: user.numeric_id,
-          display_name: user.display_name,
-          email: user.email,
-          status: user.status,
-          created_at: user.created_at,
-        },
-        credits: creditRow?.credits || 1000,
-        totalEarned: creditRow?.total_earned || 0,
-        totalSpent: creditRow?.total_spent || 0,
-        usage: usage.total,
-        ratings: { count: ratingRow.count || 0, avgRating: ratingRow.avg || 0 },
-      });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
 
 
   app.post('/api/ratings', requireAuth, (req, res) => {
@@ -2555,93 +2452,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   });
 
 
-  // ── 多实例联邦通信 ──
-  // 其他灵犀实例可以注册自己，消息可以跨实例转发
-  // ── 联邦通信鉴权 ──
-  // 安全：不再提供默认密钥，未配置 FEDERATION_SECRET 时联邦功能整体禁用
-  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || '';
-  function federationAuth(req: any, res: any, next: any) {
-    if (!FEDERATION_SECRET) return res.status(403).json({ error: '联邦通信未启用（请配置 FEDERATION_SECRET）' });
-    const secret = String(req.headers['x-federation-secret'] || req.body?.secret || '');
-    const a = Buffer.from(secret); const b = Buffer.from(FEDERATION_SECRET);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return res.status(403).json({ error: '联邦通信密钥错误' });
-    next();
-  }
-
-  app.post('/api/federation/register', requireAuth, federationAuth, (req, res) => {
-    try {
-      const { instanceId, baseUrl, name } = req.body || {};
-      if (!instanceId || !baseUrl) return res.status(400).json({ error: 'instanceId/baseUrl 必填' });
-      // 记录远程实例
-      if (!(globalThis as any).__federationPeers) (globalThis as any).__federationPeers = new Map();
-      (globalThis as any).__federationPeers.set(instanceId, { id: instanceId, baseUrl, name: name || instanceId, lastSeen: Date.now() });
-      console.log(`[Federation] 实例已注册: ${name} (${baseUrl})`);
-      res.json({ ok: true, ourId: process.env.INSTANCE_ID || 'local', ourUrl: 'http://' + req.headers.host });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get('/api/federation/peers', requireAuth, (_req, res) => {
-    const peers = (globalThis as any).__federationPeers;
-    if (!peers) return res.json({ ok: true, peers: [] });
-    res.json({ ok: true, peers: Array.from(peers.values()) });
-  });
-
-  // 接收远程实例转发的消息
-  app.post('/api/federation/message', requireAuth, federationAuth, async (req, res) => {
-    try {
-      const { chatId, content, senderId, senderName, fromInstance } = req.body || {};
-      if (!chatId || !content) return res.status(400).json({ error: 'chatId/content 必填' });
-      // 把远程消息当作用户消息处理
-      const result = await router.handleIncoming({
-        chatId, senderType: 'user', senderId: senderId || 'remote',
-        content: `[${senderName || '远程'}] ${content}`,
-      });
-      // 广播给本地客户端
-      broadcast({ type: 'message.new', chatId, from: senderId || 'remote', senderType: 'user', content: `[${senderName || '远程'}] ${content}`, timestamp: Date.now() });
-      // 触发本地 AI 回复
-      for (const resp of result.responses) {
-        const replyContent = await router.generateReply(chatId, resp.agentId, resp.triggerMessage.id);
-        if (replyContent) {
-          broadcast({ type: 'message.new', chatId, from: 'agent:' + resp.agentId, senderType: 'agent', content: replyContent, timestamp: Date.now() });
-        }
-      }
-      res.json({ ok: true, replies: result.responses.length });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // 前端：发送消息到远程实例
-  app.post('/api/federation/send', requireAuth, federationAuth, async (req, res) => {
-    try {
-      const { targetInstance, chatId, content, senderId, senderName } = req.body || {};
-      const peers = (globalThis as any).__federationPeers;
-      if (!peers || !peers.has(targetInstance)) return res.status(404).json({ error: '目标实例未注册' });
-      const peer = peers.get(targetInstance);
-      const resp = await fetch(peer.baseUrl + '/api/federation/message', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId, content, senderId, senderName, fromInstance: process.env.INSTANCE_ID || 'local' }),
-        signal: AbortSignal.timeout(15000),
-      });
-      const data = await resp.json();
-      res.json(data);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
 
 
-  // v1.4 工作区模式兼容 API
-  app.get('/api/workspace-mode', requireAuth, (req, res) => {
-    const mode = (globalThis as any).__workspaceMode || 'personal';
-    const root = (globalThis as any).__workspaceRoot || process.cwd();
-    res.json({ mode, collabMode: mode === 'collab', workspaceRoot: root });
-  });
-  app.post('/api/workspace-mode', requireAuth, (req, res) => {
-    const { mode, workspaceRoot } = req.body || {};
-    const newMode = mode === 'collab' ? 'collab' : 'personal';
-    const newRoot = workspaceRoot || process.cwd();
-    (globalThis as any).__workspaceMode = newMode;
-    (globalThis as any).__workspaceRoot = newRoot;
-    res.json({ mode: newMode, collabMode: newMode === 'collab', workspaceRoot: newRoot });
-  });
 
 
 
@@ -2669,24 +2481,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       res.status(500).json({ error: '升级失败: ' + (err?.message || err) });
     }
   });
-  // 标签 API
-  app.get('/api/tags', requireAuth, (req, res) => {
-    res.json({
-      ok: true,
-      tags: ['技术', '产品', '设计', '运营', 'SRE', 'AI', '工具', '游戏', '音乐', '写作', '翻译', '法律', '教育', '金融', '医疗', '其他']
-    });
-  });
 
-  // 时间工具 API
-  app.get('/api/time', (req, res) => {
-    const now = new Date();
-    res.json({
-      iso: now.toISOString(),
-      local: now.toLocaleString('zh-CN'),
-      unix: now.getTime(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    });
-  });
 
   server.on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
