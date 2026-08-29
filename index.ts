@@ -53,7 +53,7 @@ import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
 import { AgentManager } from './src/agents/manager.js';
 import { handleWSMessage, wsSubscriptions, processUserMessage } from './src/core/ws-handler.js';
-import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage } from './src/core/instance-mesh.js';
+import { getInstanceId, type PeerMessage } from './src/core/instance-mesh.js';
 import { ToolRegistry } from './src/tools/registry.js';
 import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager, setSubAgentManager } from './src/tools/builtin.js';
 import { SearchManager } from './src/tools/search-providers.js';
@@ -91,7 +91,7 @@ import { PushNotificationManager } from './src/core/push.js';
 import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
-import { createMiscRoutes } from './src/routes/misc.js';
+import { createMiscRoutes, setupMesh, createMeshRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createAgiRoutes } from './src/routes/agi.js';
@@ -2280,146 +2280,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ────────────────────────────────────────
   // 实例网格 (Instance Mesh) — 局域网/跨机多灵犀协作
   // ────────────────────────────────────────
-  {
-    const meshPlatformUrl = process.env.MESH_PLATFORM_URL || process.env.PLATFORM_URL || '';
-    const meshToken = process.env.MESH_TOKEN || process.env.PLATFORM_TOKEN || '';
-    let pkgVersion = '0.0.0';
-    try { pkgVersion = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version || '0.0.0'; } catch {}
-
-    // 收到 peer 实例转来的消息 → 走与本地用户消息完全相同的六模式编排
-    setPeerMessageHandler((msg: PeerMessage) => {
-      try {
-        if (!msg.content) return;
-        // 跨平台好友聊天 peer.message
-        if (msg.chatId && String(msg.chatId).startsWith('chat-') && (msg as any).fromUserId !== undefined) {
-          const chatId = msg.chatId;
-          const fromUserId = String((msg as any).fromUserId);
-          const toUserId = String((msg as any).toUserId || '');
-          const existing = db.listChats().find((c: any) => c.id === chatId);
-          if (!existing) {
-            db.createChat(chatId, 'private');
-            // 参与者：发送方和当前用户（接收方）
-            db.addParticipant('p-' + chatId + '-from', chatId, fromUserId, undefined, 'member');
-            db.addParticipant('p-' + chatId + '-to', chatId, toUserId, undefined, 'member');
-          }
-          db.addMessage({
-            id: 'msg-mesh-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-            chatId,
-            senderType: 'user',
-            senderId: fromUserId,
-            content: msg.content,
-            type: 'text',
-            timestamp: Date.now(),
-          });
-          broadcast({ type: 'message.new', chatId, from: fromUserId, senderId: fromUserId, senderType: 'user', content: msg.content, timestamp: Date.now() });
-          console.log(`[Mesh] 好友消息注入聊天 ${chatId}: ${msg.content.slice(0, 40)}`);
-          return;
-        }
-        const chatId = resolveMeshChat(msg.chatId);
-        const senderId = 'peer:' + (msg.fromInstance || 'unknown');
-        console.log(`[Mesh] peer 消息注入聊天 ${chatId}: ${msg.content.slice(0, 40)}`);
-        processUserMessage(chatId, senderId, msg.content, undefined, router, broadcast);
-      } catch (err: any) {
-        console.error('[Mesh] 处理 peer 消息失败:', err.message);
-      }
-    });
-
-    // 收到 peer 实例派发的任务 → 让本地 Agent 自主完成，结果经 mesh 回传
-    setPeerTaskHandler((msg: PeerMessage) => {
-      (async () => {
-        try {
-          const agents = manager.list();
-          const agent = agents.find((a: any) => a.id === msg.fromAgent) || agents[0];
-          if (!agent) {
-            sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '本实例没有可用的 AI Agent', taskId: msg.taskId, timestamp: Date.now() });
-            return;
-          }
-          const chatId = resolveMeshChat(msg.chatId);
-          const goal = msg.goal || msg.content || '';
-          console.log(`[Mesh] 执行 peer 任务 (agent=${agent.id}): ${goal.slice(0, 40)}`);
-          const reply = await router.generateReply(chatId, agent.id, 'mesh-task-' + Date.now(), undefined, undefined, goal);
-          sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: reply, taskId: msg.taskId, timestamp: Date.now() });
-        } catch (err: any) {
-          console.error('[Mesh] peer 任务执行失败:', err.message);
-          sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '任务执行失败: ' + err.message, taskId: msg.taskId, timestamp: Date.now() });
-        }
-      })();
-    });
-
-    // 解析/创建一个用于承接 mesh 消息的聊天
-    function resolveMeshChat(preferred?: string): string {
-      if (preferred) {
-        const existing = db.listChats().find((c: any) => c.id === preferred);
-        if (existing) return preferred;
-      }
-      const chats = db.listChats();
-      if (chats.length > 0) return chats[0].id;
-      // 没有任何聊天 → 建一个
-      const chatId = 'mesh-' + Date.now().toString(36);
-      db.createChat(chatId, 'group');
-      const firstAgent = manager.list()[0];
-      if (firstAgent) db.addParticipant('p-mesh-' + firstAgent.id, chatId, undefined, firstAgent.id, 'agent');
-      return chatId;
-    }
-
-    if (meshPlatformUrl && meshToken) {
-      const agentIds = manager.list().map((a: any) => a.id);
-      startInstanceMesh(meshPlatformUrl, meshToken, port, agentIds, pkgVersion);
-      console.log(`[Mesh] 已启用，平台: ${meshPlatformUrl}`);
-      // 自动把本机所有带 numeric_id 的用户注册到平台，供其他实例搜索加好友/聊天
-      try {
-        const allUsers = db.listUsers() as any[];
-        for (const u of allUsers) {
-          if (!u.numeric_id) continue;
-          fetch(`${meshPlatformUrl.replace(/\/$/, '')}/api/users/register`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${meshToken}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ instanceId: getInstanceId(), numericId: u.numeric_id, displayName: u.display_name, email: u.email || '', userId: u.id }),
-          }).catch(() => {});
-        }
-        console.log(`[Mesh] 已注册 ${allUsers.filter((u: any) => u.numeric_id).length} 个本地用户到平台`);
-      } catch (e: any) { console.warn('[Mesh] 用户注册失败:', e.message); }
-    } else {
-      console.log('[Mesh] 未配置 MESH_PLATFORM_URL/MESH_TOKEN，实例组网未启用');
-    }
-
-    // ── Mesh REST API ──
-    app.get('/api/mesh/status', requireAuth, (_req, res) => {
-      res.json({ ok: true, ...getMeshInfo() });
-    });
-
-    // 在线实例列表（代理平台 /api/instances/list）
-    app.get('/api/mesh/peers', requireAuth, async (_req, res) => {
-      try {
-        if (!meshPlatformUrl || !meshToken) return res.json({ ok: true, instances: [], count: 0, disabled: true });
-        const r = await fetch(meshPlatformUrl.replace(/\/$/, '') + '/api/instances/list', {
-          headers: { 'Authorization': 'Bearer ' + meshToken },
-        });
-        const d = await r.json() as any;
-        // 排除自己
-        const me = getInstanceId();
-        const instances = (d.instances || []).filter((i: any) => i.instanceId !== me);
-        res.json({ ok: true, instances, count: instances.length });
-      } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
-    });
-
-    // 向某个 peer 实例发消息（会触发对方本地 AI 处理）
-    app.post('/api/mesh/send', requireAuth, (req, res) => {
-      const { toInstance, content, chatId } = req.body || {};
-      if (!toInstance || !content) return res.status(400).json({ error: '需要 toInstance 和 content' });
-      const ok = sendPeerMessage({ type: 'peer.message', fromInstance: getInstanceId(), toInstance, content, chatId, timestamp: Date.now() });
-      res.json({ ok });
-    });
-
-    // 向某个 peer 实例派发任务（对方 Agent 自主完成后回传）
-    app.post('/api/mesh/task', requireAuth, (req, res) => {
-      const { toInstance, goal, agentId } = req.body || {};
-      if (!toInstance || !goal) return res.status(400).json({ error: '需要 toInstance 和 goal' });
-      const taskId = 'task-' + Date.now().toString(36);
-      const ok = sendPeerMessage({ type: 'peer.task', fromInstance: getInstanceId(), toInstance, goal, fromAgent: agentId, taskId, timestamp: Date.now() });
-      res.json({ ok, taskId });
-    });
-  }
+  setupMesh({ db, manager, router, broadcast, dataDir } as any, port); // 批次12: mesh引擎+REST已移交 src/routes/misc.ts
+  app.use('/api', createMeshRoutes({ db, manager, router, broadcast, dataDir } as any)); // REST 4条(模块版自带requireAuth)
 
 
 

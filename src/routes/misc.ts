@@ -145,7 +145,7 @@ export function setupMesh(ctx: ServerContext, port: number) {
 
       // 跨平台好友聊天消息
       const anyMsg = msg as any;
-      if (msg.chatId && String(msg.chatId).startsWith('chat-platform-') && anyMsg.fromUserId !== undefined) {
+      if (msg.chatId && String(msg.chatId).startsWith('chat-') && anyMsg.fromUserId !== undefined) {
         const chatId = msg.chatId;
         const fromUserId = String(anyMsg.fromUserId);
         const toUserId = String(anyMsg.toUserId || '');
@@ -254,12 +254,13 @@ function resolveMeshChat(preferred: string | undefined, db: any, manager: any): 
  */
 export function createMeshRoutes(ctx: ServerContext): Router {
   const router = Router();
+  const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
   const meshPlatformUrl = process.env.MESH_PLATFORM_URL || process.env.PLATFORM_URL || '';
   const meshToken = process.env.MESH_TOKEN || process.env.PLATFORM_TOKEN || '';
 
-  router.get('/mesh/status', (_req, res) => { res.json({ ok: true, ...getMeshInfo() }); });
+  router.get('/mesh/status', requireAuth, (_req, res) => { res.json({ ok: true, ...getMeshInfo() }); });
 
-  router.get('/mesh/peers', async (_req, res) => {
+  router.get('/mesh/peers', requireAuth, async (_req, res) => {
     try {
       if (!meshPlatformUrl || !meshToken) return res.json({ ok: true, instances: [], count: 0, disabled: true });
       const r = await fetch(meshPlatformUrl.replace(/\/$/, '') + '/api/instances/list', { headers: { Authorization: 'Bearer ' + meshToken } });
@@ -270,14 +271,14 @@ export function createMeshRoutes(ctx: ServerContext): Router {
     } catch (err: any) { res.status(500).json({ ok: false, error: err.message }); }
   });
 
-  router.post('/mesh/send', (req, res) => {
+  router.post('/mesh/send', requireAuth, (req, res) => {
     const { toInstance, content, chatId } = req.body || {};
     if (!toInstance || !content) return res.status(400).json({ error: '需要 toInstance 和 content' });
     const ok = sendPeerMessage({ type: 'peer.message', fromInstance: getInstanceId(), toInstance, content, chatId, timestamp: Date.now() });
     res.json({ ok });
   });
 
-  router.post('/mesh/task', (req, res) => {
+  router.post('/mesh/task', requireAuth, (req, res) => {
     const { toInstance, goal, agentId } = req.body || {};
     if (!toInstance || !goal) return res.status(400).json({ error: '需要 toInstance 和 goal' });
     const taskId = 'task-' + Date.now().toString(36);
