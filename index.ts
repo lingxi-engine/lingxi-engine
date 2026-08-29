@@ -966,6 +966,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── AI 员工市场 + 雇佣系统 API ──
   // ── AI 员工市场 + 雇佣系统路由（批次5: 迁移至 src/routes/market.ts） ──
   registerMarketRoutes(app, { optAuth, requireAuth });
+  registerWalletRoutes(app, { optAuth, requireAuth });
 
   // ── P2-3: Provider 管理 API ──
   // 模型管理前端调用的别名（/api/ai/* → /api/providers/*）
