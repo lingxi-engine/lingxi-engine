@@ -92,6 +92,7 @@ import { OutcomeTracker } from './src/core/outcome-tracker.js';
 import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes, setupMesh, createMeshRoutes } from './src/routes/misc.js';
+import { createSkillsRoutes } from './src/routes/skills.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createAgiRoutes } from './src/routes/agi.js';
@@ -1707,56 +1708,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── V5 P4: 技能 API ──
-  app.get('/api/skills', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, skills: skillManager.list() }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/skills/scan', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, skills: skillManager.scanLocal() }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/skills/:id/enable', requireAuth, (req, res) => {
-    try { skillManager.setEnabled(String(req.params.id), true); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/skills/:id/disable', requireAuth, (req, res) => {
-    try { skillManager.setEnabled(String(req.params.id), false); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.delete('/api/skills/:id', requireAuth, (req, res) => {
-    try { skillManager.uninstall(String(req.params.id)); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/skills/create', requireAuth, (req, res) => {
-    try {
-      const { id, name, description, content } = req.body;
-      if (!id || !name || !content) return res.status(400).json({ error: 'id/name/content 必填' });
-      skillManager.createSkill(id, name, description || '', content);
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get('/api/skills/market', requireAuth, async (_req, res) => {
-    try {
-      const items = await skillManager.browseMarket();
-      res.json({ ok: true, items });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/skills/install', requireAuth, async (req, res) => {
-    try {
-      const { name } = req.body;
-      if (!name) return res.status(400).json({ error: 'name 必填' });
-      const ok = await skillManager.installFromMarket(name);
-      res.json({ ok });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
+  // ── V5 P4: 技能 API ── 批次13a: 8条路由移交 src/routes/skills.ts
+  app.use('/api', createSkillsRoutes({ skillManager } as any));
 
   // ── V5 P7: 开发者模式 API ──
   // (已有上面的路由)
