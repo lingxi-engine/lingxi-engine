@@ -1,8 +1,10 @@
 /**
  * 渠道路由 — 渠道管理、Webhook、渠道适配器启动
+ * 批次13c: 4条管理路由补鉴权锁; telegram分支增加全局实例防重复启动检查
  */
 import { Router } from 'express';
 import type { ServerContext } from '../server/context.js';
+import { jwtAuth } from '../middleware/jwt-auth.js';
 import { TelegramAdapter } from '../channels/telegram.js';
 import { DiscordAdapter } from '../channels/discord.js';
 import { SlackAdapter } from '../channels/slack.js';
@@ -16,24 +18,25 @@ import { IMessageAdapter } from '../channels/imessage.js';
 export function createChannelRoutes(ctx: ServerContext): Router {
   const router = Router();
   const { channelManager, router: msgRouter, manager, db, telegramAdapter } = ctx;
+  const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
 
-  router.get('/channels', (_req, res) => {
+  router.get('/channels', requireAuth, (_req, res) => {
     try { res.json({ ok: true, definitions: channelManager.getDefinitions(), channels: channelManager.list() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.post('/channels', (req, res) => {
+  router.post('/channels', requireAuth, (req, res) => {
     try { const { id, type, config } = req.body; if (!id || !type) return res.status(400).json({ error: 'id/type 必填' }); const channel = channelManager.configure(id, type, config || {}); res.json({ ok: true, channel }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.post('/channels/:id/enable', async (req, res) => {
-    try { channelManager.setEnabled(req.params.id, req.body.enabled ?? true); const ch = channelManager.get(req.params.id); if (ch && ch.enabled) await startChannelAdapter(ch, ctx); res.json({ ok: true }); }
+  router.post('/channels/:id/enable', requireAuth, async (req, res) => {
+    try { channelManager.setEnabled(String(req.params.id), req.body.enabled ?? true); const ch = channelManager.get(String(req.params.id)); if (ch && ch.enabled) await startChannelAdapter(ch, ctx); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.delete('/channels/:id', (req, res) => {
-    try { channelManager.remove(req.params.id); res.json({ ok: true }); }
+  router.delete('/channels/:id', requireAuth, (req, res) => {
+    try { channelManager.remove(String(req.params.id)); res.json({ ok: true }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -130,7 +133,7 @@ export async function startChannelAdapter(ch: any, ctx: ServerContext) {
   try {
     switch (ch.type) {
       case 'telegram': {
-        if (!channelManager.getAdapter(ch.id) && ch.config.botToken) {
+        if (!channelManager.getAdapter(ch.id) && !ctx.telegramAdapter && ch.config.botToken) {
           const tg = new TelegramAdapter({ botToken: ch.config.botToken, enabled: true, requireMention: ch.config.requireMention !== false, defaultUserId: ch.config.defaultUserId || 'user-shen', defaultChatId: ch.config.defaultChatId || 'chat-telegram' }, router, manager, db);
           if (await tg.start()) channelManager.setAdapter(ch.id, tg);
         }

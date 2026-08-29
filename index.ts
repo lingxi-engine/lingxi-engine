@@ -69,14 +69,6 @@ import { registerV17Routes } from './src/routes-v1.7.js';
 import { SessionManager } from './src/core/session-manager.js';
 import { SubAgentManager } from './src/core/subagent-manager.js';
 import { TelegramAdapter, type TelegramConfig } from './src/channels/telegram.js';
-import { DiscordAdapter, type DiscordConfig } from './src/channels/discord.js';
-import { SlackAdapter, type SlackConfig } from './src/channels/slack.js';
-import { WeChatAdapter, type WeChatConfig } from './src/channels/wechat.js';
-import { FeishuAdapter, type FeishuConfig } from './src/channels/feishu.js';
-import { QQBotAdapter, type QQBotConfig } from './src/channels/qqbot.js';
-import { WhatsAppAdapter, type WhatsAppConfig } from './src/channels/whatsapp.js';
-import { SignalAdapter, type SignalConfig } from './src/channels/signal.js';
-import { IMessageAdapter, type IMessageConfig } from './src/channels/imessage.js';
 import { ApprovalManager } from './src/core/approval.js';
 import { HookManager, type HookEvent } from './src/core/hooks.js';
 import { InboxManager, type InboxItem, type InboxType } from './src/core/inbox.js';
@@ -94,6 +86,7 @@ import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes, setupMesh, createMeshRoutes } from './src/routes/misc.js';
 import { createSkillsRoutes } from './src/routes/skills.js';
 import { createRagRoutes } from './src/routes/rag.js';
+import { createChannelRoutes, startChannelAdapter } from './src/routes/channel.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createAgiRoutes } from './src/routes/agi.js';
@@ -1600,6 +1593,13 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── V5 P4: 技能 API ── 批次13a: 8条路由移交 src/routes/skills.ts
   app.use('/api', createSkillsRoutes({ skillManager } as any));
   app.use('/api', createRagRoutes({ router } as any)); // REST 6条(模块版自带requireAuth, 含移植的scan-workspace)
+  // ── V5 P5: 渠道管理 API ── 批次13c: 11条路由移交 src/routes/channel.ts (4条管理带requireAuth, 7条webhook公网免锁)
+  const channelCtx = { channelManager, router, manager, db, get telegramAdapter() { return telegramAdapter; } } as any;
+  app.use('/api', createChannelRoutes(channelCtx));
+  // 启动已配置的渠道 (模块版 startChannelAdapter, telegram分支带全局实例防重复检查)
+  for (const ch of channelManager.getEnabledChannels()) {
+    await startChannelAdapter(ch, channelCtx);
+  }
 
   // ── V5 P7: 开发者模式 API ──
   // (已有上面的路由)
@@ -1782,250 +1782,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── V5 P5: 渠道管理 API ──
-  app.get('/api/channels', requireAuth, (_req, res) => {
-    try { res.json({ ok: true, definitions: channelManager.getDefinitions(), channels: channelManager.list() }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/channels', requireAuth, (req, res) => {
-    try {
-      const { id, type, config } = req.body;
-      if (!id || !type) return res.status(400).json({ error: 'id/type 必填' });
-      const channel = channelManager.configure(id, type, config || {});
-      res.json({ ok: true, channel });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/channels/:id/enable', requireAuth, async (req, res) => {
-    try { channelManager.setEnabled(String(req.params.id), req.body.enabled ?? true); const ch = channelManager.get(String(req.params.id)); if (ch && ch.enabled) await startChannelAdapter(ch); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.delete('/api/channels/:id', requireAuth, (req, res) => {
-    try { channelManager.remove(String(req.params.id)); res.json({ ok: true }); }
-    catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── V5 P5: 渠道 Webhook 路由 ──
-  // Slack Events API
-  app.post('/api/channels/slack/webhook', async (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'slack');
-      if (!ch) return res.status(404).json({ error: 'Slack 渠道未配置' });
-      const adapter = channelManager.getAdapter(ch.id) as SlackAdapter;
-      if (!adapter) return res.status(500).json({ error: 'adapter not started' });
-      // v2 修复：验证签名
-      if ((adapter as any).verifySignature) {
-        const sig = req.headers['x-slack-signature'] as string;
-        const ts = req.headers['x-slack-request-timestamp'] as string;
-        const body = JSON.stringify(req.body);
-        if (!(adapter as any).verifySignature(sig, ts, body)) {
-          return res.status(403).json({ error: '签名验证失败' });
-        }
-      }
-      const result = await adapter.handleEvent(req.body);
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // 微信公众号/企业微信
-  app.get('/api/channels/wechat/webhook', (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'wechat');
-      if (!ch) return res.status(404).send('Not configured');
-      const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
-      if (!adapter) return res.status(500).send('Adapter not started');
-      const { signature, timestamp, nonce, echostr } = req.query as any;
-      if (adapter.verifySignature(signature, timestamp, nonce)) {
-        res.send(echostr);
-      } else {
-        res.status(403).send('Invalid signature');
-      }
-    } catch (err: any) { res.status(500).send(err.message); }
-  });
-  app.post('/api/channels/wechat/webhook', async (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'wechat');
-      if (!ch) return res.status(404).send('Not configured');
-      const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
-      const result = adapter ? await adapter.handleMessage(req.body) : 'adapter not started';
-      res.type('text/xml').send(result);
-    } catch (err: any) { res.status(500).send(err.message); }
-  });
-
-  // 飞书
-  app.post('/api/channels/feishu/webhook', async (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'feishu');
-      if (!ch) return res.status(404).json({ error: 'Feishu 渠道未配置' });
-      const adapter = channelManager.getAdapter(ch.id) as FeishuAdapter;
-      const result = adapter ? await adapter.handleEvent(req.body) : { ok: false, error: 'adapter not started' };
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // QQ Bot
-  app.post('/api/channels/qqbot/webhook', async (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'qqbot');
-      if (!ch) return res.status(404).json({ error: 'QQBot 渠道未配置' });
-      const adapter = channelManager.getAdapter(ch.id) as QQBotAdapter;
-      const result = adapter ? await adapter.handleEvent(req.body) : { ok: false, error: 'adapter not started' };
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // WhatsApp
-  app.get('/api/channels/whatsapp/webhook', (req, res) => {
-    const ch = channelManager.list().find(c => c.type === 'whatsapp');
-    if (!ch) return res.status(404).send('Not configured');
-    const adapter = channelManager.getAdapter(ch.id) as WhatsAppAdapter;
-    if (!adapter) return res.status(500).send('Adapter not started');
-    const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query as any;
-    const result = adapter.verifyWebhook(mode, token, challenge);
-    if (result !== null) res.send(result);
-    else res.status(403).send('Invalid token');
-  });
-  app.post('/api/channels/whatsapp/webhook', async (req, res) => {
-    try {
-      const ch = channelManager.list().find(c => c.type === 'whatsapp');
-      if (!ch) return res.status(404).json({ error: 'WhatsApp 渠道未配置' });
-      const adapter = channelManager.getAdapter(ch.id) as WhatsAppAdapter;
-      const result = adapter ? await adapter.handleEvent(req.body) : { ok: false };
-      res.json(result);
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── V5 P5: 启用渠道时自动启动适配器 ──
-  async function startChannelAdapter(ch: any) {
-    if (!ch.enabled) return;
-    try {
-      switch (ch.type) {
-        case 'telegram':
-          if (!telegramAdapter && ch.config.botToken) {
-            const tg = new TelegramAdapter({
-              botToken: ch.config.botToken,
-              enabled: true,
-              requireMention: ch.config.requireMention !== false,
-              defaultUserId: ch.config.defaultUserId || 'user-shen',
-              defaultChatId: ch.config.defaultChatId || 'chat-telegram',
-            }, router, manager, db);
-            if (await tg.start()) channelManager.setAdapter(ch.id, tg);
-          }
-          break;
-        case 'discord':
-          if (!channelManager.getAdapter(ch.id) && ch.config.botToken) {
-            const dc = new DiscordAdapter({
-              botToken: ch.config.botToken,
-              prefix: ch.config.prefix || '!',
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-discord',
-              defaultChatId: ch.config.defaultChatId || 'chat-discord',
-            }, router, manager, db);
-            if (await dc.start()) channelManager.setAdapter(ch.id, dc);
-          }
-          break;
-        case 'slack':
-          if (!channelManager.getAdapter(ch.id) && ch.config.botToken) {
-            const sk = new SlackAdapter({
-              botToken: ch.config.botToken,
-              appToken: ch.config.appToken,
-              signingSecret: ch.config.signingSecret,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-slack',
-              defaultChatId: ch.config.defaultChatId || 'chat-slack',
-            }, router, manager, db);
-            if (await sk.start()) channelManager.setAdapter(ch.id, sk);
-          }
-          break;
-        case 'wechat':
-          if (!channelManager.getAdapter(ch.id) && ch.config.appId) {
-            const wx = new WeChatAdapter({
-              mode: ch.config.mode || 'mp',
-              appId: ch.config.appId,
-              appSecret: ch.config.appSecret,
-              token: ch.config.token,
-              encodingAESKey: ch.config.encodingAESKey,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-wechat',
-              defaultChatId: ch.config.defaultChatId || 'chat-wechat',
-            }, router, manager, db);
-            if (await wx.start()) channelManager.setAdapter(ch.id, wx);
-          }
-          break;
-        case 'feishu':
-          if (!channelManager.getAdapter(ch.id) && ch.config.appId) {
-            const fs = new FeishuAdapter({
-              appId: ch.config.appId,
-              appSecret: ch.config.appSecret,
-              verificationToken: ch.config.verificationToken,
-              encryptKey: ch.config.encryptKey,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-feishu',
-              defaultChatId: ch.config.defaultChatId || 'chat-feishu',
-            }, router, manager, db);
-            if (await fs.start()) channelManager.setAdapter(ch.id, fs);
-          }
-          break;
-        case 'qqbot':
-          if (!channelManager.getAdapter(ch.id) && ch.config.appId) {
-            const qq = new QQBotAdapter({
-              appId: ch.config.appId,
-              appSecret: ch.config.appSecret,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-qqbot',
-              defaultChatId: ch.config.defaultChatId || 'chat-qqbot',
-            }, router, manager, db);
-            if (await qq.start()) channelManager.setAdapter(ch.id, qq);
-          }
-          break;
-        case 'whatsapp':
-          if (!channelManager.getAdapter(ch.id) && ch.config.apiToken) {
-            const wa = new WhatsAppAdapter({
-              apiToken: ch.config.apiToken,
-              phoneNumberId: ch.config.phoneNumberId,
-              verifyToken: ch.config.verifyToken,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-whatsapp',
-              defaultChatId: ch.config.defaultChatId || 'chat-whatsapp',
-            }, router, manager, db);
-            if (await wa.start()) channelManager.setAdapter(ch.id, wa);
-          }
-          break;
-        case 'signal':
-          if (!channelManager.getAdapter(ch.id) && ch.config.phoneNumber) {
-            const sg = new SignalAdapter({
-              phoneNumber: ch.config.phoneNumber,
-              signalCliPath: ch.config.signalCliPath,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-signal',
-              defaultChatId: ch.config.defaultChatId || 'chat-signal',
-            }, router, manager, db);
-            if (await sg.start()) channelManager.setAdapter(ch.id, sg);
-          }
-          break;
-        case 'imessage':
-          if (!channelManager.getAdapter(ch.id) && ch.config.appleScript) {
-            const im = new IMessageAdapter({
-              appleScript: ch.config.appleScript,
-              enabled: true,
-              defaultUserId: ch.config.defaultUserId || 'user-imessage',
-              defaultChatId: ch.config.defaultChatId || 'chat-imessage',
-            }, router, manager, db);
-            if (await im.start()) channelManager.setAdapter(ch.id, im);
-          }
-          break;
-      }
-    } catch (err: any) {
-      console.error(`[Channels] 启动 ${ch.type} 失败:`, err.message);
-    }
-  }
-
-  // 启动已配置的渠道
-  for (const ch of channelManager.getEnabledChannels()) {
-    await startChannelAdapter(ch);
-  }
 
   // ────────────────────────────────────────
   // WebSocket
