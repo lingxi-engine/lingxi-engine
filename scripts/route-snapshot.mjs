@@ -28,6 +28,7 @@ const TARGETS = [
   join(ROOT, 'src', 'routes', 'agents.ts'),
   join(ROOT, 'src', 'routes', 'subagents.ts'),
   join(ROOT, 'src', 'routes', 'custom-providers.ts'),
+  join(ROOT, 'src', 'routes', 'lan.ts'),
   // 迁移批次推进时在此追加: join(ROOT, 'src', 'routes', 'xxx.ts'),
 ];
 // 挂载校验清单: [工厂函数名, 模块路径] —— 函数名必须与 index.ts 实际 import 一致
@@ -40,6 +41,7 @@ const MOUNTS = [
   ['registerAgentsRoutes', './src/routes/agents.js'],
   ['registerSubAgentRoutes', './src/routes/subagents.js'],
   ['registerCustomProviderRoutes', './src/routes/custom-providers.js'],
+  ['registerLanRoutes', './src/routes/lan.js'],
   ['registerV17Routes', './src/routes-v1.7.js'],
   // 迁移批次推进时在此追加
 ];

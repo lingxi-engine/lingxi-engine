@@ -41,6 +41,7 @@ const MODULE_FILES: Array<[string, string]> = [
   ['agents', 'src/routes/agents.ts'],
   ['subagents', 'src/routes/subagents.ts'],
   ['custom-providers', 'src/routes/custom-providers.ts'],
+  ['lan', 'src/routes/lan.ts'],
   ['v1.7', 'src/routes-v1.7.ts'],
 ];
 
@@ -75,6 +76,7 @@ const caseList: Array<[string, () => Promise<any>, Record<string, unknown>]> = [
   ['agents', () => import('../src/routes/agents.js'), { requireAuth: passThrough }],
   ['subagents', () => import('../src/routes/subagents.js'), { requireAuth: passThrough }],
   ['custom-providers', () => import('../src/routes/custom-providers.js'), { INFERENCE_BACKENDS: [], customProviderManager: ANY, requireAuth: passThrough }],
+  ['lan', () => import('../src/routes/lan.js'), { db: ANY, manager: ANY, router: ANY, broadcast: ANY, requireAuth: passThrough, port: 3456, dataDir: './data' }],
   ['v1.7', () => import('../src/routes-v1.7.js'), {}],
 ];
 
