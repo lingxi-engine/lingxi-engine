@@ -851,7 +851,13 @@ function updateBadge() {
 // ── Chat List ──
 async function loadChatList() {
   try {
-    const res = await api('/api/chats?userId=' + encodeURIComponent(clientId));
+    // v2.1.4: 查询 ID 口径与创建侧（newChat/showCreateGroup 写 participant 用 lanMyId()）保持一致。
+    // 未登录时 lanMyId() 回退 clientId，行为不变；登录后用平台登录 ID，否则 participant.user_id 不匹配导致新建会话/群聊不显示。
+    // lanMeId 惰性解析（首屏 loadChatList 可能早于 loadSocial），登录态先从平台解析一次，同 showCreateGroup 做法。
+    if (!lanMeId && authToken) {
+      try { const _d = await platformApi('/api/user/me', 'GET'); if (_d && _d.ok && _d.user) lanMeId = _d.user.id || _d.user.sub || null; } catch(_e) {}
+    }
+    const res = await api('/api/chats?userId=' + encodeURIComponent(lanMyId()));
     // 。v2.1.1: 按最近活跃排序（F5 后兜底打开。myChats[0] 即最近会话，而非最早创建的会话。
     myChats = (res.chats || []).slice().sort(function(a, b){ return (b.last_message_at || b.created_at || 0) - (a.last_message_at || a.created_at || 0); });
     renderChatList();
@@ -874,7 +880,7 @@ function renderChatList() {
     const badge = unread ? '<span class="notify-dot">' + unread + '</span>' : '';
     var displayName = ch.name || ch.id.replace(/^(chat-|team-)/, '');
     var icon = ch.type === 'group' ? '👥' : '💬';
-    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">。/span></div></div>';
+    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">🗑</span></div></div>';
   }).join('');
 }
 
