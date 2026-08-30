@@ -70,6 +70,17 @@ function _looksLikeTask(content: string): boolean {
 }
 
 /**
+ * v2.1: 判断是否为"继续"类跟进指令（要求接着上一轮任务继续干的短消息）。
+ * 命中后配合上一轮任务状态继承 requireCompletion，避免任务模式每轮退化成闲聊规格。
+ */
+function _isContinueCommand(content: string): boolean {
+  if (!content) return false;
+  const t = content.trim();
+  if (t.length > 30) return false;
+  return /^(继续|接着|接着做|继续做|继续执行|继续干|接着干|接着来|继续吧|请继续|继续任务|继续完成|继续剩下的|恢复执行|续跑|继续呀|继续啊|继续哦|continue|go on|keep going|resume|proceed|carry on)\s*[。！!.~～]?\s*$/i.test(t);
+}
+
+/**
  * 发现项目上下文文件（AGENTS.md / CLAUDE.md / .cursorrules）
  * 扫描顺序: 项目根目录 → ~/.config/lingxi/ → 全局（跳过 Windows 上不存在的 /etc）
  */
@@ -277,7 +288,7 @@ export class MessageRouter {
     // ── AGI P0: 意图澄清（Clarifier）——生成前拦截高歧义输入，避免模型瞎猜 ──
     // 仅对普通用户对话生效；任务类/协作指令/内部步骤一律跳过，不打断干活流程
     let clarifyHint = '';
-    if (!taskGoal && !customPrompt && !options?.skipPersist && triggerContent && !_looksLikeTask(triggerContent)) {
+    if (!taskGoal && !customPrompt && !options?.skipPersist && triggerContent && !_looksLikeTask(triggerContent) && !_isContinueCommand(triggerContent)) {
       try {
         const isFollowUp = recentMessages.some(m => m.id !== triggerMsgId && m.sender_type === 'agent');
         const history = recentMessages.filter(m => m.id !== triggerMsgId).slice(-10).map(m => m.content);
@@ -321,9 +332,26 @@ export class MessageRouter {
     const replyClient = this.aiHub.getRoleClient('reply') || clientResult;
 
     // ⭐ 判断是否为"任务类"请求：显式 taskGoal / customPrompt / 用户原话带任务动作词 → 持续执行
-    const isTaskMode = !!taskGoal || !!customPrompt || _looksLikeTask(triggerContent);
+    // ⭐ v2.1 "继续"自动继承任务模式：跟进消息若是"继续"类短指令，且上一轮是任务模式，
+    // 则保持 requireCompletion 开启，避免每轮退化成闲聊规格（"干一轮就停，继续还要重新交代"的根因之一）
+    let inheritTaskMode = false;
+    let inheritedGoal: string | undefined;
+    if (!taskGoal && !customPrompt && _isContinueCommand(triggerContent)) {
+      const priorUserMsgs = recentMessages.filter(m => m.id !== triggerMsgId && m.sender_type === 'user');
+      const prevUser = priorUserMsgs.length > 0 ? priorUserMsgs[priorUserMsgs.length - 1] : undefined;
+      const prevContent = ((prevUser as any)?.content || '').trim();
+      const lastAgentMsg = [...recentMessages].reverse().find(m => m.id !== triggerMsgId && m.sender_type === 'agent');
+      const agentHasTaskTrace = !!lastAgentMsg && /(任务|步骤|已完成|已中断|断点|继续执行|工具调用|进度)/.test((lastAgentMsg as any).content || '');
+      if (prevContent && (_looksLikeTask(prevContent) || agentHasTaskTrace)) {
+        inheritTaskMode = true;
+        inheritedGoal = prevContent.length > 300 ? prevContent.slice(0, 300) + '（继续执行此任务）' : prevContent + '（继续执行此任务）';
+        console.log('[Router] "继续"指令继承任务模式: 上一轮任务=' + prevContent.slice(0, 60));
+      }
+    }
+    const isTaskMode = !!taskGoal || !!customPrompt || _looksLikeTask(triggerContent) || inheritTaskMode;
     // 任务类但没显式传 taskGoal 时，用用户原话合成 taskGoal，让 system prompt 注入"持续工作直到完成"指令
-    const effectiveTaskGoal = taskGoal || (isTaskMode && !customPrompt ? triggerContent : undefined);
+    // （"继续"继承时用上一轮的任务目标，保证 system prompt 里的任务上下文不丢）
+    const effectiveTaskGoal = taskGoal || (isTaskMode && !customPrompt ? (inheritedGoal || triggerContent) : undefined);
 
     // ⭐ 用实际 resolved 的模型名构建 system prompt，而非 env 变量原始值
     const messages: ChatMessage[] = [
@@ -398,7 +426,79 @@ export class MessageRouter {
         abortErr.name = 'AbortError';
         throw abortErr;
       }
+      // ⭐ v2.1 中断自动续跑：超时/迭代上限终止时，不是直接吐文字等用户，
+      // 而是像 GoalExecutor 一样注入断点上下文自动开下一轮（用户主动停止除外）。
+      // 续跑轮数上限由 TASK_RESUME_ROUNDS 控制（默认 2），每轮重新计时。
+      if (isTaskMode && !signal?.aborted) {
+        const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '2', 10);
+        let resumeRounds = 0;
+        while (
+          resumeRounds < MAX_RESUME_ROUNDS &&
+          !signal?.aborted &&
+          (result.stopReason === 'aborted' || result.stopReason === 'max_iterations')
+        ) {
+          resumeRounds++;
+          const reasonText = result.stopReason === 'aborted' ? '超出时限' : '达到迭代上限';
+          console.log(`[Router] 任务中断（${reasonText}），自动续跑第 ${resumeRounds}/${MAX_RESUME_ROUNDS} 轮 (agent=${agentId})`);
+          const resumeMessages: ChatMessage[] = [
+            ...(result.messages as ChatMessage[]),
+            {
+              role: 'user',
+              content: '系统通知：上一轮任务执行因' + reasonText + '被中断，但已完成的进度保留在上方上下文中。请从断点继续，完成剩余未做完的工作——不要重复已完成的部分，不要询问用户，自主判断并持续执行。全部做完后，在回复结尾输出"任务完成"（之后不要再写后续计划）。',
+            },
+          ];
+          const resumeController = new AbortController();
+          const resumeTimeoutId = setTimeout(() => resumeController.abort(), TOTAL_TIMEOUT);
+          const onResumeAbort = () => resumeController.abort();
+          if (signal) {
+            if (signal.aborted) { clearTimeout(resumeTimeoutId); break; }
+            signal.addEventListener('abort', onResumeAbort);
+          }
+          try {
+            result = await runToolsLoop({
+              client: toolClient.client,
+              model: toolClient.resolvedModel,
+              messages: resumeMessages,
+              registry: this.toolRegistry!,
+              agentId,
+              chatId,
+              maxIterations: envBoolForceComplete() ? 200 : 50,
+              temperature: 0.7,
+              maxTokens: 16384,
+              requireCompletion: true,
+              forceComplete: envBoolForceComplete(),
+              signal: resumeController.signal,
+              onToolCall: onBroadcast ? (e) => onBroadcast({ type: 'tool.call', ...e }) : undefined,
+              onToolResult: onBroadcast ? (e) => onBroadcast({ type: 'tool.result', ...e }) : undefined,
+              onThink: onThink,
+            });
+          } catch (resumeErr: any) {
+            console.warn('[Router] 自动续跑轮失败:', resumeErr?.message || resumeErr);
+            break;
+          } finally {
+            clearTimeout(resumeTimeoutId);
+            if (signal) signal.removeEventListener('abort', onResumeAbort);
+          }
+        }
+        // 续跑期间用户点了停止 → 按"已停止"处理
+        if (resumeRounds > 0 && signal?.aborted) {
+          const abortErr: any = new Error('生成已停止');
+          abortErr.name = 'AbortError';
+          throw abortErr;
+        }
+      }
         finalContent = result.finalContent;
+        // ⭐ v2.1: 任务中断且未确认完成时，在结尾附断点恢复提示（保留进度 + 告知恢复方式）
+        if (isTaskMode && result.stopReason && result.stopReason !== 'completed' && !signal?.aborted) {
+          const reasonMap: Record<string, string> = {
+            aborted: '超出时限',
+            max_iterations: '达到迭代上限',
+            idle_stop: '多轮未检测到明确完成信号',
+            tool_failures: '工具连续失败',
+            ai_errors: 'AI 调用连续失败',
+          };
+          finalContent += '\n\n⚠️ 任务已中断（' + (reasonMap[result.stopReason] || result.stopReason) + '），进度已保留。输入「继续」可从断点恢复执行。';
+        }
         // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
         // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作
         if (replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {

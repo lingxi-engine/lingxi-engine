@@ -1,0 +1,13 @@
+{
+  "name": "long-task-orchestrator-hardening",
+  "displayName": "长任务编排加固",
+  "description": "统一超时默认值、任务模式继承、完成信号判定、中断续跑与上下文压缩的排查与实现技能。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当需要优化长任务编排、超时恢复、任务模式继承或完成信号判定时：先用 list_dir 定位 ws-handler、orchestrator、GoalExecutor 等相关模块；用 read_file 检查超时默认值、requireCompletion、完成信号、中断处理和上下文管理逻辑；统一 120s/300s 等分歧配置，确保跟进消息在上一轮为任务模式时继承 requireCompletion；将完成信号限制为文本结尾且不含“接下来/现在/下一步”等继续意图；在超时、迭代上限或失败终止时注入断点上下文自动续跑，或明确提示输入“继续”并保留进度；对长循环中的早期工具结果设计摘要压缩策略。必要时用 shell_exec 运行检查、构建或测试，验证修改不破坏现有流程。",
+  "autoCreated": true,
+  "createdAt": 1788090221084
+}

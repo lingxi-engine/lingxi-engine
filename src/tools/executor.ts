@@ -16,6 +16,7 @@ import {
 } from "./types.js";
 import { setDelegateContext } from "./builtin.js";
 import { UsageTracker } from "../core/usage-tracker.js";
+import { estimateMessagesTokens } from "../core/compaction.js";
 import type { ToolRegistry } from "./registry.js";
 
 // ═══════════════════════════════════════════════
@@ -120,6 +121,8 @@ export interface RunToolsResult {
   iterations: number;
   aborted: boolean;
   consecutiveErrors?: number;
+  /** v2.1: 循环终止原因，供上层（router 断点续跑）判断是否需要自动续跑 */
+  stopReason?: 'completed' | 'idle_stop' | 'max_iterations' | 'aborted' | 'tool_failures' | 'ai_errors';
 }
 
 // ═══════════════════════════════════════════════
@@ -175,25 +178,58 @@ export function stripDsmlMarkup(text: string): string {
 /**
  * 判断 AI 的输出是否带有明确的"完成任务"信号
  * 用于持续执行模式：只有当 AI 明确宣告完成时才允许结束回合。
- * 注意：反问句（"需要我继续吗？""还要做什么吗？"）不算完成。
+ *
+ * v2.1 收紧完成信号（防进度汇报误判）：
+ *  1) 完成声明必须出现在文本结尾（最后 200 字符内或最后一段），
+ *     避免文中出现"步骤1已完成"就误判整个任务完成；
+ *  2) 声明之后不得再出现"接下来/下一步/现在开始"等继续意图，否则视为进度汇报；
+ *  3) 反问/请示一律不算完成（原 askingPatterns 是死代码——done 命中直接 return true，
+ *     永远走不到 asking 分支；现在 asking 真正生效）。
  */
-function isCompletionSignal(content: string): boolean {
+export function isCompletionSignal(content: string): boolean {
   if (!content) return false;
   const t = content.trim();
+  if (!t) return false;
+
   // 明确完成信号
   const donePatterns = [
     /(任务|工作|全部|所有|目标)(已经|已|均已|都)(完成|做完|搞定|结束|处理完|执行完)/,
-    /^任务完成/,
+    /任务完成/,
     /全部完成/,
     /已全部完成/,
     /均已完成/,
     /(?:所有|全部)验收(?:标准|条件)(?:已|均已)?(?:满足|达到|完成)/,
     /(?:done|completed|finished|all done)\.?\s*$/i,
   ];
+
+  // 找到完成声明"最后一次"出现的结束位置（文中可能多次提及，以结尾处为准）
+  let lastMatchEnd = -1;
   for (const p of donePatterns) {
-    if (p.test(t)) return true;
+    const flags = p.flags.includes('g') ? p.flags : p.flags + 'g';
+    const gp = new RegExp(p.source, flags);
+    let m: RegExpExecArray | null;
+    while ((m = gp.exec(t)) !== null) {
+      const end = m.index + m[0].length;
+      if (end > lastMatchEnd) lastMatchEnd = end;
+      if (m.index === gp.lastIndex) gp.lastIndex++;
+    }
   }
-  // 反问/请示（这些不是完成，是停下来等用户）
+  if (lastMatchEnd < 0) return false;
+
+  // ── 要求 1：声明必须出现在文本结尾（最后 200 字符内，或落在最后一段里）──
+  const paras = t.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  const lastPara = paras.length > 0 ? paras[paras.length - 1] : '';
+  const lastParaStart = lastPara ? t.lastIndexOf(lastPara) : -1;
+  const inLast200 = t.length - lastMatchEnd <= 200;
+  const inLastPara = lastParaStart >= 0 && lastMatchEnd >= lastParaStart && lastMatchEnd <= lastParaStart + lastPara.length;
+  if (!inLast200 && !inLastPara) return false;
+
+  // ── 要求 2：声明之后不得有继续意图（否则是进度汇报，不是完成声明）──
+  const after = t.slice(lastMatchEnd);
+  const continueIntent = /(接下来|下一步|现在(?:开始|去|执行|做|进行|继续|处理)|然后(?:继续|再|开始)|稍后|待会|回头|后续(?:还|我|会)|我将|我会|我准备|我打算|还需要|还需|继续(?:做|执行|推进|完成|处理)|还要(?:做|继续)|开始(?:执行|做|处理)|马上(?:开始|执行)|立刻(?:开始|执行))/;
+  if (continueIntent.test(after)) return false;
+
+  // ── 要求 3：反问/请示（这些不是完成，是停下来等用户）──
   const askingPatterns = [
     /(需要我|要我|是否需要|要不要)(继续|接着|下一步)/,
     /(还需要|还需要做什么|还有什么需要)/,
@@ -203,7 +239,7 @@ function isCompletionSignal(content: string): boolean {
   for (const p of askingPatterns) {
     if (p.test(t)) return false;
   }
-  return false;
+  return true;
 }
 
 /**
@@ -355,7 +391,11 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
-  const MAX_IDLE_ROUNDS = 3;
+  // v2.1 放宽空闲容忍：任务模式下默认 3 → 6（env MAX_IDLE_ROUNDS 可覆盖），配合降低提醒频率，
+  // 避免长任务中 AI 短暂思考停顿就被强停
+  const MAX_IDLE_ROUNDS = requireCompletion
+    ? Math.max(3, parseInt(process.env.MAX_IDLE_ROUNDS || '6', 10))
+    : 3;
   let idleRounds = 0;
 
   const availableTools = buildToolsForAgent(registry, agentId);
@@ -366,7 +406,56 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     if (signal?.aborted) {
       result.aborted = true;
+      result.stopReason = 'aborted';
       break;
+    }
+
+    // ⭐ v2.1 上下文滑窗：循环内上下文逼近上限时，用摘要模型压缩早期工具结果，
+    // 防长任务爆上下文（每 3 轮检查一次，减少开销；失败不阻塞主流程）
+    if (i > 0 && i % 3 === 0) {
+      try {
+        const estTokens = estimateMessagesTokens(result.messages);
+        const CONTEXT_TOKEN_LIMIT = parseInt(process.env.EXECUTOR_CONTEXT_MAX_TOKENS || '40000', 10);
+        if (estTokens > CONTEXT_TOKEN_LIMIT) {
+          const KEEP_RECENT_TOOLS = 6; // 最近 6 条工具结果保持原样
+          const toolIdxs: number[] = [];
+          result.messages.forEach((m, idx) => { if (m.role === 'tool') toolIdxs.push(idx); });
+          const compressible = toolIdxs
+            .slice(0, Math.max(0, toolIdxs.length - KEEP_RECENT_TOOLS))
+            .filter(idx => {
+              const c = result.messages[idx].content || '';
+              return c.length > 800 && !c.startsWith('[已压缩]');
+            })
+            .slice(0, 6); // 单次最多压 6 条，摊薄延迟
+          for (const idx of compressible) {
+            const m = result.messages[idx];
+            const rawContent = m.content || '';
+            try {
+              const resp = await client.chat.completions.create({
+                model: options.summaryModel || model,
+                messages: [{
+                  role: 'user',
+                  content: `请把以下工具执行结果压缩成简洁摘要，保留关键数据、路径、结论与错误信息。限 300 字以内。\n\n工具: ${m.name || ''}\n结果:\n${rawContent.slice(0, 6000)}`,
+                }],
+                temperature: 0.2,
+                max_tokens: 500,
+              }, signal ? { signal } : undefined) as OpenAIChatResponse;
+              const summarized = resp.choices[0]?.message?.content || rawContent.slice(0, 400);
+              if (resp.usage) {
+                UsageTracker.record({ model, promptTokens: resp.usage.prompt_tokens, completionTokens: resp.usage.completion_tokens, type: 'summary' });
+              }
+              m.content = `[已压缩] ${summarized}`;
+            } catch {
+              m.content = `[已压缩] ${rawContent.slice(0, 400)}...[截断]`;
+            }
+          }
+          if (compressible.length > 0) {
+            console.log(`[Executor] 上下文滑窗: 估算 ${estTokens} tokens > ${CONTEXT_TOKEN_LIMIT}，已压缩 ${compressible.length} 条早期工具结果`);
+          }
+        }
+      } catch (e: unknown) {
+        console.warn('[Executor] 上下文滑窗压缩失败(非致命):', (e as Error)?.message || e);
+      }
     }
 
     // 调用 AI
@@ -390,6 +479,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
       if (result.consecutiveErrors >= 5) {
         result.finalContent = `AI 调用连续失败 5 次: ${errMsg}。请检查 API Key 和网络连接。`;
+        result.stopReason = 'ai_errors';
         break;
       }
       const errMsg2: ChatMessage = {
@@ -485,15 +575,23 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // 这是解决"干一点就停"的核心：不能把"AI 这轮没调工具"当成"任务完成"。
       if (requireCompletion && !isCompletionSignal(textContent) && idleRounds < MAX_IDLE_ROUNDS) {
         idleRounds += 1;
-        const nudge = idleRounds === 1
-          ? "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。"
-          : `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请明确输出"任务完成"并说明已满足的条件；否则请继续调用工具推进剩余工作，不要停。`;
+        // v2.1 放宽空闲容忍：降低提醒频率——第 1/2 轮及偶数轮给完整提醒，其余轮次只给短促提示
+        let nudge: string;
+        if (idleRounds === 1) {
+          nudge = "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。";
+        } else if (idleRounds === 2 || idleRounds % 2 === 0) {
+          nudge = `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请在回复结尾明确输出"任务完成"并说明已满足的条件（声明之后不要再写"接下来/下一步"等后续计划）；否则请继续调用工具推进剩余工作，不要停。`;
+        } else {
+          nudge = "系统提示：继续执行任务剩余步骤，不要停。";
+        }
         result.messages.push({ role: "user", content: nudge } as ChatMessage);
         console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}），注入追问继续`);
         continue;
       }
 
       result.finalContent = textContent;
+      // v2.1: 区分"确认完成"与"提醒达上限后强停"（后者上层可触发断点续跑提示）
+      result.stopReason = (requireCompletion && !isCompletionSignal(textContent)) ? 'idle_stop' : 'completed';
       break;
     }
 
@@ -550,6 +648,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       if (consecutiveToolFailures >= FAIL_LIMIT) {
           console.warn(`[Executor] 工具连续失败 ${consecutiveToolFailures} 次，停止循环`);
           result.finalContent = `工具连续失败 ${consecutiveToolFailures} 次，已停止执行。最后错误: ${callResult.error || '未知'}。建议换一种方式或拆小任务重试。`;
+          result.stopReason = 'tool_failures';
           i = maxIterations; // 强制退出外层循环
           break; // 退出内层循环
         }
@@ -630,6 +729,11 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     }
   }
 
+  // v2.1: 未显式标记终止原因时补齐（超时 abort / 迭代上限耗尽）
+  if (!result.stopReason) {
+    result.stopReason = result.aborted ? 'aborted' : 'max_iterations';
+  }
+
   // 兜底
   if (!result.finalContent) {
     // 兜底：强制再调一次 AI（不带 tools），让它必须出文字回复
@@ -656,7 +760,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     // 最终兜底：仍为空时给有意义的文案（而非占位符），区分超时中断与空回复
     if (!result.finalContent) {
       result.finalContent = result.aborted
-        ? "任务执行超出时限被中断，已完成的工具结果已保留。建议把任务拆小一点再试。"
+        ? "任务执行超出时限被中断，已完成的进度保留在上下文中。可输入「继续」从断点恢复执行，或把任务拆小一点再试。"
         : "AI 本次未返回有效内容（可能是上下文过长或模型异常），请稍后重试或简化任务后再试。";
     }
   }

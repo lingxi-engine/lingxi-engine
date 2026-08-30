@@ -1,7 +1,7 @@
 import type { MessageRouter } from "./router.js";
 import type { WebSocket } from "ws";
 import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext } from "./chat-modes.js";
-import { Orchestrator, type TaskNode } from "./orchestrator.js";
+import { Orchestrator, ORCHESTRATOR_DEFAULT_TIMEOUT_MS, type TaskNode } from "./orchestrator.js";
 
 // === 长任务状态追踪（支持断点续做）===
 interface TaskPlan {
@@ -334,7 +334,7 @@ export function handleWSMessage(
               if (taskCtrl.signal.aborted) {
                 stepResult = "步骤被用户停止中断";
               } else if (abortedByTimeout || signal?.aborted) {
-                stepResult = "步骤执行超时（" + (task.timeout || 120000) + "ms）被中断";
+                stepResult = "步骤执行超时（" + (task.timeout || ORCHESTRATOR_DEFAULT_TIMEOUT_MS) + "ms）被中断";
               } else {
                 stepResult = "步骤执行失败：" + (stepErr.message || '未知错误');
               }
@@ -374,7 +374,7 @@ export function handleWSMessage(
               name: step.name,
               prompt: step.prompt,
               dependsOn: step.dependsOn || [],
-              timeout: (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '120', 10)) * 1000,
+              timeout: ORCHESTRATOR_DEFAULT_TIMEOUT_MS, // v2.1: 统一引用 orchestrator 导出的默认值，消除 120s/300s 分歧
             });
           }
 
