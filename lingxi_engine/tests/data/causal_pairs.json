@@ -1,19 +1,19 @@
-[
+﻿[
   {
     "ts": 1788209589.7393198,
-    "action": "echo 因果对账实验",
+    "action": "echo 鍥犳灉瀵硅处瀹為獙",
     "prediction": {
       "ok": true,
       "exit_code": 0,
-      "stdout_hint": "参数文本",
+      "stdout_hint": "鍙傛暟鏂囨湰",
       "stderr_hint": "",
-      "reasoning": "echo 类命令通常 成功",
+      "reasoning": "echo 绫诲懡浠ら€氬父 鎴愬姛",
       "predictor": "heuristic"
     },
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "因果对账实验",
+      "stdout": "鍥犳灉瀵硅处瀹為獙",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -26,9 +26,9 @@
     "prediction": {
       "ok": true,
       "exit_code": 0,
-      "stdout_hint": "目录项",
+      "stdout_hint": "鐩綍椤?,
       "stderr_hint": "",
-      "reasoning": "dir 类命令通常 成功",
+      "reasoning": "dir 绫诲懡浠ら€氬父 鎴愬姛",
       "predictor": "heuristic"
     },
     "actual": {
@@ -47,15 +47,15 @@
     "prediction": {
       "ok": true,
       "exit_code": 0,
-      "stdout_hint": "路径",
+      "stdout_hint": "璺緞",
       "stderr_hint": "",
-      "reasoning": "pwd 类命令通常 成功",
+      "reasoning": "pwd 绫诲懡浠ら€氬父 鎴愬姛",
       "predictor": "heuristic"
     },
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\release\\lingxi_engine\\tests",
+      "stdout": "C:\\Users\\dev\\lingxi\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },

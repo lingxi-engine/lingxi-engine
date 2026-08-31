@@ -733,5 +733,215 @@
         "rejected": 0
       }
     }
+  },
+  {
+    "ts": 1788209532.1237605,
+    "topic": "世界模型因果对账机制",
+    "motions": [
+      "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+      "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+      "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制"
+    ],
+    "debate_rounds": 3,
+    "vote": {
+      "motions": [
+        {
+          "motion": "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        },
+        {
+          "motion": "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        },
+        {
+          "motion": "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        }
+      ],
+      "summary": {
+        "motions": 3,
+        "passed": 3,
+        "rejected": 0
+      }
+    },
+    "resolution": {
+      "topic": "世界模型因果对账机制",
+      "decision": "通过",
+      "passed_motions": [
+        "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+        "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+        "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制"
+      ],
+      "vote_summary": {
+        "motions": 3,
+        "passed": 3,
+        "rejected": 0
+      }
+    }
+  },
+  {
+    "ts": 1788209589.7453618,
+    "topic": "世界模型因果对账机制",
+    "motions": [
+      "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+      "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+      "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制"
+    ],
+    "debate_rounds": 3,
+    "vote": {
+      "motions": [
+        {
+          "motion": "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        },
+        {
+          "motion": "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        },
+        {
+          "motion": "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制",
+          "votes": [
+            {
+              "member": "模型A",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型B",
+              "stance": "支持",
+              "reason": "支持"
+            },
+            {
+              "member": "模型C",
+              "stance": "反对",
+              "reason": "反对"
+            }
+          ],
+          "yea": 2,
+          "nay": 1,
+          "abstain": 0,
+          "passed": true
+        }
+      ],
+      "summary": {
+        "motions": 3,
+        "passed": 3,
+        "rejected": 0
+      }
+    },
+    "resolution": {
+      "topic": "世界模型因果对账机制",
+      "decision": "通过",
+      "passed_motions": [
+        "议题「世界模型因果对账机制」应作为阶段4优先落地方向",
+        "议题「世界模型因果对账机制」需要先做小规模验证再全面推行",
+        "议题「世界模型因果对账机制」应纳入引擎自我进化的长期机制"
+      ],
+      "vote_summary": {
+        "motions": 3,
+        "passed": 3,
+        "rejected": 0
+      }
+    }
   }
 ]
