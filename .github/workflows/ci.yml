@@ -9,7 +9,7 @@ on:
 
 jobs:
   python-engine:
-    name: Python 子引擎回�?(8套件/152断言)
+    name: Python 子引擎回归 (8套件/152断言)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +27,7 @@ jobs:
           grep -q "ALL_OK=True" run_all_result.txt || (echo "回归失败" && exit 1)
 
   ts-engine:
-    name: TS 主引�?(类型检�?+ 核心测试)
+    name: TS 主引擎 (类型检查 + 核心测试)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,23 +36,26 @@ jobs:
           node-version: '20'
       - name: 安装依赖
         run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-      - name: TypeScript 类型检�?        # 2026-08-29 修复：移�?continue-on-error �?head 管道（管道会吞掉 tsc 退出码），
+      - name: TypeScript 类型检查
+        # 2026-08-29 修复：移除 continue-on-error 和 head 管道（管道会吞掉 tsc 退出码），
         # 类型错误现在会真正让 CI 失败
         run: npx tsc --noEmit --skipLibCheck
       - name: 故障转移单元测试
         run: npx tsx tests/verify-failover.ts
 
   cleanup-check:
-    name: 工作区卫生检�?    runs-on: ubuntu-latest
+    name: 工作区卫生检查
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: 统计垃圾文件
         run: |
           BAK=$(find . -path ./node_modules -prune -o \( -name '*.bak' -o -name '*.~1~' -o -name '*.bak-*' -o -name '*.pre-*' \) -print | wc -l)
-          echo "垃圾文件�? $BAK"
+          echo "垃圾文件数: $BAK"
           echo "JUNK_COUNT=$BAK" >> $GITHUB_ENV
       - name: 超过 100 个即告警
         run: |
-          # 2026-08-29 修复：原变量名含中文，GitHub Actions 环境变量只认 ASCII，引用永远为�?          if [ "${{ env.JUNK_COUNT }}" -gt 100 ]; then
-            echo "::warning::工作区垃圾文件过�?(${{ env.JUNK_COUNT }} �?，建议清�?
+          # 2026-08-29 修复：原变量名含中文，GitHub Actions 环境变量只认 ASCII，引用永远为空
+          if [ "${{ env.JUNK_COUNT }}" -gt 100 ]; then
+            echo "::warning::工作区垃圾文件过多 (${{ env.JUNK_COUNT }} 个)，建议清理"
           fi
