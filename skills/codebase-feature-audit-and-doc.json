@@ -1,0 +1,14 @@
+{
+  "name": "codebase-feature-audit-and-doc",
+  "displayName": "代码库功能审计与文档生成",
+  "description": "排查代码库中特定功能的实现情况，验证当前状态，并生成总结文档。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当需要验证代码库中某些功能是否实现、如何实现，并生成相关文档时使用此技能。\n1. **代码排查**：使用 `list_dir` 和 `read_file` 了解项目结构，使用 `shell_exec` (如 grep/find) 搜索相关功能代码和配置。\n2. **状态验证**：根据代码实际情况确认功能状态（已实现/未实现/部分实现/有条件限制），不要凭空猜测。\n3. **生成文档**：使用 `write_file` 将验证结果和功能说明整理成结构化的 Markdown 文档，保存到用户指定位置（如工作区或特定盘符）。\n4. **回答用户**：基于代码证据回答，清晰列出功能状态、实现细节和配置方法，使用表格或列表提高可读性。",
+  "autoCreated": true,
+  "createdAt": 1786906874123
+}

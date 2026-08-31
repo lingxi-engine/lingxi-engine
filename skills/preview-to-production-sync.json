@@ -1,0 +1,14 @@
+{
+  "name": "preview-to-production-sync",
+  "displayName": "预览版同步到正式版",
+  "description": "将设计预览版中的改动（样式/CSS变量/HTML结构）同步到正式版前端，并备份。",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec",
+    "list_dir"
+  ],
+  "prompt": "当用户要求把预览版（如 web/design-preview.html）的视觉效果同步到正式版时，按以下步骤：1. 先读取预览版和正式版相关文件，提取具体改动（CSS 变量、keyframes、HTML 结构、图标 SVG 等）。2. 对比正式版，列出差异和风险点（如变量缺失、独立样式污染、i18n 属性需要保留）。3. 修改正式版文件（style.css、index.html 等），同步 CSS 变量和组件样式，替换旧结构，保持 i18n 等属性不变。4. 修改后用脚本验证：无重复 keyframes、花括号配对、关键变量和高度已更新。5. 全部完成后把项目源代码备份到用户指定的目录（如 E 盘），并汇报改动和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1785616645657
+}

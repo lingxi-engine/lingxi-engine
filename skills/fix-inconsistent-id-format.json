@@ -1,0 +1,13 @@
+{
+  "name": "fix-inconsistent-id-format",
+  "displayName": "修复ID格式不一致",
+  "description": "当系统不同模块使用不同ID格式（如前缀/无前缀）时，统一ID生成、存储和查询逻辑",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "用户反馈ID格式不一致问题（如一个系统用'user-10001'，另一个用'10001'）。需要：1) 查找所有ID生成位置（搜索'nextNumericId'、'AUTOINCREMENT'、'id ='等）；2) 确定统一的ID格式（通常去掉前缀）；3) 修改ID生成代码；4) 更新搜索/查询接口以支持新格式；5) 检查并更新所有硬编码前缀；6) 验证注册、加好友、建群等流程可用。使用read_file读取关键文件，write_file修改，shell_exec运行测试或搜索。",
+  "autoCreated": true,
+  "createdAt": 1784990177260
+}

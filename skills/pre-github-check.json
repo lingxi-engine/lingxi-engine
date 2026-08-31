@@ -1,0 +1,13 @@
+{
+  "name": "pre-github-check",
+  "displayName": "GitHub 上线前检查",
+  "description": "在项目准备推送 GitHub 前，自动执行结构、配置、测试与敏感信息等多步检查。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户表示要准备上传 GitHub、推送代码或上线前检查时：1) 用 list_dir 查看项目结构和关键文件；2) 读取 package.json、README.md、.gitignore、入口文件等核心配置；3) 用 shell_exec 运行测试、lint 或构建命令，确认无报错；4) 检查是否存在密钥、密码等敏感信息以及缺失的配置文件；5) 汇总问题并给出修复建议，确认无误后再指导用户提交和推送。",
+  "autoCreated": true,
+  "createdAt": 1787221657492
+}

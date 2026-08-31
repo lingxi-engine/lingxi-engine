@@ -1,0 +1,14 @@
+{
+  "name": "code-security-audit-fix",
+  "displayName": "代码安全审计与修复",
+  "description": "对代码库进行深度安全审计，修复发现的问题并验证编译与运行。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求对代码库进行安全审计、漏洞修复或验证时，按以下步骤进行：1. 用 list_dir 查看项目结构，识别核心文件（入口、路由、认证、存储等）。2. 用 read_file 读取关键文件，逐行分析安全漏洞（如未定义变量、权限缺失、注入风险等）。3. 汇总漏洞清单，按严重程度（P0/P1等）分类，输出审计报告。4. 若用户要求修复，用 write_file 逐个修复，并说明修改位置。5. 修复后用 read_file 验证源码，必要时用 shell_exec 运行 TypeScript 编译或测试，确保无错误。6. 若用户追问具体行为（如模型路由选择），可结合代码逻辑用 read_file 深入分析并解释。",
+  "autoCreated": true,
+  "createdAt": 1786903693747
+}

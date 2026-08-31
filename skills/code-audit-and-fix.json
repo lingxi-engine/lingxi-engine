@@ -1,0 +1,14 @@
+{
+  "name": "code-audit-and-fix",
+  "displayName": "代码审计与修复",
+  "description": "读取相关代码文件，生成审计报告，分批修复问题并验证结果。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到代码审计与修复任务时：1. 使用 list_dir 和 read_file 读取相关核心文件。2. 生成详细的审计报告，列出发现的问题。3. 如果用户要求修复，将修复任务拆解成多个小批次，逐个使用 write_file 和 shell_exec 进行修复，避免单次回复过长导致超时。4. 修复完成后，重新读取文件验证修复结果，并生成验证报告。",
+  "autoCreated": true,
+  "createdAt": 1786834324211
+}

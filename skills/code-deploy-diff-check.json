@@ -1,0 +1,13 @@
+{
+  "name": "code-deploy-diff-check",
+  "displayName": "代码部署差异检查",
+  "description": "对比本地与远程部署代码，检查git版本，分析部署问题原因",
+  "tools": [
+    "shell_exec",
+    "get_time",
+    "read_file"
+  ],
+  "prompt": "当遇到部署环境行为不一致或怀疑官网代码有误时，按以下步骤排查：1. 使用 get_time 记录操作时间。2. 使用 shell_exec 执行 git 命令查看当前分支、最新提交（git log）、以及本地与远程（origin）的版本差异，确认 git 中版本是否最新且正确。3. 使用 shell_exec 或 read_file 读取本地打包构建产物与线上部署文件的关键代码或配置文件，进行对比（可借助 diff 或 hash 校验）。4. 重点对比涉及问题行为（如新建会话、刷新后内容丢失）的相关模块，找出差异点，判断是代码版本错误、构建配置问题还是环境差异。5. 输出分析结论，指出差异位置和可能原因，并给出修正建议。",
+  "autoCreated": true,
+  "createdAt": 1787686434246
+}

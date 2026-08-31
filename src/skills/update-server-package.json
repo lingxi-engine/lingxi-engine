@@ -1,0 +1,11 @@
+{
+  "name": "update-server-package",
+  "displayName": "更新服务器部署包",
+  "description": "打包本地代码，通过 SCP 上传到服务器，更新符号链接并验证。",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "遇到需要更新服务器上的部署包时，按以下步骤操作：\n1. 在本地将目标代码目录打包为 tar.gz 文件（带版本号）。\n2. 使用 scp 命令将新包上传到服务器的指定公共目录。\n3. 通过 ssh 在服务器上更新符号链接，使其指向最新的 tar.gz 文件。\n4. 验证服务器上的文件大小和符号链接指向是否正确。",
+  "autoCreated": true,
+  "createdAt": 1784799673289
+}

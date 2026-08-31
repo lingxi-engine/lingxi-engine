@@ -1,0 +1,13 @@
+{
+  "name": "iterative-code-audit-and-fix",
+  "displayName": "多轮代码审查与安全修复",
+  "description": "对项目代码进行多轮深度安全审计，并按优先级逐步修复和验证漏洞。",
+  "tools": [
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到多轮代码审查和安全修复任务时，首先使用 read_file 扫描相关代码文件，生成包含漏洞优先级（P0/P1）的审计报告。然后根据用户指令（如“修复”、“继续修”），使用 write_file 和 shell_exec 逐步修复漏洞并验证。每次修复后提供清晰的表格总结，并在下一轮审查中确认之前的状态，保持上下文连贯。",
+  "autoCreated": true,
+  "createdAt": 1786822919398
+}

@@ -1,0 +1,12 @@
+{
+  "name": "import-files-to-workspace",
+  "displayName": "导入文件到工作区",
+  "description": "将指定外部路径的文件复制或移动到当前工作区",
+  "tools": [
+    "list_dir",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求将指定外部路径的文件导入到当前工作区时，首先使用 list_dir 查看源路径和当前工作区的文件结构。然后使用 shell_exec 执行复制或移动命令（如 cp -r 或 mv），将源路径下的所有文件和文件夹递归地转移到当前工作区。操作完成后，使用 list_dir 确认文件已成功导入。如果遇到权限问题或路径不存在，及时反馈给用户。",
+  "autoCreated": true,
+  "createdAt": 1784739553334
+}

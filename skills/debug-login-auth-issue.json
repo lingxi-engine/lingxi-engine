@@ -1,0 +1,14 @@
+{
+  "name": "debug-login-auth-issue",
+  "displayName": "排查登录认证问题",
+  "description": "当用户登录报错（如邮箱或密码错误）且用户确认密码正确时，从代码层面排查前端提交、后端查询和 token 验证链路。",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到登录认证报错（如邮箱/密码错误）且用户坚信密码正确时，按以下步骤排查：1. 先定位前端登录表单提交逻辑，检查是否把用户名当成邮箱字段发送，或隐藏了邮箱输入框但仍用邮箱参数提交；2. 检查后端登录接口，确认是否支持用户名/邮箱/手机号登录，数据库层是否有对应的查询函数（如 getUserByDisplayName）；3. 检查登录成功后的 token 验证路径，确认前端 checkAuthStatus 请求的 endpoint 与后端签发 token 的平台是否一致；4. 修复前先读相关文件确认结构，修改后验证。常见根因：前端提交字段名错误、后端缺少按用户名的查询、token 验证 endpoint 不匹配。",
+  "autoCreated": true,
+  "createdAt": 1787777290063
+}

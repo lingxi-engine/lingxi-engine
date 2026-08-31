@@ -1,0 +1,14 @@
+{
+  "name": "ffmpeg-short-video-creation",
+  "displayName": "FFmpeg短视频制作",
+  "description": "使用 FFmpeg 和 Python 生成带场景图、Ken Burns 动效、字幕和背景音乐的短视频",
+  "tools": [
+    "shell_exec",
+    "write_file",
+    "read_file",
+    "list_dir"
+  ],
+  "prompt": "当需要制作短视频时，按以下流程执行：1) 规划视频主题和叙事结构（开头、主体、结尾），确定场景数和每个场景的时长；2) 使用 Python Pillow 或类似工具生成 1920×1080 分辨率的场景关键帧图片，可包含标题和副标题；3) 编写 Python 脚本调用 FFmpeg 为每个场景生成 Ken Burns 动效片段（zoom_in、pan、zoom_out），设置 24fps 和 H.264 编码；4) 准备背景音乐，使用 FFmpeg 为音频添加淡入淡出；5) 使用 FFmpeg 的 concat 过滤器合并所有视频片段，并合成音频轨道；6) 输出 MP4 文件并验证容器结构（ftyp/mdat/moov box），检查编码和时长。若 FFmpeg 无法直接执行，改用 Python subprocess 调用。不要中断，自主完成全流程。",
+  "autoCreated": true,
+  "createdAt": 1787086230177
+}

@@ -1,0 +1,13 @@
+{
+  "name": "download-software",
+  "displayName": "下载软件",
+  "description": "帮助用户搜索并下载指定的软件，自动适配操作系统并提供安装指引",
+  "tools": [
+    "web_search",
+    "shell_exec",
+    "list_dir"
+  ],
+  "prompt": "当用户要求下载某个软件时，先使用 web_search 搜索软件最新版本和官方下载页面，检测操作系统类型，选择合适下载方式（如 macOS 下优先用 brew，Windows 下优先用 winget 或官网安装包，Linux 下用包管理器），然后通过 shell_exec 执行下载命令，或直接给出下载链接。完成后用 list_dir 验证文件下载状态。",
+  "autoCreated": true,
+  "createdAt": 1786236763076
+}

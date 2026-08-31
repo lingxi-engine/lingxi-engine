@@ -1,0 +1,14 @@
+{
+  "name": "codebase-security-audit-and-fix",
+  "displayName": "代码库安全审计与修复",
+  "description": "对项目代码进行深度安全扫描，识别漏洞并协助修复、验证。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求审查代码、挖掘漏洞或修复安全问题时，执行以下流程：\n1. 列出项目结构，确定核心文件范围。\n2. 逐文件读取关键代码，重点检查认证、授权、输入校验、SQL/命令注入、敏感数据、并发与超时控制等风险点。\n3. 按 P0/P1/P2 分级输出漏洞报告，包含位置、风险、复现路径和修复建议。\n4. 用户确认后，使用 write_file 或 apply_diff 修改代码，优先最小化改动并保留类型安全。\n5. 用 shell_exec 运行项目自身的 tsc/test 命令验证修复，不要直接用 --noEmit 单文件编译。\n6. 修复完成后给出验证结果和变更摘要；若验证失败，回滚或继续排查，不要标记为完成。",
+  "autoCreated": true,
+  "createdAt": 1786913554481
+}

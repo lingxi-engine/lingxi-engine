@@ -1,0 +1,13 @@
+{
+  "name": "app-feature-review-fix",
+  "displayName": "应用功能检查与修复",
+  "description": "对应用进行功能检查、问题定位、修复和验证的多步操作",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求检查或修复某个应用功能时，按以下步骤执行：\n1. 先用 list_dir 了解项目结构，定位相关模块代码。\n2. 用 shell_exec（如 grep、find）搜索关键词，找出前后端相关实现。\n3. 阅读核心代码，梳理功能逻辑，检查前后端接线是否完整。\n4. 若发现问题（死代码、缺失路由、逻辑错误、脏数据等），用 write_file 修复，必要时清理数据。\n5. 修复后运行测试或手动验证，确保功能正常。\n6. 向用户清晰总结修改内容和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1787071302950
+}

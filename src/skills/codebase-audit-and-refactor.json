@@ -1,0 +1,14 @@
+{
+  "name": "codebase-audit-and-refactor",
+  "displayName": "代码库审计与重构",
+  "description": "对指定代码库进行Bug查找、屎山检测、批量修复及安全重构",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到代码库审计或重构任务时，按以下步骤执行：\n1. 用 list_dir 遍历项目结构，识别核心源码目录和入口文件\n2. 用 read_file 逐个通读核心源码，重点关注：异步调用错误、类型不匹配、安全漏洞、巨型文件（God File）、重复代码\n3. 产出分级Bug审计报告（P0严重→P2轻微）和屎山审计报告，标注文件路径和行号\n4. 修复时用 write_file 逐文件修改，大文件（>100KB）拆分为多个补丁说明文档避免截断\n5. 重构时确保功能不变，优先拆分God File、消除重复、补全类型，每次改动后用 shell_exec 运行测试或类型检查验证\n6. 全程保持谨慎，宁可慢也要准确，每步改动记录变更日志",
+  "autoCreated": true,
+  "createdAt": 1784741307461
+}

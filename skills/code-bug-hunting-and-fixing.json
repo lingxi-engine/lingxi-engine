@@ -1,0 +1,16 @@
+{
+  "name": "code-bug-hunting-and-fixing",
+  "displayName": "代码问题排查与修复",
+  "description": "当用户报告代码功能异常或bug时，系统地搜索定位根因并完成修复",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "web_search",
+    "write_file",
+    "get_time"
+  ],
+  "prompt": "当用户反馈代码问题或功能异常时，按以下流程处理：\n1. 先理解用户描述的现象，必要时用 web_search 搜索相关已知问题或错误信息。\n2. 使用 list_dir 和 read_file 浏览项目结构，定位到相关功能的前端、后端、数据库层代码。\n3. 用 shell_exec 执行 grep 或运行测试，辅助查找关键逻辑和复现条件。\n4. 分析根因，区分多个叠加 bug，逐项修复。修改前先读取目标文件，用 write_file 落盘修改。\n5. 修复后检查所有改动点，确保前后端一致、类型匹配、逻辑闭环。\n6. 汇总输出：按 Bug 清单列出根因、修改的文件和状态。如果涉及 UI 优化或新功能，在修复后一并确认需求再实施。",
+  "autoCreated": true,
+  "createdAt": 1787778688942
+}

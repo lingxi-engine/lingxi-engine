@@ -1,0 +1,15 @@
+{
+  "name": "code-review-and-security-fix",
+  "displayName": "代码审查与安全修复",
+  "description": "对指定项目进行代码审查、漏洞修复和死代码清理，包含备份、补丁应用和验证流程。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec",
+    "web_search"
+  ],
+  "prompt": "遇到代码审查或漏洞修复任务时，按以下步骤执行：\n1. 备份：在修改前，将涉及到的文件备份到专门的备份目录。\n2. 侦察：使用 read_file 和 list_dir 读取相关代码，定位问题。\n3. 修复：编写修复脚本或使用 write_file。注意处理 CRLF/LF 换行符差异，避免精确匹配失败。如果遇到不确定的逻辑实现，使用 web_search 查询参考实现或阅读完整调用链。\n4. 验证：执行 shell_exec 运行类型检查或测试，对比修改前后的错误数量，确保未引入新错误。\n5. 总结：输出修复完成总结，列出修复的漏洞、文件和状态。",
+  "autoCreated": true,
+  "createdAt": 1786986794234
+}

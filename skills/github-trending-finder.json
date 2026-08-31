@@ -1,0 +1,13 @@
+{
+  "name": "github-trending-finder",
+  "displayName": "GitHub热门项目查询",
+  "description": "帮助用户查找GitHub上近期的热门开源项目，提供项目列表和简介",
+  "tools": [
+    "web_search",
+    "shell_exec",
+    "get_time"
+  ],
+  "prompt": "当用户询问GitHub近期热门项目时，按照以下策略执行：\n1. 使用web_search搜索“GitHub trending repositories today”或“GitHub 热门项目 2025”等关键词，优先使用英文搜索。\n2. 如果搜索结果不理想（如只返回官网入口），尝试更精准的关键词如“GitHub daily trending repositories list”或“top GitHub projects this week”。\n3. 可选：使用shell_exec执行简单的curl命令获取GitHub API（如https://api.github.com/search/repositories?q=stars:>1000&sort=stars&order=desc），注意检查沙箱限制。\n4. 如果仍然失败，向用户说明搜索工具的限制，并建议用户直接访问https://github.com/trending 查看最新热门项目。\n5. 返回结果时给出项目名称、简短描述和对应链接（如有）。",
+  "autoCreated": true,
+  "createdAt": 1784221750269
+}

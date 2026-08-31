@@ -1,0 +1,14 @@
+{
+  "name": "ollama-connection-diagnosis",
+  "displayName": "Ollama 本地模型连接诊断",
+  "description": "诊断 AI 应用连接本地 Ollama 模型失败的问题，包括检查模型是否存在、配置是否正确、API 端点是否可达等。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "curl"
+  ],
+  "prompt": "当用户报告无法连接本地 Ollama 模型时，按以下步骤诊断：\n1. 检查 Ollama 服务是否运行：执行 `curl http://localhost:11434/api/tags` 或类似命令，确认响应是否正常。\n2. 列出本地已有模型：运行 `ollama list` 或调用 API 获取模型列表。\n3. 检查应用配置文件（如 .env、config.yaml 等），确认 `DEFAULT_MODEL`, `TOOL_MODEL` 等参数是否与实际存在的模型名称一致。\n4. 如果配置中指定了不存在的模型，提示用户修改配置或改为使用自动检测到的模型。\n5. 若应用代码中存在配置优先级覆盖自动检测的逻辑，需引导用户检查代码或修改配置。\n6. 确认 API 端点 URL 是否正确（如 http://localhost:11434/v1/chat/completions）以及模型名称格式是否匹配。\n7. 最后汇总问题根因和解决建议，并确保用户理解修改方式。",
+  "autoCreated": true,
+  "createdAt": 1784993475389
+}

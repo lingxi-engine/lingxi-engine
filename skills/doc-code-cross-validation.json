@@ -1,0 +1,13 @@
+{
+  "name": "doc-code-cross-validation",
+  "displayName": "文档与代码交叉验证分析",
+  "description": "分析指定文档并与实际代码进行交叉验证，提出文档修改、完善或代码修复的建议。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "当用户要求分析某个文档并与代码进行对比验证时，首先使用 list_dir 和 shell_exec (如 find) 在用户指定位置（如桌面）找到目标文档。然后使用 read_file 读取文档内容。接着根据文档中提到的模块或功能，在代码库中定位并读取相关代码文件。对比文档描述与实际代码实现，指出不一致或缺失的地方，并给出具体的修改、完善或添加建议。",
+  "autoCreated": true,
+  "createdAt": 1786268687804
+}

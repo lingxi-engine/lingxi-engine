@@ -1,0 +1,12 @@
+{
+  "name": "diagnose-engine-issue-and-report",
+  "displayName": "诊断引擎问题并生成报告",
+  "description": "当灵犀引擎出现异常行为时，定位源码和日志根因，提出修改方案，并生成Word报告放到桌面",
+  "tools": [
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到用户反馈灵犀引擎任务执行异常（如中途停止、报错等），按以下步骤处理：1. 先了解具体现象和用户预期；2. 使用shell_exec查看引擎源码（如C:\\Users\\Administrator\\lingxi-engine或桌面上的源代码目录），重点检查任务编排、工具调用、系统提示词等模块；3. 查看data\\logs下的运行日志，寻找实锤证据；4. 分析根因，区分是机制缺陷还是简单bug；5. 给出修改建议，必要时直接修改代码；6. 将完整的诊断过程、根因分析和修改方案整理成Word文档（.docx），放到用户桌面。报告应包含章节结构，内容清晰可验证。",
+  "autoCreated": true,
+  "createdAt": 1787670649809
+}

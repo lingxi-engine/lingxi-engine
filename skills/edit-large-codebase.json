@@ -1,0 +1,13 @@
+{
+  "name": "edit-large-codebase",
+  "displayName": "大型代码库局部修改",
+  "description": "在大型代码库中查找并修改特定代码时，避免全量读写大文件导致超时，采用局部搜索和替换策略。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当需要在大型代码库中修改特定代码或配置时，避免使用 read_file 读取整个大文件再用 write_file 写回，这极易导致超时。应优先使用 shell_exec (如 grep -rn) 定位目标代码所在的文件和行号。如果文件很大，优先使用 shell_exec (如 sed -i) 进行局部替换，或者只读取目标行附近的小范围内容进行修改。确保每次工具调用的数据量尽可能小，避免触发平台的超时限制。",
+  "autoCreated": true,
+  "createdAt": 1786910089260
+}

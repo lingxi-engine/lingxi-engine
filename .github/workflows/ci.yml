@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+    branches: [main, master, dev]
+  workflow_dispatch:
+
+jobs:
+  python-engine:
+    name: Python engine regression (152 assertions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Run full regression
+        working-directory: lingxi_engine/tests
+        run: |
+          python run_all.py
+          cat run_all_result.txt
+      - name: Assert ALL_OK
+        working-directory: lingxi_engine/tests
+        run: grep -q "ALL_OK=True" run_all_result.txt || (echo "regression failed" && exit 1)
+
+  ts-engine:
+    name: TS engine (type check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: TypeScript type check
+        run: npx tsc --noEmit --skipLibCheck 2>&1 | head -50
+        continue-on-error: true
+
+  hygiene-check:
+    name: Workspace hygiene check
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Count junk files and warn
+        run: |
+          BAK=$(find . -path ./node_modules -prune -o \( -name '*.bak' -o -name '*.~1~' -o -name '*.bak-*' -o -name '*.pre-*' \) -print | wc -l)
+          echo "junk files: $BAK"
+          if [ "$BAK" -gt 100 ]; then
+            echo "::warning::too many junk files ($BAK), consider cleanup"
+          fi

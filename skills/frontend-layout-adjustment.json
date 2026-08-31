@@ -1,0 +1,12 @@
+{
+  "name": "frontend-layout-adjustment",
+  "displayName": "前端布局调整",
+  "description": "当用户要求修改前端界面布局（如移动菜单、图标改文字、左右分区等）时，按规范分析现有代码并实施修改，最后打开页面验证。",
+  "tools": [
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求调整前端布局时，按以下步骤执行：\n1. 先定位前端入口文件（通常是 web/index.html 或 src/App.vue 等），用 shell_exec 搜索关键布局节点（如 sidebar、toolbar、nav、main 区域）。\n2. 分析当前布局结构和样式，理解用户需求（如减少图标多用名字、哪些功能放左边/右边、日志如何展示）。\n3. 修改 HTML 结构和对应 CSS：将用户指定的功能模块移动到目标位置，图标改为文字标签，确保响应式布局不破坏。\n4. 修改后使用 write_file 保存文件。\n5. 最后用 shell_exec 启动或刷新开发服务器（如 localhost:3000），并尝试用 curl 或浏览器工具验证页面可访问，必要时再次检查渲染结果。\n6. 向用户报告具体改动位置和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1785609141714
+}

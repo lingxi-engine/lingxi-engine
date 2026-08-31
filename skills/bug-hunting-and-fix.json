@@ -1,0 +1,14 @@
+{
+  "name": "bug-hunting-and-fix",
+  "displayName": "Bug 排查与修复",
+  "description": "用于系统性检查、定位和修复代码/系统中的 bug，支持多轮验证和根因分析。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当遇到 bug 检查或修复任务时，按以下步骤进行：1. 先明确问题现象和涉及模块。2. 使用 list_dir 和 read_file 阅读相关代码链路，覆盖路由、处理器、依赖配置等。3. 使用 shell_exec 进行实际运行测试，验证功能是否正常，注意区分本地/云端环境差异。4. 如果问题未复现或结果不一致，标记可疑点，深入检查配置（如 .env、providers.json）和调用链。5. 对于确认的 bug，按严重程度分类（崩溃级、功能级、轻微级），逐一修复。6. 修改后必须重新测试验证，确保修复无回归。7. 最终输出结构化报告，包含每个 bug 的现象、根因、修复和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1785924132782
+}

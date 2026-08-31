@@ -1,0 +1,380 @@
+[
+  {
+    "ts": 1787656629.509105,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656629.5092058,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nrun_all_result.txt\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656629.509217,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656901.3128657,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656901.3129675,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nrun_all_result.txt\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656901.312979,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656906.0466676,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656906.0467706,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787656906.0467827,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787658193.1838026,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787658193.1839006,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nrun_all_result.txt\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787658193.1839132,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137544.5638223,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137544.5639274,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nrun_all_result.txt\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137544.5639384,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137603.4635742,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137603.4636745,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "FINAL_FIX_REPORT_20260824.md\nFIX_VERIFICATION_20260824.md\ndata\nrun_all.py\nrun_all_result.txt\nstage4_e2e.py\nstage4_e2e_result.txt\nverify_config_switches.py\nverify_config_wiring.py\nverify_memory_distill.py\nverify_metacognition.py\nverify_roles_divergence.py\nverify_sandbox_modes.py\nverify_selfplay.py\nverify_stage1_loop.py\nverify_stage3_sandbox.py\nverify_stage4.py\nverify_stage4_result.txt\nverify_stage5_swarm.py",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137603.463686,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  }
+]
