@@ -1,0 +1,13 @@
+{
+  "name": "code-patching-with-line-endings",
+  "displayName": "代码补丁与换行符处理",
+  "description": "在修改代码文件时，先检查并统一换行符（CRLF/LF），避免精确匹配失败。",
+  "tools": [
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当需要修改或打补丁到代码文件时，如果遇到精确匹配失败的情况，首先检查文件的换行符是 CRLF (\\r\\n) 还是 LF (\\n)。在执行替换或写入前，先将匹配字符串的换行符与目标文件保持一致，或者先将文件统一转换为 LF 再进行修改。修改前务必做好备份。",
+  "autoCreated": true,
+  "createdAt": 1786985890640
+}

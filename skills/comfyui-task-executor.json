@@ -1,0 +1,14 @@
+{
+  "name": "comfyui-task-executor",
+  "displayName": "ComfyUI 本地生成任务执行",
+  "description": "在本地 Windows 环境启动/检查 ComfyUI，验证模型与资源，提交生成工作流并等待结果，必要时用 ffmpeg 做后处理。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到需要在本地 ComfyUI 上执行图像/视频生成任务时，按以下步骤操作：\n1. 环境检查：确认 ComfyUI 是否运行（如 http://127.0.0.1:8188），若未运行则通过 shell_exec 启动；用 nvidia-smi 确认 GPU 可用。\n2. 资源盘点：用 list_dir 检查所需模型文件（如 SD1.5、Wan2.1 等）是否就位，缺少则先处理。\n3. 构造工作流：根据目标任务选择合适的模型和 workflow JSON，通过 HTTP POST /prompt 提交，记录返回的 prompt_id。\n4. 轮询结果：用 /history/{prompt_id} 查询执行状态，超时或卡住时检查 ComfyUI 日志、队列状态和 GPU 占用，必要时重新提交或简化参数。\n5. 后处理：如需用 ffmpeg 处理生成结果，使用 Python subprocess 调用 ffmpeg/ffprobe（避免 Node spawn 导致 EFTYPE），并确保输出路径正确。\n6. 完成后汇报结果与任何遗留问题。",
+  "autoCreated": true,
+  "createdAt": 1787084932556
+}

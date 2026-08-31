@@ -1,0 +1,13 @@
+{
+  "name": "check-missing-frontend-feature",
+  "displayName": "前端功能遗漏排查",
+  "description": "根据文档或后端代码描述的功能，排查前端代码是否遗漏了对应实现。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到需要排查前端是否遗漏某功能时：\n1. 先查阅相关文档或后端代码，确认该功能的预期行为和入口。\n2. 使用 list_dir 和 read_file 在前端代码目录中搜索相关功能的关键词（如创建群聊、特定模式名称等）。\n3. 如果前端代码中找不到对应实现，对比文档/后端逻辑，明确指出前端遗漏的部分。\n4. 给出结论：前端是否遗漏，遗漏的具体位置和功能点。",
+  "autoCreated": true,
+  "createdAt": 1787140714982
+}

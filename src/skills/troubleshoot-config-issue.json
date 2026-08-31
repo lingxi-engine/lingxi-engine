@@ -1,0 +1,13 @@
+{
+  "name": "troubleshoot-config-issue",
+  "displayName": "排查配置问题",
+  "description": "通过查找和读取配置文件，定位系统配置不一致或错误的原因。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到排查配置问题或环境配置不一致的任务时，不要瞎猜。首先使用 list_dir 查找可能的配置文件目录，使用 read_file 读取相关配置文件内容，必要时使用 shell_exec 执行命令（如 grep、env 等）查找特定配置项。根据实际查到的配置内容，分析并给出准确的排查结论。如果找不到相关配置，直接说明不知道。",
+  "autoCreated": true,
+  "createdAt": 1784037683970
+}

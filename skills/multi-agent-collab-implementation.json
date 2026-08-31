@@ -1,0 +1,14 @@
+{
+  "name": "multi-agent-collab-implementation",
+  "displayName": "多智能体协作模式实现",
+  "description": "根据设计文档实现多智能体协作模式，涉及代码结构分析、多文件修改和验证。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当需要实现多智能体协作模式（如表决、辩论、圆桌）时，遵循以下步骤：\n1. 先阅读设计文档或需求，明确要实现的模式和交互规则。\n2. 使用 list_dir 和 read_file 摸清项目结构和关键文件，找到需要修改的代码位置。\n3. 确定每个文件的插入点，优先使用小步 patch（每个文件一个 write_file），避免一次性写入大段不完整代码。\n4. 在写入时确保参数正确（如 path 而非 arguments），并保证内容完整。\n5. 写入后用 shell_exec 运行检查脚本或 git diff 验证改动是否符合预期，甄别误报（如模板字符串中的花括号）。\n6. 若遇到卡死风险，拆分任务并逐步执行，及时汇报进度。",
+  "autoCreated": true,
+  "createdAt": 1787062016600
+}

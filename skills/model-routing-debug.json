@@ -1,0 +1,14 @@
+{
+  "name": "model-routing-debug",
+  "displayName": "模型路由排查与修复",
+  "description": "排查工具调用模型与回复模型分离配置是否生效，检查后端路由代码并验证修复。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户反馈模型路由相关问题（如只选择回复模型、工具调用模型未生效、双模型是否各司其职）时，按以下步骤排查：\n1. 使用 list_dir 定位后端路由相关源码（如 index.ts、hub.ts、model-route 相关文件）。\n2. 使用 read_file 检查模型路由配置接口（如 PUT /api/model-route）是否分别独立处理 toolModel 和 replyModel，确认是否各自持久化到环境变量，避免互相覆盖。\n3. 检查调用链中 getRoleClient 或类似函数是否正确区分 tool 与 reply 模型，确认没有写死模型名。\n4. 如有问题，使用 write_file 修复代码，确保用户选择什么模型就用什么模型。\n5. 使用 shell_exec 运行 TypeScript 编译（tsc --noEmit）验证修改无类型错误。\n6. 向用户总结修复结果和证据，说明部署后行为。",
+  "autoCreated": true,
+  "createdAt": 1786904397152
+}

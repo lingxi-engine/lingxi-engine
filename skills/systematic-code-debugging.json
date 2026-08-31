@@ -1,0 +1,14 @@
+{
+  "name": "systematic-code-debugging",
+  "displayName": "系统性代码调试与修复",
+  "description": "当发现代码中存在多个断点或问题时，先全面排查列出所有问题，再逐项修复并汇报每项修复结果",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到代码调试/修复任务时，按以下步骤执行：\n1. 先用 read_file/list_dir 全面审查相关代码，找出所有问题点\n2. 将发现的问题整理成表格（编号、问题、位置、后果）\n3. 逐项修复，每修复一项后立即汇报修复结果（修复前→修复后的对比），不要一次性改所有\n4. 每项修复后用 shell_exec 验证（如编译/运行测试）\n5. 如果生成中断，用户说'继续'时从上次中断处继续，不要重新开始\n6. 修复时注意检查实际的 import 路径、函数调用链、依赖注入是否正确连接",
+  "autoCreated": true,
+  "createdAt": 1786829556444
+}

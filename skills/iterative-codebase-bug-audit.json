@@ -1,0 +1,13 @@
+{
+  "name": "iterative-codebase-bug-audit",
+  "displayName": "迭代式代码库Bug审查",
+  "description": "系统性地通读整个代码库，分轮次发现并修复Bug，直到无新问题为止",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到需要全面检查代码库Bug的任务时，按以下步骤执行：\n1. 用 list_dir 获取完整项目结构\n2. 用 read_file 逐个通读所有核心源码文件，不要跳过任何文件\n3. 按优先级（P1高/P2中/P3低）分类整理发现的Bug，每个Bug标注文件、行号、问题描述\n4. 用户确认后逐个修复，修复后给出完整总结表格\n5. 修复完成后主动发起下一轮全量复查，重复直到一轮复查无新Bug\n6. 每轮复查前，回顾上一轮已修复的Bug避免重复报告\n7. 注意区分真实Bug和误报，修复前先验证问题是否真实存在",
+  "autoCreated": true,
+  "createdAt": 1784772371978
+}

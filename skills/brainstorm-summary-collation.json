@@ -1,0 +1,15 @@
+{
+  "name": "brainstorm-summary-collation",
+  "displayName": "头脑风暴汇总整理",
+  "description": "将多轮头脑风暴结果进行去重合并、状态检查与落盘归档",
+  "tools": [
+    "list_dir",
+    "get_time",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当遇到需要汇总多轮头脑风暴结果的任务时，先使用 list_dir 和 read_file 检查所有相关文档的存在状态与内容，识别未落盘或状态待更新的部分；使用 get_time 记录时间；将各阶段存档中的点子去重合并为方向，并注明来源；最后用 write_file 将汇总结果落盘，必要时用 shell_exec 执行相关命令确保完整。",
+  "autoCreated": true,
+  "createdAt": 1787655068103
+}

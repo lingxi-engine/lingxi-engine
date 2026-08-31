@@ -1,0 +1,14 @@
+{
+  "name": "open-source-readiness-review",
+  "displayName": "开源前代码审查",
+  "description": "全面审查代码库并完成开源前的清理准备工作，包括敏感信息排查、开源文件补齐和代码质量检查",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求审查代码并准备开源时，按以下流程执行：1) 用 list_dir 了解项目整体结构和文件分布；2) 用 shell_exec（grep/rg 等）结合 read_file 扫描敏感信息：API key、密码、token、私钥、内网 IP/域名、个人邮箱、数据库连接串等；3) 检查 .gitignore 是否完善，确认构建产物、日志、本地配置不会被提交；4) 检查开源必备文件（LICENSE、README、必要的文档），缺失时用 write_file 补齐；5) 审查代码中的硬编码配置、调试代码、注释掉的敏感内容、过时的内部信息；6) 用 write_file 修复发现的问题（脱敏、替换占位符、补充文件）；7) 最后向用户汇总：已修复的问题清单、剩余风险提示、建议用户人工确认的事项。注意：对不确定是否敏感的内容先列出询问用户，不要擅自删除功能代码。",
+  "autoCreated": true,
+  "createdAt": 1788189318900
+}

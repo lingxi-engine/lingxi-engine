@@ -1,0 +1,14 @@
+{
+  "name": "codebase-bug-fix-and-feature-check",
+  "displayName": "代码库排查与修复",
+  "description": "排查代码库中的多个问题或功能，定位根因并修改代码修复，最后输出总结。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到排查代码库并修复多个Bug或确认功能的任务时，首先使用 `list_dir` 和 `read_file` 搜索相关代码文件，定位问题根因。然后使用 `write_file` 或 `shell_exec` 修改代码进行修复。最后，以表格形式总结每个问题的修复状态和具体修改内容。如果需要，还可以生成相关文档并保存到指定路径。",
+  "autoCreated": true,
+  "createdAt": 1786908183083
+}

@@ -1,0 +1,15 @@
+{
+  "name": "local-ai-song-mcp-setup",
+  "displayName": "本地AI歌曲生成与MCP封装",
+  "description": "调研、部署本地AI歌曲生成模型（如DiffSinger）并将其封装为MCP Server的完整工作流。",
+  "tools": [
+    "web_search",
+    "shell_exec",
+    "read_file",
+    "write_file",
+    "list_dir"
+  ],
+  "prompt": "当用户要求在本地部署AI歌曲生成流程并封装为MCP工具时：1. 使用 web_search 调研对中文支持好且适合用户硬件的开源模型（如 DiffSinger），提供显存预估和选型建议。2. 使用 shell_exec 搭建环境、下载模型和依赖。3. 编写并测试推理脚本，确保达到 Demo 级音质。4. 使用 write_file 开发 MCP Server，将作词、编曲、渲染等步骤封装为可调用工具。5. 持续跟踪并汇报子步骤进度，直到验收标准全部满足。",
+  "autoCreated": true,
+  "createdAt": 1786110975846
+}

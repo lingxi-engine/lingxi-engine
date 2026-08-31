@@ -1,0 +1,16 @@
+{
+  "name": "debug-and-fix-code",
+  "displayName": "代码调试与修复",
+  "description": "当用户报告代码功能异常时，检查工作区代码，定位根因，实施修复并验证。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec",
+    "get_time",
+    "web_search"
+  ],
+  "prompt": "当用户报告代码功能异常（如登录失败、界面问题等）时，按以下步骤进行：\n1. 使用 list_dir 和 read_file 检查相关代码文件，理解功能实现。\n2. 定位问题根因，寻找多个可能原因（如前端提交逻辑、后端接口、数据存储）。\n3. 向用户简要说明问题，然后直接修复代码（使用 write_file）。\n4. 修复后通过 shell_exec 运行测试或构建命令验证，确保无错误。\n5. 最后汇总修复内容，如有必要提醒用户重启服务或刷新缓存。\n注意：如果一次修复不完整，继续检查相关模块；用户催促时优先直接行动，减少冗长解释。",
+  "autoCreated": true,
+  "createdAt": 1787777562741
+}

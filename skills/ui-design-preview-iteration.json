@@ -1,0 +1,12 @@
+{
+  "name": "ui-design-preview-iteration",
+  "displayName": "UI设计稿迭代",
+  "description": "当用户要求先设计UI界面并确认后再改业务代码时，创建或更新纯静态设计稿并展示给用户。",
+  "tools": [
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户明确要求\"先设计出来看看，先别改代码\"时，不要修改任何业务代码。创建一个独立的纯静态 HTML 设计稿（如 web/design-preview.html），通过 write_file 写入。设计稿需完整呈现用户要求的布局、组件、个人信息、主题风格等，使用内联 CSS 即可。完成后用 shell_exec 在用户浏览器中打开该文件（Windows 用 start，macOS 用 open），并简要说明设计稿位置和已覆盖的需求点。每次收到反馈后迭代更新同一文件，提示用户刷新浏览器即可看到最新版本。只有用户确认后，才可将设计稿落地到真实业务代码。",
+  "autoCreated": true,
+  "createdAt": 1785611030618
+}

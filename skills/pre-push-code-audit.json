@@ -1,0 +1,13 @@
+{
+  "name": "pre-push-code-audit",
+  "displayName": "推送前代码审计",
+  "description": "在代码推送到远程仓库前进行全面审计，检查安全泄露、编译错误、敏感信息和代码质量问题",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求检查代码是否准备好推送/发布时，执行以下审计流程：\n\n1. **检查最近提交**：用 shell_exec 运行 `git log --oneline -5` 和 `git diff HEAD~3 --name-only` 了解变更范围\n2. **编译检查**：运行 `tsc --noEmit` 或项目对应的编译命令，确认零错误\n3. **安全泄露扫描**：\n   - 检查 `.env.example`、`.env` 是否包含真实 token/密钥/密码\n   - 用 grep 搜索代码中硬编码的 API key、secret、password\n   - 检查 `.gitignore` 是否正确排除了敏感文件\n4. **代码质量检查**：\n   - 检查是否有 TODO/FIXME/HACK 未处理\n   - 检查是否有调试代码（console.log、debugger）残留\n   - 检查是否有未使用的导入或变量\n5. **仓库污染检查**：检查是否有大文件、临时文件、node_modules 等不应提交的内容\n6. **输出审计报告**：按优先级（P0/P1/P2）分类问题，明确标注哪些必须修复才能推送，哪些可以后续处理\n\n如果用户要求复核其他 AI 的审计报告，逐条验证其结论是否正确，指出遗漏或误判。",
+  "autoCreated": true,
+  "createdAt": 1787223806728
+}

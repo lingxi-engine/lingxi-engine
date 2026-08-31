@@ -1,0 +1,15 @@
+{
+  "name": "government-application-drafting",
+  "displayName": "公文通知申报材料起草",
+  "description": "通读政府通知文件，提取申报要求，起草申报表及相关材料并导出为 DOCX 格式。",
+  "tools": [
+    "list_dir",
+    "get_time",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求根据政府通知（如工信局文件）起草申报材料时，按以下步骤操作：\n1. 使用 list_dir 列出目标目录文件，识别通知原文及已有材料。\n2. 使用 read_file 通读所有相关文件（通常为 DOCX 的拆页版本），提取关键信息：发文机关、文号、申报截止时间、联系人、报送内容要求等。\n3. 对照通知要求逐项起草材料（如申报表、成果简介、应用案例说明等），并明确指出待填写的用户信息。\n4. 如需保存中间结果，使用 write_file 写入合适的 Markdown 文件。\n5. 如果用户要求发送或共享，使用 shell_exec 转换或整合为单个 DOCX 文件，合理安排分页，并告知文件保存位置。",
+  "autoCreated": true,
+  "createdAt": 1786950202965
+}

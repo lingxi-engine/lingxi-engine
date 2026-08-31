@@ -1,0 +1,13 @@
+{
+  "name": "code-bug-investigation-and-fix",
+  "displayName": "代码库 Bug 排查与修复",
+  "description": "根据用户描述的问题，在代码库中搜索、阅读相关文件，定位 bug 并进行修复。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户报告代码 bug 或要求修改代码时，首先使用 list_dir 了解项目结构，然后使用 read_file 或 shell_exec (grep/find) 定位相关代码。分析代码找出问题根源，向用户简要说明。如果用户要求修复，直接修改代码文件并确保修改完整。如果任务因上下文或中断失败，在用户要求继续时，应回顾之前的分析结果并继续完成修复。",
+  "autoCreated": true,
+  "createdAt": 1787757040803
+}

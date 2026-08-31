@@ -1,0 +1,29 @@
+{
+  "name": "lingxi-mobile",
+  "version": "1.0.0",
+  "description": "灵犀引擎移动端 - iOS/Android",
+  "private": true,
+  "scripts": {
+    "build:engine": "node ../scripts/build-mobile.mjs",
+    "sync:android": "npx cap sync android",
+    "sync:ios": "npx cap sync ios",
+    "open:android": "npx cap open android",
+    "open:ios": "npx cap open ios",
+    "copy:engine": "node -e \"const fs=require('fs');fs.copyFileSync('../mobile-dist/lingxi-mobile.js','android/app/src/main/assets/nodejs-project/lingxi-mobile.js');console.log('Engine copied.')\""
+  },
+  "dependencies": {
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/splash-screen": "^6.0.0",
+    "@capacitor/status-bar": "^6.0.0",
+    "@capacitor/local-notifications": "^6.0.0",
+    "@capacitor/push-notifications": "^6.0.0",
+    "@capacitor/network": "^6.0.0",
+    "@capacitor/filesystem": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  }
+}

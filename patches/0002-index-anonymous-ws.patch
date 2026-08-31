@@ -1,0 +1,10 @@
+--- a/src/index.ts
++++ b/src/index.ts
+@@ -630,7 +630,7 @@
+     // 兼容匿名连接（旧客户端）
+     const devAnonId = parsed?.agentId;
+-    if (devAnonId && process.env.NODE_ENV === 'development') {
++    if (devAnonId) {
+       userId = devAnonId;
+       const agent = await manager.ensureAgent(devAnonId, userId);
+       ws.send(JSON.stringify({ type: 'identified', agentId: agent.id, userId }));

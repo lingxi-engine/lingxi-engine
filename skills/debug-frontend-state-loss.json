@@ -1,0 +1,14 @@
+{
+  "name": "debug-frontend-state-loss",
+  "displayName": "前端状态丢失排查与修复",
+  "description": "遇到前端刷新或操作后状态丢失的问题时，直接检查源码定位根因并修复，避免盲目猜测。",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到前端状态丢失（如刷新后数据消失）的Bug报告时，不要猜测原因。首先使用 list_dir 和 read_file 检查项目结构，确认浏览器实际加载的文件（如检查 index.html 中的 script 引用，避免修改了未被引用的文件）。然后阅读相关源码，分析状态管理逻辑（如 localStorage/sessionStorage、WebSocket 连接逻辑、鉴权逻辑）。定位根因后，使用 write_file 修改源码。如果 shell_exec 受限或报错，改用 read_file 直接阅读文件内容进行排查。",
+  "autoCreated": true,
+  "createdAt": 1787162597745
+}

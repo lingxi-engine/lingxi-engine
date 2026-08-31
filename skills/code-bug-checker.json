@@ -1,0 +1,12 @@
+{
+  "name": "code-bug-checker",
+  "displayName": "代码Bug检查",
+  "description": "通过搜索、文件读取等多步调用，排查项目中的配置错误、函数未定义等 bug，生成结构化报告",
+  "tools": [
+    "web_search",
+    "read_file"
+  ],
+  "prompt": "当用户请求检查 bug、审查代码或排查错误时，请主动使用 read_file 查看项目关键文件（如入口文件、配置文件、前端 JS 等），结合 web_search 搜索相关技术栈的典型错误。分析时需关注：1) 环境变量或 API Key 是否正确配置；2) 前端绑定函数是否在全局作用域定义；3) 后端路由与前端调用是否匹配；4) 错误日志中反复出现的报错信息。最后输出结构化的 Bug 报告，按严重程度排序，并给出修复建议。",
+  "autoCreated": true,
+  "createdAt": 1785835558699
+}

@@ -1,0 +1,28 @@
+--- a/src/ai/provider-registry.ts
++++ b/src/ai/provider-registry.ts
+@@ -49,10 +49,10 @@
+           old.enabled = e.enabled !== undefined ? e.enabled : old.enabled;
+           // 重建 client（apiKey 可能变了）
+-          old.client = new OpenAI({ apiKey: *** || 'dummy', baseURL: old.baseUrl });
++          old.client = new OpenAI({ apiKey: old.apiKey || 'dummy', baseURL: old.baseUrl });
+           continue;
+         }
+-        const client = new OpenAI({ apiKey: *** || 'dummy', baseURL: e.baseUrl });
++        const client = new OpenAI({ apiKey: e.apiKey || 'dummy', baseURL: e.baseUrl });
+         this.providers.set(e.id, { ...e, client });
+       }
+@@ -67,7 +67,7 @@
+       const entries: PersistedProvider[] = [];
+       for (const [, p] of this.providers) {
+-        entries.push({ id: p.id, type: p.type, name: p.name, apiKey: *** baseUrl: p.baseUrl, models: p.models, isLocal: p.isLocal, enabled: p.enabled });
++        entries.push({ id: p.id, type: p.type, name: p.name, apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, isLocal: p.isLocal, enabled: p.enabled });
+       }
+       writeFileSync(PROVIDERS_STORE_PATH, JSON.stringify(entries, null, 2), 'utf8');
+@@ -90,7 +90,7 @@
+       throw new Error(`Provider "${entry.id}" 已注册`);
+     }
+     const client = new OpenAI({
+-      apiKey: *** || 'dummy',
++      apiKey: entry.apiKey || 'dummy',
+       baseURL: entry.baseUrl,
+     });

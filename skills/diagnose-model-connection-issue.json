@@ -1,0 +1,12 @@
+{
+  "name": "diagnose-model-connection-issue",
+  "displayName": "诊断模型连接问题",
+  "description": "当用户无法添加或连接大模型时，通过检查配置、搜索官方文档、对比平台差异来定位原因并给出修复方案",
+  "tools": [
+    "web_search",
+    "shell_exec"
+  ],
+  "prompt": "用户报告无法使用某个模型（如添加不上、404、权限错误）。你需要：\n1. 通过shell_exec等检查当前代码中的provider定义，提取baseUrl、apiKey环境变量名、默认模型列表、实际调用的模型名。\n2. 检查.env或配置中是否缺少对应的API Key。\n3. 搜索模型提供者的官方文档和社区信息，确认正确的API Base URL、模型名称、认证方式。\n4. 对比用户使用的平台（如旧平台vs新平台），判断API是否互通，Key是否匹配。\n5. 给出清晰的问题根源分析和可操作的修复步骤，包括正确的配置示例。",
+  "autoCreated": true,
+  "createdAt": 1784309307601
+}

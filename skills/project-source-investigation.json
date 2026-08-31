@@ -1,0 +1,13 @@
+{
+  "name": "project-source-investigation",
+  "displayName": "项目源码排查与问题定位",
+  "description": "在工作区中通过文件系统操作和命令执行，定位特定功能、排查前后端实现差异或缺失。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到需要排查项目源码、定位功能实现或缺失的任务时，按以下步骤操作：\n1. 使用 list_dir 了解项目整体结构。\n2. 根据用户提到的关键词（如功能名、文件名），使用 shell_exec (如 grep/find) 快速定位相关文件。\n3. 使用 read_file 读取关键源码和文档。\n4. 对比前后端实现或文档与实际代码的差异，给出明确的结论和证据链。如果找不到文件，不要编造，明确说明缺失情况。",
+  "autoCreated": true,
+  "createdAt": 1787145701211
+}

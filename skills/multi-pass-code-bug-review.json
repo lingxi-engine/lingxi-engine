@@ -1,0 +1,13 @@
+{
+  "name": "multi-pass-code-bug-review",
+  "displayName": "多遍代码Bug审查",
+  "description": "对指定代码库进行多遍系统性Bug审查，输出分类汇总报告",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "search_content"
+  ],
+  "prompt": "当用户要求对某个代码库进行多遍Bug检查时，按以下步骤操作：\n1. 使用list_dir了解项目结构，确认入口文件和关键模块。\n2. 使用read_file读取核心文件（入口、路由、前端逻辑等）。\n3. 逐文件审查，关注以下类别：功能缺失、安全漏洞、数据流、并发竞态、边界条件、异常处理、性能。\n4. 汇总发现，按严重程度分类，提供具体位置和修复建议。\n5. 如果需要多遍，重复上述过程，确保每遍检查更深入或覆盖不同文件。",
+  "autoCreated": true,
+  "createdAt": 1785992221951
+}

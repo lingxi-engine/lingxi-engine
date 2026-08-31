@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>灵犀测试</title></head>
+<body style="font-family:sans-serif;padding:20px">
+<h2>灵犀引擎测试</h2>
+<div id="status" style="color:#888;margin:10px 0">未连接</div>
+<div style="margin:10px 0">
+  <input id="msg" placeholder="输入消息" style="padding:8px;width:300px">
+  <button onclick="doSend()" style="padding:8px">发送</button>
+</div>
+<div id="log" style="background:#f0f0f0;padding:12px;height:300px;overflow:auto;font-size:13px;border:1px solid #ddd"></div>
+<script>
+const log = document.getElementById('log');
+function addLog(text) { log.innerHTML += text + '<br>'; log.scrollTop = log.scrollHeight; }
+
+const ws = new WebSocket('ws://' + location.host + '/ws?id=test-user');
+ws.onopen = function() {
+  document.getElementById('status').textContent = '🟢 已连接';
+  document.getElementById('status').style.color = 'green';
+  addLog('[OK] WS 连接成功');
+  // 发送订阅
+  ws.send(JSON.stringify({type:'subscribe', chatId:'chat-demo-1'}));
+};
+ws.onclose = function(ev) {
+  document.getElementById('status').textContent = '🔴 断开 (code=' + ev.code + ')';
+  document.getElementById('status').style.color = 'red';
+  addLog('[FAIL] WS 关闭 code=' + ev.code + ' reason=' + (ev.reason||''));
+};
+ws.onerror = function(err) {
+  addLog('[ERROR] ' + err);
+};
+ws.onmessage = function(e) {
+  const msg = JSON.parse(e.data);
+  addLog('[收到] type=' + msg.type + ' content=' + (msg.content||'').slice(0,100));
+  if (msg.type === 'agent.streaming.chunk') {
+    document.getElementById('status').textContent = '🟢 AI回复中...';
+  }
+  if (msg.type === 'message.new' && msg.senderType === 'agent') {
+    addLog('[AI回复] ' + (msg.content||'').slice(0,200));
+    document.getElementById('status').textContent = '🟢 已连接';
+  }
+};
+
+function doSend() {
+  const text = document.getElementById('msg').value.trim();
+  if (!text) { addLog('[WARN] 输入为空'); return; }
+  if (ws.readyState !== 1) { addLog('[FAIL] WS未连接 readyState=' + ws.readyState); return; }
+  addLog('[发送] ' + text);
+  ws.send(JSON.stringify({type:'message', chatId:'chat-demo-1', content:text}));
+  document.getElementById('msg').value = '';
+}
+document.getElementById('msg').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') { e.preventDefault(); doSend(); }
+});
+</script>
+</body>
+</html>

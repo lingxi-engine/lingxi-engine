@@ -1,0 +1,13 @@
+{
+  "name": "code-fix-and-verify",
+  "displayName": "代码修复与验证",
+  "description": "当用户反馈代码问题或需求时，先核查现状、定位根因、实施修复并验证结果。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到代码修改/修复任务时，不要直接假设或盲改。先使用 list_dir 查看相关文件结构，用 shell_exec 运行编译、测试或检查命令（如 tsc --noEmit）确认现状。定位到根因后，用 write_file 修改代码，最后再运行验证命令确保修复完整。若有多个子任务，逐项完成并汇报结果。用户说不用管打包/部署时，只负责代码侧改动。",
+  "autoCreated": true,
+  "createdAt": 1787638820812
+}
