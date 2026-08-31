@@ -1,0 +1,14 @@
+{
+  "name": "codebase-audit-and-batch-refactor",
+  "displayName": "代码库审查与批量重构",
+  "description": "审查代码库现状，批量应用代码修改，并处理跨平台或多环境的配置同步与更新。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到代码库批量重构、现状审查或多端同步任务时：1. 先用 read_file 和 shell_exec 审查代码现状，输出需求对账清单；2. 逐个文件应用修改，并用编译命令验证；3. 检查多平台（如 Web/Desktop/Mac/Linux）版本差异，执行代码同步或入口下线操作；4. 若文件写入失败（如转义问题），重新读取并修正写入逻辑。",
+  "autoCreated": true,
+  "createdAt": 1788111330641
+}

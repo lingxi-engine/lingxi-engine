@@ -1,10 +1,7 @@
 /**
- * Orchestrator — DAG 子程序编排引擎 v1.6.1
+ * Orchestrator — DAG 子程序编排引擎 v1.6.0
  *
  * 支持任务依赖图（DAG）、并行执行（最多3并发）、依赖等待、级联失败、死锁检测。
- *
- * v1.6.1: 统一超时默认值 —— 导出 ORCHESTRATOR_DEFAULT_TIMEOUT_MS，
- * ws-handler.ts 与本文件共用同一常量，消除原先 120s/300s 的分歧。
  */
 
 export interface TaskNode {
@@ -12,7 +9,7 @@ export interface TaskNode {
   name: string;
   prompt: string;
   dependsOn: string[];    // 依赖的任务 ID 列表
-  timeout?: number;       // 超时（ms），默认 ORCHESTRATOR_DEFAULT_TIMEOUT_MS（300s）
+  timeout?: number;       // 超时（ms），默认 60000
 }
 
 export interface TaskResult {
@@ -33,17 +30,7 @@ export interface OrchestratorResult {
 
 const MAX_CONCURRENT = parseInt(process.env.ORCHESTRATOR_MAX_CONCURRENT || '5', 10);
 const MAX_TASKS = parseInt(process.env.ORCHESTRATOR_MAX_TASKS || '50', 10);  // P1-7: 任务总数上限
-
-/**
- * 统一的任务步骤超时默认值（毫秒）。
- * ws-handler.ts 添加 DAG 任务时必须引用此常量（而非自己再读一遍环境变量），
- * 保证「规划侧看到的超时」与「编排侧实际执行的超时」一致。
- * 可用环境变量 ORCHESTRATOR_TIMEOUT_SECONDS（单位：秒）覆盖。
- */
-export const ORCHESTRATOR_DEFAULT_TIMEOUT_MS =
-  (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '300', 10)) * 1000;
-
-const DEFAULT_TIMEOUT = ORCHESTRATOR_DEFAULT_TIMEOUT_MS;
+const DEFAULT_TIMEOUT = (parseInt(process.env.ORCHESTRATOR_TIMEOUT_SECONDS || '300', 10)) * 1000;
 
 export class Orchestrator {
   private tasks: Map<string, TaskNode> = new Map();
