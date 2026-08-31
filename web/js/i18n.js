@@ -160,6 +160,8 @@
     'settings.connect': '连接',
     'settings.notConnected': '未连接',
     'settings.modelMgr': '⚙️ 模型管理',
+    'settings.addModelToProvider': '+ 为已有Provider添加模型',
+    'settings.modelName': '模型名称',
     'settings.language': '🌐 语言 / Language',
 
     'admin.title': '🔧 后台管理',
@@ -866,6 +868,8 @@
     'settings.connect': '連線',
     'settings.notConnected': '未連線',
     'settings.modelMgr': '⚙️ 模型管理',
+    'settings.addModelToProvider': '+ 為已有 Provider 新增模型',
+    'settings.modelName': '模型名稱',
     'settings.language': '🌐 語言 / Language',
 
     'admin.title': '🔧 後台管理',
@@ -1572,6 +1576,8 @@
     'settings.connect': 'Connect',
     'settings.notConnected': 'Not connected',
     'settings.modelMgr': '⚙️ Model management',
+    'settings.addModelToProvider': '+ Add model to existing Provider',
+    'settings.modelName': 'Model name',
     'settings.language': '🌐 Language / 语言',
 
     'admin.title': '🔧 Admin panel',
@@ -2278,6 +2284,8 @@
     'settings.connect': '接続',
     'settings.notConnected': '未接続',
     'settings.modelMgr': '⚙️ モデル管理',
+    'settings.addModelToProvider': '+ 既存のProviderにモデルを追加',
+    'settings.modelName': 'モデル名',
     'settings.language': '🌐 言語 / Language',
 
     'admin.title': '🔧 管理パネル',
@@ -2984,6 +2992,8 @@
     'settings.connect': '연결',
     'settings.notConnected': '연결 안 됨',
     'settings.modelMgr': '⚙️ 모델 관리',
+    'settings.addModelToProvider': '+ 기존 Provider에 모델 추가',
+    'settings.modelName': '모델 이름',
     'settings.language': '🌐 언어 / Language',
 
     'admin.title': '🔧 관리 패널',
@@ -3690,6 +3700,8 @@
     'settings.connect': 'Kết nối',
     'settings.notConnected': 'Chưa kết nối',
     'settings.modelMgr': '⚙️ Quản lý mô hình',
+    'settings.addModelToProvider': '+ Thêm mô hình vào Provider hiện có',
+    'settings.modelName': 'Tên mô hình',
     'settings.language': '🌐 Ngôn ngữ / Language',
 
     'admin.title': '🔧 Bảng quản trị',
@@ -4396,6 +4408,8 @@
     'settings.connect': 'เชื่อมต่อ',
     'settings.notConnected': 'ยังไม่ได้เชื่อมต่อ',
     'settings.modelMgr': '⚙️ จัดการโมเดล',
+    'settings.addModelToProvider': '+ เพิ่มโมเดลใน Provider ที่มีอยู่',
+    'settings.modelName': 'ชื่อโมเดล',
     'settings.language': '🌐 ภาษา / Language',
 
     'admin.title': '🔧 แผงจัดการ',

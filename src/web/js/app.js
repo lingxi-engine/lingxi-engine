@@ -2489,6 +2489,75 @@ function toggleAddModel(id) {
   if (!showing) { var inp = document.getElementById('addModelInput-' + id); if (inp) inp.focus(); }
 }
 
+// ──── 模型管理（设置面板"⚙️ 模型管理"区块）────
+async function addModelToProviderUI() {
+  const sel = document.getElementById('addModelProvider');
+  const nameInput = document.getElementById('addModelName');
+  if (!sel || !nameInput) { toast('模型管理表单元素缺失'); return; }
+  const id = sel.value;
+  const modelName = nameInput.value.trim();
+  if (!id) { toast('请先选择 Provider'); return; }
+  if (!modelName) { toast('请输入模型名称'); return; }
+  nameInput.value = '';
+  await addModelToProviderUI._add(id, modelName);
+  try { refreshModelMgr(); } catch (_e) {}
+}
+
+// 复用既有 addModelToProvider(id)：它读取 addModelInput-{id} 输入框与 addModelMsg-{id} 提示框
+addModelToProviderUI._add = async function(id, modelName) {
+  const holder = document.createElement('div');
+  holder.style.display = 'none';
+  holder.innerHTML = '<input id="addModelInput-' + id + '"><div id="addModelMsg-' + id + '"></div>';
+  document.body.appendChild(holder);
+  document.getElementById('addModelInput-' + id).value = modelName;
+  await addModelToProvider(id);
+  holder.remove();
+};
+
+async function refreshModelMgr() {
+  try {
+    const d = await api('/api/providers');
+    const list = d.providers || [];
+    const sel = document.getElementById('addModelProvider');
+    if (sel) {
+      sel.innerHTML = list.length
+        ? list.map(p => '<option value="' + esc(p.id) + '">' + esc(p.name || p.id) + '</option>').join('')
+        : '<option value="">（暂无 Provider，请先在上方添加）</option>';
+    }
+    const listEl = document.getElementById('modelMgrList');
+    if (listEl) {
+      listEl.innerHTML = list.length
+        ? list.map(p => {
+            const ms = (p.models || []).map(m => esc(m)).join(', ');
+            return '<div style="margin-bottom:4px"><b style="color:var(--text)">' + esc(p.name || p.id) + '</b>: ' + (ms || '<span style="color:var(--text3)">（无模型）</span>') + '</div>';
+          }).join('')
+        : '<span style="color:var(--text3)">（暂无 Provider）</span>';
+    }
+    const st = document.getElementById('modelMgrStatus');
+    if (st) st.textContent = 'Provider: ' + list.length + ' · 模型总数: ' + list.reduce((n, p) => n + (p.models || []).length, 0);
+  } catch (e) {
+    const st = document.getElementById('modelMgrStatus');
+    if (st) st.textContent = '加载失败: ' + e;
+  }
+}
+
+// loadProviders 刷新后同步模型管理区块（只挂一次）
+(function() {
+  if (window.__modelMgrHooked) return;
+  window.__modelMgrHooked = true;
+  const orig = loadProviders;
+  loadProviders = function() {
+    try { refreshModelMgr(); } catch (_e) {}
+    return orig.apply(this, arguments);
+  };
+  const kick = function() { try { refreshModelMgr(); } catch (_e) {} };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', kick);
+  } else {
+    kick();
+  }
+})();
+
 async function addModelToProvider(id) {
   var inp = document.getElementById('addModelInput-' + id);
   var msgEl = document.getElementById('addModelMsg-' + id);

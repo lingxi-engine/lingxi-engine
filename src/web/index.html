@@ -408,6 +408,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   </a>
   <span class="ver-tag" id="verTag">v2.2-design</span>
   <select id="headerModelSelect" onchange="switchHeaderModel(this.value)"><option value="deepseek-chat">deepseek-v4-flash</option><option value="glm-5.2:cloud">glm-5.2:cloud</option><option value="qwen3.6:27b">qwen3.6:27b</option></select>
+  <span id="routeModeTag" style="display:none"></span>
   <div class="theme-switch" title="切换主题（完整风格，不只是背景色）">
     <button data-theme="dark" class="active" onclick="switchTheme('dark',this)">深海</button>
     <button data-theme="glass" onclick="switchTheme('glass',this)">玻璃</button>
@@ -468,7 +469,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
     <!-- 会话列表 -->
     <div class="chat-list" id="chatList">
-      <div class="side-section-title"><span>会话列表</span><span style="color:var(--accent);cursor:pointer" onclick="newChat()">＋ 新建</span></div>
+      <div class="side-section-title"><span>会话列表</span><span style="display:flex;gap:8px;align-items:center"><span style="color:var(--accent);cursor:pointer" onclick="newChat()">＋ 新建</span><span style="color:var(--purple);cursor:pointer" onclick="showCreateGroup()" title="创建群聊（多AI协作）">＋ 群聊</span></span></div>
       <div class="chat-item active"><span class="name">前端 UI 改造讨论</span><span class="meta">2条</span></div>
       <div class="chat-item"><span class="name">日常对话</span><span class="meta">12:30</span></div>
       <div class="chat-item"><span class="name">代码审查</span><span class="meta">昨天</span></div>
@@ -843,6 +844,14 @@ function switchTheme(name,btn){
     </div>
     <div class="section">
       <h3 data-i18n="settings.modelMgr">⚙️ 模型管理</h3>
+      <div id="modelMgrList" style="font-size:12px;color:var(--text2);margin-bottom:6px"><!-- 动态填充 --></div>
+      <div id="modelMgrStatus" style="font-size:11px;color:var(--text3);margin-bottom:4px"></div>
+      <details><summary style="cursor:pointer;color:var(--accent);font-size:13px" data-i18n="settings.addModelToProvider">+ 为已有Provider添加模型</summary>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+        <select id="addModelProvider" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></select>
+        <input id="addModelName" data-i18n-ph="settings.modelName" placeholder="模型名称" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <button onclick="addModelToProviderUI()" class="btn" style="font-size:12px;width:100%" data-i18n="common.add">添加</button>
+      </div></details>
     </div>
     <div class="section">
       <h3 data-i18n="settings.notify">🔔 通知</h3>
