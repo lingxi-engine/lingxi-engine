@@ -1,4 +1,4 @@
-# 错题本（评测消费端）
+﻿# 错题本（评测消费端）
 #
 # 对应 AGI 进化路线图【阶段4·让它"进化"】P0 行动项 A2：
 #   "评测消费端接线——读取 evaluation-records.json 低分记录，建立错题本数据源"
@@ -29,7 +29,8 @@ from typing import Any, Dict, List, Optional
 
 # 引擎默认评测记录路径（TS 侧 Evaluator 的落盘位置）
 _DEFAULT_EVAL_PATHS = (
-    r"C:\Users\Administrator\lingxi-engine\data\evaluation-records.json",
+    os.path.join(os.environ.get("USERPROFILE") or os.path.expanduser("~"),
+                  "lingxi-engine", "data", "evaluation-records.json"),
 )
 
 

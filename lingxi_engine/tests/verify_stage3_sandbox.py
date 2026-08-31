@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 #
 # 验证点：
 #   1. Sandbox 白名单放行无害命令（echo）
@@ -11,9 +11,10 @@
 #   7. 回归：阶段1/2 仍可用；记忆原子写 + 坏文件备份
 import sys
 import traceback
-
-sys.path.insert(0, r"C:\Users\Administrator\lingxi-engine\workspace")
 import io, os, tempfile
+
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, _REPO_ROOT)
 
 PASS = 0
 FAIL = 0
@@ -29,7 +30,7 @@ def check(name, cond, detail=""):
         print(f"[FAIL] {name} {detail}")
 
 
-os.chdir(r"C:\Users\Administrator\lingxi-engine\workspace")
+os.chdir(_REPO_ROOT)
 
 # 1. 沙盒基本执行
 from lingxi_engine.sandbox import Sandbox, SandboxError

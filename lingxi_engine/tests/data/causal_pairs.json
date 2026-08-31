@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "ts": 1787656629.509105,
     "action": "echo 因果对账实验",
@@ -55,7 +55,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -118,7 +118,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -181,7 +181,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -244,7 +244,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -307,7 +307,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -370,7 +370,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },
@@ -433,7 +433,7 @@
     "actual": {
       "ok": true,
       "exit_code": 0,
-      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\release\\lingxi_engine\\tests",
+      "stdout": ".\\lingxi_engine\\tests",
       "stderr": "",
       "elapsed": 0.0
     },

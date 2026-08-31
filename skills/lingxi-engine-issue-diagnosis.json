@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "lingxi-engine-issue-diagnosis",
   "displayName": "灵犀引擎问题诊断与报告",
   "description": "诊断灵犀引擎任务中断或报错问题，定位源码根因，修改后生成Word报告到桌面",
@@ -8,7 +8,7 @@
     "shell_exec",
     "write_file"
   ],
-  "prompt": "当用户反馈灵犀引擎（lingxi-engine）任务中断、频繁询问是否继续、或出现API报错时，按以下步骤处理：\n1. 先定位引擎源码目录（通常在桌面或用户指定路径，如 lingxi开发/源代码 或 C:\\Users\\Administrator\\lingxi-engine），用 list_dir 和 read_file 查看关键文件（router.ts、executor.ts、orchestrator.py、constitution.py 等）。\n2. 检查 data/logs 下的近期运行日志，寻找报错或中断模式。\n3. 分析根因：检查系统提示词、循环终止条件、工具调用参数、reasoning_content 传递等常见问题点。\n4. 直接修改源码修复根因，注意保留原逻辑兼容性。\n5. 生成诊断报告，内容包含：问题现象、根因分析、修改方案、验证结果。用 write_file 生成 Word 文档（.docx），保存到用户桌面。\n6. 在最终回复中总结诊断过程、根因结论和交付文件路径，简洁明了。",
+  "prompt": "当用户反馈灵犀引擎（lingxi-engine）任务中断、频繁询问是否继续、或出现API报错时，按以下步骤处理：\n1. 先定位引擎源码目录（通常在桌面或用户指定路径，如 lingxi开发/源代码 或 %USERPROFILE%\\lingxi-engine），用 list_dir 和 read_file 查看关键文件（router.ts、executor.ts、orchestrator.py、constitution.py 等）。\n2. 检查 data/logs 下的近期运行日志，寻找报错或中断模式。\n3. 分析根因：检查系统提示词、循环终止条件、工具调用参数、reasoning_content 传递等常见问题点。\n4. 直接修改源码修复根因，注意保留原逻辑兼容性。\n5. 生成诊断报告，内容包含：问题现象、根因分析、修改方案、验证结果。用 write_file 生成 Word 文档（.docx），保存到用户桌面。\n6. 在最终回复中总结诊断过程、根因结论和交付文件路径，简洁明了。",
   "autoCreated": true,
   "createdAt": 1787670255990
 }

@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "analyze-and-generate-word-report",
   "displayName": "分析并生成Word报告",
   "description": "当用户要求诊断问题、分析方向或总结材料，并输出Word文档到桌面时使用",
@@ -9,7 +9,7 @@
     "shell_exec",
     "write_file"
   ],
-  "prompt": "遇到用户要求分析任务并生成 Word 报告放到桌面时，按以下步骤执行：\n1. 明确报告主题和输出要求（如保存位置、格式、字数等）。\n2. 搜集相关材料：用 list_dir 查看桌面及指定目录，用 read_file 读取相关文档、源码、日志等作为分析依据。\n3. 进行分析：提取关键问题、根因、证据或演进方向，组织结构化结论。\n4. 生成 Word 文档：使用 shell_exec 调用 Python（如 python-docx）创建 .docx 文件，保存到桌面（即 C:\\Users\\Administrator\\Desktop），文件名应包含主题和日期。\n5. 验证文件生成成功（大小、段落数等）。\n6. 向用户报告文件位置和核心结论摘要。",
+  "prompt": "遇到用户要求分析任务并生成 Word 报告放到桌面时，按以下步骤执行：\n1. 明确报告主题和输出要求（如保存位置、格式、字数等）。\n2. 搜集相关材料：用 list_dir 查看桌面及指定目录，用 read_file 读取相关文档、源码、日志等作为分析依据。\n3. 进行分析：提取关键问题、根因、证据或演进方向，组织结构化结论。\n4. 生成 Word 文档：使用 shell_exec 调用 Python（如 python-docx）创建 .docx 文件，保存到桌面（即 %USERPROFILE%\\Desktop），文件名应包含主题和日期。\n5. 验证文件生成成功（大小、段落数等）。\n6. 向用户报告文件位置和核心结论摘要。",
   "autoCreated": true,
   "createdAt": 1787667303655
 }

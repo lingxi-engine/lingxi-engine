@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "ts": 1787656629.509688,
     "topic": "instruction",
@@ -19,7 +19,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -27,7 +27,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -51,7 +51,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -59,7 +59,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -83,7 +83,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -91,7 +91,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -115,7 +115,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -123,7 +123,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -147,7 +147,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -155,7 +155,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -179,7 +179,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -187,7 +187,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   },
@@ -211,7 +211,7 @@
       {
         "ok": true,
         "command": "pwd",
-        "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\release\\lingxi_engine\\tests",
+        "stdout": ".\\lingxi_engine\\tests",
         "stderr": "",
         "exit_code": 0,
         "elapsed": 0.0
@@ -219,7 +219,7 @@
     ],
     "findings": [
       "命令 `echo \"探索: instruction\"` 执行成功，输出: 探索: instruction",
-      "命令 `pwd` 执行成功，输出: C:\\Users\\Administrator\\lingxi-engine\\workspace\\release\\lingxi_engine\\tests"
+      "命令 `pwd` 执行成功，输出: .\\lingxi_engine\\tests"
     ],
     "budget_used": 2
   }
