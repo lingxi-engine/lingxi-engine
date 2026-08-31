@@ -28,8 +28,10 @@ import time
 from typing import Any, Dict, List, Optional
 
 # 引擎默认评测记录路径（TS 侧 Evaluator 的落盘位置）
+# 仓库根目录（lingxi_engine/ 的上一级），随检出位置自动适配
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DEFAULT_EVAL_PATHS = (
-    r"C:\Users\Administrator\lingxi-engine\data\evaluation-records.json",
+    os.path.join(_REPO_ROOT, 'data', 'evaluation-records.json'),
 )
 
 

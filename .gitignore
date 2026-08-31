@@ -64,4 +64,10 @@ tsc*.txt
 *_result.txt
 *.pid
 tmp/
-tmp-verify*/
+tmp-verify*/ 
+# runtime artifacts and debug temp files 
+__pycache__/ 
+*.pyc 
+runs.json 
+_*.mjs 
+_*.txt

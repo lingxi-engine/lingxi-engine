@@ -5,7 +5,8 @@
  */
 import { readFileSync, writeFileSync } from 'fs';
 
-const ROOT = 'C:/Users/Administrator/lingxi-engine';
+import { fileURLToPath } from 'url';
+const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const IDX = ROOT + '/index.ts';
 const SNAP = ROOT + '/scripts/route-snapshot.mjs';
 const OUT = ROOT + '/src/routes/agents.ts';

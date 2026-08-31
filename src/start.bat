@@ -1,3 +1,3 @@
 @echo off
-cd /d "C:\Users\Administrator\lingxi-engine"
+cd /d "%~dp0.."
 node node_modules\tsx\dist\cli.mjs index.ts

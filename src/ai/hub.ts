@@ -547,6 +547,28 @@ export class AIHub {
   }
 
   /**
+   * 获取故障转移候选：支持同一模型的其他 provider
+   * 排除已失败的 provider（按 baseUrl / client 实例双重判断），跳过熔断器开启中的候选
+   */
+  getFailoverCandidates(model: string, failedBaseUrl?: string, failedClient?: OpenAI): { client: OpenAI; resolvedModel: string }[] {
+    const candidates: { client: OpenAI; resolvedModel: string }[] = [];
+    const stripped = this.normalizeModelName(model);
+    for (const [pid, entry] of this.providers) {
+      if (failedBaseUrl && entry.config.baseUrl === failedBaseUrl) continue;
+      if (failedClient && entry.client === failedClient) continue;
+      const matched = entry.config.models.find(m => model === m || stripped === m || model.includes(m) || m.includes(model));
+      if (!matched) continue;
+      const cbState = this.circuitBreaker.get(matched);
+      if (cbState && cbState.failures >= this.CB_THRESHOLD && (Date.now() - cbState.lastFail) < this.CB_COOLDOWN) {
+        console.log(`[AI Hub] 故障转移候选 ${pid} 熔断器开启中，跳过`);
+        continue;
+      }
+      candidates.push({ client: entry.client, resolvedModel: matched });
+    }
+    return candidates;
+  }
+
+  /**
    * 获取特定角色的 AI 客户端（多模型协作）
    * role: 'tool'（工具调用/摘要/压缩）| 'reply'（最终回复）| 'default'
    */
@@ -656,6 +678,12 @@ export class AIHub {
     }
     const { client, resolvedModel } = result;
 
+    // 定位失败 provider 的 baseUrl，用于故障转移时排除自身
+    let failedBaseUrl: string | undefined;
+    for (const [, entry] of this.providers) {
+      if (entry.client === client) { failedBaseUrl = entry.config.baseUrl; break; }
+    }
+
     // P1-7: 熔断器检查 — 连续失败过多时快速失败
     const cbKey = resolvedModel;
     const cbState = this.circuitBreaker.get(cbKey);
@@ -713,6 +741,34 @@ export class AIHub {
         }
         if (attempt >= MAX_RETRIES) {
           console.error(`[AI Hub] 重试耗尽 (${request.model}):`, error.message);
+          // Provider 级故障转移：主 provider 重试耗尽 → 依次尝试备胎
+          const candidates = this.getFailoverCandidates(request.model, failedBaseUrl, client);
+          for (const cand of candidates) {
+            try {
+              console.log(`[AI Hub] 故障转移 → 备胎 provider (${cand.resolvedModel})`);
+              const response = await cand.client.chat.completions.create({
+                model: cand.resolvedModel,
+                messages: request.messages as any,
+                temperature: request.temperature ?? 0.7,
+                max_tokens: request.maxTokens ?? 16384,
+              });
+              const choice = response.choices[0];
+              this.circuitBreaker.delete(cand.resolvedModel);
+              console.log(`[AI Hub] 备胎接管成功 (${cand.resolvedModel})`);
+              return {
+                content: choice.message.content || "",
+                usage: response.usage
+                  ? {
+                      promptTokens: response.usage.prompt_tokens,
+                      completionTokens: response.usage.completion_tokens ?? 0,
+                    }
+                  : undefined,
+              };
+            } catch (fe: any) {
+              console.error(`[AI Hub] 备胎失败 (${cand.resolvedModel}):`, fe.message);
+              lastError = fe;
+            }
+          }
           throw new Error(`AI 生成失败(已重试${MAX_RETRIES}次): ${error.message}`);
         }
       }
