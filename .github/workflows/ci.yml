@@ -17,12 +17,12 @@ jobs:
         with:
           python-version: '3.11'
       - name: 运行全量回归
-        working-directory: agi/tests
+        working-directory: lingxi_engine/tests
         run: |
           python run_all.py
           cat run_all_result.txt
       - name: 断言 ALL_OK
-        working-directory: agi/tests
+        working-directory: lingxi_engine/tests
         run: |
           grep -q "ALL_OK=True" run_all_result.txt || (echo "回归失败" && exit 1)
 

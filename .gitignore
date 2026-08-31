@@ -23,7 +23,7 @@ build/
 *.db-journal
 *.sqlite*
 data/
-storage/
+/storage/
 uploads/
 usage.json
 *.pid
