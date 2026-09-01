@@ -4,44 +4,60 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
   security-events: read
+  contents: read
 
 jobs:
   fetch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - name: Install jq
         run: |
           sudo apt-get update -y
           sudo apt-get install -y jq
       - name: Fetch Dependabot alerts (paginated)
         env:
-          GITHUB_REPO: ${{ github.repository }}
-          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPO: lingxi-engine/lingxi-engine
+          GITHUB_API: https://api.github.com
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           OUT=dependabot-alerts.json
           : > $OUT
           PAGE=1
-          while :; do
+          MAX_PAGES=20
+          while [ "$PAGE" -le "$MAX_PAGES" ]; do
             echo "Fetching page $PAGE..."
-            URL="https://api.github.com/repos/$GITHUB_REPO/dependabot/alerts?per_page=100&page=$PAGE"
-            curl -sS -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GITHUB_TOKEN" "$URL" > page.json
-            if [ "$(jq 'length' page.json)" -eq 0 ]; then
+            URL="$GITHUB_API/repos/$GITHUB_REPO/dependabot/alerts?per_page=100&page=$PAGE"
+            HTTP=$(curl -sS -o page.json -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$URL")
+            if [ "$HTTP" != "200" ]; then
+              echo "API returned HTTP $HTTP, stopping."
+              cat page.json || true
+              break
+            fi
+            if [ "$(jq -r 'type' page.json)" != "array" ]; then
+              echo "Response is not an array, stopping."
+              cat page.json || true
+              break
+            fi
+            LEN=$(jq 'length' page.json)
+            if [ "$LEN" -eq 0 ]; then
               rm -f page.json
               break
             fi
             if [ -s "$OUT" ]; then
               jq -s 'add' $OUT page.json > tmp.json && mv tmp.json $OUT
             else
-              jq -s 'add' page.json > $OUT
+              cp page.json $OUT
+            fi
+            if [ "$LEN" -lt 100 ]; then
+              rm -f page.json
+              break
             fi
             PAGE=$((PAGE+1))
           done
           jq . $OUT > dependabot-alerts.pretty.json || cp $OUT dependabot-alerts.pretty.json
-          echo "TOTAL_ALERTS: $(jq 'length' $OUT)"
+          echo "Total alerts: $(jq 'length' $OUT)"
       - name: Upload alert artifact
         uses: actions/upload-artifact@v4
         with:
