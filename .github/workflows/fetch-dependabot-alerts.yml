@@ -1,0 +1,47 @@
+name: Fetch Dependabot Alerts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  security-events: read
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y jq
+      - name: Fetch Dependabot alerts (paginated)
+        env:
+          GITHUB_REPO: lingxi-engine/lingxi-engine
+          GITHUB_API: https://api.github.com
+        run: |
+          set -euo pipefail
+          OUT=dependabot-alerts.json
+          : > $OUT
+          PAGE=1
+          while :; do
+            echo "Fetching page $PAGE..."
+            URL="$GITHUB_API/repos/$GITHUB_REPO/dependabot/alerts?per_page=100&page=$PAGE"
+            curl -sS -H "Accept: application/vnd.github+json" -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" "$URL" > page.json
+            if [ "$(jq 'length' page.json)" -eq 0 ]; then
+              rm -f page.json
+              break
+            fi
+            if [ -s "$OUT" ]; then
+              jq -s '[.[0] + .[1]] | add' $OUT page.json > tmp.json && mv tmp.json $OUT || (jq -s 'add' $OUT page.json > tmp.json && mv tmp.json $OUT)
+            else
+              jq -s 'add' page.json > $OUT
+            fi
+            PAGE=$((PAGE+1))
+          done
+          jq . $OUT > dependabot-alerts.pretty.json || cp $OUT dependabot-alerts.pretty.json
+      - name: Upload alert artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependabot-alerts
+          path: dependabot-alerts.pretty.json
