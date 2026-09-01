@@ -260,19 +260,63 @@ function toast(msg) {
 
 // ── 代码高亮 ──
 function markdownToHtml(text) {
-  // 转义 HTML
+  // v2.2.1: full markdown rendering (headings/bold/lists/quotes/links/paragraphs)
   let html = esc(text);
-  // 转换 ``` 代码。
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
+  // 1) extract fenced code blocks into placeholders first (protect their content)
+  const blocks = [];
+  html = html.replace(/```(\w*)\r?\n([\s\S]*?)```/g, function(match, lang, code) {
     const safeLang = lang ? lang.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const langAttr = safeLang ? ' class="language-' + safeLang + '"' : '';
-    return '<pre><code' + langAttr + '>' + code.trim() + '</code></pre>';
+    blocks.push('<pre><code' + langAttr + '>' + code.trim() + '</code></pre>');
+    return '\u0000B' + (blocks.length - 1) + '\u0000';
   });
-  // 转换 Markdown 表格
+  // 2) tables (reuse original parser) also extracted into placeholders
   html = parseMarkdownTable(html);
-  // 转换行内代码 `code`
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-  return html;
+  html = html.replace(/<div class="md-table-wrap">[\s\S]*?<\/div>/g, function(m) {
+    blocks.push(m); return '\u0000B' + (blocks.length - 1) + '\u0000';
+  });
+  // 3) line-by-line block parser: headings/quotes/lists/hr/paragraphs
+  const out = [];
+  let inUl = false, inOl = false, para = [];
+  function _inline(s) {
+    s = s.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    return s;
+  }
+  function _flushPara() { if (para.length) { out.push('<p>' + para.join('<br>') + '</p>'); para = []; } }
+  function _closeBlocks() { _flushPara(); if (inUl) { out.push('</ul>'); inUl = false; } if (inOl) { out.push('</ol>'); inOl = false; } }
+  const lines = html.split(/\r?\n/);
+  for (var li = 0; li < lines.length; li++) {
+    const line = lines[li].trim();
+    if (!line) { _closeBlocks(); continue; }
+    const ph = line.match(/^\u0000B(\d+)\u0000$/);
+    if (ph) { _closeBlocks(); out.push(blocks[parseInt(ph[1], 10)]); continue; }
+    const h = line.match(/^(#{1,6})\s+(.+)$/);
+    if (h) { _closeBlocks(); const hl = h[1].length; out.push('<h' + hl + '>' + _inline(h[2]) + '</h' + hl + '>'); continue; }
+    if (/^(---|\*\*\*|___)\s*$/.test(line)) { _closeBlocks(); out.push('<hr>'); continue; }
+    const q = line.match(/^&gt;\s?(.*)$/);
+    if (q) {
+      _closeBlocks();
+      const prev = out.length ? out[out.length - 1] : '';
+      if (prev.indexOf('<blockquote>') === 0 && prev.slice(-13) === '</blockquote>') {
+        out[out.length - 1] = prev.slice(0, -13) + '<br>' + _inline(q[1]) + '</blockquote>';
+      } else {
+        out.push('<blockquote>' + _inline(q[1]) + '</blockquote>');
+      }
+      continue;
+    }
+    const ul = line.match(/^[-*+]\s+(.+)$/);
+    if (ul) { _flushPara(); if (inOl) { out.push('</ol>'); inOl = false; } if (!inUl) { out.push('<ul>'); inUl = true; } out.push('<li>' + _inline(ul[1]) + '</li>'); continue; }
+    const ol = line.match(/^\d+\.\s+(.+)$/);
+    if (ol) { _flushPara(); if (inUl) { out.push('</ul>'); inUl = false; } if (!inOl) { out.push('<ol>'); inOl = true; } out.push('<li>' + _inline(ol[1]) + '</li>'); continue; }
+    para.push(_inline(line));
+  }
+  _closeBlocks();
+  return out.join('\n').replace(/\u0000B(\d+)\u0000/g, function(m, idx) { return blocks[parseInt(idx, 10)]; });
 }
 
 // ── Markdown 表格解析 ──
@@ -687,7 +731,7 @@ function handleMessage(msg) {
       }
       if (msg.msgId && streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
-        s.el.querySelector('.msg-content').textContent = msg.content || '';
+        undefined
         const dot = s.el.querySelector('.typing-dot'); if (dot) dot.remove();
         delete streamingMsgs[msg.msgId];
         // remove stale tool-call rows (they stay as history, but remove duplicates? keep them)
@@ -742,7 +786,9 @@ function handleMessage(msg) {
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
         s.content += msg.chunk || '';
-        s.el.querySelector('.msg-content').textContent = s.content;
+        const _mc = s.el.querySelector('.msg-content');
+        _mc.style.whiteSpace = 'pre-wrap';
+        _mc.textContent = s.content;
         document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
       }
       break;
@@ -767,6 +813,7 @@ function handleMessage(msg) {
         if (dot) dot.remove();
         // 应用 Markdown + 代码高亮
         const contentEl = s.el.querySelector('.msg-content');
+        if (contentEl) contentEl.style.whiteSpace = '';
         if (contentEl && s.content) {
           contentEl.innerHTML = markdownToHtml(s.content);
           highlightBlocks(s.el);
@@ -851,7 +898,13 @@ function updateBadge() {
 // ── Chat List ──
 async function loadChatList() {
   try {
-    const res = await api('/api/chats?userId=' + encodeURIComponent(clientId));
+    // v2.1.4: 查询 ID 口径与创建侧（newChat/showCreateGroup 写 participant 用 lanMyId()）保持一致。
+    // 未登录时 lanMyId() 回退 clientId，行为不变；登录后用平台登录 ID，否则 participant.user_id 不匹配导致新建会话/群聊不显示。
+    // lanMeId 惰性解析（首屏 loadChatList 可能早于 loadSocial），登录态先从平台解析一次，同 showCreateGroup 做法。
+    if (!lanMeId && authToken) {
+      try { const _d = await platformApi('/api/user/me', 'GET'); if (_d && _d.ok && _d.user) lanMeId = _d.user.id || _d.user.sub || null; } catch(_e) {}
+    }
+    const res = await api('/api/chats?userId=' + encodeURIComponent(lanMyId()));
     // 。v2.1.1: 按最近活跃排序（F5 后兜底打开。myChats[0] 即最近会话，而非最早创建的会话。
     myChats = (res.chats || []).slice().sort(function(a, b){ return (b.last_message_at || b.created_at || 0) - (a.last_message_at || a.created_at || 0); });
     renderChatList();
@@ -874,7 +927,7 @@ function renderChatList() {
     const badge = unread ? '<span class="notify-dot">' + unread + '</span>' : '';
     var displayName = ch.name || ch.id.replace(/^(chat-|team-)/, '');
     var icon = ch.type === 'group' ? '👥' : '💬';
-    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">。/span></div></div>';
+    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">🗑</span></div></div>';
   }).join('');
 }
 
@@ -2482,7 +2535,7 @@ function toggleAddModel(id) {
   if (!showing) { var inp = document.getElementById('addModelInput-' + id); if (inp) inp.focus(); }
 }
 
-// ──── 模型管理（设置面板"⚙️ 模型管理"区块）────
+// ── 模型管理（右侧栏"⚙️ 模型管理"区块）──
 async function addModelToProviderUI() {
   const sel = document.getElementById('addModelProvider');
   const nameInput = document.getElementById('addModelName');
@@ -2820,7 +2873,7 @@ async function testTTS() {
 
 // ── 注册/登录 ──
 let authToken = null;
-const PLATFORM_URL = 'http://47.93.157.83:8080';  // v2.0.12: 接回云平台，恢复中心化账号体系。如需纯本地模式，改为 ''
+const PLATFORM_URL = window.LINGXI_PLATFORM_URL || '';  // v2.0.12: 接回云平台，恢复中心化账号体系。如需纯本地模式，改为 ''
 
 // 通用 API：本地（不带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
