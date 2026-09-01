@@ -1,7 +1,9 @@
 name: Fetch Dependabot Alerts
 # Exports Dependabot alerts to a downloadable artifact (JSON).
 # The Actions GITHUB_TOKEN shares a per-repo installation rate limit with other
-# CI jobs. On 403/429 the fetch step now retries with 60s backoff (up to 10x).
+# CI jobs. On 403/429 the fetch step retries with 60s backoff (up to 10x).
+# If all retries fail, the job FAILS LOUDLY (exit 1) instead of uploading a
+# misleading empty artifact — a red run is a signal, an empty green run is a lie.
 
 on:
   workflow_dispatch:
@@ -41,13 +43,17 @@ jobs:
                 sleep 60
                 TRY=$((TRY+1))
               else
-                echo "API returned HTTP $HTTP, stopping."
+                echo "FATAL: API returned unexpected HTTP $HTTP."
                 cat page.json || true
-                break
+                exit 1
               fi
             done
-            if [ "$HTTP" != "200" ]; then echo "Giving up on page $PAGE after retries."; break; fi
-            if [ "$(jq -r 'type' page.json)" != "array" ]; then echo "Response is not an array, stopping."; break; fi
+            if [ "$HTTP" != "200" ]; then
+              echo "FATAL: page $PAGE still failing after 10 retries (last HTTP $HTTP)."
+              echo "Failing the job so an empty artifact can never masquerade as success."
+              exit 1
+            fi
+            if [ "$(jq -r 'type' page.json)" != "array" ]; then echo "FATAL: response is not an array (HTTP $HTTP)."; exit 1; fi
             LEN=$(jq 'length' page.json)
             if [ "$LEN" -eq 0 ]; then echo "No more alerts."; break; fi
             jq -s 'add' "$OUT" page.json > tmp.json && mv tmp.json "$OUT"
