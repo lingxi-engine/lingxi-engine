@@ -1,4 +1,7 @@
 name: Fetch Dependabot Alerts
+# Exports Dependabot alerts to a downloadable artifact (JSON).
+# The Actions GITHUB_TOKEN shares a per-repo installation rate limit with other
+# CI jobs. On 403/429 the fetch step now retries with 60s backoff (up to 10x).
 
 on:
   workflow_dispatch:
@@ -12,10 +15,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Install jq
-        run: |
-          sudo apt-get update -y
-          sudo apt-get install -y jq
-      - name: Fetch Dependabot alerts (paginated)
+        run: sudo apt-get update -y && sudo apt-get install -y jq
+
+      - name: Fetch Dependabot alerts (paginated, retry on 403/429)
         env:
           GITHUB_REPO: lingxi-engine/lingxi-engine
           GITHUB_API: https://api.github.com
@@ -23,41 +25,39 @@ jobs:
         run: |
           set -euo pipefail
           OUT=dependabot-alerts.json
-          : > $OUT
+          echo '[]' > "$OUT"
           PAGE=1
           MAX_PAGES=20
           while [ "$PAGE" -le "$MAX_PAGES" ]; do
             echo "Fetching page $PAGE..."
             URL="$GITHUB_API/repos/$GITHUB_REPO/dependabot/alerts?per_page=100&page=$PAGE"
-            HTTP=$(curl -sS -o page.json -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$URL")
-            if [ "$HTTP" != "200" ]; then
-              echo "API returned HTTP $HTTP, stopping."
-              cat page.json || true
-              break
-            fi
-            if [ "$(jq -r 'type' page.json)" != "array" ]; then
-              echo "Response is not an array, stopping."
-              cat page.json || true
-              break
-            fi
+            HTTP="000"
+            TRY=1
+            while [ "$TRY" -le 10 ]; do
+              HTTP=$(curl -sS -o page.json -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$URL" || echo 000)
+              if [ "$HTTP" = "200" ]; then break; fi
+              if [ "$HTTP" = "403" ] || [ "$HTTP" = "429" ]; then
+                echo "HTTP $HTTP rate-limited (attempt $TRY/10), backing off 60s..."
+                sleep 60
+                TRY=$((TRY+1))
+              else
+                echo "API returned HTTP $HTTP, stopping."
+                cat page.json || true
+                break
+              fi
+            done
+            if [ "$HTTP" != "200" ]; then echo "Giving up on page $PAGE after retries."; break; fi
+            if [ "$(jq -r 'type' page.json)" != "array" ]; then echo "Response is not an array, stopping."; break; fi
             LEN=$(jq 'length' page.json)
-            if [ "$LEN" -eq 0 ]; then
-              rm -f page.json
-              break
-            fi
-            if [ -s "$OUT" ]; then
-              jq -s 'add' $OUT page.json > tmp.json && mv tmp.json $OUT
-            else
-              cp page.json $OUT
-            fi
-            if [ "$LEN" -lt 100 ]; then
-              rm -f page.json
-              break
-            fi
+            if [ "$LEN" -eq 0 ]; then echo "No more alerts."; break; fi
+            jq -s 'add' "$OUT" page.json > tmp.json && mv tmp.json "$OUT"
+            if [ "$LEN" -lt 100 ]; then break; fi
             PAGE=$((PAGE+1))
           done
-          jq . $OUT > dependabot-alerts.pretty.json || cp $OUT dependabot-alerts.pretty.json
-          echo "Total alerts: $(jq 'length' $OUT)"
+          rm -f page.json tmp.json
+          jq . "$OUT" > dependabot-alerts.pretty.json
+          echo "Total alerts: $(jq 'length' "$OUT")"
+
       - name: Upload alert artifact
         uses: actions/upload-artifact@v4
         with:
