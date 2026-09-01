@@ -190,7 +190,7 @@ export async function loginWithEmail(email: string, password: string): Promise<L
     } catch (e) { console.warn('[Auth] 自动验证失败:', (e as Error).message); }
   }
   if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('邮箱或密码错误');
-  if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
+  if (!user.email_verified && (process.env.NODE_ENV === 'production' || process.env.DEV_MODE === 'false')) throw new Error('邮箱未验证，请先验证邮箱');
 
   return _createSession(user);
 }
@@ -217,7 +217,7 @@ export async function loginWithUsernameOrEmail(identifier: string, password: str
     } catch (e) { console.warn('[Auth] 自动验证失败:', (e as Error).message); }
   }
   if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('邮箱或密码错误');
-  if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
+  if (!user.email_verified && (process.env.NODE_ENV === 'production' || process.env.DEV_MODE === 'false')) throw new Error('邮箱未验证，请先验证邮箱');
   return _createSession(user);
 }
 
@@ -228,7 +228,7 @@ export function loginWithNumericId(numericId: number, password: string): LoginRe
   if (!user) throw new Error('ID或密码错误');
   if (!user.password_hash) throw new Error('该账号未设置密码');
   if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('ID或密码错误');
-  if (!user.email_verified && process.env.NODE_ENV === 'production') throw new Error('邮箱未验证，请先验证邮箱');
+  if (!user.email_verified && (process.env.NODE_ENV === 'production' || process.env.DEV_MODE === 'false')) throw new Error('邮箱未验证，请先验证邮箱');
 
   return _createSession(user);
 }

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 灵犀引擎 - 移动端入口
  * 
  * 精简版引擎，适用于 nodejs-mobile (Android/iOS) 环境：
@@ -321,6 +321,15 @@ async function main() {
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
+  // 2026-09-02 v5：邮箱验证确认端点（注册返回的 verificationToken 在此核销）
+  app.post('/api/auth/verify-email', (req, res) => {
+    try {
+      const { token } = req.body || {};
+      if (!token) return res.status(400).json({ error: '需要 token' });
+      const r = auth.verifyEmail(token);
+      res.json({ ok: true, userId: r.userId, email: r.email });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
   app.post('/api/admin/invite-codes', (req: any, res) => {
     const t = String(req.headers['x-admin-token'] || '');
     const e = process.env.ADMIN_TOKEN || '';

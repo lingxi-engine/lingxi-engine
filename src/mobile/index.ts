@@ -321,6 +321,15 @@ async function main() {
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
+  // 2026-09-02 v5：邮箱验证确认端点（注册返回的 verificationToken 在此核销）
+  app.post('/api/auth/verify-email', (req, res) => {
+    try {
+      const { token } = req.body || {};
+      if (!token) return res.status(400).json({ error: '需要 token' });
+      const r = auth.verifyEmail(token);
+      res.json({ ok: true, userId: r.userId, email: r.email });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
   app.post('/api/admin/invite-codes', (req: any, res) => {
     const t = String(req.headers['x-admin-token'] || '');
     const e = process.env.ADMIN_TOKEN || '';
@@ -331,7 +340,7 @@ async function main() {
       const body = req.body || {};
       const code = String(body.code || ('LX-' + randomBytes(4).toString('hex').toUpperCase()));
       const maxUses = Number(body.max_uses) || 1;
-      db.createInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
+      dbCreateInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
       res.json({ ok: true, code, maxUses });
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
