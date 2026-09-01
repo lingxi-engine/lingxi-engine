@@ -1,10 +1,11 @@
-﻿name: Fetch Dependabot Alerts
+name: Fetch Dependabot Alerts
 
 on:
   workflow_dispatch:
 
 permissions:
   security-events: read
+  contents: read
 
 jobs:
   fetch:
