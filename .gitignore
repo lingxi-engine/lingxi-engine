@@ -71,3 +71,9 @@ __pycache__/
 runs.json 
 _*.mjs 
 _*.txt
+
+# 本地自动生成的安全密钥（绝不入库）
+.mobile-secrets.json
+**/.mobile-secrets.json
+.secrets.json
+**/.secrets.json

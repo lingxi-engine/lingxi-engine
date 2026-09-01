@@ -120,3 +120,18 @@ npm run typecheck  # type check (must pass)
 ## 📄 License
 
 MIT License — see [LICENSE](LICENSE).
+
+
+## 🔐 安全配置（生产部署必读）
+
+- 仓库中只有不含真实凭据的 `.env.example`；真实密钥放本地 `.env`（已被 .gitignore 排除），绝不提交。
+- 生产环境（`DEV_MODE=false`）启动时强制校验，缺失或弱默认值将**拒绝启动**：
+
+| 变量 | 用途 | 生成方式 |
+|---|---|---|
+| `JWT_SECRET` | 登录令牌签名密钥 | `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
+| `ADMIN_TOKEN` | 管理员令牌 | `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"` |
+| `MESH_TOKEN` | 多机组网令牌（多机必须一致） | 同上（32 字节） |
+
+- 开发模式缺失的密钥自动生成并持久化到数据目录（主引擎 `data/.secrets.json`、移动端 `.mobile-secrets.json`，权限 0600），重启复用，不打印到日志。
+- 密码使用 bcrypt 哈希存储与校验；WebSocket 匿名连接仅限本机回环，生产模式拒绝未认证连接。

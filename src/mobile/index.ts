@@ -12,7 +12,7 @@
 import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { randomBytes } from 'crypto';
 import { join } from 'path';
 
@@ -53,7 +53,7 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[Mobile][FATAL] Unhandled Rejection:', reason);
 });
 process.on('uncaughtException', (err) => {
-  console.error('[Mobile][FATAL] Uncaught Exception:', err.message);
+  console.error('[Mobile][FATAL] Uncaught Exception:', err.stack || err.message);
   try { closeDB(); } catch (_) {}
   process.exit(1);
 });
@@ -62,14 +62,34 @@ async function main() {
   console.log('[Mobile] 灵犀引擎移动端启动中...');
   console.log('[Mobile] Node:', process.version, '| Platform:', process.platform, '| Arch:', process.arch);
 
-  // ── 安全配置自动生成 ──
-  if (!process.env.JWT_SECRET) {
-    process.env.JWT_SECRET = randomBytes(32).toString('hex');
-    console.log('[Mobile] 自动生成 JWT_SECRET');
+  // ── 安全配置自动生成（2026-09-02 修复：持久化到 DATA_DIR，重启后旧 token 不失效）──
+  const secretsFile = join(DATA_DIR, '.mobile-secrets.json');
+  // 2026-09-02 安全修复：生产模式（DEV_MODE=false）必须外部提供稳定密钥，缺失即拒绝启动；
+  // 开发模式自动生成并持久化到 DATA_DIR（.mobile-secrets.json，0600），重启复用，不打印到日志。
+  if (process.env.DEV_MODE === 'false' && (!process.env.JWT_SECRET || !process.env.ADMIN_TOKEN)) {
+    console.error('[Mobile][FATAL] 生产环境（DEV_MODE=false）必须显式设置 JWT_SECRET / ADMIN_TOKEN 环境变量，拒绝启动');
+    process.exit(1);
   }
-  if (!process.env.ADMIN_TOKEN) {
-    process.env.ADMIN_TOKEN = randomBytes(16).toString('hex');
-    console.log('[Mobile] 自动生成 ADMIN_TOKEN');
+  if (!process.env.JWT_SECRET || !process.env.ADMIN_TOKEN) {
+    try {
+      if (existsSync(secretsFile)) {
+        const saved = JSON.parse(readFileSync(secretsFile, 'utf8'));
+        process.env.JWT_SECRET = process.env.JWT_SECRET || saved.JWT_SECRET;
+        process.env.ADMIN_TOKEN = process.env.ADMIN_TOKEN || saved.ADMIN_TOKEN;
+      }
+    } catch { /* 文件损坏则重新生成 */ }
+    if (!process.env.JWT_SECRET) {
+      process.env.JWT_SECRET = randomBytes(32).toString('hex');
+      console.log('[Mobile] 自动生成 JWT_SECRET（已持久化）');
+    }
+    if (!process.env.ADMIN_TOKEN) {
+      process.env.ADMIN_TOKEN = randomBytes(16).toString('hex');
+      console.log('[Mobile] 自动生成 ADMIN_TOKEN（已持久化）');
+    }
+    try {
+      mkdirSync(DATA_DIR, { recursive: true });
+      writeFileSync(secretsFile, JSON.stringify({ JWT_SECRET: process.env.JWT_SECRET, ADMIN_TOKEN: process.env.ADMIN_TOKEN }), { mode: 0o600 });
+    } catch (e: any) { console.warn('[Mobile] 秘钥持久化失败:', e.message); }
   }
 
   // ── 数据目录初始化 ──
@@ -238,33 +258,75 @@ async function main() {
     }
   });
 
-  // ── 认证 API ──
+  // ── 认证 API（2026-09-02 安全修复：接入共享 V7 认证，密码 bcrypt 校验）──
   app.post('/api/auth/register', async (req, res) => {
     try {
       const { email, password, display_name } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: '需要 email 和 password' });
-      const userId = 'user-' + Date.now();
-      db.createUser(userId, display_name || email.split('@')[0], email);
-      const token = auth.signAccessToken({ sub: userId, numeric_id: 0, sid: 'mobile-' + Date.now() });
-      res.json({ ok: true, userId, token });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+      // 复用共享认证：bcrypt 哈希入库 + 邮箱验证 token（旧实现不存密码、无凭据直接发 token）
+      const result = auth.register({
+        email,
+        password,
+        displayName: display_name || email.split('@')[0],
+        agentBinding: 'skip',
+      });
+      const token = auth.signAccessToken({
+        sub: String(result.user.id),
+        numeric_id: Number(result.user.numeric_id) || 0,
+        sid: 'mobile-' + Date.now(),
+      });
+      // 兼容新老前端：同时返回 token / accessToken / user
+      res.json({
+        ok: true,
+        userId: result.user.id,
+        token,
+        accessToken: token,
+        user: { id: result.user.id, displayName: result.user.display_name, email: result.user.email },
+        verificationToken: result.verificationToken,
+      });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
   app.post('/api/auth/login', async (req, res) => {
     try {
       const { email, password } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: '需要 email 和 password' });
-      const user = db.getUserByEmail(email);
-      if (!user) return res.status(401).json({ error: '用户不存在' });
-      const token = auth.signAccessToken({ sub: user.id, numeric_id: 0, sid: 'mobile-' + Date.now() });
-      res.json({ ok: true, userId: user.id, token });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
+      // 复用共享认证：用户名或邮箱 + bcrypt 密码比对，验证通过才签发 token
+      const result = await auth.loginWithUsernameOrEmail(email, password);
+      res.json({
+        ok: true,
+        userId: result.user.id,
+        token: result.accessToken,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        user: {
+          id: result.user.id,
+          displayName: result.user.displayName,
+          email: result.user.email,
+          numericId: result.user.numericId,
+          emailVerified: result.user.emailVerified,
+        },
+      });
+    } catch (err: any) { res.status(401).json({ error: err.message }); }
   });
 
   app.get('/api/auth/me', (req: any, res) => {
-    // admin-auto: 移动端本地引擎免登录
-    const userId = req.user?.id || 'user-mobile-admin';
-    res.json({ ok: true, user: { id: userId, displayName: '移动端用户', role: 'owner' } });
+    res.setHeader('X-Lingxi-Mobile', 'mobile-auth-fix-20260902');
+    // 2026-09-02 安全修复：不再无条件返回 owner。
+    // 已登录 → 返回 DB 真实档案 + JWT 中的真实角色；未登录 → 匿名 local-user（本地回环 UI 展示用）
+    const uid = req.user?.sub || req.user?.id;
+    if (uid) {
+      const user = db.getUser(String(uid));
+      const roles = req.user?.roles || ['user'];
+      return res.json({ ok: true, user: {
+        id: String(uid),
+        displayName: user?.display_name || '移动端用户',
+        email: user?.email || '',
+        roles,
+        role: roles[0],
+      } });
+    }
+    res.json({ ok: true, user: { id: 'user-mobile-admin', displayName: '移动端用户', roles: ['local-user'], role: 'local-user' } });
   });
 
   // ── 核心 API 路由（复用主引擎逻辑的精简版）──
@@ -377,9 +439,17 @@ async function main() {
       } catch { /* fallback */ }
     }
     if (!clientId) {
-      // 移动端本地引擎：始终允许连接
+      // 2026-09-02 安全修复：匿名回退仅限本机回环连接（引擎只监听 127.0.0.1），
+      // 非本机来源的匿名连接一律拒绝；本机匿名保持原身份逻辑以兼容现有 App
+      const remote = req.socket?.remoteAddress || '';
+      const isLoopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
+      if (!isLoopback) {
+        console.warn('[Mobile][WS] 拒绝非本机匿名连接:', remote);
+        ws.close(1008, 'unauthorized');
+        return;
+      }
       clientId = params.get('id') || 'user-mobile-admin';
-      console.log('[Mobile][WS] 本地连接:', clientId);
+      console.log('[Mobile][WS] 本机连接:', clientId);
     }
 
     if (!clients.has(clientId)) clients.set(clientId, new Set());
