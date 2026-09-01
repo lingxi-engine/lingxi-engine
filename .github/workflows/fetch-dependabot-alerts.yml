@@ -1,4 +1,4 @@
-name: Fetch Dependabot Alerts
+﻿name: Fetch Dependabot Alerts
 
 on:
   workflow_dispatch:
