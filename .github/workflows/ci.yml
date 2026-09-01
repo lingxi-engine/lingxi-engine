@@ -55,7 +55,11 @@ jobs:
           echo "JUNK_COUNT=$BAK" >> $GITHUB_ENV
       - name: 超过 100 个即告警
         run: |
+          set -euo pipefail
           # 2026-08-29 修复：原变量名含中文，GitHub Actions 环境变量只认 ASCII，引用永远为空
-          if [ "${{ env.JUNK_COUNT }}" -gt 100 ]; then
-            echo "::warning::工作区垃圾文件过多 (${{ env.JUNK_COUNT }} 个)，建议清理"
+          # 2026-09-02 修复：shell 脚本内改用 $JUNK_COUNT 引用环境变量（旧写法把 Actions
+          # 表达式混进 shell，展开时机不同且空值会让整数比较行为不可预期）；
+          # set -u 严格模式下变量未定义会立即报错退出，比较异常时 CI 能直接捕捉
+          if [ "${JUNK_COUNT}" -gt 100 ]; then
+            echo "::warning::工作区垃圾文件过多 (${JUNK_COUNT} 个)，建议清理"
           fi
