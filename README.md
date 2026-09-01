@@ -135,3 +135,14 @@ MIT License — see [LICENSE](LICENSE).
 
 - 开发模式缺失的密钥自动生成并持久化到数据目录（主引擎 `data/.secrets.json`、移动端 `.mobile-secrets.json`，权限 0600），重启复用，不打印到日志。
 - 密码使用 bcrypt 哈希存储与校验；WebSocket 匿名连接仅限本机回环，生产模式拒绝未认证连接。
+
+## 🖥️ CLI 终端入口
+
+CLI（`npx lingxi`）的 bin 指向 TypeScript 源文件，运行需要 [tsx](https://www.npmjs.com/package/tsx) 加载器：
+
+```bash
+npx tsx src/cli/chat.ts chat   # 终端聊天
+npx tsx src/cli/chat.ts help   # 查看全部命令
+```
+
+（`npm start` 启动 Web 服务不依赖 tsx 之外的任何全局工具。）
