@@ -4,6 +4,8 @@ name: Fetch Dependabot Alerts
 # CI jobs. On 403/429 the fetch step retries with 60s backoff (up to 10x).
 # If all retries fail, the job FAILS LOUDLY (exit 1) instead of uploading a
 # misleading empty artifact — a red run is a signal, an empty green run is a lie.
+# The 403/429 response body is printed so a real permission denial ("resource
+# not accessible by integration") is distinguishable from genuine rate limiting.
 
 on:
   workflow_dispatch:
@@ -39,7 +41,9 @@ jobs:
               HTTP=$(curl -sS -o page.json -w "%{http_code}" -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $GH_TOKEN" "$URL" || echo 000)
               if [ "$HTTP" = "200" ]; then break; fi
               if [ "$HTTP" = "403" ] || [ "$HTTP" = "429" ]; then
-                echo "HTTP $HTTP rate-limited (attempt $TRY/10), backing off 60s..."
+                echo "HTTP $HTTP (attempt $TRY/10), backing off 60s. Response body:"
+                head -c 400 page.json || true
+                echo ""
                 sleep 60
                 TRY=$((TRY+1))
               else
@@ -50,6 +54,9 @@ jobs:
             done
             if [ "$HTTP" != "200" ]; then
               echo "FATAL: page $PAGE still failing after 10 retries (last HTTP $HTTP)."
+              echo "Last response body:"
+              head -c 400 page.json || true
+              echo ""
               echo "Failing the job so an empty artifact can never masquerade as success."
               exit 1
             fi
