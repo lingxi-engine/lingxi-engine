@@ -245,3 +245,16 @@ storage/logs/
 storage/avatars/
 storage/uploads/
 
+
+# Frontend platform config (local override, never commit)
+platform-config.js
+
+# Internal deployment records (contain server details)
+DEPLOY_RECORD_*.md
+
+
+# Archived junk & smoke-test DB (contain server IP / user data, never commit)
+_archive/
+data-smoke-b13b/
+_cleanup-bak-*/
+data-platform/

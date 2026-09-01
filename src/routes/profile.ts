@@ -16,7 +16,7 @@ import multer from 'multer';
 import type { ServerContext } from '../server/context.js';
 
 // 云平台地址（与前端 PLATFORM_URL、auth/platform-bind.ts 保持一致，可用环境变量覆盖）
-const PLATFORM_URL = process.env.PLATFORM_URL || 'http://47.93.157.83:8080';
+const PLATFORM_URL = process.env.PLATFORM_URL || '';
 
 /** 判断是否云平台账号 id（ouid-N 格式） */
 export function isPlatformUserId(userId: string): boolean {

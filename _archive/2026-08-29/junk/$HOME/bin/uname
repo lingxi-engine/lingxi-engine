@@ -1,2 +1,0 @@
-#!/bin/sh
-for a in "\$@"; do [ "\$a" = "-m" ] && { echo arm64; exit 0; }; done; echo Darwin

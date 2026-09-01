@@ -12,7 +12,7 @@
  *  - bcrypt 密码哈希 → 安全
  *  - 参数化 SQL 查询 → 防注入
  *
- * 部署: 47.93.157.83:3001 (测试服) → 未来独立正式服
+ * 部署: your-platform-server:3001 (测试服) → 未来独立正式服
  */
 
 import express from 'express';
@@ -25,7 +25,7 @@ import initSqlJs from 'sql.js';
 
 // ============ 配置 ============
 const PORT = parseInt(process.env.PORT || '3001', 10);
-const MESH_TOKEN = process.env.MESH_TOKEN || 'lingxi-mesh-v2-secret';
+const MESH_TOKEN = process.env.MESH_TOKEN || randomBytes(16).toString('hex');
 const SECRET = process.env.PLATFORM_SECRET || 'lingxi-platform-dev-secret';
 // P0-3 修复: JWT_SECRET 固定，不再每次重启随机生成
 const JWT_SECRET = process.env.PLATFORM_JWT_SECRET || SECRET;

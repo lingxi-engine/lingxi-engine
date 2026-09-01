@@ -197,7 +197,7 @@ export function getInstanceId(): string {
 
 /**
  * 启动实例网格
- * @param platformUrl 平台 API URL (http://47.93.157.83:3001) 
+ * @param platformUrl 平台 API URL (http://your-platform-server:3001) 
  * @param token 平台认证 token
  * @param port 本实例端口
  * @param agents 本实例的 AI agent ID 列表

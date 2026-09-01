@@ -35,7 +35,7 @@ if ($up) {
 }
 
 Write-Host "  Downloading..." -ForegroundColor Cyan
-$url = "http://47.93.157.83:8080/public/lingxi-engine-v1.7.0.tar.gz"
+$url = "http://your-download-server:8080/public/lingxi-engine-v1.7.0.tar.gz"
 $tmp = "$env:TEMP\lx.tar.gz"
 try { Invoke-WebRequest -Uri $url -OutFile $tmp -ErrorAction Stop }
 catch { Write-Host "  [X] Download: $_" -ForegroundColor Red; pause; exit 1 }

@@ -140,7 +140,7 @@ else
     $SUDO mkdir -p "$INSTALL_DIR"
     echo "📦 正在下载灵犀引擎最新版..."
     curl -fsSL -o /tmp/lingxi-engine.tar.gz \
-        "http://47.93.157.83:8080/public/lingxi-engine.tar.gz"
+        "${LINGXI_BASE_URL:-http://localhost:8080}/public/lingxi-engine.tar.gz"
     echo "📂 正在解压到 $INSTALL_DIR ..."
     if [ "$IS_MAC" = true ]; then
         tar -xzf /tmp/lingxi-engine.tar.gz -C "$INSTALL_DIR" --strip-components=1

@@ -9,7 +9,8 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ENV_PATH = join(__dirname, '..', '.env');
-const PLATFORM_URL = process.env.PLATFORM_URL || 'http://47.93.157.83:8080';
+// 云平台地址：通过 .env 的 PLATFORM_URL 配置；留空 = 纯本地模式（注册/登录会提示无法连接，不影响本地功能）
+const PLATFORM_URL = process.env.PLATFORM_URL || '';
 
 interface PlatformUser {
   ok: boolean;

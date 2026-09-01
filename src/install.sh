@@ -30,7 +30,7 @@ fi
 # 下载（始终指向最新版符号链接）
 echo "  📦 正在下载灵犀引擎（最新版）..."
 curl -fsSL -o /tmp/lingxi-engine.tar.gz \
-    "http://47.93.157.83:8080/public/lingxi-engine.tar.gz"
+    "${LINGXI_BASE_URL:-http://localhost:8080}/public/lingxi-engine.tar.gz"
 
 # 解压
 echo "  📂 正在解压..."

@@ -23,6 +23,9 @@
     "StatusBar": {
       "style": "DARK",
       "backgroundColor": "#0f0f0f"
+    },
+    "CapacitorWebSocket": {
+      "keepAlive": true
     }
   },
   "ios": {

@@ -1,6 +1,6 @@
 # LingXi Engine - Windows Installer (PowerShell)
 # Version: auto (generated at install time)
-# Usage: iwr -useb http://47.93.157.83:8080/install.ps1 | iex
+# Usage: iwr -useb http://your-download-server:8080/install.ps1 | iex
 
 try { Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop } catch {}
 $ErrorActionPreference = "Stop"
@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $InstallDir = Join-Path $env:USERPROFILE "lingxi-engine"
-$TarballUrl = "http://47.93.157.83:8080/public/lingxi-engine.tar.gz"
+$TarballUrl = "http://your-download-server:8080/public/lingxi-engine.tar.gz"
 $INSTALL_VERSION = (Get-Date).ToString("v2026.M.d-H.mm")
 
 function W-OK($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
@@ -201,8 +201,8 @@ JWT_SECRET=
 ADMIN_TOKEN=
 
 # --- Mesh Platform (cross-network social) ---
-MESH_PLATFORM_URL=http://47.93.157.83:3002
-MESH_TOKEN=lingxi-mesh-v2-secret
+MESH_PLATFORM_URL=
+MESH_TOKEN=change-me-to-a-strong-secret
 
 # --- Server port ---
 PORT=3456

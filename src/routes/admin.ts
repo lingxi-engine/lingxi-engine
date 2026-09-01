@@ -482,7 +482,7 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         return res.status(401).json({ ok: false, error: '升级需要 ADMIN_TOKEN 授权' });
       }
       const { execSync } = await import('child_process');
-      const updateUrl = process.env.UPDATE_URL || 'http://47.93.157.83:8080/public/lingxi-engine.tar.gz';
+      const updateUrl = process.env.UPDATE_URL || '';
       const isWin = process.platform === 'win32';
       const isMac = process.platform === 'darwin';
       const installDir = process.env.LINGXI_INSTALL_DIR
