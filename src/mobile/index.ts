@@ -13,10 +13,10 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import { join } from 'path';
 
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES } from '../storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES, createInviteCode as dbCreateInviteCode } from '../storage/db.js';
 import { initGoalTrackerTable } from '../core/goal-tracker.js';
 import * as auth from '../auth/index.js';
 import { jwtAuth } from '../middleware/jwt-auth.js';
@@ -261,13 +261,14 @@ async function main() {
   // ── 认证 API（2026-09-02 安全修复：接入共享 V7 认证，密码 bcrypt 校验）──
   app.post('/api/auth/register', async (req, res) => {
     try {
-      const { email, password, display_name } = req.body || {};
+      const { email, password, display_name, invite_code } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: '需要 email 和 password' });
       // 复用共享认证：bcrypt 哈希入库 + 邮箱验证 token（旧实现不存密码、无凭据直接发 token）
       const result = auth.register({
         email,
         password,
         displayName: display_name || email.split('@')[0],
+        inviteCode: invite_code || undefined,
         agentBinding: 'skip',
       });
       const token = auth.signAccessToken({
@@ -310,6 +311,30 @@ async function main() {
     } catch (err: any) { res.status(401).json({ error: err.message }); }
   });
 
+  // === 2026-09-02: verify-email route + admin invite-code issuance ===
+  app.get('/api/auth/verify-email', (req, res) => {
+    try {
+      const token = String((req.query as any).token || '');
+      if (!token) return res.status(400).json({ error: 'token required' });
+      const r = auth.verifyEmail(token);
+      res.json({ ok: true, email: r.email, userId: r.userId });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
+
+  app.post('/api/admin/invite-codes', (req: any, res) => {
+    const t = String(req.headers['x-admin-token'] || '');
+    const e = process.env.ADMIN_TOKEN || '';
+    let ok = false;
+    try { ok = e.length > 0 && t.length === e.length && timingSafeEqual(Buffer.from(t), Buffer.from(e)); } catch {}
+    if (!ok) return res.status(401).json({ error: 'admin token required (X-Admin-Token header)' });
+    try {
+      const body = req.body || {};
+      const code = String(body.code || ('LX-' + randomBytes(4).toString('hex').toUpperCase()));
+      const maxUses = Number(body.max_uses) || 1;
+      db.createInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
+      res.json({ ok: true, code, maxUses });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
   app.get('/api/auth/me', (req: any, res) => {
     res.setHeader('X-Lingxi-Mobile', 'mobile-auth-fix-20260902');
     // 2026-09-02 安全修复：不再无条件返回 owner。
@@ -318,12 +343,13 @@ async function main() {
     if (uid) {
       const user = db.getUser(String(uid));
       const roles = req.user?.roles || ['user'];
+      const authSource = (req.user?.sid === 'admin-auto' || req.user?.sid === 'admin-token' || req.user?.sid === 'platform-admin') ? 'local-auto-admin' : 'jwt';
       return res.json({ ok: true, user: {
         id: String(uid),
         displayName: user?.display_name || '移动端用户',
         email: user?.email || '',
         roles,
-        role: roles[0],
+        role: roles[0], authSource,
       } });
     }
     res.json({ ok: true, user: { id: 'user-mobile-admin', displayName: '移动端用户', roles: ['local-user'], role: 'local-user' } });
@@ -410,6 +436,23 @@ async function main() {
   const wss = new WebSocketServer({ server, path: '/ws' });
   const clients = new Map<string, Set<WebSocket>>();
 
+  // ── 2026-09-02 v4: WS handshake 安全加固 ──
+  // HMAC 握手：sig = HMAC-SHA256(`${clientId}|${ts}`, JWT_SECRET) hex，ts 偏差 ≤ 300s。
+  // 原生层（掌握 JWT_SECRET）为可信连接签名；无有效签名的匿名连接一律降级为严格只读。
+  function verifyHandshakeSig(clientId: string, params: URLSearchParams): boolean {
+    const ts = params.get('ts');
+    const sig = params.get('sig');
+    if (!ts || !sig) return false;
+    const tsNum = Number(ts);
+    if (!Number.isFinite(tsNum) || Math.abs(Date.now() - tsNum) > 300_000) return false;
+    const expect = createHmac('sha256', process.env.JWT_SECRET || '').update(`${clientId}|${ts}`).digest('hex');
+    try { return timingSafeEqual(Buffer.from(sig), Buffer.from(expect)); } catch { return false; }
+  }
+  // 匿名连接事件白名单（严格只读/受限能力）
+  const WS_READ_ONLY_EVENTS = new Set(['subscribe', 'register_user', 'typing', 'task.list', 'task.status', 'sessions.list']);
+  // LINGXI_WS_REQUIRE_SIG=true 时强制要求 HMAC 握手签名
+  const REQUIRE_SIG = process.env.LINGXI_WS_REQUIRE_SIG === 'true';
+
   function broadcast(event: any) {
     const payload = JSON.stringify(event);
     const eventChatId = event.chatId;
@@ -438,17 +481,28 @@ async function main() {
         if (payload) clientId = payload.sub;
       } catch { /* fallback */ }
     }
+    let isRestricted = false;
     if (!clientId) {
       // 2026-09-02 安全修复：匿名回退仅限本机回环连接（引擎只监听 127.0.0.1），
       // 非本机来源的匿名连接一律拒绝；本机匿名保持原身份逻辑以兼容现有 App
       const remote = req.socket?.remoteAddress || '';
       const isLoopback = remote === '127.0.0.1' || remote === '::1' || remote === '::ffff:127.0.0.1';
-      if (!isLoopback) {
+      // v4: 匿名回退总开关（LINGXI_ALLOW_ANON_WS=false 关闭）；生产模式（DEV_MODE=false）一律关闭
+      const anonAllowed = process.env.LINGXI_ALLOW_ANON_WS !== 'false' && process.env.DEV_MODE !== 'false';
+      if (!anonAllowed) console.warn('[Mobile][WS] anonymous fallback disabled (LINGXI_ALLOW_ANON_WS=false or DEV_MODE=false)');
+      if (!anonAllowed || !isLoopback) {
         console.warn('[Mobile][WS] 拒绝非本机匿名连接:', remote);
         ws.close(1008, 'unauthorized');
         return;
       }
+      const sigOk = verifyHandshakeSig(params.get('id') || 'user-mobile-admin', params);
+      if (REQUIRE_SIG && !sigOk) {
+        console.warn('[Mobile][WS] handshake signature missing/invalid, reject');
+        ws.close(1008, 'bad-signature');
+        return;
+      }
       clientId = params.get('id') || 'user-mobile-admin';
+      isRestricted = !sigOk; // 无有效 HMAC 签名的匿名连接 → 严格只读
       console.log('[Mobile][WS] 本机连接:', clientId);
     }
 
@@ -457,10 +511,19 @@ async function main() {
     broadcast({ type: 'user.online', userId: clientId });
 
     // 自动创建用户设置
-    ensureMobileUserSetup(clientId, db, manager, toolRegistry);
+    ensureMobileUserSetup(clientId, db, manager, toolRegistry, isRestricted);
 
     ws.on('message', (raw) => {
       try {
+        // v4: 匿名受限连接只允许白名单（只读）事件
+        if (isRestricted) {
+          let evtType: string | null = null;
+          try { evtType = JSON.parse(String(raw))?.type ?? null; } catch { /* ignore */ }
+          if (!evtType || !WS_READ_ONLY_EVENTS.has(evtType)) {
+            try { ws.send(JSON.stringify({ type: 'error', message: 'anonymous connection is read-only; login required' })); } catch {}
+            return;
+          }
+        }
         handleWSMessage(raw, clientId, router, broadcast, ws);
       } catch (err: any) {
         console.error('[Mobile][WS] 消息处理异常:', err?.message);
@@ -512,7 +575,7 @@ async function main() {
 }
 
 // 移动端用户自动设置
-function ensureMobileUserSetup(clientId: string, db: any, manager: any, toolRegistry?: any) {
+function ensureMobileUserSetup(clientId: string, db: any, manager: any, toolRegistry?: any, isRestricted = false) {
   try {
     const existing = db.getUser(clientId);
     if (existing) {
@@ -526,6 +589,11 @@ function ensureMobileUserSetup(clientId: string, db: any, manager: any, toolRegi
       db.createUser(clientId, '移动端用户');
     }
     // 创建默认 Agent + 聊天
+    // v4: 匿名（受限）连接禁止自动创建 Agent，防止无凭证者获得可执行任务的代理
+    if (isRestricted) {
+      console.log('[Mobile] anonymous user profile only, skip agent creation:', clientId);
+      return;
+    }
     const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手。', 'semi');
     const chatId = 'chat-' + clientId;
     db.createChat(chatId, 'private');
