@@ -1,0 +1,13 @@
+{
+  "name": "deploy-artifact-verify-sync",
+  "displayName": "部署产物校验与同步",
+  "description": "校验服务器/本地部署产物是否与 Git 最新提交一致，修复差异后重新打包、备份并上传。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户询问“部署的是不是最新版”“为什么装到旧包”“代码是不是乱了”或要求“修完打包备份上传”时，按以下步骤执行：\n1. 定位真实仓库路径，确认 git HEAD、提交历史和工作区状态，排除空壳目录干扰。\n2. 读取安装脚本（如 install.ps1）和打包脚本（如 pack-release.ps1），明确产物结构、下载地址和版本约定。\n3. 从服务器下载当前部署的 tarball/脚本，拆包对比关键文件（密钥、IP/域名、配置、.gitignore 等）与仓库最新提交是否一致。\n4. 若不一致，先修复源码中的安全/路径等 bug，提交并推送；再按脚本重新打包，验证 tarball 目录结构与 install 脚本期望匹配。\n5. 备份旧产物，上传新产物到服务器，最后再次下载校验，确保服务器上的 install.ps1 和 tarball 都是最新修复版。\n6. 汇报时用具体证据（commit hash、文件差异、校验结果），明确区分“之前不是”和“现在是最新版”，避免模糊措辞。",
+  "autoCreated": true,
+  "createdAt": 1788314224759
+}

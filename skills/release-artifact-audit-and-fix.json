@@ -1,0 +1,14 @@
+{
+  "name": "release-artifact-audit-and-fix",
+  "displayName": "发布产物审计与修复",
+  "description": "当用户怀疑线上部署包/安装脚本不是最新，或 git/release 流程异常时，系统检查仓库状态、构建产物和线上包，修复并验证一致性。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "list_dir",
+    "write_file"
+  ],
+  "prompt": "遇到用户询问“线上部署的是不是最新版”“安装脚本为什么还是旧包”“git/备份/release 有没有问题”等场景时，按以下步骤处理：\n1. 先定位真实仓库：检查用户提到的目录及常见候选目录（如用户主目录、项目根目录），用 `list_dir` / `shell_exec` 确认 `.git` 存在，避免在空壳目录里操作。\n2. 审计 git 状态：`git status`、`git remote -v`、`git log --oneline -n`、`git branch -a`，确认是否有未提交改动、是否连接远程、分支是否正确。\n3. 如有未提交的安全修复或重要改动，先提交并推送到远程；必要时切到正确分支。\n4. 检查发布流程：读取 `scripts/pack-release.ps1`、CI 配置、`install.ps1` 等文件，确认打包路径、下载地址、版本号、密钥/Token 是否硬编码。\n5. 构建/打包最新 release，生成 tarball 等产物。\n6. 下载线上实际部署的 `install.ps1` 和 tarball，解压后与本地最新产物做对比（文件哈希、关键配置、版本号）。\n7. 若线上不是最新，上传最新产物并更新 `install.ps1` 中的下载地址；确保没有硬编码 IP/弱密钥回到旧版。\n8. 最后让用户用 `irm ... | iex` 重新验证，并给出“是/否最新”的明确结论和实测证据链。",
+  "autoCreated": true,
+  "createdAt": 1788313670543
+}
