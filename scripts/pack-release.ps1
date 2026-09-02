@@ -1,80 +1,128 @@
-# Lingxi Engine pack script v4 (2026-09-02: fix ProjectRoot to repo root)
+# Lingxi Engine pack script v6.3 (2026-09-02: package repo root under lingxi-engine/ prefix, exclude ALL .env* files, robust Copy-Item staging, fixed key-file verification regex)
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.13.tar.gz"
 
-# Exclude rules (NOTE: --exclude=storage would match src/storage/, use exact paths)
-# NOTE: do NOT add --exclude=./mobile - bsdtar matches it against src/mobile/* too (prefix match)
-$excludes = @(
-    '--exclude=./node_modules',
-    '--exclude=./.git',
-    '--exclude=./.env',
-    '--exclude=./workspace',
-    '--exclude=./data',
-    '--exclude=./docs',
-    '--exclude=./mobile-dist',
-    '--exclude=./app',
-    '--exclude=./diffrhythm-local',
-    '--exclude=./song_maker',
-    '--exclude=./_verify_tmp',
-    '--exclude=./_release_check',
-    '--exclude=./_pkgx',
-    '--exclude=./backup_20260825_reasoning',
-    '--exclude=*.tar.gz',
-    '--exclude=*.bak*',
-    '--exclude=*_cleanup-bak-*',
-    '--exclude=*.patch-ctor',
-    '--exclude=fix-task-interrupt*.cjs',
-    '--exclude=*.log',
-    '--exclude=*.tmp',
-    '--exclude=patch-db.cjs',
-    '--exclude=startup.err',
-    '--exclude=usage.json',
-    '--exclude=./src/web',
-    '--exclude=./src/web_backup_v9',
-    '--exclude=./_archive',
-    '--exclude=./_add_market_routes.cjs',
-    '--exclude=./_pack_release.ps1',
-    '--exclude=./_junk*',
-    '--exclude=*.func',
-    '--exclude=_*.py',
-    '--exclude=_*.cjs',
-    '--exclude=_*.mjs',
-    '--exclude=_*.ps1',
-    '--exclude=_*.sh',
-    '--exclude=./_*.txt',
-    '--exclude=./_verify_*.js',
-    '--exclude=tsc_*.txt',
-    '--exclude=*.pre-*',
-    '--exclude=*.pid',
-    '--exclude=./$HOME',
-    '--exclude=tmp_server_clean.sh',
-    '--exclude=*.txt'
-)
+# Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
+$StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
+$StageDir = Join-Path $StageRoot "lingxi-engine"
+if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
+New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
-# Pack
+$excludeDirs = @('node_modules','.git','workspace','data','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2')
+$excludeFilesRegex = '\.tar\.gz$|\.bak|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|\.txt$'
+
+function Remove-EnvFiles($path) {
+    Get-ChildItem $path -Recurse -Force -Filter '.env*' | ForEach-Object {
+        Write-Host "  [EXCLUDE] removing $_" -ForegroundColor DarkGray
+        Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
+    }
+}
+
 Push-Location $ProjectRoot
 try {
-    tar czf $OutFile @excludes -C "." .
+    Write-Host "Staging project into $StageDir ..." -ForegroundColor Cyan
+    Get-ChildItem $ProjectRoot -Force | Where-Object {
+        $_.Name -notin $excludeDirs -and
+        $_.Name -notmatch $excludeFilesRegex
+    } | ForEach-Object {
+        $dst = Join-Path $StageDir $_.Name
+        Copy-Item $_.FullName $dst -Recurse -Force
+    }
+
+    # Strip any .env files that may have been copied under subdirectories
+    Write-Host ""
+    Write-Host "Stripping all .env* files from staging..." -ForegroundColor Cyan
+    Remove-EnvFiles $StageDir
+
+    # Pack from staging root so tarball top-level is ./lingxi-engine/
+    Push-Location $StageRoot
+    try {
+        tar czf $OutFile .
+    } finally {
+        Pop-Location
+    }
+
     $sz = (Get-Item $OutFile).Length
     $mb = [math]::Round($sz / 1MB, 2)
+    Write-Host ""
     Write-Host "SIZE: $sz bytes ($mb MB)" -ForegroundColor Green
     Write-Host "PATH: $OutFile" -ForegroundColor Cyan
+
+    # Verify structure: top level should be lingxi-engine/
+    Write-Host ""
+    Write-Host "Verify tarball structure..." -ForegroundColor Yellow
+    $top = tar -tzf $OutFile | ForEach-Object {
+        $clean = $_ -replace '^\./', ''
+        ($clean -split '/')[0]
+    } | Sort-Object -Unique
+    if ($top -contains 'lingxi-engine') {
+        Write-Host "  [OK] top-level contains lingxi-engine/" -ForegroundColor Green
+    } else {
+        throw "[FAIL] top-level is: $($top -join ', ')"
+    }
+
+    # Verify .env is NOT present
+    Write-Host ""
+    Write-Host "Verify .env is excluded..." -ForegroundColor Yellow
+    $envFiles = tar -tzf $OutFile | Select-String -Pattern '\.env' | ForEach-Object { $_.Line }
+    if (-not $envFiles) {
+        Write-Host "  [OK] no .env files in package" -ForegroundColor Green
+    } else {
+        Write-Host "  [FAIL] .env files found:" -ForegroundColor Red
+        $envFiles | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+        throw ".env files must not be packaged"
+    }
 
     # Verify key files
     Write-Host ""
     Write-Host "Verify key files..." -ForegroundColor Yellow
-    $keyFiles = @('index.ts', 'src/storage/db.ts', 'src/core/router.ts', 'src/mobile/index.ts', 'web/index.html', 'web/js/app.js', 'package.json')
+    $keyFiles = @('lingxi-engine/index.ts', 'lingxi-engine/src/storage/db.ts', 'lingxi-engine/src/core/router.ts', 'lingxi-engine/src/mobile/index.ts', 'lingxi-engine/web/index.html', 'lingxi-engine/web/js/app.js', 'lingxi-engine/package.json')
+    $tarList = tar -tzf $OutFile
     foreach ($f in $keyFiles) {
-        $found = tar -tzf $OutFile | Select-String -Pattern $f -SimpleMatch
+        $pattern = '^\./' + [regex]::Escape($f) + '$'
+        $found = $tarList | Where-Object { $_ -match $pattern }
         if ($found) {
             Write-Host "  [OK] $f" -ForegroundColor Green
         } else {
-            Write-Host "  [MISSING] $f" -ForegroundColor Red
+            throw "[MISSING] $f"
         }
     }
+
+    # Verify security fixes are present
+    Write-Host ""
+    Write-Host "Verify v5 security fixes..." -ForegroundColor Yellow
+    $platformSrc = tar -xzf $OutFile -O './lingxi-engine/src/platform-server.ts' 2>$null
+    if ($platformSrc -match 'randomBytes\(16\)\.toString\(\x27hex\x27\)') {
+        Write-Host "  [OK] MESH_TOKEN uses randomBytes(16).toString('hex')" -ForegroundColor Green
+    } else {
+        throw "[FAIL] MESH_TOKEN weak-value / randomBytes fix missing"
+    }
+    if ($platformSrc -match 'MESH_TOKEN_WEAK') {
+        Write-Host "  [OK] weak-token detection present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] MESH_TOKEN_WEAK missing"
+    }
+
+    $appJs = tar -xzf $OutFile -O './lingxi-engine/web/js/app.js' 2>$null
+    if ($appJs -match 'LINGXI_PLATFORM_URL') {
+        Write-Host "  [OK] app.js uses LINGXI_PLATFORM_URL env var" -ForegroundColor Green
+    } else {
+        throw "[FAIL] hardcoded platform URL still present"
+    }
+
+    $mobileSrc = tar -xzf $OutFile -O './lingxi-engine/src/mobile/index.ts' 2>$null
+    if ($mobileSrc -match 'verify-email' -and $mobileSrc -match 'post') {
+        Write-Host "  [OK] verify-email POST route present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] verify-email POST route missing"
+    }
+
+    Write-Host ""
+    Write-Host "Packaging completed successfully." -ForegroundColor Green
 } finally {
     Pop-Location
+    if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force -ErrorAction SilentlyContinue }
 }
