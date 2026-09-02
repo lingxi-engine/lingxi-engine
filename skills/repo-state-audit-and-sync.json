@@ -1,0 +1,15 @@
+{
+  "name": "repo-state-audit-and-sync",
+  "displayName": "代码仓库状态审计与同步",
+  "description": "当仓库状态异常、需要把本地修改安全推送到远程，并同步备份与官网时，先审计 git 状态与文件差异，再修复提交、推送并验证，确保无丢失。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file",
+    "web_search"
+  ],
+  "prompt": "遇到需要把本地修改推送到 GitHub、同步外部备份、确认官网最新，或用户质疑“回退/丢东西/没推上去”时，按以下步骤执行：\n1) 用 shell_exec 检查 `git status`、`git log --oneline -n 20`、`git remote -v`、`git diff`、`git diff --stat`，确认 HEAD、工作区改动、远程分支与落差；\n2) 用 list_dir / read_file 检查关键文件、备份目录、官网目录，确认版本差异和敏感配置是否被回退；\n3) 如有未提交改动，先通过临时分支或副本备份，再分步提交，提交信息清晰；\n4) 若缺少远程，用 `git remote add` 配置后再推送；推送后再次用 `git log origin/主分支..主分支` 验证零落差；\n5) 同步外部备份（如 F 盘）时，先检查最新备份时间，再复制并校验关键文件；\n6) 用 web_search 或 read_file 验证官网/线上内容是否最新；\n7) 每一步给出实测证据，不猜测、不画饼；\n8) 完成后输出逐项状态表，明确“已做 / 未做 / 风险点 / 下一步”。",
+  "autoCreated": true,
+  "createdAt": 1788309421074
+}
