@@ -2936,7 +2936,8 @@ async function submitAuth() {
   const username = document.getElementById('authUsername').value.trim();
   const password = document.getElementById('authPassword').value;
   if (!username) { document.getElementById('authMsg').textContent = t('auth.errNoUser'); return; }
-  if (username.length < 2 || username.length > 20) { document.getElementById('authMsg').textContent = t('auth.errUserLen'); return; }
+  if (username.includes('@')) { if (username.length < 3 || username.length > 254) { document.getElementById('authMsg').textContent = '⚠邮箱格式或长度不太对（3~254）'; return; } }
+  else if (username.length < 2 || username.length > 20) { document.getElementById('authMsg').textContent = t('auth.errUserLen'); return; }
   if (!password || password.length < 6) { document.getElementById('authMsg').textContent = t('auth.errPwdLen'); return; }
   document.getElementById('authMsg').textContent = t('auth.processing');
   document.getElementById('authSubmitBtn').disabled = true;
@@ -2971,9 +2972,9 @@ async function submitAuth() {
       document.getElementById('loginButtons').style.display = 'none';
       closeAuthModal();
       connect();
-      toast('⚠' + (authMode === 'register' ? t('auth.registerSuccess') : t('auth.loginSuccess')));
+      toast(authMode === 'register' ? t('auth.registerSuccess') : t('auth.loginSuccess'));
     } else {
-      document.getElementById('authMsg').textContent = '⚠' + (r.error || t('err.fail'));
+      document.getElementById('authMsg').textContent = '⚠' + _errMsg(r, t('err.fail'));
     }
   } catch(e) {
     document.getElementById('authMsg').textContent = '⚠' + e.message;

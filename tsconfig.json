@@ -20,6 +20,8 @@
     "node_modules",
     "dist",
     "workspace",
+    "release",
+    "backup_*",
     "src/core/index.ts",
     "src/router.ts",
     "src/index.ts",

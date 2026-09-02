@@ -181,7 +181,7 @@ export async function loginWithEmail(email: string, password: string): Promise<L
   if (!user) throw new Error('邮箱或密码错误');
   if (!user.password_hash) throw new Error('该账号未设置密码，请使用验证码登录');
   // 开发模式跳过邮箱验证
-  if (process.env.DEV_AUTO_VERIFY === 'true' && user.status !== 'verified') {
+  if (process.env.DEV_AUTO_VERIFY === 'true' && !user.email_verified) {
     try {
       const { getDB } = await import('../storage/db.js');
       getDB().run("UPDATE users SET email_verified = 1 WHERE id = ?", [user.id]);
@@ -209,7 +209,7 @@ export async function loginWithUsernameOrEmail(identifier: string, password: str
   if (!user) throw new Error('邮箱或密码错误');
   if (!user.password_hash) throw new Error('该账号未设置密码，请使用验证码登录');
   // DEV_AUTO_VERIFY 逻辑
-  if (process.env.DEV_AUTO_VERIFY === 'true' && user.status !== 'verified') {
+  if (process.env.DEV_AUTO_VERIFY === 'true' && !user.email_verified) {
     try {
       const { getDB } = await import('../storage/db.js');
       getDB().run("UPDATE users SET email_verified = 1 WHERE id = ?", [user.id]);
@@ -228,6 +228,13 @@ export function loginWithNumericId(numericId: number, password: string): LoginRe
   if (!user) throw new Error('ID或密码错误');
   if (!user.password_hash) throw new Error('该账号未设置密码');
   if (!bcrypt.compareSync(password, user.password_hash)) throw new Error('ID或密码错误');
+  // 修复：数字ID登录此前缺失 DEV_AUTO_VERIFY 自动验证，开发模式下可能误报“邮箱未验证”
+  if (process.env.DEV_AUTO_VERIFY === 'true' && !user.email_verified) {
+    try {
+      db.getDB().run("UPDATE users SET email_verified = 1 WHERE id = ?", [user.id]);
+      user.email_verified = 1;
+    } catch (e) { console.warn('[Auth] 自动验证失败:', (e as Error).message); }
+  }
   if (!user.email_verified && (process.env.NODE_ENV === 'production' || process.env.DEV_MODE === 'false')) throw new Error('邮箱未验证，请先验证邮箱');
 
   return _createSession(user);
