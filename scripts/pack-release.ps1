@@ -1,8 +1,8 @@
-# Lingxi Engine pack script v3 (2026-08-27: 琛ユ紡 tsc_*.txt / *.pre-* / *.pid)
-# Usage: powershell -ExecutionPolicy Bypass -File .\_pack_release.ps1
+# Lingxi Engine pack script v4 (2026-09-02: fix ProjectRoot to repo root)
+# Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
-$ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 $OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.13.tar.gz"
 
 # Exclude rules (NOTE: --exclude=storage would match src/storage/, use exact paths)
