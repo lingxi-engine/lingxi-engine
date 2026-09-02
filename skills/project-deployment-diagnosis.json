@@ -1,0 +1,13 @@
+{
+  "name": "project-deployment-diagnosis",
+  "displayName": "项目部署问题诊断",
+  "description": "通过 shell 命令和文件检查，定位并汇报项目部署、打包或上传过程中的异常与当前状态。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户询问项目部署、打包、上传失败或工作区状态时，按以下步骤处理：\n1. 用 shell_exec 快速定位工作区、检查目录结构、文件大小、Git 状态、相关进程/服务状态。\n2. 用 read_file 读取关键脚本、日志、配置文件或打包产物元数据。\n3. 必要时用 write_file 保存临时检查脚本或汇总报告。\n4. 将实测结果与预期对比，用表格清晰列出：项目/指标、实测值、判定。\n5. 最后给出结构化结论：已确认的事实、仍存在的阻塞、下一步建议；避免把猜测当成事实。",
+  "autoCreated": true,
+  "createdAt": 1788340741175
+}
