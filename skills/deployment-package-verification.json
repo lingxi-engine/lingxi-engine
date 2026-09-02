@@ -1,0 +1,11 @@
+{
+  "name": "deployment-package-verification",
+  "displayName": "部署包版本排查与修复",
+  "description": "当用户通过 install.ps1 | iex 等方式部署到旧包时，追踪安装脚本、tarball 结构与源码版本，修复打包流程并验证新包。",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "当用户反馈通过 `irm | iex` 或类似脚本部署到了旧包/错误版本时，按以下步骤排查和修复：\n1) 下载安装脚本和服务器上的 tarball，检查脚本里的下载地址、解压路径和 tarball 实际结构是否匹配；\n2) 对比服务器包与源码仓库 HEAD，确认是否包含最新提交和安全修复；\n3) 若打包脚本路径/结构有误，修复后重新打包；\n4) 备份旧包，上传新包；\n5) 重新下载安装脚本和 tarball 验证版本、文件结构和关键修复点已生效；\n6) 用表格清晰对比旧包/新包/源码的差异，并给出是否需要用户再测试的结论。",
+  "autoCreated": true,
+  "createdAt": 1788337110541
+}

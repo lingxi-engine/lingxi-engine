@@ -1,0 +1,13 @@
+{
+  "name": "release-package-verification",
+  "displayName": "发布包一致性核查",
+  "description": "当用户怀疑远程安装包不是最新版、打包脚本或部署流程出错时，自动校验仓库、打包、比对服务器包并修复上传。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到用户质疑 `irm | iex` 等远程安装命令装到旧包、部署包与仓库不一致、或打包脚本有 bug 时，按以下步骤处理：\n1. 确认真实仓库目录（检查 `.git` 是否存在），用 `git status` / `git log` / `git remote` 核对本地 HEAD 与 GitHub origin/main 是否一致。\n2. 读取 `install.ps1`、`scripts/pack-release.ps1` 等关键脚本，确认下载 URL、打包路径、版本标记是否匹配。\n3. 运行打包脚本生成最新 tarball，并按约定目录（如 F 盘）备份。\n4. 用 curl/wget 下载服务器上实际分发的 tarball，解压后与本地最新包做目录结构、关键文件（如 app.js、token 生成逻辑、配置模板）对比。\n5. 若服务器包落后或结构错误，上传最新 tarball 覆盖；上传后再次下载验证。\n6. 向用户给出明确结论：当前服务器包是否已是最新版、修复了哪些 bug、是否还需要逐项测试；同时坦白本轮发现的乌龙（如目录错误、输出格式问题）。",
+  "autoCreated": true,
+  "createdAt": 1788317112734
+}

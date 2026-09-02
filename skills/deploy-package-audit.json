@@ -1,13 +1,14 @@
 {
   "name": "deploy-package-audit",
-  "displayName": "部署包代码校验与修复",
-  "description": "当官网部署包与本地代码不一致或部署后出现异常时，比对git、清理旧包、重新打包并校验SHA256，同时审查代码健康度。",
+  "displayName": "部署包版本审计",
+  "description": "当用户怀疑本地/远程部署的安装包不是最新版、打包/上传出错或需要验证发布包时，自动下载并拆解安装包、对比仓库 HEAD、检查打包脚本与备份、必要时重新打包上传并验证。",
   "tools": [
     "shell_exec",
+    "list_dir",
     "read_file",
-    "write_file"
+    "calculate"
   ],
-  "prompt": "遇到“官网包和本地代码不一致”、“部署后功能异常”、“需要重新打包上传”等任务时，按以下流程处理：\n1. 查看git最新提交和未提交改动，确认当前代码状态；\n2. 检查历史打包记录/部署记录，比对上传前后SHA256是否一致，判断是“传错”还是“包过时”；\n3. 若包过时，清理官网旧代码包和临时文件；\n4. 基于最新代码重新打包，生成tar.gz并计算SHA256；\n5. 对包内关键文件做校验（如版本号、配置文件、入口文件），确保内容正确；\n6. 最后跑一次全量代码审查（编译检查、敏感信息泄露、明显bug、仓库卫生），发现问题同步修复；\n7. 若用户提出具体配置修改（如审批时间），在代码中直接修改并重新打包。",
+  "prompt": "当用户询问“irm|iex 装的是不是最新版”“为什么装到旧包”“代码版本乱了吗”“打包上传后是否最新”等部署/发布验证类问题时，按以下步骤执行：\n1. 用 shell_exec 查看本地仓库 git 状态（git status / git log -n 5 / git rev-parse HEAD）并与 origin/main 对比，确认代码版本是否一致。\n2. 用 shell_exec 下载服务器上的 install.ps1 和 tarball（如 curl/wget/Invoke-WebRequest），保存到临时目录。\n3. 用 read_file 读取 install.ps1，重点检查下载 URL、解压路径、版本号、安全修复点（如 MESH_TOKEN 生成方式、云平台地址、鉴权逻辑）。\n4. 用 shell_exec 解压 tarball，用 list_dir 查看目录结构，确认顶层目录名与 install.ps1 中期望的路径是否匹配。\n5. 用 read_file / shell_exec 对比关键文件（app.js、config、auth 文件等）与仓库 HEAD 内容，判断服务器包是否落后。\n6. 检查 release bundles 备份目录，确认最新备份时间戳；若包确实旧或结构错误，执行打包脚本重新生成 tarball 并上传。\n7. 上传后再次下载服务器上的包，重复步骤 3-5 验证已是最新修复版。\n8. 用 calculate 计算文件大小、哈希或版本差异，给出清晰结论：代码版本是否混乱、服务器包是否最新、是否需要用户再测。",
   "autoCreated": true,
-  "createdAt": 1787688372572
+  "createdAt": 1788317298576
 }

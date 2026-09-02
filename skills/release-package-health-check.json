@@ -1,0 +1,13 @@
+{
+  "name": "release-package-health-check",
+  "displayName": "发布包健康检查",
+  "description": "当用户怀疑代码版本混乱或想确认新包、备份、软链、工作区状态时，自动拉取实测证据并给出判定。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file"
+  ],
+  "prompt": "如果用户询问代码版本是否混乱、新包是否正确、线上包状态、工作区位置、包大小异常等发布相关问题，按以下步骤处理：\n1) 用 shell_exec 检查本地仓库的 git status、git log、与 origin/main 的差异；\n2) 用 list_dir / shell_exec 查看本地备份 bundle、release 目录及关键目录大小；\n3) 检查服务器 public/ 目录中的在线包文件名、大小、修改时间、软链指向、安装脚本；\n4) 如用户要求重新打包，运行打包脚本并校验输出（结构、大小、是否包含 .env 等）；\n5) 用 shell_exec / list_dir 确认当前工作区路径；\n6) 把所有实测结果用表格呈现，逐项回答用户问题并给出明确判定（✅/❌/⚠️）。",
+  "autoCreated": true,
+  "createdAt": 1788338048779
+}
