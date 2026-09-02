@@ -1,81 +1,281 @@
-# coding: utf-8 | chcp 65001 | UTF-8 fix
-chcp 65001 > $null
-$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-[Console]::InputEncoding = [System.Text.Encoding]::UTF8
+# LingXi Engine - Windows Installer (PowerShell)
+# Version: auto (generated at install time)
+# Usage: iwr -useb http://47.93.157.83:8080/install.ps1 | iex
 
-Write-Host ""
-Write-Host "  ==========================" -ForegroundColor Green
-Write-Host "   Lingxi Engine v1.7.1"
-Write-Host "   Install / Upgrade"
-Write-Host "  ==========================" -ForegroundColor Green
-Write-Host ""
+try { Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop } catch {}
+$ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
-Write-Host "  Searching Node.js..." -ForegroundColor Cyan
-$node = Get-Command node -ErrorAction SilentlyContinue
-if (-not $node) {
-    Write-Host "  [X] Node.js not found" -ForegroundColor Red
-    Write-Host "  Please install: https://nodejs.org (LTS)"
-    pause
-    exit 1
+$InstallDir = Join-Path $env:USERPROFILE "lingxi-engine"
+$TarballUrl = "http://47.93.157.83:8080/public/lingxi-engine.tar.gz"
+$INSTALL_VERSION = (Get-Date).ToString("v2026.M.d-H.mm")
+
+function W-OK($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
+function W-Info($m)  { Write-Host "[INFO] $m" -ForegroundColor Cyan }
+function W-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
+function W-Fail($m) { Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
+
+# --- 1. Node.js ---
+W-Info "Checking Node.js..."
+$needNode = $true
+try {
+    $nv = [int]((node -v) -replace 'v','' -replace '\..*','')
+    if ($nv -ge 18) { W-OK "Node.js $(node -v) found"; $needNode = $false }
+    else { W-Warn "Node.js too old ($(node -v)), need 18+" }
+} catch { W-Info "Node.js not found" }
+
+if ($needNode) {
+    W-Info "Installing Node.js 22 LTS..."
+    $arch = if ([Environment]::Is64BitOperatingSystem) { "x64" } else { "x86" }
+    $urls = @(
+        "https://cdn.npmmirror.com/binaries/node/v22.16.0/node-v22.16.0-$arch.msi",
+        "https://nodejs.org/dist/v22.16.0/node-v22.16.0-$arch.msi"
+    )
+    $msi = "$env:TEMP\node-setup.msi"
+    W-Info "Downloading Node.js 22.16.0 ($arch)..."
+    try {
+        $downloaded = $false
+        foreach ($u in $urls) {
+            try { Invoke-WebRequest -Uri $u -OutFile $msi -UseBasicParsing; $downloaded = $true; break }
+            catch { W-Warn "Download failed: $u, trying next..." }
+        }
+        if (-not $downloaded) { throw "All Node.js download sources failed" }
+        W-Info "Installing (may need admin)..."
+        Start-Process msiexec.exe -ArgumentList "/i",$msi,"/quiet","/norestart" -Wait -NoNewWindow
+        Remove-Item $msi -Force -EA SilentlyContinue
+        $env:Path = [Environment]::GetEnvironmentVariable("Path","Machine")+";"+[Environment]::GetEnvironmentVariable("Path","User")
+        W-OK "Node.js $(node -v) installed"
+    } catch {
+        W-Fail "Node.js install failed. Please install manually: https://nodejs.org"
+    }
 }
-Write-Host "  [OK] Node.js $(node -v)" -ForegroundColor Green
 
-$dir = "$env:USERPROFILE\lingxi-engine"
-$up = Test-Path $dir
-if ($up) {
-    Write-Host "  [UPGRADE] $dir" -ForegroundColor Cyan
-    Get-Process -Name "node","tsx" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+# --- 2. Download ---
+W-Info "Downloading LingXi Engine..."
+$tb = Join-Path $env:TEMP "lingxi-engine.tar.gz"
+Invoke-WebRequest -Uri $TarballUrl -OutFile $tb -UseBasicParsing
+$sz = [math]::Round((Get-Item $tb).Length/1KB)
+W-OK "Downloaded ($sz KB)"
+
+# --- 3. Extract ---
+W-Info "Stopping existing engine (if running)..."
+try {
+    $pm2Cmd = $null
+    if (Get-Command pm2 -ErrorAction SilentlyContinue) { $pm2Cmd = "pm2" }
+    elseif (Test-Path (Join-Path $InstallDir "node_modules\.bin\pm2.cmd")) { $pm2Cmd = Join-Path $InstallDir "node_modules\.bin\pm2.cmd" }
+    if ($pm2Cmd) {
+        try { & $pm2Cmd stop lingxi 2>&1 | Out-Null; W-Info "PM2 stopped 'lingxi'" } catch {}
+        try { & $pm2Cmd delete lingxi 2>&1 | Out-Null } catch {}
+    }
+    $portConn = netstat -ano 2>$null | Select-String ":3456\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Where-Object { $_ -ne '0' } | Sort-Object -Unique
+    foreach ($procId in $portConn) {
+        try { Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue; W-Info "Killed PID $procId" } catch {}
+    }
+    $engineProcs = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+        $cl = $_.CommandLine
+        ($_.Name -in @('node.exe','tsx.exe')) -and $cl -and ($cl -like '*lingxi-engine*' -or $cl -like '*tsx*index.ts*')
+    }
+    foreach ($p in $engineProcs) {
+        try { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue; W-Info "Killed PID $($p.ProcessId)" } catch {}
+    }
+    Get-Process -Name "esbuild" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Get-Process -Name "node","tsx" -ErrorAction SilentlyContinue | Where-Object {
+        try { $_.Path -like "*lingxi-engine*" -or $_.MainWindowTitle -like "*lingxi*" } catch { $false }
+    } | Stop-Process -Force -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 2
-    $k = @("node_modules","data")
-    Get-ChildItem $dir -Directory | Where-Object { $k -notcontains $_.Name } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    Get-ChildItem $dir -File | Where-Object { $_.Name -ne ".env" } | Remove-Item -Force -ErrorAction SilentlyContinue
-    Write-Host "  [OK] Cleaned, kept data + .env + node_modules" -ForegroundColor Green
-} else {
-    Write-Host "  [NEW] Fresh install -> $dir" -ForegroundColor Cyan
+} catch {}
+W-Info "Extracting to $InstallDir ..."
+if (Test-Path $InstallDir) {
+    W-Warn "Old install exists. New files will overwrite."
 }
+New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+$extractTmp = Join-Path $env:TEMP "lingxi-extract-$(Get-Random)"
+New-Item -ItemType Directory -Path $extractTmp -Force | Out-Null
+$extractOK = $false
+try {
+    $tarExe = "$env:SystemRoot\System32\tar.exe"
+    if (-not (Test-Path $tarExe)) { $tarExe = "tar" }
+    $proc = Start-Process -FilePath $tarExe -ArgumentList "-xzf","`"$tb`"","-C","`"$extractTmp`"" -Wait -NoNewWindow -PassThru -RedirectStandardError "$extractTmp\_err.txt"
+    if ($proc.ExitCode -ne 0) {
+        $errMsg = if (Test-Path "$extractTmp\_err.txt") { Get-Content "$extractTmp\_err.txt" -Raw } else { "exit code $($proc.ExitCode)" }
+        W-Warn "tar failed: $errMsg"
+    } else {
+        $extractOK = $true
+    }
+} catch {
+    W-Warn "tar exception: $($_.Exception.Message)"
+}
+if (-not $extractOK) {
+    W-Info "Trying .NET fallback extraction..."
+    try {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $gzStream = [System.IO.Compression.GZipStream]::new([System.IO.File]::OpenRead($tb), [System.IO.Compression.CompressionMode]::Decompress)
+        $tarPath = "$extractTmp\archive.tar"
+        $outStream = [System.IO.File]::Create($tarPath)
+        $gzStream.CopyTo($outStream)
+        $outStream.Close(); $gzStream.Close()
+        $tarExe2 = "$env:SystemRoot\System32\tar.exe"
+        if (Test-Path $tarExe2) {
+            Start-Process -FilePath $tarExe2 -ArgumentList "-xf","`"$tarPath`"","-C","`"$extractTmp`"" -Wait -NoNewWindow
+        }
+        Remove-Item $tarPath -Force -EA SilentlyContinue
+        $extractOK = $true
+    } catch {
+        W-Fail "Extract failed: $($_.Exception.Message). Need Windows 10+ with tar.exe"
+    }
+}
+$innerDir = Join-Path $extractTmp "lingxi-engine"
+$copySrc = if (Test-Path $innerDir) { $innerDir } else { $extractTmp }
+$robocopyArgs = @($copySrc, $InstallDir, '/E', '/IS', '/IT', '/R:2', '/W:1', '/NFL', '/NDL', '/NJH', '/NJS')
+$rcResult = Start-Process -FilePath "robocopy" -ArgumentList $robocopyArgs -Wait -NoNewWindow -PassThru
+if ($rcResult.ExitCode -ge 8) {
+    W-Warn "robocopy exit code: $($rcResult.ExitCode), falling back to Copy-Item..."
+    Get-ChildItem $copySrc -Force -Exclude "_err.txt" | ForEach-Object { Copy-Item $_.FullName $InstallDir -Recurse -Force }
+}
+if (-not (Test-Path (Join-Path $InstallDir "index.ts"))) {
+    W-Fail "index.ts not found in $InstallDir after extraction. Installation corrupted."
+}
+if (-not (Test-Path (Join-Path $InstallDir "package.json"))) {
+    W-Fail "package.json not found in $InstallDir after extraction. Installation corrupted."
+}
+W-OK "Extracted and verified"
+Remove-Item $extractTmp -Recurse -Force -EA SilentlyContinue
+Remove-Item $tb -Force -EA SilentlyContinue
 
-Write-Host "  Downloading..." -ForegroundColor Cyan
-$url = "http://your-download-server:8080/public/lingxi-engine-v1.7.0.tar.gz"
-$tmp = "$env:TEMP\lx.tar.gz"
-try { Invoke-WebRequest -Uri $url -OutFile $tmp -ErrorAction Stop }
-catch { Write-Host "  [X] Download: $_" -ForegroundColor Red; pause; exit 1 }
+New-Item -ItemType Directory -Path (Join-Path $InstallDir "data") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $InstallDir "uploads") -Force | Out-Null
+New-Item -ItemType Directory -Path (Join-Path $InstallDir "workspace") -Force | Out-Null
+[System.IO.File]::WriteAllText((Join-Path $InstallDir "data\sandbox-config.json"), '{"enabled":false}', [System.Text.Encoding]::UTF8)
+W-OK "Directories created (sandbox: OFF)"
 
-Write-Host "  Extracting..." -ForegroundColor Cyan
-tar -xzf $tmp -C "$env:USERPROFILE"; Remove-Item $tmp
-cd $dir
+# --- 4. npm install ---
+W-Info "Installing dependencies..."
+Push-Location $InstallDir
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+try {
+    $npmResult = & npm install --omit=optional 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        W-Warn "First attempt had issues, retrying..."
+        & npm install --omit=optional 2>&1 | Out-Null
+    }
+    W-OK "Dependencies installed"
+} catch {
+    W-Warn "npm install error, retrying..."
+    & npm install --omit=optional 2>&1 | Out-Null
+    W-OK "Dependencies installed (retry)"
+} finally {
+    $ErrorActionPreference = $prevEAP
+}
+$ErrorActionPreference = "Continue"
+& npm install @esbuild/win32-x64 --no-save 2>&1 | Out-Null
+$ErrorActionPreference = $prevEAP
+W-OK "Dependencies installed"
+Pop-Location
 
-if (-not (Test-Path ".env")) {
-    @"
-DEEPSEEK_API_KEY=***
+# --- 5. .env ---
+$envFile = Join-Path $InstallDir ".env"
+$ollamaOK = $false
+if (-not (Test-Path $envFile)) {
+    $envContent = @"
+# ==========================================
+#  LingXi Engine - AI Provider Configuration
+# ==========================================
+OLLAMA_BASE_URL=http://localhost:11434/v1
+NVIDIA_API_KEY=
+NVIDIA_BASE_URL=https://integrate.api.nvidia.com/v1
+DEFAULT_MODEL=deepseek-chat
+TOOL_MODEL=
+REPLY_MODEL=
+JWT_SECRET=
+ADMIN_TOKEN=
+MESH_PLATFORM_URL=
+MESH_TOKEN=change-me-to-a-strong-secret
 PORT=3456
-"@ | Out-File .env -Encoding UTF8
-    Write-Host "  [WARN] Edit .env to add API Key" -ForegroundColor Yellow
-} else { Write-Host "  [OK] .env preserved" -ForegroundColor Green }
-
-if (-not (Test-Path "$dir\node_modules")) {
-    Write-Host "  npm install (may take a while)..." -ForegroundColor Cyan
-    npm install --silent 2>&1 | Out-Null
-    npm install puppeteer --silent 2>&1 | Out-Null
+"@
+    [System.IO.File]::WriteAllText($envFile, $envContent, [System.Text.Encoding]::UTF8)
+    W-OK ".env created"
 } else {
-    Write-Host "  [OK] node_modules preserved" -ForegroundColor Green
+    W-OK ".env already exists"
 }
 
+# --- 6. Check Ollama ---
+W-Info "Checking Ollama..."
+$ollamaOK = $false
+try {
+    $ollama = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -UseBasicParsing -TimeoutSec 3
+    $models = ($ollama.Content | ConvertFrom-Json).models
+    if ($models.Count -gt 0) {
+        W-OK "Ollama running with $($models.Count) models - Ready to go!"
+        $ollamaOK = $true
+    } else {
+        W-Warn "Ollama running but no models. Run: ollama pull qwen2.5:7b"
+    }
+} catch {
+    W-Warn "Ollama not running or not installed"
+}
+
+# --- 7. Done ---
 Write-Host ""
-Write-Host "  ==========================" -ForegroundColor Green
-if ($up) { Write-Host "    [UPGRADE] Complete!" -ForegroundColor Green }
-else { Write-Host "    [INSTALL] Complete!" -ForegroundColor Green }
-Write-Host "    Dir: $dir"
-Write-Host "    Run: cd $dir; npx tsx index.ts"
-Write-Host "    URL: http://127.0.0.1:3456"
-Write-Host "  ==========================" -ForegroundColor Green
+Write-Host "===========================================" -ForegroundColor Green
+Write-Host "  LingXi Engine installed!" -ForegroundColor White
+Write-Host "  Version: $INSTALL_VERSION" -ForegroundColor Gray
+Write-Host "===========================================" -ForegroundColor Green
 Write-Host ""
 
-$s = Read-Host "  Start now? (y/n)"
-if ($s -eq "y") {
+if ($ollamaOK) {
+    Write-Host "  [Ready] Start the engine:" -ForegroundColor Green
+    Write-Host "    cd $InstallDir" -ForegroundColor Gray
+    Write-Host "    npx tsx index.ts" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Open: http://localhost:3456" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  Ollama models loaded automatically!" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "  [Security] Must configure before use:" -ForegroundColor Red
+    Write-Host "    Edit: $envFile" -ForegroundColor Gray
+    Write-Host "    Set: JWT_SECRET=***" -ForegroundColor Gray
+    Write-Host "    Set: ADMIN_TOKEN=***" -ForegroundColor Gray
+} else {
+    Write-Host "  [Action Required] You need an AI model to use the engine:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  Local (fast & free):" -ForegroundColor White
+    Write-Host "    1) Install: https://ollama.com" -ForegroundColor Gray
+    Write-Host "    2) Download: ollama run qwen2.5:7b" -ForegroundColor Gray
+    Write-Host "    3) Then: cd $InstallDir; npx tsx index.ts" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Cloud (no download needed):" -ForegroundColor White
+    Write-Host "    1) Get free key: https://build.nvidia.com" -ForegroundColor Gray
+    Write-Host "    2) Edit: $envFile" -ForegroundColor Gray
+    Write-Host "       Set: NVIDIA_API_KEY=***" -ForegroundColor Gray
+    Write-Host "    3) Then: cd $InstallDir; npx tsx index.ts" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  Or add provider in-app: Settings -> Add Provider" -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  [Security] Must configure before use:" -ForegroundColor Red
+    Write-Host "    Set: JWT_SECRET=***" -ForegroundColor Gray
+    Write-Host "    Set: ADMIN_TOKEN=***" -ForegroundColor Gray
+}
+Write-Host ""
+Write-Host "  Open: http://localhost:3456" -ForegroundColor White
+Write-Host ""
+
+# --- 8. Auto-start ---
+$startNow = Read-Host "  Start now? (y/n)"
+if ($startNow -eq 'y' -or $startNow -eq 'Y') {
+    try {
+        $portConn = netstat -ano 2>$null | Select-String ":3456\s" | ForEach-Object { ($_ -split '\s+')[-1] } | Where-Object { $_ -ne '0' } | Sort-Object -Unique
+        foreach ($p in $portConn) { try { Stop-Process -Id $p -Force -ErrorAction SilentlyContinue } catch {} }
+        Start-Sleep -Seconds 1
+    } catch {}
+    W-Info "Starting engine..."
     Start-Job {
-        Start-Sleep 4
+        Start-Sleep 5
         try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 15 | Out-Null } catch {}
         Start-Process "http://127.0.0.1:3456"
     } | Out-Null
+    Push-Location $InstallDir
     npx tsx index.ts
+    Pop-Location
 }
