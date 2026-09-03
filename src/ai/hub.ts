@@ -471,12 +471,18 @@ export class AIHub {
    * 获取可用的 AI 客户端
    * 匹配顺序：精确 → 规范化后精确 → 模糊 → fallback
    */
-  getClient(model: string): { client: OpenAI; resolvedModel: string } | null {
+  getClient(model: string, _depth: number = 0): { client: OpenAI; resolvedModel: string } | null {
+    // 递归深度保护：防止 getDefaultModel() 返回空时无限递归
+    if (_depth > 3) {
+      console.error("[AI Hub] getClient 递归深度超限，强制返回 null");
+      return null;
+    }
+
     // 0. 空模型名兜底
     if (!model) {
       const defaultModel = this.getDefaultModel();
-      if (defaultModel) {
-        return this.getClient(defaultModel);
+      if (defaultModel && defaultModel !== model) {
+        return this.getClient(defaultModel, _depth + 1);
       }
       const first = this.providers.values().next().value;
       return first ? { client: first.client, resolvedModel: first.config.models[0] || "" } : null;
@@ -529,14 +535,14 @@ export class AIHub {
     for (const [, entry] of this.providers) {
       if (entry.config.type === "nvidia" && entry.config.models.length > 0) {
         const fallbackModel = entry.config.models[0];
-        console.log(`[AI Hub] 模型 "${model}" 不可用，fallback 到 NVIDIA: ${fallbackModel}`);
+        console.log("[AI Hub] 模型 \"" + model + "\" 不可用，fallback 到 NVIDIA: " + fallbackModel);
         return { client: entry.client, resolvedModel: fallbackModel };
       }
     }
     for (const [, entry] of this.providers) {
       if (entry.config.isLocal && entry.config.models.length > 0) {
         const fallbackModel = entry.config.models[0];
-        console.log(`[AI Hub] 模型 "${model}" 不可用，fallback 到本地: ${fallbackModel}`);
+        console.log("[AI Hub] 模型 \"" + model + "\" 不可用，fallback 到本地: " + fallbackModel);
         return { client: entry.client, resolvedModel: fallbackModel };
       }
     }
@@ -545,7 +551,6 @@ export class AIHub {
     const first = this.providers.values().next().value;
     return first ? { client: first.client, resolvedModel: first.config.models[0] || model } : null;
   }
-
   /**
    * 获取故障转移候选：支持同一模型的其他 provider
    * 排除已失败的 provider（按 baseUrl / client 实例双重判断），跳过熔断器开启中的候选
@@ -560,14 +565,32 @@ export class AIHub {
       if (!matched) continue;
       const cbState = this.circuitBreaker.get(matched);
       if (cbState && cbState.failures >= this.CB_THRESHOLD && (Date.now() - cbState.lastFail) < this.CB_COOLDOWN) {
-        console.log(`[AI Hub] 故障转移候选 ${pid} 熔断器开启中，跳过`);
+        console.log("[AI Hub] 故障转移候选 " + pid + " 熔断器开启中，跳过");
         continue;
       }
       candidates.push({ client: entry.client, resolvedModel: matched });
     }
+
+    // 跨模型 fallback：同模型候选为空时，降级到任意可用模型
+    if (candidates.length === 0) {
+      console.log("[AI Hub] 模型 \"" + model + "\" 无同模型备胎，尝试跨模型 fallback");
+      for (const [pid, entry] of this.providers) {
+        if (failedBaseUrl && entry.config.baseUrl === failedBaseUrl) continue;
+        if (failedClient && entry.client === failedClient) continue;
+        if (entry.config.models.length === 0) continue;
+        const fallbackModel = entry.config.models[0];
+        const cbState = this.circuitBreaker.get(fallbackModel);
+        if (cbState && cbState.failures >= this.CB_THRESHOLD && (Date.now() - cbState.lastFail) < this.CB_COOLDOWN) {
+          console.log("[AI Hub] 跨模型候选 " + pid + "/" + fallbackModel + " 熔断器开启中，跳过");
+          continue;
+        }
+        console.log("[AI Hub] 跨模型 fallback 候选: " + pid + "/" + fallbackModel);
+        candidates.push({ client: entry.client, resolvedModel: fallbackModel });
+      }
+    }
+
     return candidates;
   }
-
   /**
    * 获取特定角色的 AI 客户端（多模型协作）
    * role: 'tool'（工具调用/摘要/压缩）| 'reply'（最终回复）| 'default'

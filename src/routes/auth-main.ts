@@ -66,7 +66,7 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
       });
       // 注册成功后自动登录并签发 token，前端无需再次登录
       let tokens: any = {};
-      try { tokens = await auth.loginWithEmail(email, password); } catch (_e) {}
+      try { tokens = await auth.loginWithUsernameOrEmail(email, password); } catch (le: any) { console.error('[Auth] 注册后自动登录失败:', le.message); }
       // 如果选了 auto_default，自动创建灵犀引擎
       if (agent_binding === 'auto_default' && result.user) {
         try {
@@ -98,12 +98,12 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
     }
   });
 
-  // ── V7: 登录（邮箱 + 密码） ──
+  // ── V7: 登录（用户名/邮箱 + 密码） ──
   app.post('/api/auth/login', async (req, res) => {
     try {
       const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
-      const result = await auth.loginWithEmail(email, password);
+      if (!email || !password) return res.status(400).json({ error: '用户名/邮箱和密码必填' });
+      const result = await auth.loginWithUsernameOrEmail(email, password);
       res.json({ ok: true, ...result });
     } catch (err: any) {
       res.status(401).json({ error: err.message });
