@@ -216,7 +216,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
     const expiresAt = Date.now() + 5 * 60 * 1000;
     const username = req.body.username;
     verificationCodes.set(email, { email, code, username, expiresAt });
-    console.log('[Auth] 验证码:', email, code);
+    console.log('[Auth] 验证码已生成:', email, '(code 已脱敏, 有效期5分钟)');
     res.json({ ok: true, message: '验证码已生成', expiresIn: 300 });
   });
 
