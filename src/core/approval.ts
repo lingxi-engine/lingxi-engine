@@ -40,13 +40,17 @@ export class ApprovalManager {
   private resolvers: Map<string, (req: ApprovalRequest) => void> = new Map();
 
   private autoApprove: boolean;
+  /** 超时策略：approve=无操作自动通过（留痕 decidedBy='timeout_auto'）；reject=超时拒绝 */
+  private timeoutAction: 'approve' | 'reject';
   /** v2.0: 强制完成模式（免审批通道）——目标任务无人值守时开启 */
   private forceComplete: boolean;
 
-  constructor(timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '300000', 10), autoApprove?: boolean) { // 默认 5 分钟，可通过环境变量配置
+  constructor(timeoutMs = parseInt(process.env.APPROVAL_TIMEOUT || '300000', 10), autoApprove?: boolean, timeoutAction?: 'approve' | 'reject') { // 默认 5 分钟，可通过环境变量配置
     this.timeoutMs = timeoutMs;
     // 自动批准模式：APPROVAL_AUTO_APPROVE=1/true/yes/on 时开启，所有审批请求立即放行（历史留痕可审计）
     this.autoApprove = autoApprove ?? envBool(process.env.APPROVAL_AUTO_APPROVE);
+    // 超时策略：默认无操作自动通过
+    this.timeoutAction = timeoutAction ?? 'approve';
     // v2.0: 强制完成免审批通道：FORCE_COMPLETE=1/true/yes/on 时开启
     this.forceComplete = envBool(process.env.FORCE_COMPLETE);
     if (this.autoApprove) console.log('[Approval] 自动批准模式已开启 (APPROVAL_AUTO_APPROVE) —— 审批请求将自动通过');
@@ -146,6 +150,12 @@ export class ApprovalManager {
     if (!req) return;
     // 竞态保护：如果已被 approve/reject，不再覆盖
     if (req.status !== 'pending') return;
+    // 超时策略：approve = 无操作自动放行（留痕可审计）
+    if (this.timeoutAction === 'approve') {
+      console.log(`[Approval] 超时自动通过 ${id} (${Math.round(this.timeoutMs / 1000)}s 无操作)`);
+      this.approve(id, 'timeout_auto');
+      return;
+    }
     req.status = 'timeout';
     req.decidedAt = Date.now();
     this.history.push(req);

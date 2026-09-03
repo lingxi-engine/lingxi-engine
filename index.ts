@@ -481,8 +481,8 @@ setSearchManager(searchManagerInstance);
   (globalThis as any).__registerAgentMessageHandler = registerAgentMessageHandlerForAgent;
 
   // ── V5 P1: 审批管理器 ──
-  const approvalManager = new ApprovalManager(300000);
-  console.log('[Approval] 审批管理器已初始化 (timeout=5min)');
+  const approvalManager = new ApprovalManager(30000);
+  console.log('[Approval] 审批管理器已初始化 (timeout=30s, 无操作自动通过)');
   // 注入到 toolRegistry，使危险工具调用走审批流
   toolRegistry.setApprovalManager(approvalManager);
 
