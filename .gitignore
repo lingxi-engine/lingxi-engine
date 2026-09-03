@@ -83,3 +83,6 @@ diffrhythm-local/
 data-smoke-b13b/
 _smoke_v5_data/
 .t-*
+
+# 本地诊断工作区
+workspace/
