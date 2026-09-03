@@ -1,3 +1,11 @@
+// ── v2.0.13: 启动时固化版本号到全局（health 接口展示用，PM2 直启无 npm_package_version）──
+(globalThis as any).__LINGXI_VERSION__ = (() => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require('./package.json');
+    return pkg.version || 'dev';
+  } catch { return 'dev'; }
+})();
 /**
  * Project Hub - 主入口
  */
@@ -581,7 +589,7 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.12',
+        version: (process.env.npm_package_version) || (globalThis as any).__LINGXI_VERSION__ || 'dev',
         agents: manager.list().length,
         time: Date.now(),
         uptime: Math.floor(process.uptime()),
@@ -1979,7 +1987,18 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     },
   }));
 
-  server.listen(port, '0.0.0.0', () => {
+  
+// ── v2.0.13: Express 全局错误处理中间件（畸形 JSON 等返回 400 而非 500 Unhandled）──
+app.use((err: any, _req: any, res: any, _next: any) => {
+  if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+    console.warn('[Express] 拒绝畸形请求体:', err.message?.slice(0, 120));
+    res.status(400).json({ error: '请求体格式错误（JSON 无效）' });
+    return;
+  }
+  console.error('[Express] Unhandled error:', err?.message || err, '| ctx=', _req?.path ? { path: _req.path, method: _req.method } : '');
+  res.status(500).json({ error: '服务器内部错误' });
+});
+server.listen(port, '0.0.0.0', () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');
     console.log(' HTTP: http://localhost:' + port);
