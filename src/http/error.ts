@@ -84,6 +84,14 @@ export const errorHandler =
       return;
     }
     const e: any = err;
+    // v2.0.13: body-parser 畸形 JSON → 400（在通用 500 之前拦截）
+    if (e && (e.type === 'entity.parse.failed' || (e instanceof SyntaxError && (e as any).status === 400))) {
+      res.status(400).json({
+        ok: false,
+        error: { code: 'invalid_json', message: '请求体格式错误（JSON 无效）' },
+      });
+      return;
+    }
     // SQLite UNIQUE 重复键 → 409
     if (typeof e?.message === 'string' && /UNIQUE constraint/i.test(e.message)) {
       res.status(409).json({
