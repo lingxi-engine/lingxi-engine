@@ -589,7 +589,7 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || (globalThis as any).__LINGXI_VERSION__ || 'dev',
+        version: (() => { try { return String(JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version || '') || 'dev'; } catch { return 'dev'; } })(),
         agents: manager.list().length,
         time: Date.now(),
         uptime: Math.floor(process.uptime()),
