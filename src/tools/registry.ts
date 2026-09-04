@@ -6,9 +6,31 @@ import type { ToolDefinition, ToolCallRequest, ToolCallResult, Skill } from "./t
 // 架构建议 #3: 接线 ApprovalManager
 import type { ApprovalManager } from "../core/approval.js";
 
+/** 工具实例接口（ITool 风格）：validate/dryRun/execute 三段式 */
+export interface ITool {
+  /** 校验入参，返回错误列表（空 = 通过），可选 */
+  validate?(input: unknown): string[];
+  /** 无副作用预演，可选 */
+  dryRun?(input: unknown, ctx?: unknown): unknown;
+  /** 执行（args 为 AI 传入参数，ctx 为注册时绑定的上下文） */
+  execute(args: Record<string, any>, ctx?: unknown): Promise<any>;
+}
+
+/** registerToolInstance 的绑定配置 */
+export interface ToolInstanceBinding {
+  /** 注入给实例的上下文（透传给 execute 第二参数） */
+  context?: unknown;
+  /** 描述（审计日志用） */
+  description?: string;
+}
+
 export class ToolRegistry {
   private tools = new Map<string, ToolDefinition>();
   private handlers = new Map<string, (args: Record<string, any>) => Promise<any>>();
+  /** 工具实例注册表：name → ITool 实例 */
+  private instances = new Map<string, ITool>();
+  /** 实例绑定的上下文：name → context */
+  private instanceContexts = new Map<string, unknown>();
   private skills = new Map<string, Skill>();
   private agentSkills = new Map<string, string[]>(); // agentId -> skillIds[];
   private approvalManager: ApprovalManager | null = null;
@@ -22,6 +44,51 @@ export class ToolRegistry {
     }
     this.tools.set(tool.name, tool);
     this.handlers.set(tool.name, handler);
+  }
+
+  /**
+   * 注册一个工具实例（ITool 风格）
+   *
+   * 与 registerTool 的区别：
+   *   - 实例可带 validate/dryRun 钩子（可选实现）
+   *   - context 在注册时绑定，execute 时作为第二参数透传
+   *   - 执行时自动走 validate（失败抛错）→ execute
+   *
+   * @param def       工具定义（name/parameters 等）
+   * @param instance  ITool 实例
+   * @param binding   绑定配置（context/description）
+   */
+  registerToolInstance(
+    def: ToolDefinition,
+    instance: ITool,
+    binding?: ToolInstanceBinding
+  ): void {
+    if (this.tools.has(def.name)) {
+      throw new Error(`Tool already registered: ${def.name}`);
+    }
+    this.tools.set(def.name, def);
+    this.instances.set(def.name, instance);
+    this.instanceContexts.set(def.name, binding?.context ?? null);
+    // 统一 handler：validate → execute
+    this.handlers.set(def.name, async (args: Record<string, any>) => {
+      const inst = this.instances.get(def.name)!;
+      const ctx = this.instanceContexts.get(def.name);
+      if (typeof inst.validate === "function") {
+        const errs = inst.validate(args);
+        if (errs && errs.length > 0) {
+          throw new Error(`[${def.name}] 参数校验失败: ${errs.join("; ")}`);
+        }
+      }
+      return inst.execute(args, ctx);
+    });
+    if (binding?.description) {
+      console.log(`[ToolRegistry] 实例注册: ${def.name} — ${binding.description}`);
+    }
+  }
+
+  /** 获取工具实例（未以实例方式注册则返回 undefined） */
+  getToolInstance(name: string): ITool | undefined {
+    return this.instances.get(name);
   }
 
   /** 批量注册工具 */
