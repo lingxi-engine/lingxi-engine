@@ -5,23 +5,34 @@
 import type { ToolDefinition, ToolCallRequest, ToolCallResult, Skill } from "./types.js";
 // 架构建议 #3: 接线 ApprovalManager
 import type { ApprovalManager } from "../core/approval.js";
+import type { ITool } from "./tool-base.js";
 
 export class ToolRegistry {
   private tools = new Map<string, ToolDefinition>();
   private handlers = new Map<string, (args: Record<string, any>) => Promise<any>>();
+  private instances = new Map<string, ITool<any, any>>();
   private skills = new Map<string, Skill>();
   private agentSkills = new Map<string, string[]>(); // agentId -> skillIds[];
   private approvalManager: ApprovalManager | null = null;
 
   // ── 工具注册 ──
 
-  /** 注册一个工具 */
+  /** 注册一个工具（函数式 handler 形式） */
   registerTool(tool: ToolDefinition, handler: (args: Record<string, any>) => Promise<any>) {
     if (this.tools.has(tool.name)) {
       throw new Error(`Tool already registered: ${tool.name}`);
     }
     this.tools.set(tool.name, tool);
     this.handlers.set(tool.name, handler);
+  }
+
+  /** 注册一个工具实例（实现了 ITool 的类/对象） */
+  registerToolInstance(tool: ToolDefinition, instance: ITool<any, any>) {
+    if (this.tools.has(tool.name)) {
+      throw new Error(`Tool already registered: ${tool.name}`);
+    }
+    this.tools.set(tool.name, tool);
+    this.instances.set(tool.name, instance);
   }
 
   /** 批量注册工具 */
@@ -113,6 +124,46 @@ export class ToolRegistry {
 
   /** 执行单个工具调用 */
   async execute(request: ToolCallRequest): Promise<ToolCallResult> {
+    // 优先从实例执行（支持 ITool 实现）
+    const instance = this.instances.get(request.name);
+    if (instance) {
+      try {
+        // 审批流程仍适用
+        if (this.approvalManager && this.approvalManager.needsApproval(request.name, request.arguments)) {
+          try {
+            const req = this.approvalManager.request('system', request.name, request.arguments, undefined, 'medium');
+            console.log(`[ToolRegistry] 工具 ${request.name} 需要审批，等待批准 (reqId=${req.id})`);
+            const decision = await this.approvalManager.waitForApproval(req.id);
+            if (decision.status !== 'approved') {
+              return { callId: request.id, toolName: request.name, success: false, result: null, error: `操作未获审批 (${decision.status})`, durationMs: 0 };
+            }
+          } catch (err: any) {
+            return { callId: request.id, toolName: request.name, success: false, result: null, error: `审批流程异常: ${err.message}`, durationMs: 0 };
+          }
+        }
+
+        const start = Date.now();
+        const result = await instance.execute(request.arguments || {});
+        return {
+          callId: request.id,
+          toolName: request.name,
+          success: true,
+          result,
+          durationMs: Date.now() - start,
+        };
+      } catch (err: any) {
+        return {
+          callId: request.id,
+          toolName: request.name,
+          success: false,
+          result: null,
+          error: err.message || String(err),
+          durationMs: 0,
+        };
+      }
+    }
+
+    // 回退到原有 handler 机制
     const handler = this.handlers.get(request.name);
     if (!handler) {
       return {
