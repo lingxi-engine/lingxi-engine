@@ -2,6 +2,24 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.13] - 2026-09-04
+
+### 安全加固
+- WS 握手 HMAC-SHA256 签名（300s 时间窗）+ 匿名连接严格只读 + 匿名 WS kill switch
+- 移动端 auth 加固 + 生产环境密钥守卫（JWT_SECRET 缺失拒启 / MESH_TOKEN 弱值检测）
+- 验证码日志脱敏，不再明文打印；verify-email POST 路由 + 双信号验证门
+- admin 升级端点 token 比较改 timingSafeEqual（防时序侧信道）
+
+### 依赖与漏洞
+- uuid 升至 ^14.0.2（超越 Dependabot PR#1）；overrides 钉住 body-parser ^1.20.6 / qs ^6.16.0，清空 Dependabot 告警
+- 移除未使用的 pptxgenjs，清空 image-size 告警链
+
+### 修复
+- AI Hub 跨模型 fallback：同模型候选为空时降级到任意可用模型 + 递归保护
+- auth-main 登录支持用户名/邮箱双通道；邮箱验证修复 + DEV_AUTO_VERIFY 数字 ID 补漏
+- 审批超时 30 秒无操作自动通过（留痕 timeout_auto）
+- health 版本号改读 package.json（修复 tsx 直启显示 dev）；Express 全局错误中间件（畸形 JSON 返回 400 invalid_json）
+- 一键升级跨平台分流（win 桌面 / mac 桌面 / linux 服务器 + pm2）；version.txt 去 UTF8 BOM
 ## [2.0.12] - 2026-08-14
 
 ### 版本号统一
