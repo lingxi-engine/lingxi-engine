@@ -23,7 +23,8 @@
     "dev": "tsx --watch index.ts",
     "ppt": "tsx scripts/make-ppt.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest"
+    "test": "vitest run",
+    "test:smoke": "tsx src/tests/executor-tool.smoke.ts"
   },
   "bin": {
     "lingxi": "./src/cli/chat.ts"

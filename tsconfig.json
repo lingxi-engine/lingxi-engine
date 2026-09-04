@@ -22,6 +22,8 @@
     "workspace",
     "release",
     "backup_*",
+    "lingxi-repo",
+    "vitest.config.ts",
     "src/core/index.ts",
     "src/tests",
     "_*.ts"

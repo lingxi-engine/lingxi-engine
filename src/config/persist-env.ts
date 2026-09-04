@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { atomicWriteFile } from './src/utils/atomic-write';
+import { atomicWriteFile } from '../utils/atomic-write.js';
 
 function persistEnvVar(key: string, value: string): void {
   try {

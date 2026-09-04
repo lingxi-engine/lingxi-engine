@@ -1,5 +1,5 @@
-import { ExecutorTool } from '../src/tools/executor-tool.js';
-import { InMemoryVectorStore } from '../src/memory/vector-store.js';
+import { ExecutorTool } from '../tools/executor-tool.js';
+import { InMemoryVectorStore } from '../memory/vector-store.js';
 
 // Minimal fake client that simulates chat.completions.create
 const fakeClient = {
@@ -42,4 +42,17 @@ export async function runExecutorToolSmoke() {
   const res = await tool.execute(input);
   if (!res.finalContent || !res.finalContent.includes('完成')) throw new Error('unexpected executor result');
   return true;
+}
+
+// 直接运行时执行冒烟检查（tsx src/tests/executor-tool.smoke.ts）
+if (process.argv[1] && process.argv[1].includes('executor-tool.smoke')) {
+  runExecutorToolSmoke()
+    .then(() => {
+      console.log('[smoke] ExecutorTool 冒烟测试通过 (dryRun + execute 全链路)');
+      process.exit(0);
+    })
+    .catch((e) => {
+      console.error('[smoke] 冒烟测试失败:', e.message);
+      process.exit(1);
+    });
 }
