@@ -2,6 +2,7 @@
  * 管理路由 — Cron、会话、子代理、收件箱、审批、Hook、技能、开发面板、日志、语音、视觉、推送
  */
 import { Router } from 'express';
+import { timingSafeEqual } from 'crypto';
 import { getDB } from '../storage/db.js';
 import { createCronJob } from '../core/cron-scheduler.js';
 import { INFERENCE_BACKENDS } from '../ai/custom-providers.js';
@@ -477,7 +478,11 @@ export function createAdminRoutes(ctx: ServerContext): Router {
       const adminToken = process.env.ADMIN_TOKEN;
       const authHeader = (req.headers['authorization'] as string) || '';
       const provided = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : ((req.headers['x-admin-token'] as string) || '');
-      if (!adminToken || provided !== adminToken) {
+      if (
+        !adminToken ||
+        provided.length !== adminToken.length ||
+        !timingSafeEqual(Buffer.from(provided), Buffer.from(adminToken))
+      ) {
         console.warn('[Update] 拒绝未授权升级请求, 来源:', (req.socket?.remoteAddress || ''));
         return res.status(401).json({ ok: false, error: '升级需要 ADMIN_TOKEN 授权' });
       }
