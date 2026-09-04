@@ -5,7 +5,7 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, statSync } from 'fs';
-import { join } from 'path';
+import * as path from 'path';
 
 export type InboxType = 'cron' | 'subagent' | 'hook' | 'system';
 
@@ -26,7 +26,7 @@ export class InboxManager {
   private items: Map<string, InboxItem> = new Map();
 
   constructor(dataDir: string, db?: any) {
-    this.inboxDir = join(dataDir, 'inbox');
+    this.inboxDir = path.join(dataDir, 'inbox');
     if (!existsSync(this.inboxDir)) {
       mkdirSync(this.inboxDir, { recursive: true });
     }
@@ -68,8 +68,13 @@ export class InboxManager {
     // 完整内容存文件
     let filePath: string | undefined;
     if (content.length > 500) {
-      filePath = join(this.inboxDir, `${id}.txt`);
-      writeFileSync(filePath, content, 'utf-8');
+      filePath = path.join(this.inboxDir, `${id}.txt`);
+      try {
+        writeFileSync(filePath, content, 'utf-8');
+      } catch (e: any) {
+        console.error('[Inbox] 写入文件失败:', e.message);
+        filePath = undefined;
+      }
     }
 
     const item: InboxItem = {
@@ -124,7 +129,19 @@ export class InboxManager {
     const item = this.items.get(id);
     if (!item) return '';
     if (item.filePath && existsSync(item.filePath)) {
-      return readFileSync(item.filePath, 'utf-8');
+      try {
+        // 安全检查：确保 filePath 在 inboxDir 下，防止路径跳出
+        const abs = path.resolve(item.filePath);
+        const base = path.resolve(this.inboxDir);
+        if (!(abs === base || abs.startsWith(base + path.sep))) {
+          console.warn(`[Inbox] 拒绝访问 inbox 文件（非 inboxDir）：${item.filePath}`);
+          return '';
+        }
+        return readFileSync(abs, 'utf-8');
+      } catch (e: any) {
+        console.error('[Inbox] 读取文件失败:', e.message);
+        return '';
+      }
     }
     return item.content;
   }
@@ -155,14 +172,26 @@ export class InboxManager {
     
     // 删除文件
     if (item.filePath && existsSync(item.filePath)) {
-      try { unlinkSync(item.filePath); } catch {}
+      try {
+        const abs = path.resolve(item.filePath);
+        const base = path.resolve(this.inboxDir);
+        if (!(abs === base || abs.startsWith(base + path.sep))) {
+          console.warn(`[Inbox] 拒绝删除非 inbox 文件：${item.filePath}`);
+        } else {
+          unlinkSync(abs);
+        }
+      } catch (e: any) {
+        console.error('[Inbox] 删除文件失败:', e.message);
+      }
     }
     
     this.items.delete(id);
     if (this.db) {
       try {
         this.db.run(`DELETE FROM inbox WHERE id = ?`, [id]);
-      } catch {}
+      } catch (e: any) {
+        console.error('[Inbox] DB 删除失败:', e.message);
+      }
     }
     return true;
   }
@@ -171,15 +200,19 @@ export class InboxManager {
    * 清空已读
    */
   clearRead(): number {
-    let count = 0;
+    const toDelete: string[] = [];
     for (const [id, item] of this.items) {
-      if (item.read) {
+      if (item.read) toDelete.push(id);
+    }
+    for (const id of toDelete) {
+      try {
         this.delete(id);
-        count++;
+      } catch (e: any) {
+        console.error('[Inbox] 清理已读时删除项失败:', e.message);
       }
     }
-    console.log(`[Inbox] 清理 ${count} 条已读`);
-    return count;
+    console.log(`[Inbox] 清理 ${toDelete.length} 条已读`);
+    return toDelete.length;
   }
 
   /**
@@ -199,9 +232,11 @@ export class InboxManager {
       const files = readdirSync(this.inboxDir).filter(f => f.endsWith('.meta.json'));
       for (const f of files) {
         try {
-          const data = JSON.parse(readFileSync(join(this.inboxDir, f), 'utf-8'));
+          const data = JSON.parse(readFileSync(path.join(this.inboxDir, f), 'utf-8'));
           this.items.set(data.id, data);
-        } catch {}
+        } catch (e: any) {
+          console.error('[Inbox] 加载元数据失败:', e.message);
+        }
       }
       return;
     }
