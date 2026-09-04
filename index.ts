@@ -314,6 +314,30 @@ setSearchManager(searchManagerInstance);
     router.setAIClient(defaultClientResult.client, defaultClientResult.resolvedModel);
   }
 
+  // ── ExecutorTool 注册（受控工具调用路径：validate → dryRun → execute）──
+  // 实例注册：走 ITool 三段式（validate/dryRun/execute），context 绑定 AI 客户端与注册中心
+  {
+    const { ExecutorTool, EXECUTOR_TOOL_DEFINITION, bindExecutorTool } = await import('./src/tools/executor-tool.js');
+    const executorTool = new ExecutorTool();
+    const executorCtx = {
+      client: defaultClientResult?.client,
+      model: defaultModelForReflection || aiHub.getDefaultModel(),
+      registry: toolRegistry,
+      agentId: 'system-executor',
+    };
+    try {
+      toolRegistry.registerToolInstance(EXECUTOR_TOOL_DEFINITION, executorTool, {
+        context: executorCtx,
+        description: 'runToolsLoop 的受控封装（validate/dryRun/execute，支持 AbortSignal）',
+      });
+      // handler 双通道：把 registry.execute({name:'executor'}) 路由到实例
+      toolRegistry.registerTool(EXECUTOR_TOOL_DEFINITION, bindExecutorTool(executorTool, executorCtx));
+      console.log('[Tools] ExecutorTool 已注册（实例 + handler 双通道）');
+    } catch (e: any) {
+      console.warn('[Tools] ExecutorTool 注册跳过:', e.message);
+    }
+  }
+
   // ── 重建记忆搜索索引 ──
   router.rebuildSearchIndex();
 
