@@ -121,7 +121,9 @@ async function main() {
     assert('排除主 provider 后剩 1 个候选', cands.length === 1, `实际 ${cands.length}`);
     assert('候选是 fallback provider', cands[0]?.client.baseURL === 'http://fallback.test/v1', cands[0]?.client.baseURL);
     const none = hub.getFailoverCandidates('no-such-model-xyz');
-    assert('未知模型无候选', none.length === 0);
+    // 2026-09-03 契约变更（18751c9）：同模型候选为空时降级到任意可用模型（跨模型 fallback）
+    assert('未知模型降级到跨模型候选', none.length > 0, `实际 ${none.length}`);
+    assert('跨模型候选均有 resolvedModel', none.every((c: any) => !!c.resolvedModel));
   }
 
   console.log(`\n结果: ${passed} 通过, ${failed} 失败`);
