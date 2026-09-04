@@ -76,12 +76,18 @@ export function verifyAccessToken(token: string): JwtPayload | null {
     return jwt.verify(token, getJwtSecret()) as JwtPayload;
   } catch { /* 主密钥不匹配，再尝试回退密钥 */ }
 
+  // 回退密钥行为必须显式开启以避免误用
+  if (process.env.JWT_ALLOW_FALLBACK !== 'true') {
+    // 回退被禁用
+    return null;
+  }
+
   // 2. 回退密钥（JWT_SECRET_FALLBACKS 逗号分隔，用于接受云平台签发的 token）。仅在显式配置时启用。
   const fallbacks = (process.env.JWT_SECRET_FALLBACKS || '').split(',').map(s => s.trim()).filter(Boolean);
   if (fallbacks.length === 0) return null;
   if (!_fallbackWarned) {
     _fallbackWarned = true;
-    console.warn('[auth] 警告：已配置 ' + fallbacks.length + ' 个 JWT 回退密钥，回退密钥签发的 token 将被接受。请确保来源可信，生产环境建议尽快轮换并清空 JWT_SECRET_FALLBACKS。');
+    console.warn('[auth] 警告：已配置 ' + fallbacks.length + ' 个 JWT 回退密钥，回退密钥签发的 token 将被接受。请确保来源可信，生产环境建议尽快轮换并清理回退密钥');
   }
   // 可选：要求回退 token 携带指定 issuer，防止主密钥格式的 token 被回退密钥误放行（默认不强制，保持兼容）
   const expectedIssuer = process.env.JWT_FALLBACK_ISSUER || '';
@@ -89,6 +95,11 @@ export function verifyAccessToken(token: string): JwtPayload | null {
     try {
       const payload = jwt.verify(token, secret) as JwtPayload & { iss?: string };
       if (expectedIssuer && payload.iss !== expectedIssuer) continue; // issuer 不符 → 拒绝
+      // 安全硬化：不允许回退密钥签发的 token 拥有 admin 权限
+      if (Array.isArray(payload.roles) && payload.roles.includes('admin')) {
+        console.warn('[auth] 拒绝回退密钥签发的 token 带有 admin 角色');
+        continue;
+      }
       return payload;
     } catch { /* 尝试下一个密钥 */ }
   }
