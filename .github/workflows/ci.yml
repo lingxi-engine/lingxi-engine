@@ -42,6 +42,8 @@ jobs:
         run: npx tsc --noEmit --skipLibCheck
       - name: 故障转移单元测试
         run: npx tsx tests/verify-failover.ts
+      - name: 大文件专项测试 (db/builtin/router)
+        run: npx tsx tests/verify-bigfiles.ts
 
   cleanup-check:
     name: 工作区卫生检查
