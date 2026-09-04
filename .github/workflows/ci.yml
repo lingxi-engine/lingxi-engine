@@ -40,6 +40,10 @@ jobs:
         # 2026-08-29 修复：移除 continue-on-error 和 head 管道（管道会吞掉 tsc 退出码），
         # 类型错误现在会真正让 CI 失败
         run: npx tsc --noEmit --skipLibCheck
+      - name: 单元测试（vitest）
+        run: npm test
+      - name: ExecutorTool 冒烟测试
+        run: npm run test:smoke
       - name: 故障转移单元测试
         run: npx tsx tests/verify-failover.ts
 
