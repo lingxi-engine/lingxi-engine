@@ -15,7 +15,8 @@ import * as auth from '../auth/index.js';
 import { jwtAuth } from '../middleware/jwt-auth.js';
 import { adminAuth } from '../middleware/admin-auth.js';
 import { authRateLimit } from '../middleware/rate-limit.js';
-import { createInviteCode, listInviteCodes, nextNumericId, syncAgentToPrivateChats, getDB, saveToDisk, type DB } from '../storage/db.js';
+import { createInviteCode, listInviteCodes, listUsers, getUserCredits, nextNumericId, syncAgentToPrivateChats, getDB, saveToDisk, type DB } from '../storage/db.js';
+import { UsageTracker } from '../core/usage-tracker.js';
 import type { AgentManager } from '../agents/manager.js';
 import { getInstanceId } from '../core/instance-mesh.js';
 
@@ -306,6 +307,54 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
   });
   app.get('/api/admin/invite-codes', (_req, res) => {
     res.json({ ok: true, codes: listInviteCodes() });
+  });
+  // ── v2.4.x: Admin 后台聚合面板（web/admin.html 登录+数据加载入口） ──
+  app.get('/api/admin/dashboard', (_req, res) => {
+    try {
+      const users = listUsers().map((u: any) => {
+        let credits = 0, totalEarned = 0, totalSpent = 0;
+        try {
+          const c = getUserCredits(String(u.id));
+          credits = c.credits; totalEarned = c.totalEarned; totalSpent = c.totalSpent;
+        } catch {}
+        return { ...u, credits, total_earned: totalEarned, total_spent: totalSpent };
+      });
+      const raw: any = getDB();
+      const count = (sql: string, params: any[] = []) => {
+        try {
+          const st = raw.prepare(sql);
+          if (params.length) st.bind(params);
+          const row: any = st.step() ? st.getAsObject() : {};
+          st.free();
+          return Number(Object.values(row)[0] ?? 0);
+        } catch { return 0; }
+      };
+      const now = Date.now();
+      res.json({
+        ok: true,
+        data: {
+          users,
+          agentCount: count('SELECT COUNT(*) AS c FROM agents'),
+          chatCount: count('SELECT COUNT(*) AS c FROM chats'),
+          msgCount: count('SELECT COUNT(*) AS c FROM messages'),
+          sessionCount: count('SELECT COUNT(*) AS c FROM user_sessions WHERE revoked_at IS NULL AND expires_at > ?', [now]),
+          usage: UsageTracker.getStats(),
+          inviteCodes: listInviteCodes(),
+        },
+      });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // ── v2.4.x: Admin 最近调用记录（web/admin.html "最近调用"标签） ──
+  app.get('/api/admin/usage', (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 50, 1), 500);
+      res.json({ ok: true, recent: UsageTracker.getRecentRecords(limit) });
+    } catch (err: any) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
   });
 
   // ── 旧版兼容：验证码发送（保留 demo 模式） ──
