@@ -252,7 +252,9 @@ __pycache__/
 lingxi_engine/tests/run_all_result.txt
 lingxi_engine/tests/stage4_e2e_result.txt
 lingxi_engine/tests/verify_stage4_result.txt
-lingxi_engine/tests/data/data/ 
+lingxi_engine/tests/data/data/
+# lingxi_engine 运行时自我实验数据（引擎自写，非源码）
+lingxi_engine/tests/data/*.json 
 
 # 2026-09-07: 打包残留/备份目录/废弃副本
 backup-*/
