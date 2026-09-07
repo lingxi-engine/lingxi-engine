@@ -161,6 +161,21 @@ async function main() {
   if (missing.length) {
     console.warn('[Config] 缺少配置项:', missing.join(', '), '- 服务可能无法正常运行');
   }
+
+    // 2026-09-02 安全修复：MESH_TOKEN 弱/默认值检测 —— 生产模式（DEV_MODE=false）拒绝启动，开发模式仅警告
+    const MESH_TOKEN_WEAK = ['change-me-to-a-strong-secret', 'changeme', 'change-me'];
+    const _meshToken = process.env.MESH_TOKEN || '';
+    const meshEnabled = !!process.env.MESH_PLATFORM_URL;
+    const meshWeak = MESH_TOKEN_WEAK.includes(_meshToken) || (meshEnabled && !_meshToken);
+    if (meshWeak) {
+      const msg = 'MESH_TOKEN 为默认弱值' + (meshEnabled ? '（且已配置 MESH_PLATFORM_URL）' : '');
+      if (process.env.DEV_MODE === 'false') {
+        console.error('[FATAL] ' + msg + '，生产环境（DEV_MODE=false）拒绝启动，请设置强随机 MESH_TOKEN');
+        process.exit(1);
+      }
+      console.warn('[Config] ' + msg + '（开发模式仅警告）');
+    }
+
   logger.attachToConsole();        // 所有 console 输出同步写入日志文件
   logger.rotate();                 // 清理7天前的旧日志
   // P1-3: 每小时执行一次日志轮转，避免长期运行时旧日志堆积
