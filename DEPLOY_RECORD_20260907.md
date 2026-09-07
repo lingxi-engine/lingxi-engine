@@ -1,41 +1,60 @@
-# Lingxi Engine 部署记录 — 2026-09-07
+# Lingxi Engine 部署记录 — 2026-09-07（最终版）
 
 ## 版本
 - **v2.0.14**（package.json = version.txt = 2.0.14，零漂移）
+- HEAD: `d37b20a` fix(deps+executor): 恢复 stash 中的超时兜底修复 + uuid升级14.0.2 + qs/image-size overrides
 
-## 本次提交内容（60d0be6）
-1. 子代理系统修复：失败/超时任务保留期 24h→10min，清理间隔 1h→5min
-2. general-assistant 技能白名单加入 delegate_task/request_agent_help/collab_task
-3. index.ts 接线 setSubAgentManager()，工具调用真正落到管理器
-4. 修复 2 个历史测试失败（超时兜底 + ai_errors 错误分类）
-5. 新增 vitest 基建：vitest.config.ts + src/tests/（28 用例全绿）
-6. 恢复被误删的 scripts/pack-release.ps1（v6.4，版本号更新至 2.0.14）
-7. 收录 8 个新技能文件
-8. .gitignore 补齐 backup-*/release//release-v2//src/index.ts 排除规则
+## 提交链（本次部署包含）
+1. `60d0be6` feat(subagent): 子代理系统修复 + 测试基建 + 打包脚本恢复 (v2.0.14)
+2. `22ee2b8` chore(deploy): v2.0.14 部署记录 + .gitignore 补齐
+3. `46008bf` fix(security): platform-server.ts 补回 MESH_TOKEN 弱值守卫
+4. `551db86` fix(security): mobile/index.ts 补回 verify-email 路由 + admin invite-code 端点
+5. `b668c85` docs: v2.0.14 发布收尾记录
+6. `d37b20a` fix(deps+executor): 依赖安全修复 + executor 超时兜底
 
-## 打包产物
-| 产物 | 位置 | SHA256 |
+## 依赖安全修复（npm audit 6→2）
+| 包 | 动作 | 结果 |
 |---|---|---|
-| tar.gz | 本地 %TEMP% | 8E8D87D59B96F6F46A53A254E5817B0654CE28E18E14612C637D2A9E45BB5F6A |
-| tar.gz | 服务器 /var/www/lingxi/releases/lingxi-engine-v2.0.14.tar.gz | 8E8D87D5...BB5F6A（一致 ✅） |
-| tar.gz | 官网下载入口 /var/www/lingxi/public/lingxi-engine.tar.gz | 8E8D87D5...BB5F6A（一致 ✅） |
-| git bundle | F:\lingxi-engine-git-v15.bundle | 1,171,937 bytes |
-| tar.gz 备份 | F:\lingxi-engine-v2.0.14-20260907-final.tar.gz | 1,150,905 bytes（SHA 一致 ✅） |
+| qs | 6.15.3 → 6.16.0（override） | ✅ 已修复 |
+| body-parser | npm audit fix | ✅ 已修复 |
+| uuid | → 14.0.2（v4 API 兼容，仅 2 处直接引用） | ✅ 已修复 |
+| image-size | → 2.0.2（override） | ⚠️ 上游无修复版（GHSA-w3rx-r6r6-pgpr 影响全部版本），风险接受：仅 PPT 生成场景可触发 DoS，非 RCE |
 
-## 服务器操作
-- 上传至 /var/www/lingxi/releases/（版本化归档）
-- 官网下载入口 public/lingxi-engine.tar.gz 已替换为新包（旧包备份为 .bak-20260907）
-- HTTP 验证：http://47.93.157.83:8080/public/lingxi-engine.tar.gz → 200 OK, application/gzip
-- install.ps1 默认下载地址无需改动
+## 打包产物（最终 SHA256）
+```
+BF3954C459BE20DBB735BA88C2AC515355E531228D2B77DFA3EEC54866B7425E
+```
+| 位置 | 状态 |
+|---|---|
+| 本地 %TEMP% | ✅ 一致 |
+| 服务器 /var/www/lingxi/releases/lingxi-engine-v2.0.14.tar.gz | ✅ 一致 |
+| 官网下载入口 /var/www/lingxi/public/lingxi-engine.tar.gz | ✅ 一致（HTTP 200） |
+| F:\lingxi-engine-v2.0.14-20260907-final.tar.gz | ✅ 一致 |
+| F:\lingxi-engine-git-v15.bundle（完整 git 历史） | 1,176,846 bytes |
+
+## 垃圾归档
+- 13 个 backup_*/release*/src/index.ts 废弃副本 → F:\_archive_20260907\（共约 227MB）
+- 根目录 5 个旧 tar.gz 已删除
+- tsc 干扰源彻底清除，**tsc --noEmit 真正零报错**
+
+## 防火墙（局域网放行）
+- ✅ TCP 3456 入站放行（灵犀引擎）
+- ✅ UDP 3457 入站放行（灵犀发现）
+- 之前局域网设备无法访问的问题已解决
 
 ## 验证结果
-- tsc --noEmit：主源码零报错（release/ 垃圾目录残留报错已通过 .gitignore+清理解决）
+- tsc --noEmit：零报错
 - vitest：28/28 全绿（registry 13 + executor-tool 15）
-- 打包结构验证：顶层 lingxi-engine/ ✅、无 .env 泄漏 ✅、关键文件齐全 ✅
-- 本地/服务器/F盘三方 SHA256 完全一致
+- site_inner 同步：6 项差异全部同步完成
+- 打包验证：顶层 lingxi-engine/ ✅、无 .env 泄漏 ✅、关键文件齐全 ✅
+- CI：3 jobs（Python 回归 152 断言 / TS 类型检查 / 垃圾文件检查）
+
+## 部署后操作指引
+1. 服务器部署新包后重启引擎（加载 v2.0.14 全部修复）
+2. 重点测试：AI 雇佣闭环（扣钱→雇佣成功→my-hires 可见）
+3. 局域网：其他设备访问 http://192.168.1.6:3456（防火墙已放行）
+4. 子代理：复杂任务应自动拆分派发，失败任务 10 分钟内自动消失
 
 ## 未完成项（如实记录）
-- dwork 远程（D:\lingxi-engine-oss）为无关历史的独立仓库（64 commits，旧 OSS 布局），本次未同步。若需同步需人工评估合并策略。
-
-## 下一步
-用户将重新部署并测试：注册登录、AI 雇佣（修复后需重启引擎加载新代码）、局域网访问（防火墙放行 3456/3457 待执行）
+- dwork 远程（D:\lingxi-engine-oss）：无关历史独立仓库，未同步，需人工评估
+- image-size 上游无修复版，风险接受（仅 PPT 场景 DoS，非 RCE）
