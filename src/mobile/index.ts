@@ -13,7 +13,7 @@ import express from 'express';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { existsSync, mkdirSync } from 'fs';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import { join } from 'path';
 
 import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES } from '../storage/db.js';
@@ -203,6 +203,31 @@ async function main() {
   app.use('/api', apiRateLimit);
 
   // ── 移动端状态 API ──
+  // === 2026-09-02: verify-email route + admin invite-code issuance ===
+  app.get('/api/auth/verify-email', (req, res) => {
+    try {
+      const token = String((req.query as any).token || '');
+      if (!token) return res.status(400).json({ error: 'token required' });
+      const r = auth.verifyEmail(token);
+      res.json({ ok: true, email: r.email, userId: r.userId });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
+
+  app.post('/api/admin/invite-codes', (req: any, res) => {
+    const t = String(req.headers['x-admin-token'] || '');
+    const e = process.env.ADMIN_TOKEN || '';
+    let ok = false;
+    try { ok = e.length > 0 && t.length === e.length && timingSafeEqual(Buffer.from(t), Buffer.from(e)); } catch {}
+    if (!ok) return res.status(401).json({ error: 'admin token required (X-Admin-Token header)' });
+    try {
+      const body = req.body || {};
+      const code = String(body.code || ('LX-' + randomBytes(4).toString('hex').toUpperCase()));
+      const maxUses = Number(body.max_uses) || 1;
+      getDB().createInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
+      res.json({ ok: true, code, maxUses });
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
+
   app.get('/api/mobile/status', (_req, res) => {
     res.json({
       ok: true,
