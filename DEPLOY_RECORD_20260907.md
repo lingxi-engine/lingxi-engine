@@ -2,9 +2,11 @@
 
 ## 版本
 - **v2.0.14**（package.json = version.txt = 2.0.14，零漂移）
-- HEAD: `d37b20a` fix(deps+executor): 恢复 stash 中的超时兜底修复 + uuid升级14.0.2 + qs/image-size overrides
+- HEAD: `6d4b23f` fix(pack): data-platform 目录加入打包排除（修复发布包混入运行时数据库缺陷）
 
 ## 提交链（本次部署包含）
+0. `6d4b23f` fix(pack): data-platform 打包排除修复（本轮新增）
+0. `3857775` chore(git): 停止跟踪运行时实验数据
 1. `60d0be6` feat(subagent): 子代理系统修复 + 测试基建 + 打包脚本恢复 (v2.0.14)
 2. `22ee2b8` chore(deploy): v2.0.14 部署记录 + .gitignore 补齐
 3. `46008bf` fix(security): platform-server.ts 补回 MESH_TOKEN 弱值守卫
@@ -22,7 +24,7 @@
 
 ## 打包产物（最终 SHA256 — v2 含 version.txt 修复）
 ```
-F510EB1DC0A79AC23A8029ED926A691F8B0594E154BDBF43BBFF21D20FB1FCD2
+5840D60573CB10490C7A026E3499EEE760AA7B2A2893AAE0872BCE6A6C97FFEA
 ```
 | 位置 | 状态 |
 |---|---|
