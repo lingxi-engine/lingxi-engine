@@ -1,4 +1,4 @@
-# Lingxi Engine pack script v6.4 (2026-09-06: exclude backup_* dirs, *.zip, *.orig, fix-install, patch-admin)
+﻿# Lingxi Engine pack script v6.4 (2026-09-06: exclude backup_* dirs, *.zip, *.orig, fix-install, patch-admin)
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
@@ -11,7 +11,7 @@ $StageDir = Join-Path $StageRoot "lingxi-engine"
 if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
-$excludeDirs = @('node_modules','.git','workspace','data','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2')
+$excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2')
 $excludeDirsRegex = '^backup[_-]'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$'
 
