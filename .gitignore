@@ -253,3 +253,10 @@ lingxi_engine/tests/run_all_result.txt
 lingxi_engine/tests/stage4_e2e_result.txt
 lingxi_engine/tests/verify_stage4_result.txt
 lingxi_engine/tests/data/data/ 
+
+# 2026-09-07: 打包残留/备份目录/废弃副本
+backup-*/
+backup_*/
+release/
+release-v2/
+src/index.ts
