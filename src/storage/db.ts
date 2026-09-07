@@ -1839,3 +1839,36 @@ export function removeLanGroupMember(groupId: string, userId: string): void {
 export function deleteFriendRequest(requestId: string): void {
   _db.run("DELETE FROM friendships WHERE id = ?", [requestId]);
 }
+
+// ==================== deleteUser: cascade delete a user and all related data ====================
+export function deleteUser(userId: string): void {
+  // 1. Delete point transactions
+  _db.run('DELETE FROM point_transactions WHERE user_id = ?', [userId]);
+  // 2. Delete friendships (both directions)
+  _db.run('DELETE FROM friendships WHERE requester_id = ? OR addressee_id = ?', [userId, userId]);
+  // 3. Delete agent market listings owned by this user
+  _db.run('DELETE FROM agent_market WHERE owner_id = ?', [userId]);
+  // 4. Delete market orders by this user (buyer or seller)
+  _db.run('DELETE FROM market_orders WHERE buyer_id = ? OR seller_id = ?', [userId, userId]);
+  // 5. Delete LAN group memberships
+  _db.run('DELETE FROM lan_group_members WHERE user_id = ?', [userId]);
+  // 6. Delete LAN groups created by this user
+  _db.run('DELETE FROM lan_groups WHERE creator_id = ?', [userId]);
+  // 7. Delete private chats and messages
+  const chatRows = queryObjects('SELECT id FROM chats WHERE user1_id = ? OR user2_id = ?', [userId, userId]);
+  if (chatRows.length > 0) {
+    for (const cr of chatRows) {
+      _db.run('DELETE FROM messages WHERE chat_id = ?', [cr.id]);
+    }
+    _db.run('DELETE FROM chats WHERE user1_id = ? OR user2_id = ?', [userId, userId]);
+  }
+  // 8. Delete agents owned by this user
+  _db.run('DELETE FROM agents WHERE owner_id = ?', [userId]);
+  // 9. Delete workflows
+  _db.run('DELETE FROM workflows WHERE user_id = ?', [userId]);
+  // 10. Delete sessions
+  _db.run('DELETE FROM sessions WHERE user_id = ?', [userId]);
+  // 11. Delete the user record itself
+  _db.run('DELETE FROM users WHERE id = ?', [userId]);
+  markDirty();
+}

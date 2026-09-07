@@ -2,7 +2,7 @@
  * 管理路由 — Cron、会话、子代理、收件箱、审批、Hook、技能、开发面板、日志、语音、视觉、推送
  */
 import { Router } from 'express';
-import { getDB } from '../storage/db.js';
+import { getDB, deleteUser } from '../storage/db.js';
 import { createCronJob } from '../core/cron-scheduler.js';
 import { INFERENCE_BACKENDS } from '../ai/custom-providers.js';
 import { UsageTracker } from '../core/usage-tracker.js';
@@ -506,6 +506,97 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         }
       }, 1000);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+
+  // ==================== User Management ====================
+
+  // GET /dashboard - admin dashboard with user list and stats
+  router.get('/dashboard', async (req, res) => {
+    try {
+      const db = getDB();
+      const totalUsers = db.exec('SELECT COUNT(*) as c FROM users')[0].values[0][0];
+      const bannedUsers = db.exec("SELECT COUNT(*) as c FROM users WHERE status = 'banned'")[0].values[0][0];
+      const usersResult = db.exec('SELECT id, numeric_id, email, nickname, status, points, total_earned, total_spent, created_at, last_active_at FROM users ORDER BY created_at DESC LIMIT 100');
+      const cols = usersResult[0].columns;
+      const users = usersResult[0].values.map((row: any[]) => {
+        const obj: any = {};
+        cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+        return obj;
+      });
+      const totalAgents = db.exec('SELECT COUNT(*) as c FROM agents')[0].values[0][0];
+      const marketListings = db.exec('SELECT COUNT(*) as c FROM agent_market')[0].values[0][0];
+      const totalOrders = db.exec('SELECT COUNT(*) as c FROM market_orders')[0].values[0][0];
+      const totalChats = db.exec('SELECT COUNT(*) as c FROM chats')[0].values[0][0];
+      const usage = UsageTracker.getStats();
+      // invite codes
+      let inviteCodes = [];
+      try {
+        const inviteResult = db.exec('SELECT code, used_count, max_uses, created_at, expires_at FROM invite_codes ORDER BY created_at DESC LIMIT 50');
+        if (inviteResult.length) {
+          const ic = inviteResult[0].columns;
+          inviteCodes = inviteResult[0].values.map((row: any[]) => {
+            const obj: any = {};
+            ic.forEach((col: string, i: number) => { obj[col] = row[i]; });
+            return obj;
+          });
+        }
+      } catch {}
+      res.json({ ok: true, data: { totalUsers, bannedUsers, totalAgents, marketListings, totalOrders, totalChats, users, usage, inviteCodes, agentCount: totalAgents, chatCount: totalChats, sessionCount: 0, msgCount: 0 } });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // GET /usage - usage statistics and recent calls
+  router.get('/usage', async (req, res) => {
+    try {
+      const limit = parseInt(String(req.query.limit || '50'));
+      const recent = UsageTracker.getRecentRecords(limit);
+      res.json({ ok: true, recent });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /users/:id/ban - ban a user
+  router.post('/users/:id/ban', (req, res) => {
+    try {
+      const db = getDB();
+      const userId = req.params.id;
+      db.run("UPDATE users SET status = 'banned' WHERE id = ?", [userId]);
+      db.run('DELETE FROM sessions WHERE user_id = ?', [userId]);
+      res.json({ ok: true, message: 'User banned' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /users/:id/unban - unban a user
+  router.post('/users/:id/unban', (req, res) => {
+    try {
+      const db = getDB();
+      const userId = req.params.id;
+      db.run("UPDATE users SET status = 'active' WHERE id = ?", [userId]);
+      res.json({ ok: true, message: 'User unbanned' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // DELETE /users/:id - cascade delete a user (requires confirm=true in body)
+  router.delete('/users/:id', (req, res) => {
+    try {
+      if (req.body && req.body.confirm !== true) {
+        res.status(400).json({ error: 'Confirmation required: send { confirm: true } in body' });
+        return;
+      }
+      const userId = req.params.id;
+      deleteUser(userId);
+      res.json({ ok: true, message: 'User deleted with all related data' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return router;

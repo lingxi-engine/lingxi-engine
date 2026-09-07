@@ -41,6 +41,14 @@ tr:hover td { background:#1c2128; }
 .badge { padding:2px 8px; border-radius:10px; font-size:11px; }
 .badge-online { background:#0d4429; color:#3fb950; }
 .badge-offline { background:#21262d; color:#8b949e; }
+.badge-banned { background:#4a1e1e; color:#f85149; }
+.act-btn { padding:3px 10px; border:none; border-radius:4px; cursor:pointer; font-size:12px; margin-right:4px; }
+.act-btn-ban { background:#3d1f1f; color:#f85149; }
+.act-btn-ban:hover { background:#4a2828; }
+.act-btn-unban { background:#0d4429; color:#3fb950; }
+.act-btn-unban:hover { background:#126632; }
+.act-btn-del { background:#21262d; color:#f85149; }
+.act-btn-del:hover { background:#30363d; }
 
 .usage-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
 @media(max-width:768px) { .usage-grid { grid-template-columns:1fr; } }
@@ -157,23 +165,65 @@ function renderCards(d) {
 
 function renderUsers(users) {
   if (!users || !users.length) { document.getElementById('panel-users').innerHTML = '<p style="color:#8b949e">暂无注册用户</p>'; return; }
-  let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>状态</th><th>积分</th><th>累计获得</th><th>累计消耗</th><th>注册时间</th><th>最后活跃</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>ID</th><th>用户名</th><th>邮箱</th><th>状态</th><th>积分</th><th>累计获得</th><th>累计消耗</th><th>注册时间</th><th>最后活跃</th><th>操作</th></tr></thead><tbody>';
   users.forEach(u => {
-    const status = u.status === 'online' ? '<span class="badge badge-online">在线</span>' : '<span class="badge badge-offline">离线</span>';
+    let status;
+    if (u.status === 'banned') {
+      status = '<span class="badge badge-banned">已封禁</span>';
+    } else if (u.status === 'online') {
+      status = '<span class="badge badge-online">在线</span>';
+    } else {
+      status = '<span class="badge badge-offline">离线</span>';
+    }
+    const uid = esc(u.id || '');
+    const isBanned = u.status === 'banned';
+    const banBtn = isBanned
+      ? `<button class="act-btn act-btn-unban" onclick="unbanUser('${uid}')">解封</button>`
+      : `<button class="act-btn act-btn-ban" onclick="banUser('${uid}')">封禁</button>`;
+    const delBtn = `<button class="act-btn act-btn-del" onclick="deleteUser('${uid}', '${esc(u.nickname || u.email || u.numeric_id || '')}')">删除</button>`;
     html += `<tr>
       <td>${u.numeric_id || '-'}</td>
-      <td>${esc(u.display_name || u.username || '-')}</td>
+      <td>${esc(u.nickname || u.display_name || u.username || '-')}</td>
       <td>${esc(u.email || '-')}</td>
       <td>${status}</td>
-      <td style="color:#58a6ff;font-weight:600">${u.credits ?? 0}</td>
+      <td style="color:#58a6ff;font-weight:600">${u.points ?? u.credits ?? 0}</td>
       <td>${u.total_earned ?? 0}</td>
       <td>${u.total_spent ?? 0}</td>
       <td>${fmtTime(u.created_at)}</td>
       <td>${u.last_active_at ? fmtTime(u.last_active_at) : '-'}</td>
+      <td>${banBtn}${delBtn}</td>
     </tr>`;
   });
   html += '</tbody></table>';
   document.getElementById('panel-users').innerHTML = html;
+}
+
+async function banUser(userId) {
+  if (!confirm('确认封禁该用户？封禁后该用户将无法登录。')) return;
+  try {
+    const r = await fetch(API + '/api/admin/users/' + userId + '/ban', { method: 'POST', headers: headers() });
+    const d = await r.json();
+    if (d.ok) { loadData(); } else { alert('封禁失败: ' + (d.error || '')); }
+  } catch(e) { alert('请求失败: ' + e.message); }
+}
+
+async function unbanUser(userId) {
+  if (!confirm('确认解封该用户？')) return;
+  try {
+    const r = await fetch(API + '/api/admin/users/' + userId + '/unban', { method: 'POST', headers: headers() });
+    const d = await r.json();
+    if (d.ok) { loadData(); } else { alert('解封失败: ' + (d.error || '')); }
+  } catch(e) { alert('请求失败: ' + e.message); }
+}
+
+async function deleteUser(userId, userName) {
+  if (!confirm('⚠️ 确认删除用户「' + userName + '」？\n\n这将级联删除该用户的所有数据（积分、好友、AI智能体、市场挂单、聊天记录、工作流、会话），操作不可逆！')) return;
+  if (!confirm('再次确认：真的要删除吗？此操作不可撤销！')) return;
+  try {
+    const r = await fetch(API + '/api/admin/users/' + userId, { method: 'DELETE', headers: headers(), body: JSON.stringify({ confirm: true }) });
+    const d = await r.json();
+    if (d.ok) { alert('用户已删除'); loadData(); } else { alert('删除失败: ' + (d.error || '')); }
+  } catch(e) { alert('请求失败: ' + e.message); }
 }
 
 function renderUsage(usage) {
