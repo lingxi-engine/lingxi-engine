@@ -20,9 +20,9 @@
 | uuid | → 14.0.2（v4 API 兼容，仅 2 处直接引用） | ✅ 已修复 |
 | image-size | → 2.0.2（override） | ⚠️ 上游无修复版（GHSA-w3rx-r6r6-pgpr 影响全部版本），风险接受：仅 PPT 生成场景可触发 DoS，非 RCE |
 
-## 打包产物（最终 SHA256）
+## 打包产物（最终 SHA256 — v2 含 version.txt 修复）
 ```
-BF3954C459BE20DBB735BA88C2AC515355E531228D2B77DFA3EEC54866B7425E
+F510EB1DC0A79AC23A8029ED926A691F8B0594E154BDBF43BBFF21D20FB1FCD2
 ```
 | 位置 | 状态 |
 |---|---|
