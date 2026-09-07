@@ -243,6 +243,24 @@ export function isCompletionSignal(content: string): boolean {
 }
 
 /**
+ * v2.1: 检测 AI 是否在"问用户要不要继续"而非干活
+ * 这类输出是"停下来等用户回复"的典型模式，需要强力推送工具指令
+ */
+function isAskingUserToContinue(content: string): boolean {
+  if (!content) return false;
+  const t = content.trim();
+  const askPatterns = [
+    /(需要我|要我|是否需要|要不要)(继续|接着|下一步|做)/,
+    /(还需要|还需要做什么|还有什么需要)/,
+    /是否(需要|要我|可以)/,
+    /(请告诉我|请确认|请选择|请回复)/,
+    /(等你|等待你的|等你的)(回复|指示|确认)/,
+    /(接下来|下一步)(做什么|怎么办|怎么处理)/,
+  ];
+  return askPatterns.some(p => p.test(t));
+}
+
+/**
  * 从 AI 的 content 文本里提取工具调用
  * 支持格式：[{"name":"x","arguments":{...}}]
  */
@@ -391,10 +409,11 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
-  // v2.1 放宽空闲容忍：任务模式下默认 3 → 6（env MAX_IDLE_ROUNDS 可覆盖），配合降低提醒频率，
-  // 避免长任务中 AI 短暂思考停顿就被强停
+  // v2.1 放宽空闲容忍：任务模式下默认 3 → 8（env MAX_IDLE_ROUNDS 可覆盖）。
+  // 用户反馈"干活老是停下来问要不要继续"，3 轮太少——AI 写两轮汇报文字就被判完成退出；
+  // 8 轮给足空间让 AI 自主完成多步骤任务。
   const MAX_IDLE_ROUNDS = requireCompletion
-    ? Math.max(3, parseInt(process.env.MAX_IDLE_ROUNDS || '6', 10))
+    ? Math.max(3, parseInt(process.env.MAX_IDLE_ROUNDS || '8', 10))
     : 3;
   let idleRounds = 0;
 
@@ -575,17 +594,22 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       // 这是解决"干一点就停"的核心：不能把"AI 这轮没调工具"当成"任务完成"。
       if (requireCompletion && !isCompletionSignal(textContent) && idleRounds < MAX_IDLE_ROUNDS) {
         idleRounds += 1;
-        // v2.1 放宽空闲容忍：降低提醒频率——第 1/2 轮及偶数轮给完整提醒，其余轮次只给短促提示
+        // v2.1 强化 nudge：(a) 检测到 AI 在问用户"要不要继续"时用最强力措辞；
+        // (b) 其余轮次降低提醒频率——第 1/2 轮及偶数轮给完整提醒，奇数轮只给短促提示，
+        //     避免 token 浪费在重复长提示上
+        const isAsking = isAskingUserToContinue(textContent);
         let nudge: string;
-        if (idleRounds === 1) {
-          nudge = "系统提示：任务还没完成。请检查刚才的工作，看看还有哪些步骤没做完或遗漏了，继续调用工具完成它们。不要提前结束，直到全部做完。";
+        if (isAsking) {
+          nudge = `系统提示：你刚才在问用户"要不要继续"——这是禁止的。不要问，直接调用工具继续干活。任务还没完成，立即执行下一步，不许停。`;
+        } else if (idleRounds === 1) {
+          nudge = "系统提示：任务还没完成，不要回复文字就停。请直接调用工具继续执行剩余步骤。不要问我要不要继续，直接做。";
         } else if (idleRounds === 2 || idleRounds % 2 === 0) {
-          nudge = `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。如果你认为确实做完了，请在回复结尾明确输出"任务完成"并说明已满足的条件（声明之后不要再写"接下来/下一步"等后续计划）；否则请继续调用工具推进剩余工作，不要停。`;
+          nudge = `系统提示：任务仍未完成（已提醒 ${idleRounds} 次）。请不要解释、不要汇报、不要问问题，直接调用工具执行下一步。如果你认为确实做完了，请明确输出"任务完成"并说明已满足的条件（声明之后不要再写"接下来/下一步"等后续计划）；否则立即调用工具。`;
         } else {
-          nudge = "系统提示：继续执行任务剩余步骤，不要停。";
+          nudge = "系统提示：继续执行任务剩余步骤，直接调用工具，不要停。";
         }
         result.messages.push({ role: "user", content: nudge } as ChatMessage);
-        console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}），注入追问继续`);
+        console.log(`[Executor] 持续执行：AI 未调工具且未声明完成（idleRounds=${idleRounds}/${MAX_IDLE_ROUNDS}${isAsking ? ', 检测到问用户' : ''}），注入追问继续`);
         continue;
       }
 

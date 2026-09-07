@@ -293,7 +293,11 @@ export class MessageRouter {
         const isFollowUp = recentMessages.some(m => m.id !== triggerMsgId && m.sender_type === 'agent');
         const history = recentMessages.filter(m => m.id !== triggerMsgId).slice(-10).map(m => m.content);
         const clarify = this.clarifier.evaluate(triggerContent, isFollowUp, history);
-        if (clarify.needsClarify) {
+        // v2.1: 硬拦截只对"真的没法猜"的输入生效——极短（<5字）且无任何上下文。
+        // 其他模糊输入（指代不清、多意图等）结合上下文都能合理推断，交给模型按推荐解读执行，
+        // 不再停下来追问（面向不会用智能体的用户，频繁提问体验极差）。
+        const hopeless = triggerContent.trim().length < 5 && !isFollowUp;
+        if (clarify.needsClarify && hopeless) {
           // 硬拦截：直接追问，不调用 LLM（省 token + 快速响应），并正常落库保证刷新不丢
           const question = clarify.questions[0] || '你能具体说说想了解什么吗？';
           const clarifyMsg = '我还没完全理解你的意思，先确认一下：\n\n' + question
@@ -305,8 +309,8 @@ export class MessageRouter {
           return clarifyMsg;
         }
         if (clarify.score < this.clarifier.softThreshold) {
-          // 软提示：注入 system prompt，让模型自然确认而不是臆测
-          clarifyHint = '\n\n## 意图提示\n用户本次输入可能不够明确（清晰度 ' + clarify.score + '/100）。若你无法确定其真实意图，请用一句话主动追问确认，不要臆测作答。';
+          // 软提示：面向不会用 AI 的用户——不追问，按最合理的解读直接执行，说明假设请用户纠偏
+          clarifyHint = '\n\n## 意图提示\n用户本次输入可能不够明确（清晰度 ' + clarify.score + '/100）。不要追问澄清。请直接按最合理、最直接的解读继续回答或执行，并在开头用一句话说明你的理解（如「我理解你是想要……」），如果理解错了用户会纠正。';
         }
       } catch (e: unknown) {
         console.warn('[Router] 意图澄清失败，不阻塞主流程:', (e as Error)?.message || e);
@@ -386,10 +390,11 @@ export class MessageRouter {
       console.log(`[Router] Agent ${agent.displayName} 有 ${agentTools.length} 个可用工具，启动工具调用循环`);
       let result: any = null;
       try {
-      // 总超时控制：普通对话 2 分钟兜底；任务类给长超时（默认 10 分钟），
-      // 避免长任务（多轮工具调用）干到一半被中断（用户反馈"活干到一半就停了"的根因）
-      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '600', 10)) * 1000;
-      const CHAT_TIMEOUT_MS = (parseInt(process.env.CHAT_TIMEOUT_SECONDS || '300', 10)) * 1000;
+      // 总超时控制：普通对话 20 分钟兜底（v2.1: 从 5 分钟提到 20 分钟，
+      //   用户反馈"干活干到一半就停了"，5 分钟对多文件修改等复杂任务不够）；
+      //   任务类给长超时（默认 2 小时），避免长任务被中断
+      const TASK_TIMEOUT_MS = (parseInt(process.env.TASK_TIMEOUT_SECONDS || '7200', 10)) * 1000;
+      const CHAT_TIMEOUT_MS = (parseInt(process.env.CHAT_TIMEOUT_SECONDS || '1200', 10)) * 1000;
       const TOTAL_TIMEOUT = isTaskMode ? TASK_TIMEOUT_MS : CHAT_TIMEOUT_MS;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), TOTAL_TIMEOUT);
@@ -407,7 +412,7 @@ export class MessageRouter {
         registry: this.toolRegistry!,
         agentId,
         chatId,
-        maxIterations: isTaskMode ? (envBoolForceComplete() ? 200 : 50) : 15,
+        maxIterations: isTaskMode ? (envBoolForceComplete() ? 200 : 100) : 30,
         temperature: 0.7,
         maxTokens: 16384,
         requireCompletion: isTaskMode || envBoolForceComplete(),
@@ -905,6 +910,20 @@ export class MessageRouter {
         '- 一旦开始就必须持续工作直到目标完全达成，中途不可暂停或中断',
         '- 全部完成后说「任务完成」',
         '- 确实做不了就诚实说明原因',
+        '',
+        '## ⚠️ 禁止停下来询问（重要）',
+        '- 绝对不要输出"需要我继续吗？""是否需要我接着做？"这类话——直接做就是了',
+        '- 绝对不要输出"还要做什么吗？""请告诉我下一步"——自己判断下一步并执行',
+        '- 绝对不要在一轮结束时只写文字汇报而不调工具——如果还有没做完的，继续调工具',
+        '- 汇报进度可以，但汇报完必须紧接着继续干活，而不是等用户回复',
+        '- 唯一允许停下来的情况：全部做完并输出"任务完成"，或确实遇到无法绕过的障碍',
+        '',
+        '## 遇到选择时：自动按推荐方案推进（面向不会用 AI 的用户）',
+        '- 用户是普通人，不会回答技术问题。任何"你想用 A 还是 B？""需要我配置 X 吗？"都是在把用户问死。',
+        '- 遇到分叉：自己权衡，直接选你推荐的、最稳妥/最常用的方案执行，不要请示。',
+        '- 选完后在回复里用一句话说明：「我选了 X（原因），如果你想改成 Y，告诉我一声即可」。',
+        '- 缺信息就大胆用合理默认值（如端口 3456、中文回复、常用模型），绝不为"确认参数"而停。',
+        '- 用户的模糊要求按字面意思理解并执行最直接的解读，不要反问澄清，做完让用户看结果提修改意见。',
         '',
         '## 执行策略（防止超时）',
         '- 每次只改一个文件，改完立即用 write_file 落盘，不要攒到最后一起写',
