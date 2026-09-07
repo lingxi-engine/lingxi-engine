@@ -1,0 +1,11 @@
+{
+  "name": "project-audit-and-sync",
+  "displayName": "项目状态审计与多端同步",
+  "description": "全面扫描项目真实状态，对比多端差异，修复Bug并准备开源剥离。",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "遇到需要同步多端代码、排查项目真实状态或准备开源的任务时：\n1. 使用 shell_exec 执行 git status, git log, git diff 等命令，全面扫描当前工作区、暂存区和版本库的真实状态。\n2. 对比用户描述与实际文件内容，指出偏差并纠偏，确保信息准确。\n3. 执行必要的 git checkout, git add, git commit, git push 同步本地、远程仓库和服务器代码。\n4. 如果涉及开源准备，扫描代码库中的敏感信息或商业核心代码（如支付、积分、用户管理、AI代理等），列出清单并建议剥离或清洗历史。\n5. 输出一份清晰的“真实状态报告 + 行动计划”表格，包含当前状态、已执行操作和后续建议。",
+  "autoCreated": true,
+  "createdAt": 1788750688718
+}

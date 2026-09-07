@@ -1,0 +1,11 @@
+{
+  "name": "recover-and-sync-codebase",
+  "displayName": "代码库恢复与同步",
+  "description": "排查本地与远程仓库代码不一致问题，从干净源恢复丢失代码并同步对齐。",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "遇到本地代码被意外覆盖或与远程仓库不一致的情况时，按以下步骤操作：\n1. 使用 `git status` 和 `git diff` 检查当前工作区状态，找出被修改或覆盖的文件。\n2. 确认远程仓库（如 GitHub）是否为干净源，必要时使用 `git log` 对比本地与远程的提交历史。\n3. 使用 `git checkout <file>` 或 `git restore <file>` 恢复被覆盖的文件，注意保留用户新的有意修改。\n4. 清理产生的临时文件（如 .orig, patch 等）。\n5. 检查并更新版本号等必要信息。\n6. 提交并推送到远程仓库以实现代码对齐。操作前务必向用户确认恢复范围。",
+  "autoCreated": true,
+  "createdAt": 1788749985840
+}

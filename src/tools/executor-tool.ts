@@ -109,8 +109,23 @@ export class ExecutorTool extends ToolBase<Record<string, any>, RunToolsResult> 
     } as RunToolsOptions;
 
     // ── Execute with error classification ──
+    // v2.0.14 修复: runToolsLoop 的 abort 只在轮次间检查，AI 调用挂起时超时永不生效；
+    // 用 Promise.race 兜底——controller.abort() 触发时立即 reject，不再干等挂起的调用
+    const abortRace = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => {
+        if (existingSignal?.aborted) {
+          reject(new ExecutorError('aborted', 'ExecutorTool: aborted by external signal'));
+        } else {
+          reject(new ExecutorError('timeout', 'ExecutorTool: timed out after ' + timeoutMs + 'ms'));
+        }
+      }, { once: true });
+    });
     try {
-      const res = await runToolsLoop(runOpts);
+      const res = await Promise.race([runToolsLoop(runOpts), abortRace]);
+      // v2.0.14 修复: 循环耗尽 AI 重试后返回 stopReason=ai_errors（不 throw），对调用方是运行时失败
+      if (res && res.stopReason === 'ai_errors') {
+        throw new ExecutorError('runtime', 'ExecutorTool: execution failed — ' + (res.finalContent || 'AI 连续调用失败'));
+      }
       return res;
     } catch (err: any) {
       // Classify the error

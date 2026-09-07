@@ -1,0 +1,13 @@
+{
+  "name": "pre-open-source-sensitive-scan",
+  "displayName": "开源前敏感信息排查与清理",
+  "description": "扫描代码库识别商业核心或敏感文件，并提供开源前的处理建议。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户准备开源项目时，使用 list_dir 和 read_file 扫描代码库，重点排查涉及商业核心的文件（如积分/钱包、用户管理、AI员工、后台管理等）。分析这些文件内容并评估开源风险。使用 shell_exec 检查 git 状态、清理临时文件（如 .bak, .orig）并统一版本号。最后给出处理建议，例如清洗 git 历史、剥离敏感模块或直接上成品。",
+  "autoCreated": true,
+  "createdAt": 1788751208713
+}

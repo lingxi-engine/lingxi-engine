@@ -1,0 +1,13 @@
+{
+  "name": "project-sync-and-deploy-fix",
+  "displayName": "项目代码同步与部署修复",
+  "description": "对比并修复本地、Git、服务器多端代码不一致问题，执行备份和部署。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file"
+  ],
+  "prompt": "遇到需要修复项目代码同步问题、确保多端（本地、Git、服务器）版本一致的任务时，按以下步骤执行：1. 使用 list_dir 和 read_file 扫描本地、Git 和服务器上的关键代码文件，对比版本号和核心逻辑。2. 识别丢失或回退的文件，使用 shell_exec 执行 git 操作恢复或更新代码。3. 确认版本号（如 package.json, version.txt）在所有端点一致。4. 执行必要的备份操作。5. 使用 shell_exec 进行部署（如 pm2 重启等）。6. 全程保持多端一致性，避免将不需要开源的文件提交到公共仓库。",
+  "autoCreated": true,
+  "createdAt": 1788749602150
+}

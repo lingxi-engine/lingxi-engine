@@ -156,7 +156,7 @@ export const SKILL_CONFIGURATION: Skill[] = [
     id: "general-assistant",
     name: "通用助手",
     description: "基础助手技能，提供搜索、计算、时间查询、文件读写等通用能力",
-    tools: ["web_search", "calculate", "get_time", "read_file", "write_file", "list_dir", "shell_exec"],
+    tools: ["web_search", "calculate", "get_time", "read_file", "write_file", "list_dir", "shell_exec", "delegate_task", "request_agent_help", "collab_task"],
     prompt: "你是一个通用的 AI 助手。可以帮用户搜索信息、做数学计算、查时间、读写文件、浏览目录、执行系统命令。当用户提出问题时，判断是否需要调用工具，需要就直接调用。",
   },
   {

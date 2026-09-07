@@ -1,0 +1,14 @@
+{
+  "name": "github-suggestion-analysis-and-implementation",
+  "displayName": "GitHub建议分析与落地执行",
+  "description": "分析外部开发建议或任务清单，对照本地代码库现状，执行修改并验证。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到需要分析外部（如GitHub）给出的开发建议或任务清单时，首先使用 read_file 和 list_dir 对照本地代码库现状，生成可行性分析报告（包含优先级、现状、差距）。然后根据用户指示执行修改，使用 shell_exec 运行测试和验证命令，确保每项任务的 inputs -> actions -> expected outputs 符合预期。遇到执行失败时，检查代码内容并调整匹配或修改逻辑，直到任务完成。",
+  "autoCreated": true,
+  "createdAt": 1788754933824
+}

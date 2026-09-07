@@ -3,6 +3,7 @@
  * 负责注册、查找、执行工具
  */
 import type { ToolDefinition, ToolCallRequest, ToolCallResult, Skill } from "./types.js";
+import type { ITool } from "./tool-base.js";
 // 架构建议 #3: 接线 ApprovalManager
 import type { ApprovalManager } from "../core/approval.js";
 
@@ -11,6 +12,7 @@ export class ToolRegistry {
   private handlers = new Map<string, (args: Record<string, any>) => Promise<any>>();
   private skills = new Map<string, Skill>();
   private agentSkills = new Map<string, string[]>(); // agentId -> skillIds[];
+  private instances = new Map<string, ITool>();
   private approvalManager: ApprovalManager | null = null;
 
   // ── 工具注册 ──
@@ -29,6 +31,15 @@ export class ToolRegistry {
     for (const { tool, handler } of entries) {
       this.registerTool(tool, handler);
     }
+  }
+
+  /** 注册一个工具实例（ITool 实现，优先于 handler 执行） */
+  registerToolInstance(tool: ToolDefinition, instance: ITool) {
+    if (this.tools.has(tool.name)) {
+      throw new Error(`Tool already registered: ${tool.name}`);
+    }
+    this.tools.set(tool.name, tool);
+    this.instances.set(tool.name, instance);
   }
 
   // ── 技能管理 ──
@@ -113,8 +124,9 @@ export class ToolRegistry {
 
   /** 执行单个工具调用 */
   async execute(request: ToolCallRequest): Promise<ToolCallResult> {
+    const instance = this.instances.get(request.name);
     const handler = this.handlers.get(request.name);
-    if (!handler) {
+    if (!instance && !handler) {
       return {
         callId: request.id,
         toolName: request.name,
@@ -140,7 +152,7 @@ export class ToolRegistry {
 
     const start = Date.now();
     try {
-      const result = await handler(request.arguments);
+      const result = instance ? await instance.execute(request.arguments) : await handler!(request.arguments);
       return {
         callId: request.id,
         toolName: request.name,

@@ -1,0 +1,15 @@
+{
+  "name": "execute-task-list-persistently",
+  "displayName": "持续执行任务清单",
+  "description": "分析任务清单或建议，对照代码现状，持续执行修改和验证直到全部完成，中途遇到问题需排查并继续。",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file",
+    "replace_in_file"
+  ],
+  "prompt": "当用户给出任务清单、GitHub 建议或要求“全搞”、“一直干完”时，你需要：1. 逐条分析任务与当前代码现状的差距。2. 制定执行计划。3. 使用工具逐步执行修改。4. 遇到错误或替换不生效时，主动排查原因（如查看实际文件内容、执行测试）并修复，不要停止。5. 持续执行直到所有任务完成并验证通过，最后输出完成清单。绝不中途停止。",
+  "autoCreated": true,
+  "createdAt": 1788764559549
+}

@@ -124,7 +124,8 @@ export class SubAgentManager {
     this.aiClient = aiClient;
     this.aiModel = aiModel;
     // 每小时清理一次超过24h的已完成任务记录，避免内存泄漏
-    const cleaner = setInterval(() => { try { this.cleanup(24 * 60 * 60 * 1000); } catch { /* ignore */ } }, 60 * 60 * 1000);
+    // v2.0.14: 间隔缩短为 5 分钟，失败任务按 SUBAGENT_FAIL_RETAIN_MS（默认10分钟）分级清理
+    const cleaner = setInterval(() => { try { this.cleanup(24 * 60 * 60 * 1000); } catch { /* ignore */ } }, 5 * 60 * 1000);
     if (cleaner.unref) cleaner.unref();
   }
 
@@ -212,11 +213,15 @@ export class SubAgentManager {
   }
 
   cleanup(maxAgeMs: number = 3600000): number {
+    // v2.0.14: 默认保留期与 notifyResult 对齐（失败任务短保留）；调用方可传 24h 清理已完成任务
+    const FAIL_RETAIN_MS = parseInt(process.env.SUBAGENT_FAIL_RETAIN_MS || '600000', 10);
     const cutoff = Date.now() - maxAgeMs;
+    const failCutoff = Date.now() - FAIL_RETAIN_MS;
     let removed = 0;
     for (const [id, task] of this.tasks) {
-      if ((task.status === 'completed' || task.status === 'failed' || task.status === 'timeout') &&
-          task.completedAt && task.completedAt < cutoff) {
+      const isFail = task.status === 'failed' || task.status === 'timeout';
+      if ((task.status === 'completed' || isFail) &&
+          task.completedAt && task.completedAt < (isFail ? failCutoff : cutoff)) {
         this.tasks.delete(id);
         removed++;
       }
@@ -441,7 +446,10 @@ export class SubAgentManager {
     }
     if (task.status === 'completed' || task.status === 'failed' || task.status === 'timeout') {
       const tid = task.id;
-      const t = setTimeout(() => { this.tasks.delete(tid); this.running.delete(tid); }, 24 * 60 * 60 * 1000);
+      // v2.0.14: 失败/超时任务保留期 24h → 10 分钟（env SUBAGENT_FAIL_RETAIN_MS 可调），避免面板长期残留失败任务
+      const FAIL_RETAIN_MS = parseInt(process.env.SUBAGENT_FAIL_RETAIN_MS || '600000', 10);
+      const retainMs = task.status === 'completed' ? (24 * 60 * 60 * 1000) : FAIL_RETAIN_MS;
+      const t = setTimeout(() => { this.tasks.delete(tid); this.running.delete(tid); }, retainMs);
       if (t.unref) t.unref();
     }
   }

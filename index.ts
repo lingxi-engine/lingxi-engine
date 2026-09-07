@@ -49,6 +49,7 @@ import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLa
 import { verifyLanRequest } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
 import { ToolRegistry } from './src/tools/registry.js';
+import { ExecutorTool } from './src/tools/executor-tool.js';
 import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager, setSubAgentManager } from './src/tools/builtin.js';
 import { SearchManager } from './src/tools/search-providers.js';
 import { UsageTracker } from './src/core/usage-tracker.js';
@@ -279,6 +280,12 @@ setSearchManager(searchManagerInstance);
   for (const { tool, handler } of BUILTIN_TOOLS) {
     toolRegistry.registerTool(tool, handler);
   }
+  // A1: 注册 ExecutorTool 实例（ITool 路径，支持 dryRun/审批/超时/错误分类）
+  toolRegistry.registerToolInstance({
+    name: 'executor',
+    description: 'Run the agent tool-execution loop (supports dry-run, timeout, abort, error classification)',
+    parameters: { type: 'object', properties: {} },
+  }, new ExecutorTool());
   for (const skill of BUILTIN_SKILLS) {
     toolRegistry.registerSkill(skill);
   }

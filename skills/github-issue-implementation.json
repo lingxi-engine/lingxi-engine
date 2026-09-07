@@ -1,0 +1,14 @@
+{
+  "name": "github-issue-implementation",
+  "displayName": "GitHub建议落地执行",
+  "description": "分析GitHub建议并对照本地代码现状进行可行性分析和代码实现",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "遇到GitHub建议或issue需要实现时，首先分析建议内容，使用read_file和list_dir对照本地代码现状进行可行性分析，列出任务清单、优先级和差距。然后根据优先级逐步执行代码修改，使用write_file修改代码，shell_exec运行测试和验证。最后给出完成清单和状态报告。",
+  "autoCreated": true,
+  "createdAt": 1788754140089
+}
