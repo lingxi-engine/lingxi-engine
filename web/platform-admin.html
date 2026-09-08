@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵犀引擎 - 平台管理后台</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:#0d1117; color:#c9d1d9; min-height:100vh; }
+.login-wrap { display:flex; align-items:center; justify-content:center; min-height:100vh; }
+.login-box { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:40px; width:380px; }
+.login-box h2 { text-align:center; margin-bottom:8px; color:#58a6ff; }
+.login-box .sub { text-align:center; font-size:12px; color:#8b949e; margin-bottom:24px; }
+.login-box input { width:100%; padding:10px 14px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:14px; margin-bottom:16px; }
+.login-box button { width:100%; padding:10px; background:#238636; border:none; border-radius:6px; color:#fff; font-size:14px; cursor:pointer; }
+.login-box button:hover { background:#2ea043; }
+.login-err { color:#f85149; font-size:12px; margin-bottom:12px; display:none; }
+
+.dashboard { display:none; padding:20px; max-width:1400px; margin:0 auto; }
+.top-bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:24px; }
+.top-bar h1 { font-size:20px; color:#58a6ff; }
+.top-bar .actions { display:flex; gap:8px; }
+.top-bar button { padding:6px 14px; background:#21262d; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; cursor:pointer; font-size:13px; }
+.top-bar button:hover { background:#30363d; }
+
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px,1fr)); gap:16px; margin-bottom:24px; }
+.card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:20px; text-align:center; }
+.card .num { font-size:28px; font-weight:700; color:#58a6ff; }
+.card .label { font-size:12px; color:#8b949e; margin-top:6px; }
+
+.tabs { display:flex; gap:4px; margin-bottom:16px; border-bottom:1px solid #30363d; padding-bottom:8px; }
+.tabs button { padding:8px 16px; background:transparent; border:none; color:#8b949e; cursor:pointer; font-size:14px; border-radius:6px; }
+.tabs button.active { background:#21262d; color:#58a6ff; }
+
+.panel { display:none; }
+.panel.active { display:block; }
+
+table { width:100%; border-collapse:collapse; background:#161b22; border-radius:10px; overflow:hidden; border:1px solid #30363d; }
+th, td { padding:10px 12px; text-align:left; font-size:13px; border-bottom:1px solid #21262d; }
+th { background:#21262d; color:#8b949e; font-weight:600; }
+tr:hover td { background:#1c2128; }
+.badge { padding:2px 8px; border-radius:10px; font-size:11px; }
+.badge-active { background:#0d4429; color:#3fb950; }
+.badge-banned { background:#490202; color:#f85149; }
+.badge-online { background:#0d4429; color:#3fb950; }
+.badge-offline { background:#21262d; color:#8b949e; }
+
+.toolbar { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+.toolbar input { padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:13px; }
+.toolbar input:focus { outline:none; border-color:#58a6ff; }
+.btn { padding:6px 14px; background:#21262d; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; cursor:pointer; font-size:12px; }
+.btn:hover { background:#30363d; }
+.btn-danger { background:#490202; border-color:#6e4044; color:#f85149; }
+.btn-danger:hover { background:#67060c; }
+.btn-green { background:#238636; border-color:#2ea043; color:#fff; }
+.btn-green:hover { background:#2ea043; }
+
+.modal { position:fixed; inset:0; background:rgba(0,0,0,0.6); display:none; align-items:center; justify-content:center; z-index:100; }
+.modal.show { display:flex; }
+.modal-box { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:24px; width:400px; }
+.modal-box h3 { color:#58a6ff; margin-bottom:16px; font-size:16px; }
+.modal-box p { font-size:13px; color:#8b949e; margin-bottom:12px; line-height:1.6; }
+.modal-box input { width:100%; padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:13px; margin-bottom:16px; }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+.toast { position:fixed; bottom:24px; right:24px; background:#161b22; border:1px solid #30363d; border-radius:8px; padding:12px 20px; font-size:13px; display:none; z-index:200; }
+.toast.ok { border-color:#238636; color:#3fb950; }
+.toast.err { border-color:#f85149; color:#f85149; }
+
+.muted { color:#8b949e; font-size:12px; }
+.search-row { display:flex; gap:8px; margin-bottom:12px; }
+.search-row input { flex:1; padding:8px 12px; background:#0d1117; border:1px solid #30363d; border-radius:6px; color:#c9d1d9; font-size:13px; }
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <h2>🛡️ 灵犀平台管理后台</h2>
+    <div class="sub">仅平台管理员可登录</div>
+    <div class="login-err" id="loginErr"></div>
+    <input type="password" id="tokenInput" placeholder="PLATFORM_ADMIN_TOKEN" autocomplete="off">
+    <button onclick="login()">登录</button>
+  </div>
+</div>
+
+<div class="dashboard" id="dashboard">
+  <div class="top-bar">
+    <h1>🛡️ 灵犀平台管理后台</h1>
+    <div class="actions">
+      <button onclick="refreshAll()">刷新</button>
+      <button onclick="logout()">退出</button>
+    </div>
+  </div>
+
+  <div class="cards" id="cards">
+    <div class="card"><div class="num" id="stUsers">-</div><div class="label">注册用户</div></div>
+    <div class="card"><div class="num" id="stCredits">-</div><div class="label">流通积分</div></div>
+    <div class="card"><div class="num" id="stOrders">-</div><div class="label">雇佣订单</div></div>
+    <div class="card"><div class="num" id="stInstances">-</div><div class="label">在线实例</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="active" data-tab="users" onclick="switchTab('users')">用户管理</button>
+    <button data-tab="orders" onclick="switchTab('orders')">账单流水</button>
+    <button data-tab="instances" onclick="switchTab('instances')">实例列表</button>
+  </div>
+
+  <div class="panel active" id="panel-users">
+    <div class="search-row">
+      <input id="userSearch" placeholder="搜索 ID / 昵称 / 邮箱…" oninput="renderUsers()">
+    </div>
+    <table>
+      <thead><tr><th>ID</th><th>昵称</th><th>邮箱</th><th>积分</th><th>状态</th><th>注册时间</th><th>操作</th></tr></thead>
+      <tbody id="usersBody"></tbody>
+    </table>
+  </div>
+
+  <div class="panel" id="panel-orders">
+    <div class="toolbar">
+      <input id="orderFilter" placeholder="按买家 userId 过滤（可空）" style="width:280px">
+      <button class="btn" onclick="loadOrders()">查询</button>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>买家</th><th>员工(卖家)</th><th>任务</th><th>价格</th><th>时间</th></tr></thead>
+      <tbody id="ordersBody"></tbody>
+    </table>
+    <p class="muted" id="orderStats" style="margin-top:8px"></p>
+  </div>
+
+  <div class="panel" id="panel-instances">
+    <table>
+      <thead><tr><th>实例 ID</th><th>主机名</th><th>IP</th><th>端口</th><th>版本</th><th>状态</th><th>最后心跳</th></tr></thead>
+      <tbody id="instancesBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal" id="modal">
+  <div class="modal-box">
+    <h3 id="modalTitle"></h3>
+    <p id="modalDesc"></p>
+    <input id="modalInput" placeholder="" style="display:none">
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">取消</button>
+      <button class="btn btn-green" id="modalOk">确认</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let TOKEN = localStorage.getItem('platform_admin_token') || '';
+let usersCache = [];
+
+function api(path, opts = {}) {
+  return fetch(path, {
+    ...opts,
+    headers: { 'Content-Type': 'application/json', 'x-admin-token': TOKEN, ...(opts.headers || {}) },
+  }).then(async r => {
+    if (r.status === 401) { logout(); throw new Error('令牌失效，请重新登录'); }
+    if (r.status === 503) throw new Error('服务器未配置 PLATFORM_ADMIN_TOKEN，管理接口已锁定');
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    return d;
+  });
+}
+
+function toast(msg, ok = true) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast show ' + (ok ? 'ok' : 'err');
+  setTimeout(() => t.className = 'toast', 3000);
+}
+
+function fmtTime(ts) {
+  if (!ts) return '-';
+  const d = new Date(Number(ts));
+  return d.toLocaleString('zh-CN', { hour12: false });
+}
+
+// ── 登录 ──
+async function login() {
+  TOKEN = document.getElementById('tokenInput').value.trim();
+  if (!TOKEN) return;
+  try {
+    await api('/api/admin/users');
+    localStorage.setItem('platform_admin_token', TOKEN);
+    enterDashboard();
+  } catch (e) {
+    const err = document.getElementById('loginErr');
+    err.textContent = '❌ ' + e.message; err.style.display = 'block';
+  }
+}
+function logout() {
+  localStorage.removeItem('platform_admin_token');
+  TOKEN = '';
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('loginWrap').style.display = 'flex';
+}
+function enterDashboard() {
+  document.getElementById('loginWrap').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  refreshAll();
+}
+
+// ── Tab ──
+function switchTab(name) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
+  if (name === 'orders') loadOrders();
+  if (name === 'instances') loadInstances();
+}
+
+// ── 数据加载 ──
+async function refreshAll() {
+  try {
+    const d = await api('/api/admin/users');
+    usersCache = d.users || [];
+    const st = d.stats || {};
+    document.getElementById('stUsers').textContent = st.totalUsers ?? usersCache.length;
+    document.getElementById('stCredits').textContent = st.totalCredits ?? '-';
+    document.getElementById('stOrders').textContent = st.totalOrders ?? '-';
+    document.getElementById('stInstances').textContent = st.onlineInstances ?? '-';
+    renderUsers();
+    toast('数据已刷新');
+  } catch (e) { toast(e.message, false); }
+}
+
+function renderUsers() {
+  const q = (document.getElementById('userSearch').value || '').trim().toLowerCase();
+  const list = q ? usersCache.filter(u =>
+    (u.id || '').toLowerCase().includes(q) ||
+    (u.displayName || '').toLowerCase().includes(q) ||
+    (u.email || '').toLowerCase().includes(q) ||
+    String(u.numericId || '').includes(q)
+  ) : usersCache;
+  document.getElementById('usersBody').innerHTML = list.map(u => `
+    <tr>
+      <td>${u.id}<br><span class="muted">#${u.numericId}</span></td>
+      <td>${esc(u.displayName)}</td>
+      <td>${esc(u.email)}</td>
+      <td style="color:#58a6ff;font-weight:600">${u.credits ?? 0}</td>
+      <td><span class="badge ${u.status === 'banned' ? 'badge-banned' : 'badge-active'}">${u.status === 'banned' ? '已封禁' : '正常'}</span></td>
+      <td class="muted">${fmtTime(u.createdAt)}</td>
+      <td>
+        <button class="btn" onclick="modalGrant('${u.id}', ${u.credits ?? 0})">积分</button>
+        ${u.status === 'banned'
+          ? `<button class="btn" onclick="unbanUser('${u.id}')">解封</button>`
+          : `<button class="btn" onclick="banUser('${u.id}')">封禁</button>`}
+        <button class="btn btn-danger" onclick="modalDelete('${u.id}', '${esc(u.displayName)}')">删除</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">暂无用户</td></tr>';
+}
+
+async function loadOrders() {
+  try {
+    const uid = (document.getElementById('orderFilter').value || '').trim();
+    const d = await api('/api/admin/orders' + (uid ? '?userId=' + encodeURIComponent(uid) : ''));
+    document.getElementById('ordersBody').innerHTML = (d.orders || []).map(o => `
+      <tr>
+        <td>${o.id}</td>
+        <td>${esc(o.buyerName)}</td>
+        <td>${esc(o.sellerName)}</td>
+        <td>${esc(o.goal || '-')}</td>
+        <td style="color:#58a6ff;font-weight:600">${o.price}</td>
+        <td class="muted">${fmtTime(o.createdAt)}</td>
+      </tr>`).join('') || '<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">暂无订单</td></tr>';
+    const st = d.stats || {};
+    document.getElementById('orderStats').textContent = `累计 ${st.totalCount ?? 0} 单，总流水 ${st.totalVolume ?? 0} 积分`;
+  } catch (e) { toast(e.message, false); }
+}
+
+async function loadInstances() {
+  try {
+    const d = await api('/api/admin/instances');
+    document.getElementById('instancesBody').innerHTML = (d.instances || []).map(i => `
+      <tr>
+        <td>${esc(i.instanceId)}</td>
+        <td>${esc(i.hostname || '-')}</td>
+        <td>${esc(i.lanIp || '-')}</td>
+        <td>${i.port || '-'}</td>
+        <td>${esc(i.version || '-')}</td>
+        <td><span class="badge ${i.online ? 'badge-online' : 'badge-offline'}">${i.online ? '在线' : '离线'}</span></td>
+        <td class="muted">${fmtTime(i.lastHeartbeat)}</td>
+      </tr>`).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:24px">暂无实例</td></tr>';
+  } catch (e) { toast(e.message, false); }
+}
+
+// ── 操作 ──
+async function banUser(id) {
+  if (!confirm(`确认封禁 ${id}？封禁后该用户无法登录平台。`)) return;
+  try { await api(`/api/admin/users/${encodeURIComponent(id)}/ban`, { method: 'POST' }); toast('已封禁 ' + id); refreshAll(); }
+  catch (e) { toast(e.message, false); }
+}
+async function unbanUser(id) {
+  if (!confirm(`确认解封 ${id}？`)) return;
+  try { await api(`/api/admin/users/${encodeURIComponent(id)}/unban`, { method: 'POST' }); toast('已解封 ' + id); refreshAll(); }
+  catch (e) { toast(e.message, false); }
+}
+
+// 积分弹窗
+let grantTarget = null;
+function modalGrant(id, current) {
+  grantTarget = id;
+  document.getElementById('modalTitle').textContent = '积分操作';
+  document.getElementById('modalDesc').innerHTML = `用户 <b>${esc(id)}</b> 当前积分 <b style="color:#58a6ff">${current}</b><br>输入变动值：正数发放，负数扣减`;
+  const inp = document.getElementById('modalInput');
+  inp.style.display = 'block'; inp.value = ''; inp.placeholder = '如 500 或 -200';
+  document.getElementById('modalOk').onclick = async () => {
+    const amt = Number(inp.value);
+    if (!Number.isFinite(amt) || amt === 0) { toast('请输入非零数字', false); return; }
+    try {
+      const d = await api('/api/admin/credits/grant', { method: 'POST', body: JSON.stringify({ userId: id, amount: amt, reason: '平台后台操作' }) });
+      toast(`${id} 积分 ${d.before} → ${d.after}`);
+      closeModal(); refreshAll();
+    } catch (e) { toast(e.message, false); }
+  };
+  document.getElementById('modal').classList.add('show');
+}
+
+// 删除弹窗
+function modalDelete(id, name) {
+  document.getElementById('modalTitle').textContent = '⚠️ 删除用户';
+  document.getElementById('modalDesc').innerHTML = `将永久删除 <b>${esc(name)}</b>（${esc(id)}）及其积分、好友、挂单、订单等全部数据。<br><b style="color:#f85149">此操作不可恢复！</b>`;
+  const inp = document.getElementById('modalInput');
+  inp.style.display = 'block'; inp.value = ''; inp.placeholder = '输入 DELETE 确认';
+  document.getElementById('modalOk').className = 'btn btn-danger';
+  document.getElementById('modalOk').onclick = async () => {
+    if (inp.value !== 'DELETE') { toast('请输入 DELETE 确认', false); return; }
+    try {
+      await api(`/api/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE', body: JSON.stringify({ confirm: true }) });
+      toast('已删除 ' + id); closeModal(); refreshAll();
+    } catch (e) { toast(e.message, false); }
+  };
+  document.getElementById('modal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+  const ok = document.getElementById('modalOk');
+  ok.className = 'btn btn-green'; ok.onclick = null;
+}
+
+function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+// ── 自动登录 ──
+if (TOKEN) {
+  api('/api/admin/users').then(enterDashboard).catch(() => { TOKEN = ''; localStorage.removeItem('platform_admin_token'); });
+}
+document.getElementById('tokenInput').addEventListener('keydown', e => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>
