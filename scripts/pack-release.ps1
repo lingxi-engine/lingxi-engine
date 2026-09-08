@@ -1,9 +1,9 @@
-﻿# Lingxi Engine pack script v6.4 (2026-09-06: exclude backup_* dirs, *.zip, *.orig, fix-install, patch-admin)
+# Lingxi Engine pack script v6.5 (2026-09-09: v2.0.15 platform admin, verify platform-admin.html + PLATFORM_ADMIN_TOKEN)
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.14.tar.gz"
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.15.tar.gz"
 
 # Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
 $StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
@@ -120,6 +120,37 @@ try {
         Write-Host "  [OK] verify-email POST route present" -ForegroundColor Green
     } else {
         throw "[FAIL] verify-email POST route missing"
+    }
+
+    # Verify v2.0.15 platform admin features
+    Write-Host ""
+    Write-Host "Verify v2.0.15 platform admin..." -ForegroundColor Yellow
+    $adminPage = $tarList | Where-Object { $_ -match 'platform-admin\.html$' }
+    if ($adminPage) {
+        Write-Host "  [OK] platform-admin.html present ($($adminPage[0]))" -ForegroundColor Green
+    } else {
+        throw "[FAIL] platform-admin.html missing from package"
+    }
+    if ($platformSrc -match 'PLATFORM_ADMIN_TOKEN') {
+        Write-Host "  [OK] PLATFORM_ADMIN_TOKEN auth present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] PLATFORM_ADMIN_TOKEN auth missing"
+    }
+    if ($platformSrc -match 'api/admin/users') {
+        Write-Host "  [OK] admin users API present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] admin users API missing"
+    }
+    if ($platformSrc -match 'api/admin/credits/grant') {
+        Write-Host "  [OK] admin credits grant API present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] admin credits grant API missing"
+    }
+    $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
+    if ($pkgJson -match '"version":\s*"2\.0\.15"') {
+        Write-Host "  [OK] package.json version = 2.0.15" -ForegroundColor Green
+    } else {
+        throw "[FAIL] package.json version is not 2.0.15"
     }
 
     Write-Host ""
