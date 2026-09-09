@@ -1,0 +1,14 @@
+{
+  "name": "code-test-deploy-workflow",
+  "displayName": "代码修改-测试-部署全流程",
+  "description": "完成代码修改后，依次进行功能测试、Git提交、GitHub推送、本地备份、打包上传和部署测试的完整工作流",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求完成代码修改并部署时，按以下流程执行：1) 修改代码后先进行功能测试（实际发请求验证，而非只看代码）；2) 测试通过后执行 git add/commit；3) 推送到 GitHub；4) 备份到指定本地路径（如F盘）；5) 打包项目；6) 上传到官网/服务器；7) 重新部署后再次测试验证。每一步完成后向用户报告状态。遇到 API 429 错误时，提示用户检查 API Key 和网络，等待后重试。遇到上下文过长导致无响应时，建议简化任务分步执行。",
+  "autoCreated": true,
+  "createdAt": 1788804969494
+}
