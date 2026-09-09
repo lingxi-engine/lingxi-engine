@@ -33,7 +33,7 @@
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.2.0",
+    "multer": "^2.3.0",
     "openai": "^4.72.0",
     "sql.js": "^1.11.0",
     "uuid": "^14.0.2",
