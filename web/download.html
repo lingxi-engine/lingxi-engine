@@ -104,7 +104,7 @@
       </div>
       <div class="cmdbox">
         <div class="label">云服务器部署（/opt 目录 + PM2 托管，对外服务用这个）：</div>
-        <code class="cmd" id="cmd-deploy">curl -fsSL http://47.93.157.83:8080/public/deploy.sh | bash</code>
+        <code class="cmd" id="cmd-deploy">curl -fsSL http://47.93.157.83:8080/install.sh | bash</code>
         <button class="copy" data-target="cmd-deploy">复制</button>
       </div>
       <div class="tips">
@@ -150,8 +150,8 @@
         <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm http://47.93.157.83:8080/install.ps1 | iex</span></td></tr>
         <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
         <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
-        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/deploy.sh | bash</span></td></tr>
-        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/deploy.sh | bash</span></td></tr>
+        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
+        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
         <tr><td>CentOS 7</td><td>❌ 不支持（glibc 2.17 过旧）</td><td>—</td></tr>
       </table>
 
@@ -182,7 +182,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 # 期望返回 {"ok":true,"version":"2.0.17","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
-      <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">deploy.sh</span> 内的 8 步逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
+      <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
       <p>📖 更完整的图文部署指南（含离线部署、PM2 托管、常见排障）见 <a href="/deploy.html">部署指南页</a>。</p>
     </div>
   </details>
