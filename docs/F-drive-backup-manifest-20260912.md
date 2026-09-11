@@ -122,3 +122,10 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 
 - 官网快照 `lingxi-site-20260912-v2017-final.tar.gz`（md5 `3ac1b233`）经解包回验与服务器线上逐字节一致
 - F 盘剩余空间 1.22 GB；当日 9 个 bundle 共 2.35 GB，建议清理至最近 3 个（待授权）
+
+## 九、F 盘空间归档（09-12 07:10，响应第八章清理建议）
+
+- **动作**：24 个 bundle 中的 22 个旧 bundle + 5 个旧站点快照，Move-Item 移至 D:\lingxi-archive\（git-bundles / site-snapshots 两个子目录），移动可逆零删除
+- **F 盘保留**：最新 2 个 bundle（-final-ed666d0 / -final-9493ef3）+ lingxi-site-20260912-v2017-final.tar.gz
+- **空间**：F 盘 753 MB → 6.0 GB；D 盘归档 23 bundles + 5 snapshots（D 盘总空闲 25 GB）
+- **快照独立复验**：lingxi-site-20260912-v2017-final.tar.gz（md5 3ac1b233）本地解包 + 服务器 find -exec md5sum 逐文件比对，107 文件全部一致；快照不含服务器侧 *.bak-* 备份与 public/*.tar.gz 历史包（打包规则既定排除，见第四章）
