@@ -91,3 +91,13 @@ PM2 三进程 restart 计数全程未变：`lingxi-mesh 82` / `lingxi 23` / `lin
 | 推理流事件 | think/streaming 相关 97 行，03:48 起持续出现，修复生效|
 | 启动健康 | 03:19:55 启动：7 Provider / 24 模型 / 56 工具 / 2 Agent 重绑技能，无异常|
 | 结论 | **今日代码改动零运行时故障** |
+
+
+## 十、技能体系核查（第五轮）
+
+| 项 | 实测 |
+|---|---|
+| 引擎注册技能 | 5 个 = `SKILL_CONFIGURATION` 代码常量（通用助手/图片生成/网络调研/编程助手/社媒运营），与 skills/ 目录无关 |
+| skills/ 目录 | 325 个 JSON，auto-skill 经验沉淀体系，由 skill-manager 按需加载，不注册为工具，`/api/skills` 仅显示已安装 2 个（email-checker/weather-briefing，均 disabled）|
+| 今日新增 5 个技能 JSON | code-version-sync-check / diagnose-lingxi-session-agent / diagnose-lingxi-session-ai-reply / multi-location-version-sync / repo-deploy-sync-audit — 全部 autoCreated，tools 引用合法，JSON 解析通过，已入 git |
+| 结论 | 两套技能体系各司其职，今日新增 JSON 不影响引擎运行，无需处理 |
