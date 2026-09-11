@@ -1,29 +1,28 @@
 # F 盘备份清单 — 2026-09-12（v2.0.17）
 
-> 本次执行期间有**并行 agent** 在同一工作区作业（持续提交 dev 文档与版本号修正），
-> 官网包与 bundle 在本轮内被重打多次。下表为**最终一次**的产物与校验值。
+> **性质说明**：本清单是**时点快照记录**。执行期间有**并行 agent** 在同一工作区持续提交
+> （dev 文档 + 版本号修正），故官网包与 bundle 被重打多次。下表为**最终一次**产物；
+> 代码（`src/` `web/`）自 `64debb1` 起未变，仅文档与版本兜底常量在动。
 
 ## 一、最终产物
 
 | 产物 | 字节数 | 时间 | 完整性校验 |
 |---|---|---|---|
-| `F:\lingxi-engine-git-20260912-final.bundle` | 260,685,673 | 09-12 04:35 | `git bundle verify` = **okay**；`refs/heads/main` = `93fea33` |
-| `F:\lingxi-site-20260912-lean.tar.gz` | 5,928,101 | 09-12 04:36 | **MD5 `cee5d1143435925823dfef22d709b833`**（= 服务器源文件） |
-| 官网发布包（服务器 3 处） | 1,292,290 | 09-12 04:35 | **MD5 `6dc2adaa01a186f7f96453562bc56c54`** |
+| `F:\lingxi-engine-git-20260912-final.bundle` | 260,711,646 | 09-12 04:38 | `git bundle verify` = **okay**；`refs/heads/main` = **最新 HEAD**（每次提交后整体重建） |
+| `F:\lingxi-site-20260912-lean.tar.gz` | 5,928,288 | 09-12 04:39 | **MD5 `d8b774562a628f76970736286e7d891b`**（= 服务器源文件） |
+| 官网发布包（服务器 3 处） | 1,292,762 | 09-12 04:38 | **MD5 `a8330f12f0fdef44f3e6a8af74f5d330`** |
 
-备份源：本地仓库 `C:\Users\Administrator\lingxi-engine`、
-服务器 `root@47.93.157.83:/var/www/lingxi`。
-> 本清单自身提交后，bundle 已再次重建为「包含该提交」的超集；上表哈希为提交前基线。
+备份源：本地仓库 `C:\Users\Administrator\lingxi-engine`、服务器 `root@47.93.157.83:/var/www/lingxi`。
 
 ## 二、四方对齐状态
 
 | 位置 | 状态 |
 |---|---|
-| 本地 git | HEAD `93fea33`，工作区无未跟踪文件 |
-| GitHub `origin/main` | `93fea33`，`rev-list --left-right --count` = `0 0` |
-| F 盘 bundle | `93fea33`，verify = okay，13 refs，历史完整 |
-| F 盘站点快照 | MD5 `cee5d114…`，与服务器逐字节一致（122 条目） |
-| 官网发布包 | 三处同 md5 `6dc2adaa…`，HTTP 全 200 |
+| 本地 git | HEAD `b43dd42`（写入本表时），工作区无未跟踪文件 |
+| GitHub `origin/main` | 与本地一致，`rev-list --left-right --count` = `0 0` |
+| F 盘 bundle | `--all`，verify = okay，13 refs，历史完整 |
+| F 盘站点快照 | MD5 `d8b77456…`，与服务器逐字节一致（122 条目） |
+| 官网发布包 | 三处同 md5 `a8330f12…`，HTTP 全 200 |
 
 ## 三、官网代码逐文件核验（vs 仓库 HEAD）
 
@@ -49,20 +48,21 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 
 ## 五、遗留 / 未动
 
-- **线上引擎仍为 2.0.15**（`/api/health`），源码已是 2.0.17。升级须 **重启 PM2 `lingxi`**；
+- **线上引擎仍为 2.0.15**（`/api/health`）；源码已 2.0.17。升级须 **重启 PM2 `lingxi`**；
   用户明确要求「不要杀进程」，**未执行**。
 - F 盘 `lingxi-engine-source-20260908.tar.gz` = 4,294,963,200 B（恰 4 GiB），**疑似截断坏档**。
 - GitHub 2 个 high 级 Dependabot 漏洞，待处理。
 - F 盘剩余约 2.9 GB。
 
-## 六、本轮更新记录（官网包）
+## 六、本轮官网包重打记录
 
 | 时间 | HEAD | 包 md5 | 说明 |
 |---|---|---|---|
-| 04:24 | 9df43e3 | `56c0f831…` | 补 `DEPLOY_RECORD_20260912.md` |
-| 04:28 | adb458f | `0cd1bb43…` | CHANGELOG 补齐 2.0.13~2.0.17 |
-| 04:31 | e18939e | `ba689c88…` | DEPLOY_RECORD 补记 |
-| 04:33 | d653c44 | `2e2220af…` | .bak 归档补记 |
-| 04:35 | 93fea33 | `6dc2adaa…` | **版本号漂移修正**（health/admin 兜底、package-lock） |
+| 04:24 | 9df43e3 | `56c0f831` | 补 `DEPLOY_RECORD_20260912.md` |
+| 04:28 | adb458f | `0cd1bb43` | CHANGELOG 补齐 2.0.13~2.0.17 |
+| 04:31 | e18939e | `ba689c88` | DEPLOY_RECORD 补记 |
+| 04:33 | d653c44 | `2e2220af` | .bak 归档补记 |
+| 04:35 | 93fea33 | `6dc2adaa` | **版本号漂移修正**（health/admin 兜底 2.0.17） |
+| 04:38 | b43dd42 | `a8330f12` | 最终（DEPLOY_RECORD 126 行） |
 
 旧版本备份于服务器 `/var/www/lingxi/backup-20260912-v2017b/`。
