@@ -66,3 +66,43 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 | 04:38 | b43dd42 | `a8330f12` | 最终（DEPLOY_RECORD 126 行） |
 
 旧版本备份于服务器 `/var/www/lingxi/backup-20260912-v2017b/`。
+
+## 七、第三轮收尾（同日再后段）：发布包 v6.7 清理重建 + 官网覆盖上传
+
+### 1. 编码缺陷修复（阻断性）
+- `scripts/pack-release.ps1` v6.7 含中文注释，但保存为 **UTF-8 无 BOM**；PowerShell 5.1 按 GBK 解码 → 注释字节可能被误读为 `'` `"` 反引号而破坏语法
+- 处理：重存为 **UTF-8 with BOM**（`EF BB BF`，实测首三字节合格），中文注释保留；`Parser::ParseFile` 校验 PARSE-OK
+- 备份：`scripts/pack-release.ps1.bak-20260912-v67-preBOM`
+
+### 2. v6.7 打包器清理效果（服务端实测对比）
+
+| | 旧包（04:40 版） | 新包（v6.7） |
+|---|---|---|
+| 条目 | 738 | **707** |
+| 垃圾项 | **33**（24×`.pyc` + `__pycache__/` + 5×tests-data json + 3×`_result.txt` + 1×`.bak`） | **0** |
+| 大小 | 1,293,601 B | 1,173,394 B |
+| `.env` 泄漏 | 无 | 无 |
+| `.env.example` | 有 | 有（显式校验） |
+
+- 产物 MD5：`cdf997e2a37be8a4c1c0facf2fe54c0e`
+- 打包器 7 组内置校验全部 `[OK]`（结构 / 垃圾 / env / key files / v5 安全 / v2.0.17 平台管理 / v2.0.17 推理流）
+
+### 3. 官网覆盖上传（47.93.157.83）
+- 服务端备份：`/var/www/lingxi/backup-20260912-v2017-clean/`（可回滚）
+- 三处覆盖（`releases/`、`public/` 带版本名、`public/lingxi-engine.tar.gz`）→ **md5 三处一致**
+- 外网下载回算 md5 = MATCH ✅（最硬证据：用户真能下到一致的包）
+- 站内 6 个 URL 全 200，无 404
+
+### 4. 工作区清理
+- 31 个会话临时脚本整体移入 `workspace/_archive/20260912-scratch/`（移动可逆，未删除）
+- 该目录被 `.gitignore` 第 77 行 `workspace/` 覆盖，不影响仓库状态
+
+### 5. 本轮提交与备份刷新（本次收尾）
+- 提交内容：`scripts/pack-release.ps1`（BOM 修复）+ `DEPLOY_RECORD_20260912.md`（并入第九节）+ 本清单第七章
+- F 盘 `lingxi-engine-git-20260912-final.bundle` **整体重建**（跟随 `main` 最新），并留一份带哈希快照 `…-0261254.bundle`
+- 官网快照：`lingxi-site-20260912-v2017-final.tar.gz`
+
+### 6. 仍未处理
+- **线上引擎仍为 2.0.15**（`/api/health`），源码已 2.0.17；升级须**重启 PM2 `lingxi`** —— 用户明确要求「不要杀进程」，**未执行**（三轮均未触碰任何进程，PID 3069242 / 3070698 / 3073051 restart 计数 82/23/10 未变）
+- GitHub 2 个 high 级 Dependabot 告警：上游无补丁（详见 `DEPLOY_RECORD_20260912.md` 第八节）
+- `.env` 的 `DEFAULT_MODEL=glm-5.3:cloud` 为幽灵模型（provider 列表只有 `glm-5.2`），新 agent 会带上不存在的模型 ID，靠 fallback 兜底 —— 待改

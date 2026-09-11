@@ -1,4 +1,9 @@
-# Lingxi Engine pack script v6.6 (2026-09-12: v2.0.17 reasoning-stream, verify _lanThink/_thinkBlock + sw.js v18 + router reasoning fields)
+﻿# Lingxi Engine pack script v6.7 (2026-09-12: 修复嵌套垃圾过滤 + 保留 .env 模板)
+#   v6.7 变更:
+#     - 新增 Remove-JunkFiles: 递归清理 __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
+#       (v6.6 的 $excludeFilesRegex 只作用于顶层，导致 src/、lingxi_engine/ 内的垃圾随包发出)
+#     - Remove-EnvFiles 改为保留 .env.example / .env.template（install.sh 依赖 .env.example）
+#     - 新增: 垃圾文件零残留校验 + .env.example 存在性校验
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
@@ -15,11 +20,38 @@ $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs'
 $excludeDirsRegex = '^backup[_-]'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$'
 
+# 只允许这些 env 模板进包，其余 .env* 一律剥离
+$keptEnvNames = @('.env.example', '.env.template')
+
 function Remove-EnvFiles($path) {
-    Get-ChildItem $path -Recurse -Force -Filter '.env*' | ForEach-Object {
-        Write-Host "  [EXCLUDE] removing $_" -ForegroundColor DarkGray
-        Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue
-    }
+    Get-ChildItem $path -Recurse -Force -File -Filter '.env*' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin $keptEnvNames } |
+        ForEach-Object {
+            Write-Host "  [EXCLUDE] .env -> $($_.FullName)" -ForegroundColor DarkGray
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+}
+
+function Remove-JunkFiles($path) {
+    # 递归清理构建/运行垃圾。v6.6 只在顶层过滤，子目录里的垃圾会漏进发布包。
+    $junkDirs = @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache')
+    Get-ChildItem $path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -in $junkDirs } |
+        ForEach-Object {
+            Write-Host "  [EXCLUDE] dir -> $($_.FullName)" -ForegroundColor DarkGray
+            Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue |
+        Where-Object {
+            $_.Name -match '\.(pyc|pyo|bak|orig|rej|log|tmp|pid)$' -or
+            $_.Name -match '\.bak-' -or
+            $_.Name -match '_result\.txt$' -or
+            ($_.FullName -match 'tests[\\/]data[\\/].+\.json$')
+        } |
+        ForEach-Object {
+            Write-Host "  [EXCLUDE] file -> $($_.FullName)" -ForegroundColor DarkGray
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        }
 }
 
 Push-Location $ProjectRoot
@@ -34,10 +66,15 @@ try {
         Copy-Item $_.FullName $dst -Recurse -Force
     }
 
-    # Strip any .env files that may have been copied under subdirectories
+    # Strip any .env files that may have been copied under subdirectories (keep templates)
     Write-Host ""
-    Write-Host "Stripping all .env* files from staging..." -ForegroundColor Cyan
+    Write-Host "Stripping .env* from staging (keeping .env.example/.env.template)..." -ForegroundColor Cyan
     Remove-EnvFiles $StageDir
+
+    # Strip nested build junk recursively
+    Write-Host ""
+    Write-Host "Stripping nested build junk..." -ForegroundColor Cyan
+    Remove-JunkFiles $StageDir
 
     # Pack from staging root so tarball top-level is ./lingxi-engine/
     Push-Location $StageRoot
@@ -66,23 +103,43 @@ try {
         throw "[FAIL] top-level is: $($top -join ', ')"
     }
 
-    # Verify .env is NOT present
+    $tarList = tar -tzf $OutFile
+
+    # Verify no build junk leaked in
+    Write-Host ""
+    Write-Host "Verify no build junk..." -ForegroundColor Yellow
+    $junk = $tarList | Where-Object { $_ -match '__pycache__|\.pyc$|\.bak|\.orig$|\.log$|\.tmp$|_result\.txt$|tests/data/.+\.json$' }
+    if (-not $junk) {
+        Write-Host "  [OK] no pyc/bak/log/result/tests-data junk in package" -ForegroundColor Green
+    } else {
+        Write-Host "  [FAIL] junk files found:" -ForegroundColor Red
+        $junk | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+        throw "build junk must not be packaged"
+    }
+
+    # Verify .env is NOT present (templates allowed)
     Write-Host ""
     Write-Host "Verify .env is excluded..." -ForegroundColor Yellow
-    $envFiles = tar -tzf $OutFile | Select-String -Pattern '\.env' | ForEach-Object { $_.Line }
+    $envFiles = $tarList | Select-String -Pattern '\.env' | ForEach-Object { $_.Line } |
+        Where-Object { $_ -notmatch '\.env\.(example|template)$' }
     if (-not $envFiles) {
-        Write-Host "  [OK] no .env files in package" -ForegroundColor Green
+        Write-Host "  [OK] no real .env files in package" -ForegroundColor Green
     } else {
         Write-Host "  [FAIL] .env files found:" -ForegroundColor Red
         $envFiles | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
         throw ".env files must not be packaged"
+    }
+    $envTpl = $tarList | Where-Object { $_ -match '\.env\.example$' }
+    if ($envTpl) {
+        Write-Host "  [OK] .env.example present ($($envTpl[0]))" -ForegroundColor Green
+    } else {
+        throw "[FAIL] .env.example missing (install.sh needs it)"
     }
 
     # Verify key files
     Write-Host ""
     Write-Host "Verify key files..." -ForegroundColor Yellow
     $keyFiles = @('lingxi-engine/index.ts', 'lingxi-engine/src/storage/db.ts', 'lingxi-engine/src/core/router.ts', 'lingxi-engine/src/mobile/index.ts', 'lingxi-engine/web/index.html', 'lingxi-engine/web/js/app.js', 'lingxi-engine/package.json')
-    $tarList = tar -tzf $OutFile
     foreach ($f in $keyFiles) {
         $pattern = '^\./' + [regex]::Escape($f) + '$'
         $found = $tarList | Where-Object { $_ -match $pattern }

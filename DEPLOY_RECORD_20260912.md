@@ -148,3 +148,45 @@
 1. 维持现状并在 Dependabot 上标注为「无上游修复 / 已知风险接受」——依据：DoS-only + 本地引擎 + 需恶意输入
 2. 若要求清零告警：将 PPT 生成从 `pptxgenjs` 迁移到维护更活跃的替代库，或自行 fork 并修补 `image-size` 的解析循环
 3. 如需先行缓解：在 PPT/报告生成入口对上传图片做尺寸/格式预处理与超时限制，绕开解析器无限循环
+
+## 九、发布包 v6.7 清理重建 + 官网覆盖上传（同日第三轮收尾）
+
+### 1. 编码缺陷修复（阻断性）
+- `scripts/pack-release.ps1` v6.7 含 103 个中文注释字符，但文件为 **UTF-8 无 BOM**；PowerShell 5.1 按 GBK 解码 → 存在语法破坏风险
+- 处理：重写为 **UTF-8 with BOM**（`EF BB BF`），中文注释保留；`Parser::ParseFile` 校验 **PARSE-OK**，中文行正确解码
+- 备份：`scripts/pack-release.ps1.bak-20260912-v67-preBOM`
+
+### 2. v6.7 打包
+- 命令：`powershell -File scripts\pack-release.ps1`
+- 产物：`%TEMP%\lingxi-engine-v2.0.17.tar.gz`，**1,173,394 B**，MD5 `cdf997e2a37be8a4c1c0facf2fe54c0e`
+- 暂存期剔除 11 文件 + 1 目录（3×`_result.txt`、5×`tests/data/*.json`、1×`__pycache__/`、2×`pack-release.ps1.bak`、1×`hub.ts.bak-0903`、2×`.env`）
+- 打包器内置 7 组校验全部 `[OK]`（结构 / 垃圾 / env / key files / v5 安全 / v2.0.17 平台管理 / v2.0.17 推理流）
+
+### 3. 清理效果对比（服务端实测）
+
+| | 旧包（04:40 版） | 新包（v6.7） |
+|---|---|---|
+| 成员数 | 738 | **707** |
+| 垃圾项 | **33**（24×`.pyc` + `__pycache__/` + 5×tests-data json + 3×`_result.txt` + 1×`.bak`） | **0** |
+| 大小 | 1,293,601 B | 1,173,394 B |
+| `.env` 泄漏 | 无 | 无 |
+| `.env.example` | 有 | **有（显式校验）** |
+
+### 4. 官网覆盖上传（`lingxi-server` = 47.93.157.83）
+- 上传：`scp` → `/tmp/lx17-cdf997e2.tar.gz`（服务端 md5 复核一致）
+- 备份：`/var/www/lingxi/backup-20260912-v2017-clean/`（3 个 tar.gz + version.txt，可回滚）
+- 三处覆盖：`releases/…v2.0.17.tar.gz`、`public/…v2.0.17.tar.gz`、`public/lingxi-engine.tar.gz` → **md5 三处一致 `cdf997e2…`**
+- 元数据：`public/version.txt`（2.0.17 + built 05:48:40 + 变更说明）、`CHANGELOG.md`、新增 `public/.env.example`
+- HTTP：站内 6 URL 全 200；**外网 `http://47.93.157.83:8080/public/lingxi-engine-v2.0.17.tar.gz` 下载回算 md5 = `cdf997e2a37be8a4c1c0facf2fe54c0e` MATCH ✅**
+
+### 5. 工作区清理
+- 31 个会话临时脚本（`_probe_*.cjs` / `_t*.mjs` / `_audit_*.cjs` / `_verify_*.cjs` / `_test_*.cjs` 等，含疑似投毒源 `_test_think_stream.cjs`）整体移入 `workspace/_archive/20260912-scratch/`（移动可逆，未删除）
+
+### 6. 未处理（仍待授权）
+- 线上引擎重启升级（`/api/health` 仍报 **2.0.15**）—— 遵守「不杀进程」约束，PM2 进程全程未动
+- GitHub 2 个 high 级 Dependabot 告警（上游无补丁，详见第八节）
+
+### 7. 收尾补齐（本记录提交轮）
+- 本第九节已并入本记录（原先仅存于 `workspace/_record_sec9.md` 草稿）
+- 工作区唯一真实改动 `scripts/pack-release.ps1`（UTF-8 BOM 修复）随本记录一并提交并推送 `origin/main`
+- F 盘备份刷新：`lingxi-engine-git-20260912-v2017-final.bundle`（HEAD = 本次提交）+ 官网前端快照 tar.gz（详见 `docs/F-drive-backup-manifest-20260912.md`）
