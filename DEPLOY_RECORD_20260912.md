@@ -392,3 +392,31 @@
 - 发布包 rev2（md5 20f41000…）三处一致，鉴权补丁在包内
 - 服务器：引擎 2.0.17、3001 token 门槛、官网纯产品化、公开面 20 项、泄漏清剿、归档 30 项
 - 全程未触碰本地 Windows 进程（用户红线，历轮确认）
+
+---
+
+# 第十七节：自伤修复 —— 双 .env token 对齐 + 引擎目录同步 rev2（2026-09-12 深夜 · 补丁轮）
+
+## 发现的两个真问题
+1. **服务器引擎自伤 403**：.env 的 PLATFORM_ADMIN_TOKEN（44de…，我第十六节前生成的）≠ .env.platform 的（af99…，原有），lingxi 引擎调 3001 管理接口被自己的 token 门槛挡住（实测 403）
+2. **引擎目录残留旧文件**：/opt/lingxi-engine 的 package.json（仍带 pptxgenjs）、web/official.html（旧版按钮）与 rev2 发布包不一致——升级时从旧包同步的残留
+
+## 修复
+- .env 的 PLATFORM_ADMIN_TOKEN 对齐 .env.platform（sed 替换，实测 TOKEN-ALIGNED）
+- package.json / web/official.html 从 rev2 包 cp 同步（md5 MATCH）
+- npm install 刷新依赖（tsx 确认保留）
+- pm2 restart lingxi --update-env（服务器进程，本地 Windows 未动）
+
+## 验证（全绿）
+- 引擎健康：{"ok":true,"version":"2.0.17","agents":14}
+- 引擎 token 调 3001 admin：403 → **200**（自伤解除）
+- 官网四页 200；/chat /app 302；/api/health 403；admin.html/app.html/manifest.json 404
+- 3001 外网无 token 403 / 引擎 token 200
+- 管理后台 console 200；下载包 200
+- pm2 save 固化；dump 里 ADMIN_CONSOLE_PATH 完好（node 解析确认，此前 grep 0 是引号格式误报）；进程 env 在；站点行为 302→200 正确
+
+## 本日十七节总账（最终）
+- 17 个提交（0c6b484 → 7228fb2），git = GitHub = F盘 bundle
+- 服务器：引擎 2.0.17（token 对齐 + rev2 文件同步）、3001 token 门槛、官网纯产品化（公开面 20 项）、泄漏清剿（V11 归档）、归档 30 项、/tmp 清剿、pm2 自愈链完整
+- 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
+- 本地：.env 幽灵模型扶正（glm-5.2:cloud ×3）、本地进程全程未动（用户红线）
