@@ -101,3 +101,13 @@ PM2 三进程 restart 计数全程未变：`lingxi-mesh 82` / `lingxi 23` / `lin
 | skills/ 目录 | 325 个 JSON，auto-skill 经验沉淀体系，由 skill-manager 按需加载，不注册为工具，`/api/skills` 仅显示已安装 2 个（email-checker/weather-briefing，均 disabled）|
 | 今日新增 5 个技能 JSON | code-version-sync-check / diagnose-lingxi-session-agent / diagnose-lingxi-session-ai-reply / multi-location-version-sync / repo-deploy-sync-audit — 全部 autoCreated，tools 引用合法，JSON 解析通过，已入 git |
 | 结论 | 两套技能体系各司其职，今日新增 JSON 不影响引擎运行，无需处理 |
+
+
+## 十一、第六轮收尾核查（06:43–06:55）
+
+| 项 | 实测 |
+|---|---|
+| mtime 全量清单 | 37 个文件全部归类：13 个 src/web/scripts 代码（已提交+编译+测试）、5 个 docs（已提交）、2 个 skills JSON（已提交）、3 个 scripts/*.bak 备份（保留）、5 个 data/*+usage.json+.env（运行时数据，不入库）|
+| 官网前端逐字节比对（补全） | i18n.js / market.js / style.css / mobile.css / market.css / index.html / install.html / model-management.html / download.html / platform-admin.html 全部 **FC: no differences** |
+| 奇名文件清理 | 根目录 06:31 出现名为单引号的 1319B 文件（内容为服务器 Ollama 探测输出，06:31 shell 转义事故产物），已归档至 `workspace/_archive/20260912-scratch/stray-quote-file-0631.txt` |
+| 官网文件比对覆盖率 | 14/14 web 静态文件全部逐字节一致 |
