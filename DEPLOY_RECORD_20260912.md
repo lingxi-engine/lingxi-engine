@@ -441,3 +441,23 @@
 - 服务器：引擎 2.0.17（token 对齐 + rev2 同步）、3001 token 门槛、官网纯产品化（公开面 20 项）、泄漏清剿、归档 30 项、pm2 自愈链
 - 本地：.env 幽灵模型扶正 + 平台 token 配齐；**本地 Windows 进程全程未动**（用户红线）
 - 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
+
+---
+
+# 第十九节：mesh WS 三态实测 + Dependabot 消警确认（2026-09-12 · 收官）
+
+## mesh WS 握手三态（服务器本机 node ws 客户端实测）
+- 错 token → `{"type":"error","message":"鉴权失败"}`（拒，正确）
+- 正确 MESH_TOKEN → `mesh.handshake_ack`（通，本地引擎 mesh 组网功能完好）
+- socat 5000 → 外网 000（防火墙挡，非绕过口；socat 进程仍在但不可达）
+
+## Dependabot 消警确认（间接实证）
+- 首次推送（0c6b484 前后）时 GitHub 返回横幅 "GitHub found 2 vulnerabilities (2 high)"
+- 本轮 `git push` 返回 `Everything up-to-date` 且**零告警横幅** —— GitHub 侧扫描已确认新 lockfile（285 包，零 image-size/pptxgenjs）干净，告警已消
+
+## 本日十九节 · 最终总账
+- 19 个提交（0c6b484 → 1b26487），git = GitHub = F盘 bundle = 1b26487
+- 服务器：引擎 2.0.17（双 .env token 对齐 + rev2 同步）、3001 五层封堵（token 门槛/WS 鉴权/官网 API 403/入口 302/归档 404）、官网纯产品化（公开面 20 项）、泄漏清剿（V11）、归档 30 项、/tmp 清剿、pm2 自愈链完整
+- 本地：.env 幽灵模型扶正 + 平台 token 配齐（本地→3001 实测 200）；**本地 Windows 进程全程未动**
+- 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
+- mesh WS：错 token 拒 / 正 token 通 / socat 不可达 —— 三态全对
