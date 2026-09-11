@@ -543,3 +543,26 @@
 - 22 个提交（0c6b484 → c52bdd1 + 本轮），git = GitHub = F盘 bundle
 - 四项指令 + 十二轮补漏全闭环：引擎 2.0.17 / 漏洞清零 / 引擎七层封堵（token+WS 三态+API+入口+归档+泄漏清剿+iptables 网络层）/ 官网纯产品化（公开面 20 项、下载链全 rev2、docs 零死链、平台链路迁移 8080 代理）
 - 本地 Windows 进程全程未动（用户红线）
+
+---
+
+# 第二十三节：防火墙持久化 + 80 端口复活（2026-09-12 · 网络终轮）
+
+## 发现的两个真问题
+1. **iptables DROP 规则无持久化钩子**：/etc/iptables.rules 只是死文件，重启即失效
+2. **lingxi-redirect.service 假活**：oneshot 模式 8-27 启动后 NAT 规则被某次 firewalld reload 冲掉，服务显示 active 但 PREROUTING 空 → 裸 IP 80 端口外网不通
+
+## 处置
+- firewalld 放行表收紧：80/3001/3002/8080 → **80/8080**（3001/3002 移除，3002 本就无人监听）
+- 新建 lingxi-firewall-lock.service（systemd oneshot + RemainAfterExit，ExecStart 重加 3456/3001 DROP）→ **enabled + active**，重启自愈
+- systemctl restart lingxi-redirect.service → NAT 80→8080 规则复活
+
+## 验证（外网从本地 Windows 实测）
+- http://47.93.157.83/ → **200 官网首页**（"灵犀引擎 - 你的私人 AI 工作站"）
+- :8080 → 200；:3001/:3456/:5000/:3002 → 全 000
+- 本机 lo：3456 200、8080 admin 代理 200
+
+## 本日二十三节 · 完整总账（真·最终）
+- 23 个提交（0c6b484 → a5358d3 + 本轮），git = GitHub = F盘 bundle
+- 四项指令 + 十三轮补漏全闭环：引擎 2.0.17 / 漏洞清零 / 引擎八层封堵（token+WS 三态+API+入口+归档+泄漏清剿+iptables+firewalld 双层且持久化）/ 官网纯产品化（公开面 20 项、下载链全 rev2、docs 零死链、平台链路迁移 8080、80 端口复活）
+- 本地 Windows 进程全程未动（用户红线）
