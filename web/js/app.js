@@ -4617,10 +4617,10 @@ function lanStreamingStart(msg) {
   const name = (msg.senderName || (msg.from || '').replace(/^agent:/, '')).toString();
   const senderLine = _agentNameLine(msg.senderId || msg.from || '');
   el.innerHTML = '<div class="msg-avatar ai">🤖</div><div style="max-width:72%">' + senderLine +
-    '<div class="msg-bubble"><div class="msg-content"><span class="typing-dot">' + t('chat.thinking') + '</span></div></div></div>';
+    '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot">' + t('chat.thinking') + '</span></div></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
-  lanStreaming[msg.msgId] = { el, content: '', senderId: msg.senderId || msg.from || '' };
+  lanStreaming[msg.msgId] = { el, content: '', thinkEl: el.querySelector('.msg-think'), senderId: msg.senderId || msg.from || '' };
 }
 function lanStreamingChunk(msg) {
   const s = lanStreaming[msg.msgId];
@@ -4628,6 +4628,14 @@ function lanStreamingChunk(msg) {
   s.content += msg.chunk || '';
   const c = s.el.querySelector('.msg-content');
   if (c) c.textContent = s.content;
+  const container = document.getElementById('lanAgentMessages');
+  if (container) container.scrollTop = container.scrollHeight;
+}
+function lanStreamingThink(msg) {
+  const s = lanStreaming[msg.msgId];
+  if (!s || !s.thinkEl) return;
+  s.thinkEl.style.display = 'block';
+  s.thinkEl.textContent += msg.think || '';
   const container = document.getElementById('lanAgentMessages');
   if (container) container.scrollTop = container.scrollHeight;
 }
@@ -4662,6 +4670,8 @@ function handleLanMessage(msg) {
     }
   } else if (type === 'agent.streaming.start') {
     if (lanCurrentGroup && msg.chatId === lanCurrentGroup.agentChatId) lanStreamingStart(msg);
+  } else if (type === 'agent.streaming.think') {
+    lanStreamingThink(msg);
   } else if (type === 'agent.streaming.chunk') {
     lanStreamingChunk(msg);
   } else if (type === 'agent.streaming.end') {

@@ -926,7 +926,8 @@ export class LanSocialHub {
       const reply = await this.router.generateReply(
         chatId, agentId, triggerMsgId,
         (chunk: string) => { full += chunk; this.broadcast({ type: 'agent.streaming.chunk', chatId, from: agentSenderId, senderId: agentSenderId, msgId: bubbleId, chunk }); },
-        undefined, undefined,
+        (thinkChunk: string) => { this.broadcast({ type: 'agent.streaming.think', chatId, from: agentSenderId, senderId: agentSenderId, msgId: bubbleId, think: thinkChunk }); },
+        undefined,
         undefined,
         customPrompt
       );
