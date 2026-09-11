@@ -2,6 +2,46 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.17] - 2026-09-12
+
+### 推理过程显示修复 + 持久化
+- Ollama OpenAI 兼容层实际返回 `reasoning`（非 `reasoning_content`），改为双字段兼容，覆盖 router / critic / debate / memory-reflector / thought-tree / world-model / executor 等 11 处读取点
+- 推理内容随消息入库持久化，刷新页面与历史回读仍可见，双键兼容既有数据
+- LAN 联机群聊：跨引擎 payload 与本机接收侧补齐 reasoning 字段，推理气泡常驻
+- 多步任务 `agent.task` 推理事件接入前端展示
+- PWA 缓存 v15 → v18，确保前端推理渲染立即生效
+- 版本一致性：version.txt / package.json / 官网下载页 / install.sh 统一 2.0.17
+
+## [2.0.16] - 2026-09-11
+
+### shell_exec 防自杀保护 + 市场裸引擎标注
+- shell_exec 统一拦截 taskkill / pkill / killall / Stop-Process，防止 Agent 误杀引擎自身进程
+- 市场对「纯 API 转售 / 裸引擎」类商品加标注，配合平台评测背书
+- 版本一致性：version / package-lock 对齐 2.0.16
+
+## [2.0.15] - 2026-09-09
+
+### 平台管理后台 + 部署修复
+- 新增 7 个 admin API（dashboard / usage 等）+ platform-admin.html 管理界面（PLATFORM_ADMIN_TOKEN 鉴权）
+- platform-server 改为加载 .env.platform，避免吞掉主引擎 .env（PORT=3456 EADDRINUSE）
+- multer 升级与依赖版本对齐
+
+## [2.0.14] - 2026-09-07
+
+### 子代理系统修复 + 安全守卫恢复
+- delegate_task 加入 general-assistant 技能白名单，setSubAgentManager() 完成实例接线，复杂任务自动拆分派发子代理生效
+- 失败/超时任务保留期 24h → 10min（env SUBAGENT_FAIL_RETAIN_MS 可调），完成任务仍保留 24h
+- 恢复 3 处开源清洗时丢失的安全修复：MESH_TOKEN 弱值检测（生产模式拒绝启动）、mobile verify-email 路由 + admin 邀请码端点（timingSafeEqual 鉴权）
+- 修复市场雇佣接口 d.getAgent 崩溃
+- 版本一致性：version.txt / package.json / 官网下载页统一 2.0.14
+
+## [2.0.13] - 2026-08-27
+
+### 登录态与市场修复
+- api() 不再携带平台 JWT（本地引擎免登录通道）；登录即显示已登录/退出
+- /me 走平台验证并回填 lanMeId；修复登录后添加模型 401
+- 版本号统一 2.0.13 + 打包脚本动态版本 + 缓存版本号刷新
+
 ## [2.0.12] - 2026-08-14
 
 ### 版本号统一
