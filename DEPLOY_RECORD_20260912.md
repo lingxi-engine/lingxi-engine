@@ -339,3 +339,33 @@
 
 ## 本轮完整提交链（本轮新增 8 个提交）
 0c6b484 deps 清零 → 1e70ea7 platform token gate → e03b015 site lockdown → 7e1664e1 record → b539c45 record restore → f4d029e deploy/site-server.js → 11b511f sec12 → fc9456e sec13 → 96d5a7b download.html fix
+
+---
+
+# 第十五节：/docs 泄漏清剿 + 全维度终验（2026-09-12 深夜 · 收官轮）
+
+## 发现的泄漏（/docs 公开文档目录）
+1. 🔴 **开发文档-V11.md:560**：`SSH | root@47.93.157.83（密钥免密）` —— root 免密登录路线图挂在公网，19KB 内部开发细节
+2. 🟡 quickstart.md:30 指向已下线的 /platform/#/agents（死链）
+3. 🟡 docs/index.html:56 "进入平台" → /platform/#/（死链）
+
+## 处置
+- V11 移入 archive-20260912-locked/docs/（外网 404 实测）
+- quickstart.md 死链 → /download.html
+- index.html "进入平台" → "下载引擎"
+- 全 docs 目录复扫：/chat /platform /app 死链零残留；root@/密钥免密/admin-console/MESH_TOKEN= 关键词零命中
+
+## 全维度终验（34 项全绿）
+- 官网四页 + docs 六文件 + css/icon：全 200
+- 下载链 7 项（v2.0.17 包/通用包/Setup.zip/.bat/install.sh/.ps1/desktop.exe）：全 200
+- 引擎入口 10 项：/chat /app /platform 302；admin.html/app.html/index.html/market.html/sw.js/manifest.json 404；/api/health 403
+- 管理后台：随机路径页 200 + API 带 token 200
+- 3001：无 token 403 / 带 token 200
+- 引擎健康 2.0.17 agents:14；PM2 三进程 online（uptime 20m/19m/8m）
+- V11 泄漏文件 404；归档区 29 项不可达
+
+## 本日总账
+- 提交：0c6b484 → 1e70ea7 → e03b015 → 7e1664e1 → b539c45 → f4d029e → 11b511f → fc9456e → 96d5a7b → 73c3b30（10 个，全推送）
+- 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
+- 服务器归档：29 项引擎 UI/旧包/泄漏文档 → archive-20260912-locked/
+- 全程未触碰本地 Windows 进程（用户红线）
