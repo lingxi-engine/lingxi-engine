@@ -941,7 +941,7 @@ async function switchChat(chatId) {
     container.innerHTML = '';
     lastMsgTime = 0;
     if (!msgs.length) container.innerHTML = '<div class="empty">'+t('chat.noMessages')+'</div>';
-    msgs.forEach(m => appendMessage({chatId, senderType:m.sender_type, senderId:m.sender_id, content:m.content, timestamp:m.timestamp}));
+    msgs.forEach(m => appendMessage({chatId, senderType:m.sender_type, senderId:m.sender_id, content:m.content, timestamp:m.timestamp, metadata:m.metadata}));
     // 对加载的消息应用代码高亮
     setTimeout(() => highlightBlocks(container), 50);
   } catch(e) { container.innerHTML = '<div class="empty">'+t('err.loadFail')+(e && e.message ? ': '+esc(e.message) : '')+'</div>'; }
@@ -1073,8 +1073,17 @@ function appendMessage(msg) {
   // 消息操作菜单
   const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑。/button></div>';
   
+  // v2.0.18: 渲染持久化推理过程（刷新后仍可见；双键兼容: 历史用 reasoning_content, 新数据用 reasoning）
+  let _thinkBlock = '';
+  try {
+    const _md = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : (msg.metadata || {});
+    const _rt = _md && (_md.reasoning || _md.reasoning_content);
+    if (_rt) {
+      _thinkBlock = '<div class="msg-think" style="cursor:pointer;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px;max-height:3em;overflow:hidden;white-space:pre-wrap" title="' + t('chat.expandThink') + '" onclick="var m=this.style.maxHeight;this.style.maxHeight=(m===' + "'none'" + '?' + "'3em'" + ':' + "'none'" + ');this.style.overflow=(m===' + "'none'" + '?' + "'hidden'" + ':' + "'visible'" + ')">' + esc(_rt) + '</div>';
+    }
+  } catch (e) {}
   el.innerHTML = '<div class="msg-avatar ' + esc(avatarClass) + '">' + esc(avatarIcon) + '</div>' +
-    '<div style="max-width:70%">' + (isAgent ? _agentNameLine(senderId) : '') + '<div class="msg-bubble">' + bubbleContent + actions + '</div>' +
+    '<div style="max-width:70%">' + (isAgent ? _agentNameLine(senderId) : '') + '<div class="msg-bubble">' + _thinkBlock + bubbleContent + actions + '</div>' +
     '<div class="msg-meta">' + esc(time) + '</div></div>';
   
   container.appendChild(el);

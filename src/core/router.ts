@@ -377,6 +377,7 @@ export class MessageRouter {
     const messagesFinal = compactResult.messages as ChatMessage[];
 
     let finalContent = '';
+    let thinkAccum = ''; // 累积推理过程 -> messages.metadata.reasoning，刷新后仍可见
 
     // ── 判断是否有工具可用 ──
     const agentTools = this.toolRegistry ? this.toolRegistry.listToolsForAgent(agentId) : [];
@@ -570,7 +571,7 @@ export class MessageRouter {
         // 提取推理内容（兼容 Ollama reasoning 字段）
         if (onThink) {
           const r = (response.choices[0].message as any)?.reasoning_content ?? (response.choices[0].message as any)?.reasoning;
-          if (r) onThink(r);
+          if (r) { thinkAccum += r; onThink(r); }
         }
         finalContent = response.choices[0].message.content || '';
         // 同样先剥离 DSML 标记再流式输出
@@ -601,7 +602,7 @@ export class MessageRouter {
           const delta = chunk.choices[0]?.delta;
           // 兼容两种字段：OpenAI/DeepSeek 风格 reasoning_content，Ollama 兼容层 reasoning
           const _think = (delta as any)?.reasoning_content ?? (delta as any)?.reasoning;
-          if (_think && onThink) onThink(_think);
+          if (_think) { thinkAccum += _think; if (onThink) onThink(_think); }
           const content = delta?.content || '';
           if (content) {
             finalContent += content;
@@ -629,7 +630,7 @@ export class MessageRouter {
         if (response.usage) UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: response.usage.prompt_tokens, completionTokens: response.usage.completion_tokens, type: 'reply' });
         if (onThink) {
           const r = (response.choices[0].message as any)?.reasoning_content ?? (response.choices[0].message as any)?.reasoning;
-          if (r) onThink(r);
+          if (r) { thinkAccum += r; onThink(r); }
         }
         finalContent = response.choices[0].message.content || '';
       }
@@ -642,6 +643,10 @@ export class MessageRouter {
         max_tokens: 16384,
       }, signal ? { signal } : undefined);
       if (response.usage) UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: response.usage.prompt_tokens, completionTokens: response.usage.completion_tokens, type: 'reply' });
+      if (onThink) {
+        const _r = (response.choices[0].message as any)?.reasoning_content ?? (response.choices[0].message as any)?.reasoning;
+        if (_r) { thinkAccum += _r; onThink(_r); }
+      }
       finalContent = response.choices[0].message.content || '';
     }
 
@@ -702,7 +707,7 @@ export class MessageRouter {
     if (options?.skipPersist) {
       return finalContent;
     }
-    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now() });
+    this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now(), metadata: thinkAccum ? { reasoning: thinkAccum } : undefined });
 
     // 更新记忆（P0-1: 写入前过滤指令性内容，防止对话中的 Prompt 注入持久化为记忆）
     const exchangeSummary = `[${new Date().toLocaleString('zh-CN')}] ${agent.displayName} 在 ${chatId} 回复说: ${sanitizeMemoryInput(finalContent.slice(0, 200))}`;
