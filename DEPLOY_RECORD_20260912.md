@@ -312,3 +312,30 @@
 - 3001 外网 403（token 门槛）；3456 外网 000（防火墙）
 - PM2：lingxi 2.0.17 / lingxi-mesh 2.0.17 / lingxi-site 全 online
 - 本地 Windows 引擎进程：全程未动（用户要求）
+
+---
+
+# 第十四节：发布包 rev2 —— 补丁进包 + 死链修复（2026-09-12 深夜 · 终验轮）
+
+## 发现的两个真问题（前一轮遗留）
+1. **官网挂的 v2.0.17 包不带 3001 鉴权补丁**：打包时序早于补丁提交（1e70ea7），用户下载部署后 platform-server 仍裸奔
+2. **download.html 4 处 deploy.sh 死链**：deploy.sh 已归档（404），一键部署命令指向空路径
+
+## 处置
+1. 本地 web/download.html：4 处 deploy.sh → install.sh（提交 96d5a7b）
+2. 重新打包（v6.7 脚本）：1,179,825 B，md5 20f41000ced56f90ac80a6e3aac0bc7a
+3. 包内验证：Security hardening ×1、PUBLIC_ACCESS_TOKEN ×2（**鉴权补丁在包内**）、pptxgenjs ×0（漏洞依赖零）、deploy.sh ×0（死链零）
+4. 三处替换（releases/ + public/ v2.0.17 + 通用名），md5 一致
+5. 官网 download.html 同步 rev2 版（死链清零）
+6. 服务器引擎目录 /opt/lingxi-engine/web/download.html 同步
+7. version.txt → rev2 说明
+
+## 终验
+- 外网下载：200，1,179,825 字节，md5 一致（20f41000…）
+- install.sh 双路径（/install.sh、/public/install.sh）均 200
+- PM2：lingxi 2.0.17 / lingxi-mesh 2.0.17 / lingxi-site 全 online
+- 引擎健康：{"ok":true,"version":"2.0.17","agents":14}
+- 服务器引擎目录：鉴权补丁 ×1、package.json 2.0.17、download.html 死链 0
+
+## 本轮完整提交链（本轮新增 8 个提交）
+0c6b484 deps 清零 → 1e70ea7 platform token gate → e03b015 site lockdown → 7e1664e1 record → b539c45 record restore → f4d029e deploy/site-server.js → 11b511f sec12 → fc9456e sec13 → 96d5a7b download.html fix
