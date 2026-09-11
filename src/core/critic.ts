@@ -253,7 +253,7 @@ ${issueStr}
         temperature: 0.3,
         max_tokens: 16384,
       });
-      const revised = (resp.choices[0]?.message?.content || resp.choices[0]?.message?.reasoning_content || '').trim();
+      const revised = (resp.choices[0]?.message?.content || resp.choices[0]?.message?.reasoning_content || resp.choices[0]?.message?.reasoning || '').trim();
       // 修正结果必须是实质内容（避免修正器输出空/截断）
       if (revised.length < 10 || revised.length < content.length * 0.1) {
         logger.warn('Critic', '修正结果过短，保留原回复');
