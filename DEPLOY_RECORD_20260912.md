@@ -420,3 +420,24 @@
 - 服务器：引擎 2.0.17（token 对齐 + rev2 文件同步）、3001 token 门槛、官网纯产品化（公开面 20 项）、泄漏清剿（V11 归档）、归档 30 项、/tmp 清剿、pm2 自愈链完整
 - 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
 - 本地：.env 幽灵模型扶正（glm-5.2:cloud ×3）、本地进程全程未动（用户红线）
+
+---
+
+# 第十八节：本地-服务器链路终验 + 本地 .env 平台 token 配齐（2026-09-12 深夜 · 真终章）
+
+## 验证结论（本地引擎零自伤）
+- 本地引擎 wallet/credits/hire 全部为本地路由（wallet.ts 自实现，走本地 SQLite），不依赖 3001
+- 对 3001 的服务端调用共 3 处（index.ts:236 admin 探测、auth-main.ts:181 /api/auth/me 平台模式、lan.ts:101 用户搜索平台转发），全部带 `platformAdminToken` 条件守卫——无 token 时静默跳过，本地功能零影响
+- mesh 客户端（instance-mesh.ts）本地未配置 MESH_PLATFORM_URL，不连接
+
+## 功能补齐
+- 本地 .env 写入 PLATFORM_ADMIN_TOKEN（与服务器 .env.platform 对齐，af99… 64hex）
+- 实测：本地 → http://47.93.157.83:3001/api/admin/users?token=… → **HTTP 200, ok=true**
+- 效果：下次本地引擎重启后，/api/auth/me 平台 admin 模式 + LAN 用户搜索的平台转发功能恢复（此前因无 token 静默禁用）
+- 本地 .env 备份链：.env.bak-20260912-premodel（模型修复前）；本轮仅追加一行 token
+
+## 本日十八节总账（真·最终）
+- 18 个提交（0c6b484 → 44c5635 + 本轮），git = GitHub = F盘 bundle
+- 服务器：引擎 2.0.17（token 对齐 + rev2 同步）、3001 token 门槛、官网纯产品化（公开面 20 项）、泄漏清剿、归档 30 项、pm2 自愈链
+- 本地：.env 幽灵模型扶正 + 平台 token 配齐；**本地 Windows 进程全程未动**（用户红线）
+- 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
