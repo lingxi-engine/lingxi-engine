@@ -461,3 +461,33 @@
 - 本地：.env 幽灵模型扶正 + 平台 token 配齐（本地→3001 实测 200）；**本地 Windows 进程全程未动**
 - 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
 - mesh WS：错 token 拒 / 正 token 通 / socat 不可达 —— 三态全对
+
+---
+
+# 第二十节：下载链古董清剿 —— Setup.zip 重打（2026-09-12 · 终验轮）
+
+## 发现
+- **LingXi-Engine-Setup.zip 是 06-24 的古董**：内裹 06-24 旧 lingxi-engine.tar.gz（310KB，老版本），而 download.html 公开提供它——用户装到的是陈旧版
+- 桌面版 exe（1.1.0，07-13，83MB NSIS）：独立产品线，无漏洞链证据，保留
+- install.sh / install.ps1 的 TARBALL_URL 均指向通用名包（已是 rev2）✅；CHANGELOG 2.0.17 头部准确 ✅
+
+## 处置
+- 旧 zip 备份至 archive-20260912-locked/LingXi-Engine-Setup.zip.old-20260624
+- 重打：rev2 tarball（md5 20f41000…，与 releases 一致）+ 现役 Setup.bat（515B）
+- 上线：新 zip 1,180,675 B，md5 cc10924f454125bdc45bc930b9550199
+- 外网实测：200，1,180,675 字节，md5 一致
+
+## 下载链最终矩阵（全部 200 + 版本正确）
+| 下载物 | 状态 |
+|---|---|
+| /public/lingxi-engine-v2.0.17.tar.gz | rev2（20f41000…） |
+| /public/lingxi-engine.tar.gz（通用名） | rev2（20f41000…） |
+| /LingXi-Engine-Setup.zip | 重打（cc10924f…，内裹 rev2） |
+| /LingXi-Engine-Setup.bat | 现役（拉 install.ps1 → 通用名包 rev2） |
+| /install.sh / /install.ps1 | 指向通用名包 rev2 |
+| 桌面版 exe 1.1.0 | 独立产品线，保留 |
+
+## 本日二十节 · 完整总账
+- 20 个提交（0c6b484 → dc8c80e + 本轮），git = GitHub = F盘 bundle
+- 四项用户指令全部闭环：引擎 2.0.17 / 漏洞清零（含推送横幅消失实证）/ 引擎六层封堵（token+WS 三态+API+入口+归档+泄漏清剿）/ 官网纯产品化（公开面 20 项，下载链全部最新 rev2）
+- 本地 Windows 进程全程未动（用户红线）
