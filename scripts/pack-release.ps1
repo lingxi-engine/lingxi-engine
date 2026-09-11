@@ -1,9 +1,9 @@
-# Lingxi Engine pack script v6.5 (2026-09-09: v2.0.15 platform admin, verify platform-admin.html + PLATFORM_ADMIN_TOKEN)
+# Lingxi Engine pack script v6.6 (2026-09-12: v2.0.17 reasoning-stream, verify _lanThink/_thinkBlock + sw.js v18 + router reasoning fields)
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.15.tar.gz"
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.17.tar.gz"
 
 # Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
 $StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
@@ -122,9 +122,9 @@ try {
         throw "[FAIL] verify-email POST route missing"
     }
 
-    # Verify v2.0.15 platform admin features
+    # Verify v2.0.17 platform admin features
     Write-Host ""
-    Write-Host "Verify v2.0.15 platform admin..." -ForegroundColor Yellow
+    Write-Host "Verify v2.0.17 platform admin..." -ForegroundColor Yellow
     $adminPage = $tarList | Where-Object { $_ -match 'platform-admin\.html$' }
     if ($adminPage) {
         Write-Host "  [OK] platform-admin.html present ($($adminPage[0]))" -ForegroundColor Green
@@ -147,10 +147,31 @@ try {
         throw "[FAIL] admin credits grant API missing"
     }
     $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
-    if ($pkgJson -match '"version":\s*"2\.0\.15"') {
-        Write-Host "  [OK] package.json version = 2.0.15" -ForegroundColor Green
+    if ($pkgJson -match '"version":\s*"2\.0\.17"') {
+        Write-Host "  [OK] package.json version = 2.0.17" -ForegroundColor Green
     } else {
-        throw "[FAIL] package.json version is not 2.0.15"
+        throw "[FAIL] package.json version is not 2.0.17"
+    }
+
+    # Verify v2.0.17 reasoning-stream fixes
+    Write-Host ""
+    Write-Host "Verify v2.0.17 reasoning stream..." -ForegroundColor Yellow
+    if ($appJs -match '_lanThink' -and $appJs -match '_thinkBlock') {
+        Write-Host "  [OK] app.js reasoning render markers (_lanThink/_thinkBlock)" -ForegroundColor Green
+    } else {
+        throw "[FAIL] app.js reasoning render markers missing"
+    }
+    $swJs = tar -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
+    if ($swJs -match 'lingxi-v18') {
+        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v18" -ForegroundColor Green
+    } else {
+        throw "[FAIL] sw.js CACHE_NAME not bumped to v18"
+    }
+    $routerSrc = tar -xzf $OutFile -O './lingxi-engine/src/core/router.ts' 2>$null
+    if ($routerSrc -match 'reasoning_content') {
+        Write-Host "  [OK] router.ts reads reasoning/reasoning_content" -ForegroundColor Green
+    } else {
+        throw "[FAIL] router.ts reasoning field missing"
     }
 
     Write-Host ""

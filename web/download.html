@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.16</title>
+<title>下载部署 · 灵犀引擎 v2.0.17</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -62,7 +62,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.16</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.17</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -136,7 +136,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" href="/public/lingxi-engine-v2.0.16.tar.gz" download>⬇ 下载 引擎源码包 v2.0.16</a>
+    <a class="btn btn-primary" href="/public/lingxi-engine-v2.0.17.tar.gz" download>⬇ 下载 引擎源码包 v2.0.17</a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -179,7 +179,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre>curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.16","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.17","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">deploy.sh</span> 内的 8 步逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -215,7 +215,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </div>
   </details>
 
-  <div class="foot">灵犀引擎 v2.0.16 · <a href="/">返回首页</a></div>
+  <div class="foot">灵犀引擎 v2.0.17 · <a href="/">返回首页</a></div>
 </div>
 
 <script>
