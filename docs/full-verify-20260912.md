@@ -1,6 +1,6 @@
 # 全量核查记录 — 2026-09-12（今日 37 提交四方对齐实测）
 
-> 核查时间：2026-09-12 06:17–06:40（Asia/Shanghai）
+> 核查时间：2026-09-12 06:17–06:45（Asia/Shanghai）
 > 范围：2026-09-12 03:20–05:52 的 37 个提交（v2.0.17 发布链：推理流修复 → 打包清理 → BOM 修复 → 四方同步）
 > 方式：全只读实测 + F 盘快照回验，零进程操作
 
@@ -8,8 +8,8 @@
 
 | 项 | 实测 |
 |---|---|
-| 本地 HEAD | `fecf4c7` |
-| origin/main | `fecf4c7`（ahead/behind = 0/0）✅ |
+| 本地 HEAD | `6b138bd`（含本核查记录提交） |
+| origin/main | `6b138bd`（ahead/behind = 0/0）✅ |
 | 工作区 | 零真实改动（494 个 `M` 全为 CRLF 假象，`--ignore-cr-at-eol` 后归零）✅ |
 | 未跟踪文件 | 无 ✅ |
 
@@ -30,7 +30,7 @@
 
 | 项 | 实测 |
 |---|---|
-| bundle | `lingxi-engine-git-20260912-final.bundle`，13 refs，main = `fecf4c7`，`git bundle verify` = okay ✅ |
+| bundle | `lingxi-engine-git-20260912-final-6b138bd.bundle`，13 refs，main = `6b138bd`，`git bundle verify` = okay ✅ |
 | 官网快照 | `lingxi-site-20260912-v2017-final.tar.gz`，123 条目，md5 `3ac1b233008ea11b660d1367efa9bc03` ✅ |
 | **快照回验（上轮悬项）** | 解包比对：快照内 `public/version.txt` = `c69169c3…`、`public/download.html` = `4be2230d…`，与服务器线上 md5 **逐字节一致** | **PASS** ✅ |
 
@@ -44,6 +44,7 @@
 | `/download.html` | 4 处 v2.0.17、主下载链指向 v2.0.17.tar.gz ✅ |
 | `/install.sh` | `VERSION="2.0.17"` ✅ |
 | `/CHANGELOG.md` | 含 2 处 2.0.17 ✅ |
+| **全链接扫描** | **21/21 URL 全 200**（version/install.sh/install.ps1/tar.gz×2/页面×6/js×3/css×3/sw/favicon/manifest/icon/CHANGELOG）✅ |
 | 服务器备份 | `/var/www/lingxi/backup-20260912-v2017-clean/`（public-generic / public-v2.0.17 / releases-v2.0.17 / version.txt）✅ |
 
 ## 五、域名误报澄清（重要）
@@ -65,5 +66,16 @@ PM2 三进程 restart 计数全程未变：`lingxi-mesh 82` / `lingxi 23` / `lin
 
 1. 本地引擎进程为 2.0.16 快照（03:20 启动，早于 v2.0.17 提交），推理流修复未进内存
 2. 服务器引擎 `/api/health` 仍报 2.0.15，升级需重启 PM2
-3. `.env` 的 `DEFAULT_MODEL=glm-5.3:cloud` 为幽灵模型（provider 无 5.3）
-4. GitHub 2 个 high 级 Dependabot（image-size，上游无补丁，DoS-only）
+3. GitHub 2 个 high 级 Dependabot（image-size，上游无补丁，DoS-only）
+
+## 八、补充核查（06:16–06:45 第二轮）
+
+| 项 | 实测 |
+|---|---|
+| 官网全链接扫描 | 21/21 URL 全 200（含 public/install.ps1、market 系列、favicon）✅ |
+| 今日 mtime 全量扫描 | 37 文件中 34 个已提交；`.env`/`data/*` 为运行时数据不入库；`scripts/*.bak-*` 为打包前备份，符合预期 ✅ |
+| F 盘 bundle 引用 | `final-6b138bd.bundle` main = `6b138bd` = HEAD = origin/main ✅ |
+| **幽灵模型已扶正** | 06:16 并行修复：Ollama 实测新增 `glm-5.3:cloud`（/api/chat 响应正常），`.env` DEFAULT/TOOL/REPLY_MODEL 三处一致指向；providers.json Ollama 列表已含 5.3 ✅ |
+| F 盘空间 | 剩余 2.19 GB，18 个 bundle 建议清理至最近 3 个（待授权） |
+
+遗留仅剩（均需重启/授权）：本地引擎 2.0.16 快照待重启、服务器引擎 2.0.15 待升级、GitHub 2 个 Dependabot high（上游无补丁）。
