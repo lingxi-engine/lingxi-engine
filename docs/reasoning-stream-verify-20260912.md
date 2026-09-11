@@ -74,7 +74,7 @@ tool.call 18 | tool.result 18
 
 - 运行中引擎：PID 30728，启动于 2026-09-12 03:19:54
 - 因此 **router/executor 的推理修复已生效**（文件改于 03:14:45~03:15:01）
-- `4cfa044`(critic)、`751f367`(LAN)、sw 缓存 bump **需重启引擎 + 刷新页面才生效**（按约定未重启，未杀进程）
+- **前端修复已实时生效（无需重启）**：静态资源由 `express.static` 从磁盘即时读取。实测 `GET /js/app.js` 返回的正是更新后文件（md5 = 仓库一致、`lanStreamingThink` 2 处、`msg-think` 4 处），`GET /sw.js` 已为 `lingxi-v16`。用户强制刷新页面即可拿到 LAN 推理流。\r\n- `4cfa044`(critic 后端) 仍需重启引擎才生效（按约定未重启，未杀进程）
 - `/api/health` 报 `2.0.16` 是启动时读取 `package.json` 的缓存值，非故障
 
 ## 7. 质量闸门
