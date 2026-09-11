@@ -1,4 +1,4 @@
-# F 盘备份清单 — 2026-09-12（v2.0.17）
+﻿# F 盘备份清单 — 2026-09-12（v2.0.17）
 
 > **性质说明**：本清单是**时点快照记录**。执行期间有**并行 agent** 在同一工作区持续提交
 > （dev 文档 + 版本号修正），故官网包与 bundle 被重打多次。下表为**最终一次**产物；
@@ -105,4 +105,20 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 ### 6. 仍未处理
 - **线上引擎仍为 2.0.15**（`/api/health`），源码已 2.0.17；升级须**重启 PM2 `lingxi`** —— 用户明确要求「不要杀进程」，**未执行**（三轮均未触碰任何进程，PID 3069242 / 3070698 / 3073051 restart 计数 82/23/10 未变）
 - GitHub 2 个 high 级 Dependabot 告警：上游无补丁（详见 `DEPLOY_RECORD_20260912.md` 第八节）
-- `.env` 的 `DEFAULT_MODEL=glm-5.3:cloud` 为幽灵模型（provider 列表只有 `glm-5.2`），新 agent 会带上不存在的模型 ID，靠 fallback 兜底 —— 待改
+- ~~`.env` 的 `DEFAULT_MODEL=glm-5.3:cloud` 为幽灵模型~~ **已解决（09-12 06:16）**：本地 Ollama 已实际支持 `glm-5.3:cloud`（`/v1/chat/completions` 实测回 OK、finish=stop），`.env` 三处模型配置一致指向；**服务器侧仍为真幽灵**（服务器 Ollama 仅装 qwen2.5 且需认证，glm 系列调 401），详见 `docs/server-env-audit-20260912.md`
+
+
+## 八、全量核查轮次 bundle 追加（09-12 06:25–06:40）
+
+「检查今日修改」任务五轮核查期间，每轮记录提交后均重建 bundle，F 盘现状：
+
+| bundle | main 提交 | verify |
+|---|---|---|
+| `…-final-6b138bd.bundle` | `6b138bd` 核查记录 v1 | okay |
+| `…-final-b036bc9.bundle` | `b036bc9` 补充第八节 | okay |
+| `…-final-fc8c1c8.bundle` | `fc8c1c8` 服务器环境核查 | okay |
+| `…-final-5dd5ace.bundle` | `5dd5ace` 运行日志核查 | okay |
+| `…-final-HEAD.bundle` | `4e51800` 技能体系核查（**当前最新**） | okay |
+
+- 官网快照 `lingxi-site-20260912-v2017-final.tar.gz`（md5 `3ac1b233`）经解包回验与服务器线上逐字节一致
+- F 盘剩余空间 1.22 GB；当日 9 个 bundle 共 2.35 GB，建议清理至最近 3 个（待授权）
