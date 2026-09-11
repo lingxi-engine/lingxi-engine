@@ -4541,7 +4541,7 @@ async function lanLoadHistory(chatId, container) {
         chatId, msgId: m.id,
         senderId: m.sender_id, senderType: m.sender_type,
         senderName: isAgentMsg ? nameByAgent[m.sender_id] : nameByUser[m.sender_id],
-        content: m.content, timestamp: m.timestamp,
+        content: m.content, timestamp: m.timestamp, metadata: m.metadata,
       }, container);
     }
     container.scrollTop = container.scrollHeight;
@@ -4604,13 +4604,19 @@ function lanAppendMessage(msg, container) {
   const el = document.createElement('div');
   el.className = 'msg-row ' + (isMe ? 'me' : (isAgent ? 'ai' : 'other'));
   if (msg.msgId) el.dataset.msgid = msg.msgId;
+  // LAN 推理过程：支持直接 reasoning（实时广播）或 metadata（历史回读；双键兼容）
+  let _lanThinkText = msg.reasoning || '';
+  if (!_lanThinkText && msg.metadata) {
+    try { const _md = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata || '{}') : msg.metadata; _lanThinkText = _md.reasoning || _md.reasoning_content || ''; } catch (e) {}
+  }
+  const _lanThink = _lanThinkText ? '<div class="msg-think" style="cursor:pointer;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px;max-height:3em;overflow:hidden;white-space:pre-wrap" onclick="var m=this.style.maxHeight;this.style.maxHeight=(m===' + "'none'" + '?' + "'3em'" + ':' + "'none'" + ');this.style.overflow=(m===' + "'none'" + '?' + "'hidden'" + ':' + "'visible'" + ')">' + esc(_lanThinkText) + '</div>' : '';
   const bubble = isAgent ? '<div class="msg-content">' + markdownToHtml(content) + '</div>' : '<div class="msg-content">' + esc(content) + '</div>';
   const avatar = isAgent ? '🤖' : (isMe ? '🙂' : '👤');
   // v2.1.4: 智能体消息显示「命。+ 模型」徽。
   const senderLine = isAgent ? _agentNameLine(senderId) : '<div class="msg-sender" style="font-size:10px;color:var(--text3);margin-bottom:2px">' + esc(name) + '</div>';
   el.innerHTML = '<div class="msg-avatar ' + (isAgent ? 'ai' : 'human') + '">' + avatar + '</div>' +
     '<div style="max-width:72%">' + senderLine +
-    '<div class="msg-bubble">' + bubble + '</div><div class="msg-meta">' + time + '</div></div>';
+    '<div class="msg-bubble">' + _lanThink + bubble + '</div><div class="msg-meta">' + time + '</div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
   return el;

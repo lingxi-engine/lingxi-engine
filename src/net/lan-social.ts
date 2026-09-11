@@ -654,12 +654,12 @@ export class LanSocialHub {
     // 去重：已落库则直接返回，不再重复广播（否则前端会收到重复消息）
     if (msg.id && messageExists(msg.id)) return { ok: true, dedup: true };
     try {
-      addMessage({ id: msg.id, chatId, senderType: msg.senderType || 'user', senderId: msg.senderId, content: msg.content, type: 'text', timestamp: msg.ts });
+      addMessage({ id: msg.id, chatId, senderType: msg.senderType || 'user', senderId: msg.senderId, content: msg.content, type: 'text', timestamp: msg.ts, metadata: msg.reasoning ? { reasoning: msg.reasoning } : undefined });
     } catch (_e) {
       // 并发写入触发主键冲突时兜底，视为已去重，避免向 peer 返回 500
       return { ok: true, dedup: true };
     }
-    this.broadcast({ type: 'message.new', chatId, from: msg.senderId, senderId: msg.senderId, senderType: msg.senderType || 'user', senderName: msg.senderName, content: msg.content, msgId: msg.id, timestamp: msg.ts });
+    this.broadcast({ type: 'message.new', chatId, from: msg.senderId, senderId: msg.senderId, senderType: msg.senderType || 'user', senderName: msg.senderName, content: msg.content, msgId: msg.id, timestamp: msg.ts, reasoning: msg.reasoning });
     return { ok: true };
   }
 
@@ -946,23 +946,29 @@ export class LanSocialHub {
     const msgId = persisted?.id || bubbleId;
     const content = persisted?.content || full;
     const ts = persisted?.timestamp || Date.now();
+    const reasoning = persisted?.reasoning || '';
 
     // 最终完整消息广播（用权威 id）
-    this.broadcast({ type: 'message.new', chatId, from: agentSenderId, senderId: agentSenderId, senderType: 'agent', senderName: entry.displayName, content, msgId, replyTo: triggerMsgId, timestamp: ts });
+    this.broadcast({ type: 'message.new', chatId, from: agentSenderId, senderId: agentSenderId, senderType: 'agent', senderName: entry.displayName, content, msgId, replyTo: triggerMsgId, timestamp: ts, reasoning });
     // 同步给其他成员引擎（同一 msgId，落库去重）
     const groupId = chatId.replace(/^langroup-/, '').replace(/-agents$/, '');
-    const payload = { groupId, chatId, box: 'agents', msg: { id: msgId, senderType: 'agent', senderId: agentId, senderName: entry.displayName, content, ts } };
+    const payload = { groupId, chatId, box: 'agents', msg: { id: msgId, senderType: 'agent', senderId: agentId, senderName: entry.displayName, content, ts, reasoning } };
     this.broadcastToGroup(groupId, '/api/lan/peer/group-message', payload);
     return content;
   }
 
   /** 取某聊天里某 Agent 最新一条已落库消息 */
-  private latestAgentMessage(chatId: string, agentId: string): { id: string; content: string; timestamp: number } | null {
+  private latestAgentMessage(chatId: string, agentId: string): { id: string; content: string; timestamp: number; reasoning: string } | null {
     const msgs = listMessages(chatId, 20) as any[];
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
       if (m.sender_id === agentId && m.sender_type === 'agent') {
-        return { id: m.id, content: m.content, timestamp: m.timestamp };
+        let reasoning = '';
+        try {
+          const md = typeof m.metadata === 'string' ? JSON.parse(m.metadata || '{}') : (m.metadata || {});
+          reasoning = md.reasoning || md.reasoning_content || '';
+        } catch (e) {}
+        return { id: m.id, content: m.content, timestamp: m.timestamp, reasoning };
       }
     }
     return null;
