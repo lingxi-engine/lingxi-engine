@@ -1,0 +1,14 @@
+{
+  "name": "multi-location-version-sync",
+  "displayName": "多位置版本一致性检查与同步",
+  "description": "检查本地 Git、远端仓库、备份目录、官网部署等多处代码版本是否一致，找出落后项并对齐，最后用 URL 探测验证发布成功。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file",
+    "web_search"
+  ],
+  "prompt": "当用户要求『检查 git / github / 备份 / 官网代码是否为最新』或『对齐多处版本』时，按以下流程执行：\n\n1. 先只读侦察（严禁杀进程、严禁改动运行中的服务）：\n   - 本地仓库：`git log -1 --format='%h %d %ci'`、`git status`、`git branch -vv`\n   - 远端：`git fetch --all` 后比对 `git rev-parse HEAD` 与 `git rev-parse origin/main`，必要时 `git log origin/main -1`\n   - 备份目录（如 F 盘 bundle）：列出最新 bundle / 目录，读其版本号或 commit hash\n   - 官网 / 部署目录：读版本文件、构建产物 hash 或直接探测线上 URL\n2. 建立对照表：每个位置记录「版本号 / commit / 时间」，标出基准（通常以本地 HEAD 或 GitHub 最新为准）与落后项。\n3. 先给结论表让用户确认差距，再执行修复；修复动作要幂等、可回滚：\n   - 提交并推送缺失 commit（`git push origin main`）\n   - 重建备份（bundle / 打包），并做校验（如 `git bundle verify`）\n   - 重新发布官网 / 部署目录到与基准一致的版本\n4. 验证：对官网上所有关键 URL 逐一发起请求，统计状态码，确认全部 200、零 404；再次比对四方 hash 是否逐字节一致。\n5. 输出一张「修前 vs 修后」对照表 + 验证结果，明确列出是否仍有偏差。\n\n注意事项：全程优先只读；任何删除、覆盖、重启、kill 操作前必须获得用户明确许可；报告要以表格形式给出证据（hash、时间、状态码），不要只说『已完成』。",
+  "autoCreated": true,
+  "createdAt": 1789154823414
+}

@@ -1,0 +1,12 @@
+{
+  "name": "repo-deploy-sync-audit",
+  "displayName": "多端代码版本对齐检查与修复",
+  "description": "只读排查本地 Git、GitHub 远端、备份盘、线上官网四处代码版本是否一致，再按需修复并对齐。",
+  "tools": [
+    "shell_exec",
+    "list_dir"
+  ],
+  "prompt": "当用户要求「检查 git / github / 备份 / 官网代码是否为最新」「为什么某处和线上不一致」「对齐版本」时，按以下流程执行：\n\n1. 先只读侦察，不动任何进程（用户明确说不要杀进程时，连 ps 都别碰）。用 list_dir 定位仓库、备份目录、官网部署目录，用 shell_exec 取本地 `git rev-parse HEAD`、`git status`、`git log --oneline -n N`、`git remote -v`，以及 `git ls-remote origin` 取远端 HEAD。\n2. 逐项比对四处版本：本地 HEAD、origin/main、备份最新 bundle（含 commit 数与 verify 结果）、官网已发布产物版本。输出一张对照表，明确标出每处是「最新/落后几个提交/完全不一致」。\n3. 判定优先级：先给出「哪处问题最大」的结论，再给证据（commit hash、时间戳、提交数差）。不要只列数据不下结论。\n4. 用户确认后再动手修复：pull/push 对齐 git 与 GitHub，重打备份 bundle 并校验，重新发布官网，最后复验——重新取四处 hash 确认逐字节一致，并对官网所有 URL 跑一次连通性检查（如全部 200、零 404）。\n5. 汇报格式：先一句话结论，再一张「修前 vs 修后」对照表，最后列出验证结果。\n\n注意：区分「只读检查」与「执行修复」两个阶段，未获授权不要擅自改写远端或线上环境。",
+  "autoCreated": true,
+  "createdAt": 1789155759944
+}

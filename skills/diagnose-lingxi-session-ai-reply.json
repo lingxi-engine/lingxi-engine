@@ -1,0 +1,14 @@
+{
+  "name": "diagnose-lingxi-session-ai-reply",
+  "displayName": "灵犀引擎会话无AI回复排查",
+  "description": "排查灵犀引擎中某个会话无法获得AI回复的问题，定位是否绑定agent成员及日志配置原因。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户反馈‘某个会话能对话/另一个会话不能对话’或‘灵犀引擎会话没有AI回复’时，按以下步骤排查，不要杀进程：\n1. 先确认能正常对话的会话ID和异常的会话ID。\n2. 找到灵犀引擎的数据库/配置目录，重点检查 participants 表：正常会话通常有 owner + agent 成员记录；异常会话可能只有 owner，没有 agent 成员。\n3. 对比两个会话的 participants 记录、agent 绑定关系、配置文件和引擎日志，确认异常会话是否根本没有绑定 AI agent。\n4. 检查日志中是否有消息已入库但未触发 agent 回复、找不到 agent、路由失败等线索。\n5. 如果确认是未绑定 agent，说明原因并给出修复建议（如补绑定 agent、检查会话创建流程）。\n6. 输出结论时区分‘模型/API问题’和‘会话未绑定agent问题’，优先给出直接证据（表记录、日志行、配置项）。\n注意：排查过程以只读为主，不要终止或杀死灵犀引擎进程；如需写入修复，先征得用户同意。",
+  "autoCreated": true,
+  "createdAt": 1789113497277
+}

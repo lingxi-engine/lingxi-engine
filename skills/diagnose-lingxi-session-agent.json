@@ -1,0 +1,14 @@
+{
+  "name": "diagnose-lingxi-session-agent",
+  "displayName": "排查灵犀会话无法对话",
+  "description": "诊断灵犀引擎中某个会话无法调用大模型的问题，通过对比 participants 表确认是否绑定 AI agent 成员。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户反馈某个会话无法与 AI 对话时，按以下步骤排查：1. 不要杀进程，先检查引擎库、日志和配置。2. 重点查看 participants 表，对比能正常对话的会话与异常会话的记录。3. 确认异常会话是否缺少 agent 成员记录。4. 若缺少，则根本原因为该会话未绑定 AI agent，而非模型故障。5. 给出修复建议（如添加 agent 成员）。注意：处理前先确认活是否干完，避免误杀进程。",
+  "autoCreated": true,
+  "createdAt": 1789113858421
+}
