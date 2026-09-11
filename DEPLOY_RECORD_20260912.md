@@ -369,3 +369,26 @@
 - 发布包 rev2：md5 20f41000…（鉴权补丁在包内、零漏洞依赖、零死链）
 - 服务器归档：29 项引擎 UI/旧包/泄漏文档 → archive-20260912-locked/
 - 全程未触碰本地 Windows 进程（用户红线）
+
+---
+
+# 第十六节：运维收尾 —— pm2 dump 固化 + /tmp 清剿 + 官网快照（2026-09-12 深夜 · 终章）
+
+## 发现并修复的三个运维隐患
+1. **pm2 dump 里 ADMIN_CONSOLE_PATH 空值**：此前 pm2 save 时机不对，dump 未固化环境变量 → 服务器重启后管理后台将失效。已 delete + start（env 注入）+ pm2 save 重做，dump 实测 `"ADMIN_CONSOLE_PATH":"admin-console-abe14195403cd4dc.html"`；pm2 systemd 单元 enabled（重启自愈链完整）
+2. **/tmp 历史遗留 20MB+**：旧包/解包目录/升级日志堆积（lingxi-verify、lingxi-deploy-2005、v2.0.13/2.0.17 旧 tar 等）→ 一次性清理；src/web/data 历史备份（07-20）保守移入 archive/tmp-legacy/（不删）
+3. **F 盘官网快照过期**：官网大改后快照仍停在 v2017-final（05:54，改动前）→ 新拍 lingxi-site-20260912-lockdown.tar.gz（86.6MB，含 server.js + public/ + docs/ + version.txt，md5 dec5c617… 服务器与 F 盘一致）
+
+## 终态确认
+- PM2：lingxi 2.0.17 / lingxi-mesh 2.0.17 / lingxi-site online；dump 固化 env；systemd enabled
+- /tmp：lingxi/pkg 相关零残留（数据备份移入归档区）
+- 归档区：30 项（引擎 UI/旧包/泄漏文档/tmp 历史备份）
+- 磁盘：服务器 41%，F 盘 6.6GB 余
+- 本地 Windows node 进程：5 个（17000/18896/29224/30728/31284）全程未动
+- 官网快照三份：20260911（旧站）/ v2017-final（升级前）/ lockdown（终态）
+
+## 本日十六节总账
+- 16 个提交推送（0c6b484 → bd76a29），git = GitHub = F盘 bundle
+- 发布包 rev2（md5 20f41000…）三处一致，鉴权补丁在包内
+- 服务器：引擎 2.0.17、3001 token 门槛、官网纯产品化、公开面 20 项、泄漏清剿、归档 30 项
+- 全程未触碰本地 Windows 进程（用户红线，历轮确认）
