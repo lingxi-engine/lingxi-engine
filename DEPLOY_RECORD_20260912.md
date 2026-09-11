@@ -280,3 +280,35 @@
 ## 遗留
 - admin-console 路径记在服务器 /root/.admin-path-secret（root only）；如需更换重新生成 + sed server.js + pm2 restart
 - archive-20260912-locked/ 为非公开归档（server.js 只服务 public/，归档目录天然不可达）
+
+---
+
+# 第十三节：公开面最小化收敛（2026-09-12 深夜 · 终轮）
+
+## 背景
+第十二节后复查公开目录，又揪出一批漏网文件：platform/ 整目录（完整引擎平台前端+备份）、market.js/model-mgmt.js（孤儿脚本，无 HTML 引用）、manifest.json（PWA 清单指向已下线 UI）、根目录 market.css、platform-config.js、official.html.bak、package.json、deploy.sh、install.bat。
+
+## 处置（全部归档至 archive-20260912-locked/，累计 28 项）
+- platform/ 整目录（index.html/js/sw/backup-20260827）
+- 孤儿脚本：market.js、model-mgmt.js、css/market.css（上轮）、根 market.css（本轮）
+- PWA/配置：manifest.json、platform-config.js、platform-config.example.js、package.json
+- 杂项：official.html.bak-20260912-prelock、deploy.sh、install.bat
+
+## 最终公开面（20 项，全部有主）
+- 页面：official.html、download.html、deploy.html
+- 样式：css/style.css、css/mobile.css
+- 图标：favicon.ico、icon.svg
+- 下载：lingxi-engine-v2.0.17.tar.gz、lingxi-engine.tar.gz（md5 b927e92f 一致）、LingXi-Engine-Setup.zip/.bat、灵犀引擎-desktop-1.1.0-portable.exe
+- 脚本：install.sh、install.ps1
+- 信息：version.txt、CHANGELOG.md
+- 管理：admin-console-<rand>.html、platform-console-<rand>.html（不可猜测路径）
+- 空目录：uploads/（保留，头像上传用）
+
+## 终验矩阵（本机实测）
+- 200：/、/download.html、/deploy.html、/docs、css×2、安装包×4、管理后台×2
+- 302：/chat、/app、/platform/（→ 下载页）
+- 403：/api/health（引擎 API 全关）
+- 404：/admin.html、/app.html、/index.html、/market.css、/manifest.json
+- 3001 外网 403（token 门槛）；3456 外网 000（防火墙）
+- PM2：lingxi 2.0.17 / lingxi-mesh 2.0.17 / lingxi-site 全 online
+- 本地 Windows 引擎进程：全程未动（用户要求）
