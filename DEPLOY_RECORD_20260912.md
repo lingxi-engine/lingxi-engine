@@ -105,3 +105,22 @@
 - `public/` 根目录堆积的 **62 个 `.bak-*`** 历史备份（2026-07-31 ~ 09-07，暴露在 web 根目录可被直接下载）已全部移入 `backup-20260912/public-bakfiles/`（移动而非删除，可逆）
 - 已确认无任何被服务的页面/脚本引用这些 `.bak` 文件
 - 归档后 24 个 URL 复检仍全部 HTTP 200
+
+## 七、版本号漂移修复（同日后段复检发现）
+
+复检「版本一致性」时发现三处**活代码常量**（非注释）仍停留在旧版本，与 package.json 的 2.0.17 不一致：
+
+| 文件 | 位置 | 漂移值 | 影响 |
+|---|---|---|---|
+| `index.ts` | `/api/health` 版本字段 | `2.0.12` | `npm_package_version` 未注入时（直接 `tsx index.ts` 启动）健康接口报错版本 |
+| `src/routes/admin.ts` | 升级接口响应 version | `2.0.13` | 升级触发响应返回旧版本号 |
+| `package-lock.json` | 顶层 + `packages[""]` version | `2.0.16` | 与 package.json 不一致（同 v2.0.16 曾修过的问题再次出现） |
+
+已全部修正为 `2.0.17`（提交 `93fea33`）：
+- 质量闸门：`tsc --noEmit` 0 错误、`vitest run` 28/28 通过
+- 发布包以 `93fea33` 重打（MD5 `ec9086f5…`），包内 `index.ts` / `admin.ts` 兜底常量与 `package-lock.json` 均已验证为 2.0.17
+- 三处上传点 MD5 一致；四方（local / origin / dwork / bundle）对齐 `93fea33`
+- 18 个 URL 复检全部 HTTP 200
+
+### 建议（治本）
+`index.ts` 与 `admin.ts` 的版本兜底为**硬编码字面量**，每次发版都有再次漂移的风险（v2.0.12、v2.0.16、v2.0.17 各漂一次）。建议改为从 `package.json` 读取，或统一走单一 `VERSION` 常量导出。
