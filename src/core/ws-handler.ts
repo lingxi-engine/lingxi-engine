@@ -322,7 +322,10 @@ export function handleWSMessage(
                 (chunk) => {
                   broadcast({ type: "agent.streaming.chunk", chatId, from: agentSenderId, msgId: taskMsgId, chunk });
                 },
-                undefined,
+                // 推理过程（与主聊天路径一致，前端 .msg-think 区渲染）
+                (thinkChunk: string) => {
+                  broadcast({ type: "agent.streaming.think", chatId, from: agentSenderId, msgId: taskMsgId, think: thinkChunk });
+                },
                 undefined,
                 undefined,
                 fullPrompt,
