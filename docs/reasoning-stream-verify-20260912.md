@@ -28,7 +28,7 @@
 → `agent.streaming.think` 有事件、有内容，前端 `app.js:749` 分支正常追加并渲染。
 router 的**流式与回退**两条路径均已双字段读取（`router.ts:602` 流式、`573/632` 回退）。
 
-## 3. 发现的七处遗漏/缺陷（均已处理）
+## 3. 发现的九处遗漏/缺陷（均已处理）
 
 ### 3.1 `src/core/critic.ts:256` —— 上一版漏改
 把 `reasoning_content` 补为 `reasoning_content ?? reasoning`。提交 `4cfa044`。
@@ -61,6 +61,16 @@ router 的**流式与回退**两条路径均已双字段读取（`router.ts:602`
 - 已再次 bump `lingxi-v16 → lingxi-v17` 并更新注释。提交 `50e4eb2`
 - 教训：`sw.js` 的缓存版本必须与 `app.js` 的每次改动绑定递增，否则前端修复静默失效
 
+### 3.8 LAN 推理不持久化（本机侧）—— 原「已知限制」已解决
+- 根因：`lan-social.ts` 的 `latestAgentMessage` 只回读 `{id, content, timestamp}`，**丢弃 metadata**；最终 `message.new` 广播不含 reasoning
+- 前端 `handleLanMessage` 在 `message.new` 时**删除流式气泡再重建**，故流式期间的推理随气泡一起消失
+- 已修：`latestAgentMessage` 回读 `metadata.reasoning`（双键）；本机 `message.new` 广播带 `reasoning`；前端 `lanAppendMessage` 渲染折叠式 `.msg-think`；`lanLoadHistory` 透传 `metadata`
+
+### 3.9 LAN 跨引擎同步与接收侧丢失推理
+- `broadcastToGroup` 的 `group-message` payload 不含 `reasoning` → 其他成员引擎收不到
+- `handleGroupMessage`（接收侧）落库与广播**均未带 reasoning**
+- 已修：payload 带 `reasoning`；接收侧落库写 `metadata.reasoning` 并广播带 `reasoning`
+
 ## 4. 前端副本核查：修复打在了正确副本上
 
 仓库里存在**两份** `app.js`：根 `web/js/app.js` 与 `src/web/js/app.js`。
@@ -87,7 +97,7 @@ router 的**流式与回退**两条路径均已双字段读取（`router.ts:602`
 
 ## 6. 已知限制（未修，需评估）
 
-- **LAN 模式推理区仅在生成过程中可见**：`lan-social.ts:942` 发 `agent.streaming.end` 后随即 `message.new`（951 行）用权威消息替换气泡，而 LAN 的权威消息不含推理内容（LAN 消息不走 `router` 落库路径）。常驻需把 reasoning 持久化进 LAN 消息（改动面较大）。
+- ~~LAN 模式推理区仅在生成过程中可见~~ → **已解决**（见 3.8 / 3.9）：LAN 推理现随气泡常驻、可折叠展开、刷新后由历史回读恢复、并跨引擎同步。
 - **`goal-executor.ts:375` 的 onThink 为 undefined**：该路径本就非流式、未广播 `agent.streaming.start`、前端无对应气泡，属设计如此。
 - **`channels/*`（discord / feishu / qqbot）**：非流式渠道，无推理推送通道，符合预期。
 
@@ -125,3 +135,4 @@ router 的**流式与回退**两条路径均已双字段读取（`router.ts:602`
 | `0a80325` | agent.task 多步任务流程补上推理流 |
 | `50194cf` | 推理持久化 + 无工具分支补读 + 双键兼容既有 41 条数据 |
 | `50e4eb2` | sw.js 缓存 v16→v17（持久化前端生效） |
+| `4d856bc` | LAN 推理持久化（本机+跨引擎+接收侧）+ sw 缓存 v17→v18 |
