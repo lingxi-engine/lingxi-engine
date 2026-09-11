@@ -74,3 +74,29 @@
 
 - 发现存在**并行 agent** 在同一工作区提交（`6af942b` 为本次会话改动，由并行流程落库并推送）；已核对提交内容仅含 `scripts/pack-release.ps1` + `web/download.html`，无临时脚本混入
 - 本会话临时脚本（`_apply_2017.cjs` / `_fix_header.cjs` / `_genverify.cjs` / `_verify_web.sh` / `_update_site_meta.sh`）已全部删除，未入库
+
+## 六、补充收尾（同日后续）
+
+在上述四项完成后的复检中又发现并处理了三处「发布完整性」缺口：
+
+### 1. CHANGELOG 补录
+- 站点 `public/CHANGELOG.md`：停在 v2.0.14 → 补录 v2.0.15 / v2.0.16 / v2.0.17（备份至 `backup-20260912/meta/`）
+- 仓库 `CHANGELOG.md`：停在 v2.0.12 → 补录 v2.0.13 / v2.0.14 / v2.0.15 / v2.0.16 / v2.0.17（保持 UTF-8 + CRLF）
+
+### 2. 官网发布包重打
+- 发现并行流程在 04:24 打的包内 `CHANGELOG.md` 仍是旧版（停在 2.0.12）
+- 以 HEAD `adb458f` 重打 → 包内已含更新后的 CHANGELOG + `DEPLOY_RECORD_20260912.md`
+- 内容复核：`package.json` = 2.0.17、`app.js` `_lanThink`=5 / `_thinkBlock`=3、`sw.js` = lingxi-v18、`router.ts` reasoning 字段=5、`lan-social.ts` reasoning=9、无 `.env` 泄漏、739 个成员
+- 三处（releases + public 版本名 + public 通用名）MD5 一致
+
+### 3. F 盘快照刷新
+- `F:\lingxi-site-20260912-final2.tar.gz`（330,966 B，MD5 `ee351ce9…`，与服务器端一致）
+
+### 4. 终检
+- 官网 24 个 URL 全部 HTTP 200（含 `/CHANGELOG.md`、`/version.txt`、三个 tar.gz）
+- 前端 22 文件逐字节校验：TOTAL=22 OK=22 BAD=0
+- 仓库 CHANGELOG UTF-8 无损、CRLF 保留（140 CRLF / 0 bare LF），无 BOM
+
+### 备注
+- 站点 `public/package.json` 为符号链接 → `/opt/lingxi-engine/package.json`（自 2026-07-01 既有设计，未改动）；其显示 2.0.15 即线上引擎目录真实版本
+- 并行 agent 与本会话同工作区作业，官网包在本轮内被重打多次；以最终一次内容复核为准
