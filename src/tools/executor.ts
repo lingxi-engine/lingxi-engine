@@ -524,7 +524,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     const assistantMsg = choice.message;
 
     // 提取推理/思考过程（DeepSeek-R1/o1/GPT-5 等推理模型会返回）
-    const reasoningContent = (assistantMsg as any)?.reasoning_content;
+    const reasoningContent = (assistantMsg as any)?.reasoning_content ?? (assistantMsg as any)?.reasoning;
     if (reasoningContent && onThink) {
       onThink(reasoningContent);
     }

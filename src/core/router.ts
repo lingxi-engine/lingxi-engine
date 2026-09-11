@@ -567,9 +567,9 @@ export class MessageRouter {
           max_tokens: 16384,
         });
         if (response.usage) UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: response.usage.prompt_tokens, completionTokens: response.usage.completion_tokens, type: 'reply' });
-        // 提取推理内容
+        // 提取推理内容（兼容 Ollama reasoning 字段）
         if (onThink) {
-          const r = (response.choices[0].message as any)?.reasoning_content;
+          const r = (response.choices[0].message as any)?.reasoning_content ?? (response.choices[0].message as any)?.reasoning;
           if (r) onThink(r);
         }
         finalContent = response.choices[0].message.content || '';
@@ -599,7 +599,9 @@ export class MessageRouter {
         }, signal ? { signal } : undefined);
         for await (const chunk of stream) {
           const delta = chunk.choices[0]?.delta;
-          if (delta?.reasoning_content && onThink) onThink(delta.reasoning_content);
+          // 兼容两种字段：OpenAI/DeepSeek 风格 reasoning_content，Ollama 兼容层 reasoning
+          const _think = (delta as any)?.reasoning_content ?? (delta as any)?.reasoning;
+          if (_think && onThink) onThink(_think);
           const content = delta?.content || '';
           if (content) {
             finalContent += content;
@@ -626,7 +628,7 @@ export class MessageRouter {
         });
         if (response.usage) UsageTracker.record({ model: replyClient.resolvedModel, promptTokens: response.usage.prompt_tokens, completionTokens: response.usage.completion_tokens, type: 'reply' });
         if (onThink) {
-          const r = (response.choices[0].message as any)?.reasoning_content;
+          const r = (response.choices[0].message as any)?.reasoning_content ?? (response.choices[0].message as any)?.reasoning;
           if (r) onThink(r);
         }
         finalContent = response.choices[0].message.content || '';

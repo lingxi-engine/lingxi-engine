@@ -147,7 +147,7 @@ export class DebateEngine {
         max_tokens: 800,
       });
       const msg: any = resp.choices[0]?.message;
-      return msg?.content || msg?.reasoning_content || `[${role}] 无回复`;
+      return msg?.content || msg?.reasoning_content || msg?.reasoning || `[${role}] 无回复`;
     } catch (err: any) {
       console.error(`[Debate] ${role} failed:`, err.message);
       return `[${role}] 回应失败：${err.message}`;

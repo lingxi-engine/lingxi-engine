@@ -84,7 +84,7 @@ export class ThoughtTreeBuilder {
         max_tokens: 2000,
       });
 
-      const content = (resp.choices[0]?.message as any)?.content || (resp.choices[0]?.message as any)?.reasoning_content || '{}';
+      const content = (resp.choices[0]?.message as any)?.content || (resp.choices[0]?.message as any)?.reasoning_content || (resp.choices[0]?.message as any)?.reasoning || '{}';
       const parsed = JSON.parse(content);
       return this._parseNode(parsed, question);
     } catch (err: any) {

@@ -183,7 +183,7 @@ ${content.slice(0, 4000)}
         max_tokens: 1200,
       });
       const msg = resp.choices[0]?.message;
-      const raw = msg?.content || msg?.reasoning_content || '';
+      const raw = msg?.content || msg?.reasoning_content || msg?.reasoning || '';
       const parsed = this.parseCritiqueJSON(raw);
 
       if (parsed && typeof parsed.score === 'number') {
