@@ -682,6 +682,24 @@ const TOOL_SHELL_EXEC: ToolDefinition = {
 async function handleShellExec(args: Record<string, any>) {
   const { command, timeout = 15000, cwd } = args;
 
+  // ── 防自杀保护（2026-09-11 事故）──────────────────────────
+  // AI 员工曾误读旧的端口占用日志，用 taskkill 杀掉引擎自身进程导致"引擎自动关闭"。
+  // 引擎本体跑在 node 上，杀 node/引擎 PID = 自杀。两条执行路径（Docker 沙箱 / 本机降级）都必须先过这道闸。
+  const SELF_KILL_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
+    { pattern: /\btaskkill\b/, reason: 'taskkill 杀进程被防自杀策略禁止（引擎本体是 node 进程，误杀会导致引擎关闭）。如需清理端口/进程，请告知用户手动处理' },
+    { pattern: /\bstop-process\b/, reason: 'Stop-Process 杀进程被防自杀策略禁止。如需清理进程请告知用户手动处理' },
+    { pattern: /\bpkill\b|\bkillall\b/, reason: 'pkill/killall 被防自杀策略禁止' },
+    { pattern: /\bkill\s+(-9\s+)?\d+/, reason: '按 PID 杀进程被防自杀策略禁止。如需清理自己启动的子进程，请告知用户手动处理' },
+    { pattern: /\bwmic\s+process\b/, reason: 'wmic process 操作被防自杀策略禁止' },
+  ];
+  const _selfKillLower = command.toLowerCase();
+  for (const { pattern, reason } of SELF_KILL_PATTERNS) {
+    if (pattern.test(_selfKillLower)) {
+      console.warn(`[Security] shell_exec 防自杀拦截: ${command.slice(0, 80)}`);
+      return { error: `[防自杀保护] ${reason}`, exitCode: -1 };
+    }
+  }
+
   // Docker 沙箱优先
   if (dockerAvailable && runShellInDockerFn) {
     try {

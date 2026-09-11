@@ -32,7 +32,7 @@ import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgent, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
@@ -1767,6 +1767,17 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const rows: any[] = [];
       while (stmt.step()) rows.push(stmt.getAsObject());
       stmt.free();
+      const BARE_NOTICE = '该商品为裸引擎（无独占知识/记忆资产）：公共模型人人可接，自行配置同款 API 可能更便宜。';
+      // T6 评测背书：有记录亮成绩，无记录不编造
+      for (const row of rows) {
+        try {
+          const ev = router.getEvaluationSummary({ agentId: String(row.agent_id) });
+          (row as any).evaluation = ev && ev.total > 0
+            ? { total: ev.total, avgScore: ev.avgScore, passRate: ev.passRate, label: `平台评测 ${ev.total} 次 · 平均分 ${ev.avgScore} · 通过率 ${Math.round(ev.passRate * 100)}%` }
+            : { label: '暂无平台评测记录' };
+        } catch { (row as any).evaluation = { label: '暂无平台评测记录' }; }
+      }
+      for (const row of rows) { if (row.item_type === 'bare_agent') (row as any).notice = BARE_NOTICE; }
       res.json({ ok: true, listings: rows });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1788,10 +1799,34 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const unit = durNum > 0 ? unitOk : 'permanent';
       const d = getDB();
       const id = 'ml-' + Date.now().toString(36);
-            const typeOk = ['agent','music','video','bounty','asset','mcp','skill'].includes(itemType) ? itemType : 'agent';
+            const typeOk = ['agent','bare_agent','music','video','bounty','asset','mcp','skill'].includes(itemType) ? itemType : 'agent';
+      // P0 所有权校验（T2）：只能发布自己的 Agent
+      const ag = getAgent(agentId);
+      if (!ag) return res.status(404).json({ error: 'Agent 不存在' });
+      if (String(ag.user_id) !== String(publisherId)) return res.status(403).json({ error: '只能发布自己的 Agent' });
+
+      // T2 资产盘点：发布时自动生成资产摘要（替代空 description）
+      const ragCount = Number((getDB().queryObjects('SELECT COUNT(*) AS c FROM rag_documents')[0] as any)?.c ?? 0);
+      const memCount = Number((getDB().queryObjects('SELECT COUNT(*) AS c FROM chat_memories WHERE agent_id = ?', [agentId])[0] as any)?.c ?? 0);
+      let desc = description || '';
+      if (!desc) {
+        desc = `[自动生成] 引擎知识库 ${ragCount} 份文档；该 AI 员工记忆条目 ${memCount} 条。` +
+          (ragCount > 0 || memCount > 0 ? '含独占知识/记忆资产。' : '无独占资产，买家可自行接入同款模型 API 复刻。');
+      }
+
+      // T2 bare_agent 限价：裸引擎（无知识库/记忆资产）默认上限 10 积分
+      const BARE_AGENT_PRICE_CAP = 10;
+      const isBare = !(ragCount > 0 || memCount > 0);
+      if (isBare && currencyOk === 'credits' && priceNum > BARE_AGENT_PRICE_CAP) {
+        return res.status(400).json({ error: `裸引擎（无知识库/记忆资产）最高定价 ${BARE_AGENT_PRICE_CAP} 积分——公共模型人人可接，建议买家自行配置同款 API` });
+      }
+      const finalType = isBare ? 'bare_agent' : typeOk;
       d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,currency,tags,created_at,duration,duration_unit,item_type,preview_url,file_url,license,cover_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [id, agentId, publisherId, title, description||'', category||'通用', priceNum, currencyOk, JSON.stringify(tags||[]), Date.now(), durNum, unit, typeOk, previewUrl||'', fileUrl||'', license||'', coverUrl||'']);
-      res.json({ ok: true, id });
+        [id, agentId, publisherId, title, desc, category||'通用', priceNum, currencyOk, JSON.stringify(tags||[]), Date.now(), durNum, unit, finalType, previewUrl||'', fileUrl||'', license||'', coverUrl||'']);
+      // T3 draft：无演示对话不上架（previewUrl 为空 → draft，不出现在市场列表）
+      if (!previewUrl) d.run("UPDATE agent_market SET status = 'draft' WHERE id = ?", [id]);
+      const status = previewUrl ? 'active' : 'draft';
+      res.json({ ok: true, id, status });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 雇佣AI员工：扣积分 → 创建工作群 → 双方agent入群 → 记录雇佣关系 */
@@ -2042,7 +2077,10 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
         ordStmt.bind([h.id]);
         const order = ordStmt.step() ? ordStmt.getAsObject() : null;
         ordStmt.free();
-        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0) };
+        // T5 计费透明：按次计费字段（per_msg_price = price/10 缺省，抽成 10% 给平台）
+        const perMsg = Math.max(1, Math.floor(Number(h.price) / 10));
+        const PLATFORM_FEE_RATE = 0.10;
+        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE };
       });
       res.json({ ok: true, asBuyer: enrich(asBuyer), asSeller: enrich(asSeller) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -2093,12 +2131,13 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const { listingId, userId } = req.body || {};
       if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
       const d = getDB();
-      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
+      const stmt = d.prepare('SELECT publisher_id, preview_url FROM agent_market WHERE id = ?');
       stmt.bind([listingId]);
       const row = stmt.step() ? stmt.getAsObject() : null;
       stmt.free();
       if (!row) return res.status(404).json({ error: '商品不存在' });
       if (row.publisher_id !== userId) return res.status(403).json({ error: '只能上架自己的商品' });
+      if (!row.preview_url) return res.status(400).json({ error: 'T3: 无演示对话（preview_url）不能上架——先通过编辑端点补充演示对话' });
       d.run("UPDATE agent_market SET status = 'active' WHERE id = ?", [listingId]);
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -2129,7 +2168,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       }
       if (tags !== undefined) { sets.push('tags = ?'); vals.push(JSON.stringify(tags)); }
       if (itemType !== undefined) { sets.push('item_type = ?'); vals.push(itemType); }
-      if (previewUrl !== undefined) { sets.push('preview_url = ?'); vals.push(previewUrl); }
+      if (previewUrl !== undefined) { sets.push('preview_url = ?'); vals.push(previewUrl); if (previewUrl) { sets.push("status = 'active'"); vals.push('active'); } } // T3 draft：补上演示对话自动上架
       if (fileUrl !== undefined) { sets.push('file_url = ?'); vals.push(fileUrl); }
       if (license !== undefined) { sets.push('license = ?'); vals.push(license); }
       if (coverUrl !== undefined) { sets.push('cover_url = ?'); vals.push(coverUrl); }
