@@ -254,3 +254,29 @@
 - 服务器 3001 仍监听 *:3001（IPv6 通配）——外网 403 已实测，如需彻底封端口需 firewalld 规则（用户未要求）
 - 本地引擎进程（Windows，03:19 启动）全程未动——用户明确要求
 - socat 5000→3001 转发仍在（外网 000 防火墙已挡）
+
+---
+
+# 第十二节：安全加固补漏（绕过口子封堵 · 2026-09-12 深夜）
+
+## 背景
+第十一节部署后复查发现两类绕过口子：①引擎 UI 壳文件（app.html/index.html/market.html 等）可经直接 URL 访问绕过 /chat 302；②旧版本安装包（2.0.13~2.0.16，含漏洞依赖）仍挂在公开目录。
+
+## 处置
+1. **归档引擎 UI 壳**（public/ → archive-20260912-locked/）：app.html、app_v9_layout.html、index.html、market.html、model-management.html、install.html、admin.html、platform-admin.html、sw.js、js/app.js、js/i18n.js、js/market.js —— 全部 404
+2. **归档旧版本包**：v2.0.13/2.0.13-hotfix/2.0.13-hotfix2/2.0.14/2.0.15/2.0.16 tar.gz + .bak 副本 —— 全部 404（公开目录只留 v2.0.17 + 通用名）
+3. **管理后台改不可猜测路径**：admin-console-<16hex>.html（随机生成，存 /root/.admin-path-secret，600 权限）；/admin 302 → 该路径；server.js 改用 ADMIN_CONSOLE_PATH 环境变量（不硬编码）
+4. **server.js 入库**：deploy/site-server.js（提交 f4d029e），与服务器部署版一致，环境变量注入密钥路径
+5. **PM2 重建 lingxi-site**：delete + start（env 注入 ADMIN_CONSOLE_PATH），pm2 save 固化
+
+## 外网终验（19 项全绿）
+- 200：/ 、/download.html、/deploy.html、/docs、v2.0.17 包、通用名包
+- 302：/chat（→下载页）
+- 403：/api/health、/api/auth/login、3001 root、3001 register
+- 404：/admin.html、/app.html、/index.html、/market.html、/sw.js、/js/app.js、旧包 2013
+- 000：3456（防火墙本就挡着）
+- 管理后台：/admin 302 → admin-console-<rand>.html 200（本机验证）
+
+## 遗留
+- admin-console 路径记在服务器 /root/.admin-path-secret（root only）；如需更换重新生成 + sed server.js + pm2 restart
+- archive-20260912-locked/ 为非公开归档（server.js 只服务 public/，归档目录天然不可达）
