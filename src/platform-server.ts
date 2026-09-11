@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 灵犀引擎 - 云平台服务器 (platform-server) v2
  * 闭源。负责：用户账号 / 积分 / 社交 / 雇佣 / (未来商城)
  *
@@ -268,6 +268,17 @@ const MAX_INSTANCES = 1000;  // P1-9: 防止恶意实例无限注册
 // ============ Express ============
 const app = express();
 app.use(express.json());
+
+// ============ 2026-09-12 Security hardening: global access gate ============
+// Platform server no longer exposed to public internet. All requests except /api/health must carry MESH_TOKEN or PLATFORM_ADMIN_TOKEN. Local engine calls /api/admin/users with token - unaffected.
+const PUBLIC_ACCESS_TOKEN = MESH_TOKEN;
+app.use((req, res, next) => {
+  const p = req.path;
+  if (p === '/api/health' || p === '/health') return next();
+  const h = req.headers['x-mesh-token'] || req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '') || (req.query.token as string) || '';
+  if (h === PUBLIC_ACCESS_TOKEN || h === PLATFORM_ADMIN_TOKEN) return next();
+  return res.status(403).json({ ok: false, error: 'Platform closed to public access (403). MESH_TOKEN or PLATFORM_ADMIN_TOKEN required.' });
+});
 
 // ============ 用户账号 ============
 app.post('/api/user/register', (req, res) => {
