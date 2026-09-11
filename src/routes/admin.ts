@@ -496,7 +496,7 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         : 'cd "' + installDir + '" && curl -fsSL ' + updateUrl + ' -o /tmp/lingxi-update.tar.gz && tar xzf /tmp/lingxi-update.tar.gz --strip-components=1 && npm install --no-audit --no-fund 2>&1 | tail -3' + (isMac ? '' : ' && (pm2 restart lingxi 2>/dev/null || true)');
       const installScript = process.env.UPDATE_SCRIPT || defaultScript;
 
-      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: process.env.npm_package_version || '2.0.13' });
+      res.json({ ok: true, message: '升级已触发，服务器将在几秒后重启', version: process.env.npm_package_version || '2.0.17' });
 
       setTimeout(() => {
         try {
