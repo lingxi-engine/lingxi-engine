@@ -124,3 +124,27 @@
 
 ### 建议（治本）
 `index.ts` 与 `admin.ts` 的版本兜底为**硬编码字面量**，每次发版都有再次漂移的风险（v2.0.12、v2.0.16、v2.0.17 各漂一次）。建议改为从 `package.json` 读取，或统一走单一 `VERSION` 常量导出。
+
+## 八、Dependabot 2 个 high 级告警核实（只读，未改动依赖）
+
+对 GitHub 报告的两个 high 级漏洞做了上游溯源（`npm audit --registry=https://registry.npmjs.org`，项目默认源为 npmmirror，不支持 audit 接口）：
+
+| 包 | 类型 | 严重度 | 说明 |
+|---|---|---|---|
+| `image-size` | 传递依赖（经 `pptxgenjs`） | high | ICNS 解析器无限循环 DoS（GHSA-w3rx-r6r6-pgpr）；JXL/HEIF 解析器无限循环 DoS（GHSA-5p2g-fcmc-qvqq） |
+| `pptxgenjs` | 直接依赖 | high | 因携带上述 `image-size` 而被标记 |
+
+### 关键结论：当前无法修复
+- `image-size` 的**最新发布版本就是 2.0.2**（即本项目已安装版本），两个公告的受影响范围为 `*` → **上游没有补丁版本可用**
+- `pptxgenjs` 最新版 4.0.1 **仍然依赖 `image-size`**（`^1.2.1`）→ 升级也无法解除
+- npm audit 给出的唯一修复建议是**将 `pptxgenjs` 从 3.12.0 降级到 1.1.5**（semver major），该版本早于引入 image-size 之前 —— 会导致 PPT 生成能力大幅退化，**不建议执行**
+
+### 风险评估
+- 触发条件：需向 PPT/报告生成功能投喂**特制的恶意 ICNS/JXL/HEIF 图片**（引擎为本地部署，图片通常由用户自己提供）
+- 影响面：**仅拒绝服务（DoS）**，无远程代码执行、无数据外泄
+- 现有版本：`pptxgenjs` 3.12.0、`image-size` 2.0.2、`docx` 9.7.1
+
+### 建议（需产品决策，未执行）
+1. 维持现状并在 Dependabot 上标注为「无上游修复 / 已知风险接受」——依据：DoS-only + 本地引擎 + 需恶意输入
+2. 若要求清零告警：将 PPT 生成从 `pptxgenjs` 迁移到维护更活跃的替代库，或自行 fork 并修补 `image-size` 的解析循环
+3. 如需先行缓解：在 PPT/报告生成入口对上传图片做尺寸/格式预处理与超时限制，绕开解析器无限循环
