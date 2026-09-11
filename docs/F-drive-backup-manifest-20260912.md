@@ -129,3 +129,26 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - **F 盘保留**：最新 2 个 bundle（-final-ed666d0 / -final-9493ef3）+ lingxi-site-20260912-v2017-final.tar.gz
 - **空间**：F 盘 753 MB → 6.0 GB；D 盘归档 23 bundles + 5 snapshots（D 盘总空闲 25 GB）
 - **快照独立复验**：lingxi-site-20260912-v2017-final.tar.gz（md5 3ac1b233）本地解包 + 服务器 find -exec md5sum 逐文件比对，107 文件全部一致；快照不含服务器侧 *.bak-* 备份与 public/*.tar.gz 历史包（打包规则既定排除，见第四章）
+
+## 十、安全加固轮终态（09-12 07:40–07:55，第十六节后）
+
+### F 盘当前持有
+- `lingxi-engine-git-20260912-final.bundle`（260,730,740 B，main = 0beec6c，16 节全记录）
+- `lingxi-site-20260912-lockdown.tar.gz`（86,581,306 B，md5 dec5c617851143108916f9e226f152f0，官网锁定版快照：server.js + public/ + docs/ + version.txt）
+- 历史快照：lingxi-site-20260911.tar.gz（496 KB）、lingxi-site-20260912-v2017-final.tar.gz（5.8 MB）
+
+### 本日安全加固轮（对 F 盘的影响）
+- git bundle 重建 6 次（e03b015 → b539c45 → f4d029e → 11b511f → fc9456e → 73c3b30 → bd76a29 → 0beec6c），每次 verify okay
+- 官网快照从 v2017-final（升级前）升级为 lockdown（终态，含归档后公开面 20 项）
+- D:\lingxi-archive\ 不变（22 bundle + 5 快照历史归档）
+
+### 服务器归档区（非公开，可回滚）
+- /var/www/lingxi/archive-20260912-locked/：30 项（引擎 UI 壳/旧版本包/泄漏文档 V11/tmp 历史备份）
+- /opt/lingxi-engine-backups/20260912-prelock/：engine-src-2.0.15.tar.gz
+- /opt/lingxi-engine/.env.bak-20260912-prelock、.env.platform.bak-20260912
+- /var/www/lingxi/server.js.bak-20260912-prelock、official.html.bak-20260912-prelock
+
+### 本地 .env 修复（本轮新增）
+- 幽灵模型 glm-5.3:cloud ×3（DEFAULT/TOOL/REPLY）→ glm-5.2:cloud（实测存在于本地 Ollama，/v1/models 200）
+- 备份：.env.bak-20260912-premodel
+- 生效时机：下次引擎重启（运行中进程不受影响，本地进程未动——用户红线）
