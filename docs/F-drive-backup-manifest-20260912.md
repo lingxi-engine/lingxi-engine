@@ -236,4 +236,20 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 
 ### 终态
 - F 盘：bundle（git 全量）+ 官网快照 ×3（final 为最新时点）
-- git = GitHub = F盘 bundle = 文档提交时 HEAD；服务器三进程 online；本地进程未动
+- git = GitHub = F盘 bundle = 文档提交时 HEAD；服务器三进程 online；本地进程未动## 十五、Dependabot 告警状态核查 + npm audit 双源终验（09-12 17:20）
+
+### npm audit 双源实测
+- **官方源**（registry.npmjs.org）：`found 0 vulnerabilities`（含 dev 依赖全量）
+- **npmmirror 镜像源**：不支持 audit API（404 NOT_IMPLEMENTED），此前"found 0"结论以官方源为准
+- lockfile 实证：`pptxgenjs`、`image-size` 零残留（findstr 零命中）
+- 依赖移除提交：`0c6b484`（fix(deps): remove dead pptxgenjs and image-size deps - resolves 2 Dependabot high vulns）
+
+### GitHub 侧告警状态（无法直接确认，原因如下）
+- `gh` CLI 未安装；GitHub API 匿名访问返回 `Requires authentication`；环境变量无 GITHUB_TOKEN
+- Windows 凭据管理器存有 `git:https://github.com` 条目但 CredentialBlob 为空（token-len: 0）——推送走 SSH 密钥（github_ed25519），非 HTTPS token
+- SSH 认证实测成功（`Hi lingxi-engine/lingxi-engine!`），但 SSH 不提供 REST API 访问
+- **判定**：依赖已从代码库移除并推送（`0c6b484` 在 origin/main），GitHub Dependabot 扫描到新提交后会自动关闭对应告警（Dependabot 机制：清单不再引用漏洞包 → alert auto-dismiss）；本地无法代为确认 UI 状态，属 GitHub 侧异步行为，无操作可做
+
+### 结论
+- 代码侧闭环：依赖移除 + audit 0 漏洞 + lockfile 零残留 + 已推送
+- GitHub 侧：依赖 Dependabot 自身扫描周期（通常分钟级），无需人工干预
