@@ -167,7 +167,7 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 
 ### 同步状态
 - 提交：`001ec55`（第 25 节记录）→ `d9f5579`（download.html 源头修复），均已推送 origin/main
-- F 盘 bundle：`lingxi-engine-git-20260912-final-29feaf0.bundle`（260,824,403 B，verify okay，13 refs，最新）；旧 final.bundle 已删，F 盘剩 6.39 GB
+- F 盘 bundle：`lingxi-engine-git-20260912-final-<HEAD>.bundle（verify okay，13 refs；<HEAD>=创建时 main，每次提交后重建，唯一 bundle）；旧 final.bundle 已删，F 盘剩 6.39 GB
 - 服务器归档累计 34 项（31 + deploy.html ×3）
 - 公开面零 IP 泄漏；本地 Windows 进程全程未动（用户红线）
 ## 十一、深度复核轮 + 旧聊天 UI 资产清剿（09-12 16:45–17:00）
@@ -183,8 +183,8 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - releases/ 旧版本包（v2.0.14/15/16）外网 404（白名单只放行 public/），服务器留存作历史备份
 
 ### 同步终态
-- 提交：`29feaf0`（第 26 节记录）已推送；git = GitHub = F盘 = `29feaf0`
-- F 盘 bundle：`lingxi-engine-git-20260912-final-29feaf0.bundle`（260,824,403 B，verify okay，13 refs）——**唯一 bundle，不写死哈希后缀为约定**，旧 33539a4 已删
+- 提交：`29feaf0`（第 26 节记录，当时同步点）已推送；后续文档提交继续推进 HEAD（见第 11 章末尾同步终态）
+- F 盘 bundle：`lingxi-engine-git-20260912-final-<HEAD>.bundle`（verify okay，13 refs）——**唯一 bundle，命名跟随创建时 HEAD**（约定：清单不写死哈希，以 F 盘实际文件为准）；旧 bundle 已删
 - 服务器归档累计 44 项（34 + 旧聊天 UI 10）
 - workspace 临时脚本 3 个（09-11 遗留 _del_test_agents/_patch_v9/_peek_market_publish.cjs）归档至 _archive/20260912-scratch/
 - PM2 三进程 online；本地 Windows 5 个 node.exe 全程未动（用户红线）
