@@ -706,4 +706,21 @@
 - workspace 根目录现仅剩 _archive/，零临时文件
 
 ## 终态
-- git = GitHub = F盘 bundle = `35cc4e7`；服务器三进程 online；防火墙锁 3 端口；本地 Windows 5 进程未动
+- git = GitHub = F盘 bundle = `35cc4e7`；服务器三进程 online；防火墙锁 3 端口；本地 Windows 5 进程未动---
+
+# 第二十九节：src/web 死副本移除 + 根目录日志清理（2026-09-12 · 仓库瘦身轮）
+
+## src/web 死副本（19 文件，13,396 行）
+- 零引用实证：index.ts / src/*.ts / pack-release.ps1 全部无 `src/web` 引用（唯一命中是 node_modules 内 modern-tar 自身的注释）
+- 活 UI 是 `web/`（3456 端口服务根），`src/web/` 是历史构建残留死副本
+- 处置：git rm --cached（19 文件）+ 物理移至 workspace/_archive/20260912-scratch/src-web-dead-copy/（可回滚）
+- **质量闸门**：tsc --noEmit 0 错误；vitest **28/28 passed** —— 移除后编译测试全绿
+
+## 根目录日志清理（5 项 → 归档）
+- index.log（09-02）/ platform.log（09-02）/ tsc_check.log（09-04）/ tsc_check2.log（09-04）/ _vitest_install.log（09-07）全部移入 _archive/20260912-scratch/root-logs/
+- usage.json（4298 条模型调用记录，09-12 17:18 仍在写入）**保留**——运行时数据，.gitignore 已覆盖
+- 乱码文件名副本：全盘扫描（docs/ + 根目录 + 非常规字符正则）零命中——09-11 那份已被此前会话清理
+
+## 终态
+- 提交 `8f30a53` 已推送；git = GitHub = `8f30a53`；F 盘 bundle 待重建
+- 根目录 29 → 24 文件（5 日志归档）；src/ 纯净（无 web 副本）
