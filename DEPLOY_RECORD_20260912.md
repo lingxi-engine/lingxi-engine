@@ -626,4 +626,39 @@
 - git = GitHub = F盘 bundle = 351c312（本节为服务器侧归档动作，无需新提交）
 - 服务器归档累计 34 项（31 + deploy.html ×3）
 - 引擎八层封堵 + 官网纯产品化 + deploy.html 泄漏清剿，公开面零 IP 泄漏
-- 本地 Windows 进程全程未动（用户红线）
+- 本地 Windows 进程全程未动（用户红线）---
+
+# 第二十六节：旧聊天 UI 资产清剿 + 官网面收敛终验（2026-09-12 · 深度复核轮）
+
+## 新发现：旧网页聊天 UI 残留资产（上轮归档漏网第二波）
+
+### 问题清单
+| 文件 | 性质 | 风险 |
+|---|---|---|
+| `/var/www/lingxi/index.html`（86 KB，08-13） | 旧网页版聊天 UI（membersBtn/memoryBtn/sw.js 注册） | 引擎已不对外开放，此 UI 是死入口；注册的 `/sw.js` PWA 缓存会劫持老用户 |
+| `/var/www/lingxi/sw.js`（v2.0.6，lingxi-v13 缓存） | PWA service worker | 缓存列表含 `/index.html` `/js/app.js` 等，老用户浏览器吃旧缓存 |
+| `/var/www/lingxi/css/`（style/mobile/market.css） | 旧 UI 样式 | 零引用 |
+| `/var/www/lingxi/js/`（app.js 199KB / i18n.js 252KB） | 旧 UI 逻辑 | 零引用（app.js 内 PLATFORM_URL 已置空） |
+| `public/css/` + `public/style.css` + `public/mobile.css` | 旧 UI 样式副本 | 零引用 |
+
+### 处置（全部可回滚）
+- 归档至 `archive-20260912-locked/old-chat-ui/`（index.html.locked / sw.js.locked / css/ / js/）
+- 归档至 `archive-20260912-locked/unused-public-assets/`（css/ / style.css / mobile.css）
+- 删除原位置文件
+
+## 验证（本机 + 外网双测）
+- `/index.html`、`/sw.js`、`/css/style.css`、`/js/app.js` → **全 404**（本机 + 外网）
+- 官网主面全绿：root / official / download / docs / docs-quickstart / install.sh / install.ps1 / pkg×2 / version / setup-zip / icon / favicon / admin-console / platform-console → **全 200**
+- PWA 劫持风险消除：官网首页（official.html）无 serviceWorker 注册，老 index.html 已下线
+
+## 保留项（有意保留，非泄漏）
+- `public/` 下 IP 引用（install.ps1/install.sh/official.html/download.html/docs/*.md）均为**安装命令与平台地址**，用户需要它下载引擎——这是产品功能，不是泄漏
+- `docs/architecture.md` 中 IP 为架构说明文档，属产品文档
+- `releases/` 旧版本包（v2.0.14/15/16）外网 404（白名单只放行 public/），仅服务器留存作历史备份
+- `LingXi-Engine-Setup.bat`（515B 引导脚本）与 `灵犀引擎-desktop-1.1.0-portable.exe`（83MB 桌面包）为下载页历史产物，保留
+
+## 终态
+- 服务器归档累计 **44 项**（34 + 旧聊天 UI 10 项）
+- 官网公开面 = 纯产品站：首页 / 下载 / 文档 / 安装脚本 / 安装包 / 双管理后台（token 鉴权）
+- PM2 三进程 online（lingxi 2.0.17 / mesh 2.0.17 / site），本地 Windows 进程全程未动
+- 本节为服务器侧归档动作，无代码改动，无需新提交（HEAD = `33539a4` 不变）
