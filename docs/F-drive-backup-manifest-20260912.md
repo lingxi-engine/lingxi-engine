@@ -187,4 +187,24 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - F 盘 bundle：`lingxi-engine-git-20260912-final-<HEAD>.bundle`（verify okay，13 refs）——**唯一 bundle，命名跟随创建时 HEAD**（约定：清单不写死哈希，以 F 盘实际文件为准）；旧 bundle 已删
 - 服务器归档累计 44 项（34 + 旧聊天 UI 10）
 - workspace 临时脚本 3 个（09-11 遗留 _del_test_agents/_patch_v9/_peek_market_publish.cjs）归档至 _archive/20260912-scratch/
-- PM2 三进程 online；本地 Windows 5 个 node.exe 全程未动（用户红线）
+- PM2 三进程 online；本地 Windows 5 个 node.exe 全程未动（用户红线）## 十二、公开面一致性终验 + workspace/dl 陈旧副本甄别（09-12 17:00–17:10）
+
+### 官网关键文件 md5 比对（服务器 public/ vs 本地 web/）
+| 文件 | 服务器 | 本地 web/ | 一致性 |
+|---|---|---|---|
+| official.html | `9624720b…` | `9624720b…` | ✅ 一致 |
+| download.html | `40eceec0…` | `40eceec0…` | ✅ 一致（死链修复已同步） |
+| install.ps1 | `9ca62465…` | workspace/dl `9ca62465…` | ✅ 一致 |
+| install.sh | `4a9afc74…`（528 行，VERSION=2.0.17） | workspace/dl `aba6f8bc…`（529 行含 CRLF，VERSION=**2.0.13**） | ⚠️ 本地副本陈旧 |
+
+### 甄别结论
+- `workspace/dl/` 是**早期下载留存副本**（09-12 之前的下载验证产物），非部署源；服务器 install.sh 已是 2.0.17（含 --uninstall/--fix-app/--dry-run），**线上为准，无需回传**
+- 本地仓库无 install.sh 跟踪（`git ls-files` 零命中）——服务器 install.sh 为手工维护，与 deploy.html 同性质，但**非泄漏**（是产品安装入口，公开 200 有意为之）
+- 本地 `web/` 是本地引擎 UI（3456 端口在用），与服务器官网无自动同步链路（deploy/ 只有 site-server.js），旧聊天 UI 归档后**无复活风险**
+
+### workspace/dl 处置
+- 陈旧副本（install.sh 2.0.13 / install.ps1）归档至 `workspace/_archive/20260912-scratch/dl-stale/`，避免后续误当部署源使用
+
+### 终态
+- git = GitHub = F盘 = `feb18bf`；服务器三进程 online；本地 Windows 进程未动
+- 公开面 = 纯产品站（首页/下载/文档/安装脚本/安装包/双管理后台 token 鉴权），关键文件与本地源一致
