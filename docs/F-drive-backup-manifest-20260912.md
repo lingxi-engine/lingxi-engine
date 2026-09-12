@@ -219,4 +219,21 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - 结论：文档公开无害（知道端点也进不来），与 install.sh 同性质
 
 ### 终态
-- git = GitHub = F盘 = `a9d216d`（第 13 章为甄别记录，无改动）
+- git = GitHub = F盘 = `a9d216d`（第 13 章为甄别记录，无改动）## 十四、官网快照刷新 + 本地 .env 终态确认（09-12 17:09–17:15）
+
+### 官网快照过时问题（真实遗留）
+- F 盘 `lingxi-site-20260912-lockdown.tar.gz`（07:40 时点）不含今日下午的服务器侧改动（deploy.html 归档、旧聊天 UI 下线、download.html 死链修复）
+- 处置：服务器重打 `lingxi-site-20260912-final.tar.gz`（87,437,070 B，含 public/docs/server.js/version.txt/install.ps1，排除备份/归档/node_modules/releases）
+- **双端 md5 一致**：`3b27c5cc1a585a6d7b4ebc327ac740aa`（服务器重算复核一致）
+- 旧 lockdown 快照已删；F 盘现持：final（87MB，最新）+ 09-11（496KB）+ v2017-final（5.8MB）三份快照
+
+### 本地 .env 幽灵模型终态
+- `DEFAULT_MODEL=glm-5.2:cloud` / `TOOL_MODEL=glm-5.2:cloud` / `REPLY_MODEL=glm-5.2:cloud` —— **已全部扶正**（glm-5.3 幽灵已清，glm-5.2 为 provider 实测存在）
+
+### 根目录杂项终验
+- `/version.txt`（根）200：内容 "2.0.17" 纯版本号，与 public/version.txt（带变更说明）并存，均无害
+- `/manifest.json`、`/package-lock.json`、`/install.html` 全 404（旧 UI 资产已归档，无残留）
+
+### 终态
+- F 盘：bundle（git 全量）+ 官网快照 ×3（final 为最新时点）
+- git = GitHub = F盘 bundle = 文档提交时 HEAD；服务器三进程 online；本地进程未动
