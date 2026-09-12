@@ -747,4 +747,30 @@
 - 官网 4 个关键 URL 全绿
 
 ## 终态
-- git = GitHub = F盘 = `6aeab7a`（本节为发布物更新，无代码改动）；服务器三进程 online；本地进程未动
+- git = GitHub = F盘 = `6aeab7a`（本节为发布物更新，无代码改动）；服务器三进程 online；本地进程未动---
+
+# 第三十一节：Setup.zip 内嵌包 rev3 同步 + 外网下载闭环（2026-09-12 · 发布物二次收口）
+
+## 问题：Setup.zip 内嵌 tar.gz 仍是 rev2
+- `LingXi-Engine-Setup.zip`（07:52）内嵌 `lingxi-engine.tar.gz` md5 = `20f41000…`（rev2）——含死链 download.html 与 src/web 副本，与外层 rev3 不同步
+
+## 处置
+- 服务器解包 → 替换内嵌 tar.gz 为 rev3（`d2a30d21…`）→ python3 zipfile 重打（ZIP_STORED，与原格式一致）
+- 新 zip md5：`b73a88db8a3a9643c6d6adcbc5e685aa`（1,020,059 B）
+- rev2 原 zip 归档：`backup-20260912/Setup-zip-rev2-archived.zip`（`cc10924f…`，可回滚）
+- 线上复核：内嵌 tar.gz md5 = `d2a30d21…` = rev3 ✅
+
+## 外网闭环验证
+- 下载 Setup.zip：200，1,020,059 B，**回算 md5 = MATCH rev3** ✅
+
+## 发布物终态（全部对齐 rev3）
+| 发布物 | md5 | 外网实测 |
+|---|---|---|
+| lingxi-engine-v2.0.17.tar.gz | `d2a30d21…` | 200 + 下载回算 MATCH |
+| lingxi-engine.tar.gz（通用名） | `d2a30d21…` | 200 |
+| releases/ 同名包 | `d2a30d21…` | 三处一致 |
+| LingXi-Engine-Setup.zip | `b73a88db…`（内嵌 rev3） | 200 + 下载回算 MATCH |
+| version.txt | rev3 说明 | 200 |
+
+## 终态
+- git = GitHub = F盘 = `120575a`（本节为发布物更新，无代码改动）；服务器归档 46 项；三进程 online；本地进程未动
