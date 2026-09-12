@@ -689,4 +689,21 @@
 
 ## 终态
 - 服务器归档 44 项不变；防火墙锁 3 端口（新增 5000）；本节为服务器侧动作，无代码改动
-- git = GitHub = F盘 = `b61aa16` 不变
+- git = GitHub = F盘 = `b61aa16` 不变---
+
+# 第二十八节：官网快照刷新 + workspace 临时文件终清（2026-09-12 · 收尾轮）
+
+## 官网快照（F 盘）
+- 旧 lockdown 快照（07:40 时点）已过时，删除
+- 新快照 `lingxi-site-20260912-final.tar.gz`（87,437,070 B）：含 public/docs/server.js/version.txt/install.ps1，排除备份/归档/node_modules/releases
+- 双端 md5 一致 `3b27c5cc1a585a6d7b4ebc327ac740aa`（服务器重算复核）
+
+## 本地 .env 终态
+- DEFAULT/TOOL/REPLY_MODEL 全部 `glm-5.2:cloud`（幽灵模型 glm-5.3 已清，provider 实测存在）
+
+## workspace 临时文件终清（12 项 → 归档）
+- 09-11/09-12 诊断脚本与探针（_diag_chat.mjs/_live_check.mjs/_probe_db.js/_smoke.ps1/_marker_probe.txt/_t2_test.db 4.3MB/_install.ps1/_redeploy_v2017_clean.sh/_commitmsg.txt/_agents.json 46KB/_boot.log/_boot_err.log.bak）全部移入 _archive/20260912-scratch/workspace-temps/
+- workspace 根目录现仅剩 _archive/，零临时文件
+
+## 终态
+- git = GitHub = F盘 bundle = `35cc4e7`；服务器三进程 online；防火墙锁 3 端口；本地 Windows 5 进程未动
