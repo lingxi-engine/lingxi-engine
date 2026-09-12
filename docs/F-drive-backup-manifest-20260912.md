@@ -206,5 +206,17 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - 陈旧副本（install.sh 2.0.13 / install.ps1）归档至 `workspace/_archive/20260912-scratch/dl-stale/`，避免后续误当部署源使用
 
 ### 终态
-- git = GitHub = F盘 = `feb18bf`；服务器三进程 online；本地 Windows 进程未动
-- 公开面 = 纯产品站（首页/下载/文档/安装脚本/安装包/双管理后台 token 鉴权），关键文件与本地源一致
+- git = GitHub = F盘 = 文档提交时 HEAD（以 git rev-parse 为准）；服务器三进程 online；本地 Windows 进程未动
+- 公开面 = 纯产品站（首页/下载/文档/安装脚本/安装包/双管理后台 token 鉴权），关键文件与本地源一致## 十三、80 NAT 转发核查 + docs/api.md 泄漏面甄别（09-12 17:10）
+
+### lingxi-redirect.service（80→8080 NAT）
+- 内容：`iptables -t nat -A PREROUTING --dport 80 -j REDIRECT --to-port 8080`，enabled + active
+- 判定：**正常**——80 是官网入口（外网 200），指向 8080 官网服务器，非死链非泄漏
+
+### docs/api.md（51 行平台 API 文档）
+- 内容：注册/登录/token 格式/admin 端点示例（`{adminToken}` 占位符，无真实 token）
+- 判定：**保留**——API 端点全部 403 封死（register/login/stats/tasks 实测），文档描述的是「本地引擎对接平台」的接口约定，属产品文档；真实 token 零泄漏
+- 结论：文档公开无害（知道端点也进不来），与 install.sh 同性质
+
+### 终态
+- git = GitHub = F盘 = `a9d216d`（第 13 章为甄别记录，无改动）
