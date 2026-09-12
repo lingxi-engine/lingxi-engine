@@ -1,4 +1,4 @@
-# Lingxi Engine 部署记录 — 2026-09-12 (v2.0.17 四方对齐 + 官网打包上传)
+﻿# Lingxi Engine 部署记录 — 2026-09-12 (v2.0.17 四方对齐 + 官网打包上传)
 
 ## 起因
 
@@ -588,4 +588,42 @@
 ## 本日二十四节 · 完整总账（最终）
 - 24 个提交（0c6b484 → be99247），git = GitHub = F盘 bundle
 - 四项指令 + 十四轮补漏全闭环；引擎八层封堵（含 systemd 持久化 + firewalld 双层）；官网纯产品化 + 稳定性修复；下载链全 rev2；80 端口复活；平台链路迁移 8080
+- 本地 Windows 进程全程未动（用户红线）
+
+---
+
+# 第二十五节：断点恢复全量复核 + deploy.html 泄漏清剿（2026-09-12 · 复核轮）
+
+## 断点恢复复核（上一轮声称的闭环逐项实测）
+| 项 | 实测 | 结论 |
+|---|---|---|
+| git = GitHub = F盘 | HEAD=origin/main=351c312，bundle verify okay | ✅ |
+| 外网封堵 | 80 官网 200 / 8080 API 403 / 3001、3456 不可达 | ✅ |
+| 3001 token 门槛 | lo 无 token 403；/api/health 404 为路由不存在（非门槛失效） | ✅ |
+| 8080 API 封死 | 带/不带 token 均 403「引擎 API 已不对外开放」 | ✅ |
+| 管理代理链路 | /api/admin/* → lo:3001 代理完好（后台不受影响） | ✅ |
+| mesh WS | 外网 3001 DROP + lo 门槛在 | ✅ |
+| 三进程 | lingxi 2.0.17 / mesh 2.0.17 / site 全 online | ✅ |
+| 官网下载链 | v2.0.17 包 200（1,179,825B）、version.txt rev2 | ✅ |
+| 本地进程 | 5 个 node.exe 全程未动 | ✅ |
+
+## 新发现：deploy.html 三处泄漏（上轮归档漏网）
+- 根目录 /var/www/lingxi/deploy.html、public/deploy.html、docs/deploy.html **三份同文档**，均含服务器 IP 47.93.157.83 ×9 处
+- 上轮只归档了根目录那份；public/ 与 docs/ 两份漏网，外网实测均 200
+- download.html:186 存活链指向 /deploy.html（死链）
+
+## 处置
+- 三份全部归档至 archive-20260912-locked/（deploy.html.locked / public-deploy.html.locked / docs-deploy.html.locked），可回滚
+- download.html:186 死链修复：/deploy.html → /docs/（备份 download.html.pre-deployfix）
+- 本地仓库核查：deploy.html 零跟踪零存在（纯服务器手工孤儿文件，本地无需处理）
+
+## 验证（外网实测）
+- /deploy.html、/public/deploy.html、/docs/deploy.html → **全 404**
+- download.html 200 且 deploy.html 引用清零、站内文档链生效
+- 回归：index/official/docs/pkg 全 200，主站无恙
+
+## 本日二十五节 · 完整总账
+- git = GitHub = F盘 bundle = 351c312（本节为服务器侧归档动作，无需新提交）
+- 服务器归档累计 34 项（31 + deploy.html ×3）
+- 引擎八层封堵 + 官网纯产品化 + deploy.html 泄漏清剿，公开面零 IP 泄漏
 - 本地 Windows 进程全程未动（用户红线）
