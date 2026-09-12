@@ -167,6 +167,24 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 
 ### 同步状态
 - 提交：`001ec55`（第 25 节记录）→ `d9f5579`（download.html 源头修复），均已推送 origin/main
-- F 盘 bundle：`lingxi-engine-git-20260912-final-001ec55.bundle`（260,792,576 B，verify okay，13 refs）；旧 final.bundle 已删，F 盘剩 6.39 GB
+- F 盘 bundle：`lingxi-engine-git-20260912-final-29feaf0.bundle`（260,824,403 B，verify okay，13 refs，最新）；旧 final.bundle 已删，F 盘剩 6.39 GB
 - 服务器归档累计 34 项（31 + deploy.html ×3）
 - 公开面零 IP 泄漏；本地 Windows 进程全程未动（用户红线）
+## 十一、深度复核轮 + 旧聊天 UI 资产清剿（09-12 16:45–17:00）
+
+### 旧网页聊天 UI 残留资产（第二波漏网，10 项）
+- index.html（86KB 旧聊天 UI，注册 sw.js PWA）、sw.js（lingxi-v13 缓存列表）、css/（style/mobile/market.css）、js/（app.js 199KB + i18n.js 252KB）、public/css/、public/style.css、public/mobile.css
+- 风险：引擎已不对外开放，旧 UI 是死入口；PWA service worker 缓存劫持老用户
+- 处置：全部归档至 archive-20260912-locked/old-chat-ui/ 与 unused-public-assets/（可回滚），原位置删除
+- 验证：本机 + 外网 /index.html、/sw.js、/css/style.css、/js/app.js 全 404；官网主面 13 项全 200
+
+### IP 引用甄别（保留项，非泄漏）
+- public/install.ps1、install.sh、official.html、download.html、docs/*.md 中 IP 均为安装命令/平台地址（产品功能）
+- releases/ 旧版本包（v2.0.14/15/16）外网 404（白名单只放行 public/），服务器留存作历史备份
+
+### 同步终态
+- 提交：`29feaf0`（第 26 节记录）已推送；git = GitHub = F盘 = `29feaf0`
+- F 盘 bundle：`lingxi-engine-git-20260912-final-29feaf0.bundle`（260,824,403 B，verify okay，13 refs）——**唯一 bundle，不写死哈希后缀为约定**，旧 33539a4 已删
+- 服务器归档累计 44 项（34 + 旧聊天 UI 10）
+- workspace 临时脚本 3 个（09-11 遗留 _del_test_agents/_patch_v9/_peek_market_publish.cjs）归档至 _archive/20260912-scratch/
+- PM2 三进程 online；本地 Windows 5 个 node.exe 全程未动（用户红线）
