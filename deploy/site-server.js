@@ -52,7 +52,9 @@ function proxyAdminToPlatform(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  let urlPath = decodeURIComponent(req.url.split('?')[0]);
+  // 2026-09-12: malformed URI (bare % etc.) must not crash - fall back to raw path
+  let urlPath;
+  try { urlPath = decodeURIComponent(req.url.split('?')[0]); } catch { urlPath = req.url.split('?')[0]; }
 
   if (urlPath.includes('..')) {
     res.writeHead(403);
