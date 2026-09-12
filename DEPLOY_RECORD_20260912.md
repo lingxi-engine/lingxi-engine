@@ -566,3 +566,26 @@
 - 23 个提交（0c6b484 → a5358d3 + 本轮），git = GitHub = F盘 bundle
 - 四项指令 + 十三轮补漏全闭环：引擎 2.0.17 / 漏洞清零 / 引擎八层封堵（token+WS 三态+API+入口+归档+泄漏清剿+iptables+firewalld 双层且持久化）/ 官网纯产品化（公开面 20 项、下载链全 rev2、docs 零死链、平台链路迁移 8080、80 端口复活）
 - 本地 Windows 进程全程未动（用户红线）
+
+---
+
+# 第二十四节：运行日志考古 + URI 崩溃修复（2026-09-12 · 稳定性轮）
+
+## 日志考古结论
+- error.log 里的 ERR_MODULE_NOT_FOUND / EADDRINUSE 全为历史时间戳（09-03/09-04，含升级过程 tsx 误删事故）——非现行故障
+- 当前全绿：lingxi 2.0.17 uptime 796s agents:14 / mesh 43min / site 稳定
+
+## 现行问题与修复
+- **lingxi-site 反复 URIError: URI malformed**：server.js 的 decodeURIComponent 遇裸 % / 畸形转义抛异常
+- 修复：try/catch 回退原始路径（deploy/site-server.js，提交 be99247）
+- 部署：scp + pm2 delete/start（env 注入）+ pm2 save
+
+## 验证
+- 畸形 URI：/% → 404、/%zz → 404、/%E4%B8 → 404（优雅降级，不再抛错）
+- 正常路径回归：home/download/docs 200、chat 302、api 403、console 200、中文文件名 exe 200
+- 新进程日志零新 URIError
+
+## 本日二十四节 · 完整总账（最终）
+- 24 个提交（0c6b484 → be99247），git = GitHub = F盘 bundle
+- 四项指令 + 十四轮补漏全闭环；引擎八层封堵（含 systemd 持久化 + firewalld 双层）；官网纯产品化 + 稳定性修复；下载链全 rev2；80 端口复活；平台链路迁移 8080
+- 本地 Windows 进程全程未动（用户红线）
