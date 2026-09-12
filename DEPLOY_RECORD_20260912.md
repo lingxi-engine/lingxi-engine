@@ -723,4 +723,28 @@
 
 ## 终态
 - 提交 `8f30a53` 已推送；git = GitHub = `8f30a53`；F 盘 bundle 待重建
-- 根目录 29 → 24 文件（5 日志归档）；src/ 纯净（无 web 副本）
+- 根目录 29 → 24 文件（5 日志归档）；src/ 纯净（无 web 副本）---
+
+# 第三十节：发布包 rev3 重建上传 + 外网下载闭环验证（2026-09-12 · 发布收口轮）
+
+## 问题：rev2 包（07:52）不含今日下午改动
+- 用户下载的包内 download.html 仍指向已 404 的 /deploy.html；src/web 死副本（19 文件）仍在包内
+
+## rev3 重打包（pack-release.ps1 v6.7 + BOM）
+- 产物：1,019,312 B，**687 条目**（rev2 为 707）
+- md5：`d2a30d21c74c19da2c45d94403149269`
+- 内置 7 组校验全 [OK]：顶层结构 / 零垃圾（pyc/bak/log/result/tests-data）/ 零真实 .env / .env.example 在位 / 关键源码文件在位
+- 包内 web/download.html 实测：`/deploy.html` 零命中，`/docs/` 站内文档链在位；`src/web` 零条目
+
+## 三处部署 + 版本说明
+- `public/lingxi-engine-v2.0.17.tar.gz` + `releases/` 同名 + `public/lingxi-engine.tar.gz`（通用名）→ **三处 md5 一致 `d2a30d21…`**
+- rev2 原包归档：`backup-20260912/pkg-rev2-archived.tar.gz`（`20f41000…`，可回滚）
+- `public/version.txt` 更新为 rev3 说明（download.html 修复 / src/web 移除 / token 门槛 / 依赖清零 / 推理双键）
+
+## 外网闭环验证（用户视角）
+- 下载 v2.0.17 包：200，1,019,312 B，**回算 md5 = MATCH rev3** ✅
+- version.txt 外网读取 = rev3 内容 ✅；通用名包 200；download.html 200
+- 官网 4 个关键 URL 全绿
+
+## 终态
+- git = GitHub = F盘 = `6aeab7a`（本节为发布物更新，无代码改动）；服务器三进程 online；本地进程未动
