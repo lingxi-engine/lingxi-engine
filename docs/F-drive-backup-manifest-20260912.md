@@ -152,3 +152,21 @@ tar czf … --exclude='*node_modules*' --exclude='./site-backup-*' --exclude='./
 - 幽灵模型 glm-5.3:cloud ×3（DEFAULT/TOOL/REPLY）→ glm-5.2:cloud（实测存在于本地 Ollama，/v1/models 200）
 - 备份：.env.bak-20260912-premodel
 - 生效时机：下次引擎重启（运行中进程不受影响，本地进程未动——用户红线）
+
+## 十、复核轮 + deploy.html 泄漏清剿（09-12 16:30–17:00）
+
+### 断点恢复复核（九项全绿）
+- git = GitHub = F盘 = `351c312`；外网 80 官网 200 / 8080 API 403 / 3001、3456 不可达
+- 3001 lo 无 token 403（门槛在）；8080 带/不带 token 均 403；/api/admin/* 代理链路完好
+- 三进程 online（lingxi 2.0.17 / mesh 2.0.17 / site）；本地 5 个 node.exe 未动
+
+### deploy.html 三份泄漏（上轮归档漏网）
+- /var/www/lingxi/ 根目录、public/、docs/ 三份同文档，各含服务器 IP ×9 处，外网均 200
+- 处置：三份归档至 archive-20260912-locked/（deploy.html.locked / public-deploy.html.locked / docs-deploy.html.locked），可回滚
+- 外网终验：三处全 404；download.html 死链改指 /docs/（服务器 + 本地仓库源头同步修复，md5 一致 `40eceec0…`）
+
+### 同步状态
+- 提交：`001ec55`（第 25 节记录）→ `d9f5579`（download.html 源头修复），均已推送 origin/main
+- F 盘 bundle：`lingxi-engine-git-20260912-final-001ec55.bundle`（260,792,576 B，verify okay，13 refs）；旧 final.bundle 已删，F 盘剩 6.39 GB
+- 服务器归档累计 34 项（31 + deploy.html ×3）
+- 公开面零 IP 泄漏；本地 Windows 进程全程未动（用户红线）
