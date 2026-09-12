@@ -773,4 +773,28 @@
 | version.txt | rev3 说明 | 200 |
 
 ## 终态
-- git = GitHub = F盘 = `120575a`（本节为发布物更新，无代码改动）；服务器归档 46 项；三进程 online；本地进程未动
+- git = GitHub = F盘 = `120575a`（本节为发布物更新，无代码改动）；服务器归档 46 项；三进程 online；本地进程未动---
+
+# 第三十二节：portable.exe 发布物甄别 + download.html 版本声明核查（2026-09-12 · 发布物三次收口）
+
+## portable.exe 甄别（保留，非泄漏）
+- `灵犀引擎-desktop-1.1.0-portable.exe`（83.8 MB，7 月 13 日）：NSIS v3.04 自解压安装器（PE32 GUI）
+- download.html:122 提供下载（外网 200）——**产品发布物**，1.1.0 桌面版与 2.0.17 引擎版是两条版本线（桌面壳 1.1.0 + 引擎内嵌），无版本错配问题
+- strings 扫描：无硬编码 IP、无版本冲突、无敏感串——**保留**
+
+## download.html 版本声明核查
+- 页面主打 v2.0.17 tar.gz（rev3）+ 通用名包 + Setup.zip（rev3）+ portable.exe（1.1.0 桌面线）+ install.ps1/install.sh
+- 全部下载链实测 200；版本声明与实物一致
+
+## 发布物终态（rev3 全链对齐后无遗留）
+| 发布物 | 状态 |
+|---|---|
+| lingxi-engine-v2.0.17.tar.gz（rev3） | ✅ 三处 md5 一致 + 外网下载回算 MATCH |
+| lingxi-engine.tar.gz（通用名，rev3） | ✅ 200 |
+| LingXi-Engine-Setup.zip（内嵌 rev3） | ✅ 外网下载回算 MATCH |
+| 灵犀引擎-desktop-1.1.0-portable.exe | ✅ 独立桌面版本线，保留 |
+| install.ps1 / install.sh | ✅ 200，VERSION=2.0.17 |
+| version.txt | ✅ rev3 说明 |
+
+## 终态
+- git = GitHub = F盘 = `6455294`（本节为甄别记录，无改动）；服务器归档 46 项；三进程 online；本地进程未动
