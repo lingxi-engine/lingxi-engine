@@ -16,6 +16,8 @@ let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionLis
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重。
 const _optimisticSent = new Set();
 let streamingMsgs = {};
+// 流式收尾后短暂保留 msgId → 已渲染的气泡段（segments），供随后的 message.new 按 msgId 校正而非重复追加
+let recentStreamed = {};
 let connectIntended = false;
 let sendQueue = [];        // 排队消息：Agent 回复中时先存这里，回复结束后按序自动发。
 let generatingChats = {};  // chatId -> 当前进行中的回复数（start/end 成对，用于判断是。生成。。
@@ -259,23 +261,127 @@ function toast(msg) {
 }
 
 // ── 代码高亮 ──
+// ── Markdown 渲染（v2.1.0 增强：块级 + 行内）──
+// 说明：旧版只处理 ``` 代码块、表格、行内代码，正文里的换行会被 HTML 折叠，
+// AI 的长回复在气泡里挤成一坨；也没有标题/粗体/列表，所以 `**加粗**`、`### 标题`
+// 会以原文裸奔。现在补齐块级与行内规则，流式期间也能边流边成型。
 function markdownToHtml(text) {
-  // 转义 HTML
-  let html = esc(text);
-  // 转换 ``` 代码。
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, function(match, lang, code) {
+  if (text == null) return '';
+  // 占位符仓库：先把代码块/行内代码抽走，避免被后续行内规则误伤
+  const stash = [];
+  const keep = (html) => { stash.push(html); return '\u0000' + (stash.length - 1) + '\u0000'; };
+
+  // 1) 转义 HTML
+  let html = esc(String(text));
+
+  // 2) 转换 ``` 代码块（先抽成占位符）
+  html = html.replace(/```(\w*)[ \t]*\r?\n([\s\S]*?)```/g, function(match, lang, code) {
     const safeLang = lang ? lang.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
     const langAttr = safeLang ? ' class="language-' + safeLang + '"' : '';
-    return '<pre><code' + langAttr + '>' + code.trim() + '</code></pre>';
+    return '\n' + keep('<pre><code' + langAttr + '>' + code.replace(/^\r?\n/, '').replace(/\s+$/, '') + '</code></pre>') + '\n';
   });
-  // 转换 Markdown 表格
+
+  // 3) 转换行内代码 `code`（同样抽成占位符）
+  html = html.replace(/`([^`\n]+)`/g, function(m, code) { return keep('<code>' + code + '</code>'); });
+
+  // 4) 转换 Markdown 表格
   html = parseMarkdownTable(html);
-  // 转换行内代码 `code`
-  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // 5) 块级元素（标题 / 分隔线 / 引用 / 列表 / 段落）
+  html = mdRenderBlocks(html);
+
+  // 6) 行内元素（粗体 / 斜体 / 删除线 / 链接）
+  html = mdRenderInline(html);
+
+  // 7) 还原占位符
+  html = html.replace(/\u0000(\d+)\u0000/g, function(m, i) { return stash[Number(i)] != null ? stash[Number(i)] : m; });
   return html;
 }
 
-// ── Markdown 表格解析 ──
+// 块级渲染：逐行判定，列表/引用需要聚合连续行
+function mdRenderBlocks(html) {
+  const lines = String(html).split('\n');
+  const out = [];
+  let list = null; // { tag: ul|ol, items: [] }
+  const flushList = () => {
+    if (!list) return;
+    out.push('<' + list.tag + '>' + list.items.map(function(it) { return '<li>' + it + '</li>'; }).join('') + '</' + list.tag + '>');
+    list = null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const s = line.trim();
+
+    // 空行 → 断开列表
+    if (!s) { flushList(); continue; }
+
+    // 独占一行的占位符（代码块等）→ 原样输出，不包 <p>
+    if (/^\u0000\d+\u0000$/.test(s)) { flushList(); out.push(s); continue; }
+
+    // 已是块级 HTML（表格包装、嵌套结构）→ 原样输出
+    if (/^<(div|table|pre|blockquote|ul|ol|h[1-6]|hr|p)\b/i.test(s)) { flushList(); out.push(s); continue; }
+
+    // 标题 # ~ ######
+    const h = s.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+    if (h) { flushList(); out.push('<h' + h[1].length + ' class="md-h">' + h[2] + '</h' + h[1].length + '>'); continue; }
+
+    // 分隔线
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(s)) { flushList(); out.push('<hr class="md-hr">'); continue; }
+
+    // 引用（esc 之后 > 已变成 &gt;）
+    if (/^&gt;\s?/.test(s)) {
+      flushList();
+      const q = [];
+      while (i < lines.length && /^\s*&gt;\s?/.test(lines[i])) {
+        q.push(lines[i].replace(/^\s*&gt;\s?/, ''));
+        i++;
+      }
+      i--;
+      out.push('<blockquote class="md-quote">' + q.join('<br>') + '</blockquote>');
+      continue;
+    }
+
+    // 无序列表
+    const ul = s.match(/^[-*+]\s+(\S.*)$/);
+    if (ul) { if (!list || list.tag !== 'ul') { flushList(); list = { tag: 'ul', items: [] }; } list.items.push(ul[1]); continue; }
+
+    // 有序列表
+    const ol = s.match(/^\d+[.)]\s+(\S.*)$/);
+    if (ol) { if (!list || list.tag !== 'ol') { flushList(); list = { tag: 'ol', items: [] }; } list.items.push(ol[1]); continue; }
+
+    // 普通段落
+    flushList();
+    out.push('<p class="md-p">' + s + '</p>');
+  }
+  flushList();
+  return out.join('\n');
+}
+
+// 行内渲染：粗体 / 斜体 / 删除线 / 链接
+// 注意：不下划线斜体（_x_）—— 会在 snake_case 标识符上误伤，宁可少渲染也别渲染错。
+function mdRenderInline(html) {
+  let out = html;
+  // 链接 [文本](url)—— 只放行 http/https/mailto，挡掉 javascript: 之类
+  out = out.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, function(m, label, url) {
+    if (!/^(https?:|mailto:|\/|#|\.)/i.test(url)) return m;
+    return '<a href="' + url + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+  });
+  // 删除线 ~~x~~
+  out = out.replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
+  // 粗体 **x**
+  out = out.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  // 斜体 *x*（要求紧跟非空白、结尾非空白，避免吃掉裸星号）
+  out = out.replace(/(^|[^*\w])\*([^*\s][^*\n]*?)\*(?![*\w])/g, '$1<em>$2</em>');
+  return out;
+}
+
+// 补齐未闭合的 ``` 围栏，让"半截代码块"在流式期间也能正常解析成 <pre><code>
+function balanceCodeFences(text) {
+  const n = (String(text).match(/```/g) || []).length;
+  return (n % 2 === 1) ? String(text) + '\n```' : String(text);
+}
+
 function parseMarkdownTable(html) {
   // 匹配连续。| 的行块（兼容。无首尾管道符两种格式。
   const tableRegex = new RegExp('((?:^|\\n)((?:[^\\n]*\\|[^\\n]*(?:\\r?\\n|$))+))', 'g');
@@ -685,15 +791,27 @@ function handleMessage(msg) {
         renderChatList();
         notifyIncoming(msg);
       }
-      if (msg.msgId && streamingMsgs[msg.msgId]) {
+      if (msg.msgId && recentStreamed[msg.msgId]) {
+        // ⭐ 已按「段」流式渲染过：message.new 只把最后一段校正为最终正文，绝不重复追加气泡
+        const rs = recentStreamed[msg.msgId];
+        const lastEl = rs.segments && rs.segments[rs.segments.length - 1];
+        if (lastEl && msg.content) {
+          const contentEl = lastEl.querySelector('.msg-content');
+          if (contentEl) { contentEl.innerHTML = markdownToHtml(balanceCodeFences(msg.content)); highlightBlocks(lastEl); }
+        }
+        delete recentStreamed[msg.msgId];
+      } else if (msg.msgId && streamingMsgs[msg.msgId]) {
+        // end 尚未到达的竞态：校正当前活动段
         const s = streamingMsgs[msg.msgId];
-        s.el.querySelector('.msg-content').textContent = msg.content || '';
-        const dot = s.el.querySelector('.typing-dot'); if (dot) dot.remove();
-        delete streamingMsgs[msg.msgId];
-        // remove stale tool-call rows (they stay as history, but remove duplicates? keep them)
+        ensureStreamSegment(s);
+        if (s.el) { s.content = msg.content || ''; finishSegmentEl(s); }
       } else {
-        const isStreamingDuplicate = msg.from && msg.content && Object.values(streamingMsgs).some(s => 
-          s.el.querySelector('.msg-content') && s.el.querySelector('.msg-content').textContent === msg.content
+        // 段模型下 s.el 可能为 null（已封块），遍历所有段且做空值守卫，避免 TypeError
+        const isStreamingDuplicate = msg.from && msg.content && Object.values(streamingMsgs).some(s =>
+          (s.segments || (s.el ? [s.el] : [])).some(seg => {
+            const c = seg && seg.querySelector && seg.querySelector('.msg-content');
+            return c && c.textContent === msg.content;
+          })
         );
         // 乐观渲染去重：如果是服务端回传的用户自己消息，且已立即渲染过，跳。
         // 归一化：回传 from 可能是数字ID/带前缀ID，发送时已把多种自身 ID 形态都加入去重集合
@@ -738,22 +856,23 @@ function handleMessage(msg) {
     case 'subagent.result':
       if (typeof loadSubAgents === 'function') loadSubAgents();
       break;
+    case 'agent.streaming.seal':
+      // ⭐ 时序封块：本轮正文已流完、后端即将插入工具卡。定稿当前气泡，
+      //   下一段正文新建气泡排在工具卡之后，杜绝「文字压在工具卡上方」的倒置。
+      if (streamingMsgs[msg.msgId]) sealStreamSegment(streamingMsgs[msg.msgId]);
+      break;
     case 'agent.streaming.chunk':
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
-        s.content += msg.chunk || '';
-        s.el.querySelector('.msg-content').textContent = s.content;
-        document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
+        ensureStreamSegment(s); // seal 后新建气泡，保证排在工具卡之后
+        if (s.el) { s.content += msg.chunk || ''; streamScheduleRender(s); }
       }
       break;
     case 'agent.streaming.think':
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
-        if (s.thinkEl) {
-          s.thinkEl.style.display = 'block';
-          s.thinkEl.textContent += msg.think || '';
-          document.getElementById('messages').scrollTop = document.getElementById('messages').scrollHeight;
-        }
+        ensureStreamSegment(s);
+        if (s.thinkEl) { s.think = (s.think || '') + (msg.think || ''); streamScheduleThink(s); }
       }
       break;
     case 'task.progress':
@@ -763,25 +882,10 @@ function handleMessage(msg) {
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
       if (streamingMsgs[msg.msgId]) {
         const s = streamingMsgs[msg.msgId];
-        const dot = s.el.querySelector('.typing-dot');
-        if (dot) dot.remove();
-        // 应用 Markdown + 代码高亮
-        const contentEl = s.el.querySelector('.msg-content');
-        if (contentEl && s.content) {
-          contentEl.innerHTML = markdownToHtml(s.content);
-          highlightBlocks(s.el);
-        }
-        // 收起思考区
-        if (s.thinkEl && s.thinkEl.textContent) {
-          s.thinkEl.style.fontSize = '11px';
-          s.thinkEl.style.maxHeight = '3em';
-          s.thinkEl.style.overflow = 'hidden';
-          s.thinkEl.style.cursor = 'pointer';
-          s.thinkEl.title = t('chat.expandThink');
-          s.thinkEl.onclick = function() {
-            this.style.maxHeight = this.style.maxHeight === 'none' ? '3em' : 'none';
-          };
-        }
+        // 收尾：定稿当前段（最终 Markdown + 高亮 + 摘光标 + 收思考区），并标记 _dead 停止节流
+        streamFinish(s);
+        // ⭐ 记录已流式渲染的气泡段，供随后的 message.new 按 msgId 校正而非重复追加
+        if (msg.msgId) { recentStreamed[msg.msgId] = { chatId: s.chatId, segments: (s.segments || []).slice(), ts: Date.now() }; pruneRecentStreamed(); }
         if (msg.error) toast(t('err.replyFail', { msg: String(msg.error).slice(0, 50) }));
         if (msg.stopped) toast(t('chat.stopped'));
         delete streamingMsgs[msg.msgId];
@@ -1103,8 +1207,29 @@ function appendToolCallRow(msg) {
   const el = document.createElement('div');
   el.className = 'msg-row ai tool-call-row';
   el.dataset.toolCallId = msg.toolCallId || '';
+  el.dataset.startedAt = String(Date.now());
   const desc = msg.description || '';
-  el.innerHTML = '<div class="msg-avatar ai">\u2699</div><div style="max-width:70%"><div class="msg-bubble"><div class="msg-content" style="font-size:12px;color:#8b949e">\u26a1 <b>' + esc(msg.toolName || '') + '</b>' + (desc ? ' \u2014 <span style="color:#58a6ff">' + esc(desc) + '</span>' : '') + ' (' + esc(JSON.stringify(msg.args || {}).slice(0,120)) + ') <span class="tool-status">...</span></div></div></div>';
+  let argsText = '';
+  try { argsText = JSON.stringify(msg.args || {}, null, 2); } catch (e) { argsText = String(msg.args || ''); }
+  el.innerHTML =
+    '<div class="msg-avatar ai">\u2699</div>' +
+    '<div style="max-width:70%"><div class="msg-bubble tool-bubble">' +
+      '<div class="tool-head"><span class="tool-spinner"></span>' +
+        '<b class="tool-name">' + esc(msg.toolName || '') + '</b>' +
+        (desc ? '<span class="tool-desc">' + esc(desc) + '</span>' : '') +
+        '<span class="tool-status"></span>' +
+        '<button type="button" class="tool-toggle" title="参数 / 结果">+</button>' +
+      '</div>' +
+      '<pre class="tool-args"></pre>' +
+      '<div class="tool-result"></div>' +
+    '</div></div>';
+  const argsEl = el.querySelector('.tool-args');
+  if (argsEl) argsEl.textContent = argsText.slice(0, 1500);
+  const tg = el.querySelector('.tool-toggle');
+  if (tg) tg.onclick = function() {
+    el.classList.toggle('tool-open');
+    this.textContent = el.classList.contains('tool-open') ? '\u2212' : '+';
+  };
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
 }
@@ -1114,21 +1239,38 @@ function updateToolCallRow(msg) {
   const rows = container.querySelectorAll('.tool-call-row');
   for (let i = rows.length - 1; i >= 0; i--) {
     if ((rows[i].dataset.toolCallId || '') === (msg.toolCallId || '')) {
-      const st = rows[i].querySelector('.tool-status');
-      if (st) st.textContent = msg.success ? ' \u2705' : ' \u274c ' + (msg.error || '');
+      const row = rows[i];
+      const head = row.querySelector('.tool-head');
+      // spinner → 结果图标
+      const sp = row.querySelector('.tool-spinner');
+      if (sp) sp.remove();
+      const st = row.querySelector('.tool-status');
+      if (st) st.textContent = msg.success ? '\u2713' : '\u2717';
+      row.classList.add(msg.success ? 'tool-ok' : 'tool-fail');
+      // 耗时（tabular-nums 对齐）
+      const started = Number(row.dataset.startedAt || 0);
+      if (started && head) {
+        const dur = ((Date.now() - started) / 1000).toFixed(1) + 's';
+        let dEl = head.querySelector('.tool-dur');
+        if (!dEl) { dEl = document.createElement('span'); dEl.className = 'tool-dur'; head.insertBefore(dEl, head.querySelector('.tool-toggle')); }
+        dEl.textContent = dur;
+      }
+      // 失败原因
+      if (!msg.success && msg.error && head) {
+        const eEl = document.createElement('span');
+        eEl.className = 'tool-err';
+        eEl.textContent = String(msg.error).slice(0, 200);
+        head.appendChild(eEl);
+      }
       if (msg.success && msg.result) {
         let resultText = '';
-        try { resultText = typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result); } catch(e) {}
+        try { resultText = typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result, null, 2); } catch(e) {}
         if (resultText) {
           const diffHtml = renderDiff(resultText);
-          if (diffHtml) {
-            const bubble = rows[i].querySelector('.msg-bubble');
-            if (bubble) {
-              const dv = document.createElement('div');
-              dv.innerHTML = diffHtml;
-              dv.style.marginTop = '8px';
-              bubble.appendChild(dv);
-            }
+          const resBox = row.querySelector('.tool-result');
+          if (resBox) {
+            if (diffHtml) resBox.innerHTML = diffHtml;
+            else resBox.textContent = resultText.slice(0, 4000);
           }
         }
       }
@@ -1136,6 +1278,172 @@ function updateToolCallRow(msg) {
     }
   }
   container.scrollTop = container.scrollHeight;
+}
+
+// ══════════════════════════════════════════════════════════
+// 流式渲染器（v2.1.0）
+// 之前流式期间是把原文塞进 textContent：看不到排版、裸奔 `**加粗**`，
+// 等全部生成完才"啪"一下变 Markdown，闪一下很出戏。
+// 现在：按 STREAM_RENDER_MS 节流做增量 Markdown 渲染 + 尾部闪烁光标 + 贴底跟随。
+// ══════════════════════════════════════════════════════════
+const STREAM_RENDER_MS = 80;       // 基础节流窗口 ≈12.5fps，兼顾顺滑与 CPU
+const STREAM_HARD_DEGRADE = 12000; // 超过此字数：流式期间降级为纯文本，避免每帧全量 Markdown 卡顿
+
+// 动态节流：内容越长重排代价越大，间隔相应放大（80→160→320ms）
+function streamRenderDelay(s) {
+  const n = (s && s.content) ? s.content.length : 0;
+  if (n < 2000) return STREAM_RENDER_MS;
+  if (n < 6000) return 160;
+  return 320;
+}
+
+// 贴底才自动跟随：用户往上翻历史时不打断
+function streamAutoScroll(containerId) {
+  const c = document.getElementById(containerId || 'messages');
+  if (!c) return;
+  if ((c.scrollHeight - c.scrollTop - c.clientHeight) < 140) c.scrollTop = c.scrollHeight;
+}
+
+// 构造一个流式气泡元素（首帧与 seal 后新建段共用，保证结构一致）
+function buildStreamBubble(s, container) {
+  const senderId = (s.from || '').replace(/^agent:/, '');
+  const isMe = senderId.startsWith('agent-' + (clientId||'').replace(/^user-/,'') + '-');
+  const el = document.createElement('div');
+  el.className = 'msg-row ' + (isMe ? 'me' : 'ai');
+  el.classList.add('streaming');
+  el.innerHTML = '<div class="msg-avatar ai">🤖</div>' +
+    '<div style="max-width:70%">' + _agentNameLine(senderId) + '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"></div></div>' +
+    '<div class="msg-meta">' + new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + '</div></div>';
+  container.appendChild(el);
+  return el;
+}
+
+// 正文流式渲染：Markdown + 尾部光标；长文降级为纯文本
+function streamRenderNow(s, final) {
+  if (!s || !s.el) return;
+  const contentEl = s.el.querySelector('.msg-content');
+  if (!contentEl) return;
+  const text = s.content || '';
+  if (!text) {
+    if (!final) contentEl.innerHTML = '<span class="typing-dot">' + t('chat.thinking') + '</span>';
+    return;
+  }
+  // ⭐ 长文降级：流式期间超过阈值只做纯文本渲染（textContent 天然防 XSS），
+  //   收尾/封块时再一次性 Markdown 化，避免每帧全量重排把长回复拖到卡顿。
+  if (!final && text.length > STREAM_HARD_DEGRADE) {
+    contentEl.textContent = text;
+    contentEl.insertAdjacentHTML('beforeend', '<span class="stream-cursor" aria-hidden="true"></span>');
+    return;
+  }
+  contentEl.innerHTML = markdownToHtml(balanceCodeFences(text));
+  if (final) {
+    highlightBlocks(s.el);
+  } else {
+    contentEl.insertAdjacentHTML('beforeend', '<span class="stream-cursor" aria-hidden="true"></span>');
+  }
+}
+
+function streamScheduleRender(s) {
+  if (!s || s._dead || !s.el || s._renderTimer) return;
+  s._renderTimer = setTimeout(function() {
+    s._renderTimer = null;
+    if (s._dead || !s.el) return;
+    streamRenderNow(s, false);
+    streamAutoScroll(s.containerId);
+  }, streamRenderDelay(s));
+}
+
+// 思考区流式渲染：pre-wrap + 尾部光标
+function streamScheduleThink(s) {
+  if (!s || s._dead || !s.thinkEl || s._thinkTimer) return;
+  s._thinkTimer = setTimeout(function() {
+    s._thinkTimer = null;
+    if (s._dead || !s.thinkEl) return;
+    s.thinkEl.style.display = 'block';
+    s.thinkEl.innerHTML = esc(s.think || '').replace(/\n/g, '<br>') + '<span class="stream-cursor think"></span>';
+    streamAutoScroll(s.containerId);
+  }, STREAM_RENDER_MS);
+}
+
+// 清除段级定时器：封块/收尾时防止悬挂回调误改已定稿的 DOM
+function clearStreamTimers(s) {
+  if (!s) return;
+  if (s._renderTimer) { clearTimeout(s._renderTimer); s._renderTimer = null; }
+  if (s._thinkTimer) { clearTimeout(s._thinkTimer); s._thinkTimer = null; }
+}
+
+// 定稿当前段气泡：摘流式态/光标/占位 → 最终 Markdown → 高亮
+function finishSegmentEl(s) {
+  if (!s || !s.el) return;
+  const el = s.el;
+  el.classList.remove('streaming');
+  const dot = el.querySelector('.typing-dot');
+  if (dot) dot.remove();
+  const cur = el.querySelector('.msg-content .stream-cursor');
+  if (cur) cur.remove();
+  const contentEl = el.querySelector('.msg-content');
+  if (contentEl) {
+    if (s.content) { contentEl.innerHTML = markdownToHtml(balanceCodeFences(s.content)); highlightBlocks(el); }
+    else contentEl.innerHTML = '';
+  }
+}
+
+// 收起当前段思考区：摘尾部光标
+function collapseThinkEl(s) {
+  if (!s || !s.thinkEl) return;
+  const cur = s.thinkEl.querySelector('.stream-cursor');
+  if (cur) cur.remove();
+}
+
+// ⭐ 确保有活动段气泡：seal 之后 s.el 置空，下一段正文到达时在容器末尾新建气泡。
+//   此刻工具卡已排在前面，新气泡自然落在工具卡之后 → 严格时序，杜绝倒置。
+function ensureStreamSegment(s) {
+  if (!s || s.el) return;
+  const container = document.getElementById(s.containerId || 'messages');
+  if (!container) return;
+  const el = buildStreamBubble(s, container);
+  s.el = el;
+  s.thinkEl = el.querySelector('.msg-think');
+  s.content = '';
+  s.think = '';
+  if (s.segments) s.segments.push(el); else s.segments = [el];
+}
+
+// ⭐ 时序封块：本轮正文流完、后端即将插入工具卡。定稿当前气泡并置空活动段，
+//   下一段正文将新建气泡排在工具卡之后。
+function sealStreamSegment(s) {
+  if (!s || !s.el) return;
+  clearStreamTimers(s);
+  finishSegmentEl(s);
+  collapseThinkEl(s);
+  s.el = null;
+  s.thinkEl = null;
+  s.content = '';
+  s.think = '';
+}
+
+// recentStreamed 保鲜：TTL 30s + 上限 50，防内存泄漏
+function pruneRecentStreamed() {
+  const now = Date.now();
+  let keys = Object.keys(recentStreamed);
+  for (let i = 0; i < keys.length; i++) {
+    const rs = recentStreamed[keys[i]];
+    if (!rs || (now - (rs.ts || 0)) > 30000) delete recentStreamed[keys[i]];
+  }
+  keys = Object.keys(recentStreamed);
+  if (keys.length > 50) {
+    keys.sort(function(a, b) { return (recentStreamed[a].ts || 0) - (recentStreamed[b].ts || 0); });
+    for (let j = 0; j < keys.length - 50; j++) delete recentStreamed[keys[j]];
+  }
+}
+
+// 流式收尾：定稿当前段 + 停节流（不封块，_dead 阻断后续调度）
+function streamFinish(s) {
+  if (!s) return;
+  clearStreamTimers(s);
+  finishSegmentEl(s);
+  collapseThinkEl(s);
+  s._dead = true;
 }
 
 function appendStreamingMsg(msg) {
@@ -1148,13 +1456,20 @@ function appendStreamingMsg(msg) {
   
   const el = document.createElement('div');
   el.className = 'msg-row ' + (isMe ? 'me' : 'ai');
+  el.classList.add('streaming');
   const displayName = senderId.replace(/^agent-|^user-/, '').charAt(0).toUpperCase() || '?';
   el.innerHTML = '<div class="msg-avatar ai">🤖</div>' +
     '<div style="max-width:70%">' + _agentNameLine(senderId) + '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot" style="animation:blink 1s infinite;color:#4a9eff">。/span></div></div>' +
     '<div class="msg-meta">' + new Date(msg.timestamp || Date.now()).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + '</div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
-  streamingMsgs[msg.msgId] = { el: el, content: '', thinkEl: el.querySelector('.msg-think') };
+  streamingMsgs[msg.msgId] = {
+    el: el, content: '', think: '', thinkEl: el.querySelector('.msg-think'),
+    chatId: msg.chatId, containerId: 'messages', from: msg.from || '',
+    segments: [el], _dead: false, _renderTimer: null, _thinkTimer: null
+  };
+  // 首帧立刻显示思考占位（此前是硬编码的 typing-dot）
+  streamRenderNow(streamingMsgs[msg.msgId], false);
 }
 
 // 时间分割。
@@ -4635,24 +4950,19 @@ function lanStreamingStart(msg) {
     '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot">' + t('chat.thinking') + '</span></div></div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
-  lanStreaming[msg.msgId] = { el, content: '', thinkEl: el.querySelector('.msg-think'), senderId: msg.senderId || msg.from || '' };
+  lanStreaming[msg.msgId] = { el, content: '', think: '', thinkEl: el.querySelector('.msg-think'), containerId: 'lanAgentMessages', _dead: false, senderId: msg.senderId || msg.from || '' };
 }
 function lanStreamingChunk(msg) {
   const s = lanStreaming[msg.msgId];
   if (!s) return;
   s.content += msg.chunk || '';
-  const c = s.el.querySelector('.msg-content');
-  if (c) c.textContent = s.content;
-  const container = document.getElementById('lanAgentMessages');
-  if (container) container.scrollTop = container.scrollHeight;
+  streamScheduleRender(s);
 }
 function lanStreamingThink(msg) {
   const s = lanStreaming[msg.msgId];
   if (!s || !s.thinkEl) return;
-  s.thinkEl.style.display = 'block';
-  s.thinkEl.textContent += msg.think || '';
-  const container = document.getElementById('lanAgentMessages');
-  if (container) container.scrollTop = container.scrollHeight;
+  s.think = (s.think || '') + (msg.think || '');
+  streamScheduleThink(s);
 }
 function lanStreamingEnd(msg) {
   const s = lanStreaming[msg.msgId];

@@ -136,6 +136,37 @@ export function createProviderRoutes(ctx: ServerContext): Router {
     }
   });
 
+  // ── 模型黑名单管理（记录目录里有、账号无授权/已下线的模型）──
+  router.get('/models/blacklist', (_req, res) => {
+    try {
+      res.json({ ok: true, blacklist: (aiHub as any).getModelBlacklist?.() || [] });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.post('/models/blacklist', (req, res) => {
+    try {
+      const { model, status, reason } = req.body || {};
+      if (!model) return res.status(400).json({ error: 'model 必填' });
+      (aiHub as any).recordModelFailure?.(String(model), status || 404, reason || 'manual');
+      res.json({ ok: true, model });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  router.delete('/models/blacklist', (req, res) => {
+    try {
+      const model = (req.body && req.body.model) || req.query.model;
+      if (!model) return res.status(400).json({ error: 'model 必填' });
+      const removed = (aiHub as any).unblacklistModel?.(String(model)) || false;
+      res.json({ ok: true, removed });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── 自定义 Provider ──
   router.get('/custom-providers', (_req, res) => {
     try {

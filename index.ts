@@ -575,6 +575,72 @@ setSearchManager(searchManagerInstance);
     if (_req.method === 'OPTIONS') return res.status(204).end();
     next();
   });
+  // ── 2026-09-13: 零依赖 HTTP 压缩中间件（gzip / brotli）──
+  // 实测：首屏关键资源 702477 B → gzip 173404 B(24.7%) / brotli 131061 B(18.7%)
+  // 仅作用于静态资源白名单，不触碰任何 /api 路由（含 SSE 流式）
+  app.use((req: any, res: any, next: any) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    const p = String(req.path || '');
+    const isStaticAsset =
+      p === '/' || p === '/index.html' ||
+      (/^\/(?!api\/).+\.(?:js|mjs|css|html|svg|json|txt|webmanifest|map)$/i.test(p));
+    if (!isStaticAsset) return next();
+
+    const accept = String(req.headers['accept-encoding'] || '');
+    const alg = /\bbr\b/.test(accept) ? 'br' : (/\bgzip\b/.test(accept) ? 'gzip' : null);
+    if (!alg) return next();
+
+    const COMPRESSIBLE = /^(?:text\/|application\/(?:javascript|json|xml|manifest\+json)|image\/svg\+xml)/i;
+    const MIN_SIZE = 1024;
+    const zlib = require('zlib');
+    const chunks: Buffer[] = [];
+    const origWrite = res.write.bind(res);
+    const origEnd = res.end.bind(res);
+
+    const push = (chunk: any, encoding?: any): boolean => {
+      if (chunk == null) return true;
+      chunks.push(Buffer.isBuffer(chunk)
+        ? chunk
+        : Buffer.from(chunk, (typeof encoding === 'string' ? encoding : 'utf8') as BufferEncoding));
+      return true;
+    };
+
+    res.setHeader('Vary', 'Accept-Encoding');
+
+    res.write = function (chunk: any, encoding?: any): boolean {
+      if (res.headersSent && res.getHeader('content-encoding')) return origWrite(chunk, encoding);
+      return push(chunk, encoding);
+    };
+
+    res.end = function (a?: any, b?: any, c?: any): any {
+      const cbs = [a, b, c].filter((x) => typeof x === 'function');
+      if (typeof a !== 'function' && a != null) push(a, typeof b === 'string' ? b : undefined);
+      const body = Buffer.concat(chunks);
+      const ctype = String(res.getHeader('content-type') || '');
+      const already = res.getHeader('content-encoding');
+      // 206 分片 / Range 响应绝不能压缩（否则 Content-Range 与实际字节不符）
+      const isPartial = res.statusCode === 206 || Boolean(res.getHeader('content-range'));
+      const cc = String(res.getHeader('cache-control') || '').toLowerCase();
+      const noTransform = cc.split(',').some((d) => d.trim() === 'no-transform');
+      if (already || isPartial || noTransform || body.length < MIN_SIZE || !COMPRESSIBLE.test(ctype)) {
+        if (!already) res.setHeader('Content-Length', String(body.length));
+        return origEnd(body, ...cbs);
+      }
+      let out: Buffer;
+      try {
+        out = alg === 'br'
+          ? zlib.brotliCompressSync(body, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 5 } })
+          : zlib.gzipSync(body, { level: 6 });
+      } catch {
+        return origEnd(body, ...cbs);
+      }
+      res.setHeader('Content-Encoding', alg);
+      res.setHeader('Content-Length', String(out.length));
+      return origEnd(out, ...cbs);
+    };
+
+    next();
+  });
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃

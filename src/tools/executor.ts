@@ -112,6 +112,15 @@ export interface RunToolsOptions {
   onToolCall?: (e: ToolCallEvent) => void;
   onToolResult?: (e: ToolResultEvent) => void;
   onThink?: (thinkChunk: string) => void;
+  /** 真流式：工具循环期间实时推送正文 delta（有工具时也能边生成边显示） */
+  onChunk?: (chunk: string) => void;
+  /**
+   * 时序封块：本轮正文已流完、即将执行工具时触发。
+   * 前端收到后把当前气泡「封块」（定稿 Markdown、摘光标），
+   * 工具卡追加到封块之后；下一轮正文再新建气泡。
+   * 这样时间线严格保持「文字 → 工具卡 → 文字 → 工具卡」，不再倒置。
+   */
+  onSegmentEnd?: () => void;
 }
 
 export interface RunToolsResult {
@@ -173,6 +182,72 @@ export function stripDsmlMarkup(text: string): string {
     .replace(/<\/?｜{1,2}DSML｜{1,2}[^>]*>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/**
+ * 流式增量 DSML 过滤器
+ * ─────────────────────────────────────────────
+ * 逐 delta 推送正文时，DeepSeek 系模型可能把工具调用标记（<｜DSML｜｜tool_calls>…）
+ * 混在正文里流出来，用户会看到一堆裸标记，非常出戏。
+ *
+ * 难点：标记可能跨多个 chunk（这一帧只到 "<｜DS"，下一帧才补齐），
+ * 不能简单地对单帧做 replace。
+ *
+ * 策略：维护一个未决缓冲区 buf——
+ *   1) 先把 buf 里"已闭合"的完整 DSML 块整体删掉；
+ *   2) 若 buf 里出现"未闭合"的 DSML 开标记，则只吐出开标记之前的安全前缀，
+ *      其余留在 buf 里等后续 chunk 补齐闭合再删；
+ *   3) 若 buf 尾部是一个"可能长成 DSML 标记"的半截前缀（如 "<"、"<｜D"），
+ *      暂时扣住不吐，避免把标记的开头漏给用户；
+ *   4) 流结束时调用 flush()，把残留 buf 用 stripDsmlMarkup 兜底清洗后吐出。
+ *
+ * 正常正文（不含 <｜ 全角竖线）几乎零延迟直通，只有遇到可能是标记的 "<" 才扣一帧。
+ */
+export function createStreamDsmlFilter(): { push: (raw: string) => string; flush: () => string } {
+  let buf = "";
+  // 判断某段文本是否是"可能继续长成 DSML 标记"的半截前缀
+  const PARTIAL = /^<｜{0,2}(?:D(?:S(?:M(?:L(?:｜{0,2})?)?)?)?)?$/;
+  const stripComplete = (s: string) =>
+    s
+      .replace(/<｜{1,2}DSML｜{1,2}tool_calls>[\s\S]*?<\/｜{1,2}DSML｜{1,2}tool_calls>/g, "")
+      .replace(/<｜{1,2}DSML｜{1,2}invoke[\s\S]*?<\/｜{1,2}DSML｜{1,2}invoke>/g, "");
+  return {
+    push(raw: string): string {
+      if (!raw) return "";
+      buf += raw;
+      buf = stripComplete(buf);
+      // 出现未闭合开标记 → 只吐标记之前的安全前缀
+      const openMatch = /<｜{1,2}DSML｜{1,2}/.exec(buf);
+      if (openMatch && typeof openMatch.index === "number") {
+        const safe = buf.slice(0, openMatch.index);
+        buf = buf.slice(openMatch.index);
+        // 把残留里已完整的简单标签也清掉（例如已闭合的 invoke 尾标签）
+        buf = buf.replace(/<\/?｜{1,2}DSML｜{1,2}[^>]*>/g, "");
+        // 若清理后 buf 不再以开标记开头，说明是可释放的普通文本
+        if (!/<｜{1,2}DSML｜{1,2}/.test(buf)) {
+          const rest = buf;
+          buf = "";
+          return safe + rest;
+        }
+        return safe;
+      }
+      // 无开标记：扣住尾部"可能是标记半截前缀"的部分，其余全部吐出
+      const lt = buf.lastIndexOf("<");
+      if (lt !== -1 && PARTIAL.test(buf.slice(lt))) {
+        const safe = buf.slice(0, lt);
+        buf = buf.slice(lt);
+        return safe;
+      }
+      const out = buf;
+      buf = "";
+      return out;
+    },
+    flush(): string {
+      const rest = stripDsmlMarkup(buf);
+      buf = "";
+      return rest;
+    },
+  };
 }
 
 /**
@@ -379,6 +454,92 @@ function isValidParsedToolCall(obj: unknown): obj is ParsedToolCall {
  *  - 工具参数解析通过 safeJsonParse + isRecord 校验
  *  - 不再使用 as any 强制类型转换
  */
+/**
+ * 发起一次补全请求：有 onChunk 时优先真流式（stream:true），
+ * 实时回调正文/推理 delta，结束后把 delta 重组成与非流式一致的
+ * OpenAIChatResponse 结构，保证下游 tool_calls 解析逻辑完全不变。
+ * 无 onChunk 或流式不可用时，自动回退到非流式一次性请求。
+ */
+async function requestCompletion(
+  client: any,
+  requestParams: Record<string, unknown>,
+  signal: AbortSignal | undefined,
+  onChunk: ((chunk: string) => void) | undefined,
+  onThink: ((t: string) => void) | undefined,
+): Promise<OpenAIChatResponse> {
+  if (!onChunk) {
+    return await client.chat.completions.create(requestParams, signal ? { signal } : undefined) as OpenAIChatResponse;
+  }
+  let emitted = false;
+  try {
+    const stream = await client.chat.completions.create(
+      { ...requestParams, stream: true },
+      signal ? { signal } : undefined,
+    ) as any;
+
+    let content = '';
+    let reasoning = '';
+    let usage: any = undefined;
+    const acc: Record<number, { id: string; name: string; args: string }> = {};
+    // ⭐ 流式增量剥 DSML：正文 delta 先过过滤器再推给前端，避免裸标记闪现
+    const dsmlFilter = createStreamDsmlFilter();
+
+    for await (const chunk of stream) {
+      const ch = chunk?.choices?.[0];
+      const delta: any = ch?.delta || {};
+      const r = delta.reasoning_content ?? delta.reasoning;
+      if (r) { reasoning += r; emitted = true; if (onThink) onThink(r); }
+      if (delta.content) {
+        content += delta.content; // 原始累积（供后续 tool_calls 文本解析，不能剥）
+        emitted = true;
+        if (onChunk) {
+          const safe = dsmlFilter.push(delta.content);
+          if (safe) onChunk(safe);
+        }
+      }
+      if (Array.isArray(delta.tool_calls)) {
+        for (const tc of delta.tool_calls) {
+          const idx = typeof tc.index === 'number' ? tc.index : 0;
+          if (!acc[idx]) acc[idx] = { id: '', name: '', args: '' };
+          if (tc.id) acc[idx].id = tc.id;
+          if (tc.function?.name) acc[idx].name += tc.function.name;
+          if (tc.function?.arguments) acc[idx].args += tc.function.arguments;
+        }
+      }
+      if ((delta as any).function_call) {
+        if (!acc[0]) acc[0] = { id: '', name: '', args: '' };
+        if ((delta as any).function_call.name) acc[0].name += (delta as any).function_call.name;
+        if ((delta as any).function_call.arguments) acc[0].args += (delta as any).function_call.arguments;
+      }
+      if (chunk?.usage) usage = chunk.usage;
+    }
+    // ⭐ 流结束：把过滤器里扣住的尾巴（非标记的普通残留）补吐给前端
+    if (onChunk) {
+      const tail = dsmlFilter.flush();
+      if (tail) onChunk(tail);
+    }
+
+    const idxs = Object.keys(acc).map(Number).sort((a, b) => a - b);
+    const tool_calls = idxs.length > 0
+      ? idxs.map((k) => ({
+          id: acc[k].id || ('call-' + Math.random().toString(36).slice(2)),
+          type: 'function' as const,
+          function: { name: acc[k].name, arguments: acc[k].args },
+        }))
+      : undefined;
+    const message: any = { role: 'assistant', content: content || null, __streamed: true };
+    if (reasoning) message.reasoning_content = reasoning;
+    if (tool_calls) message.tool_calls = tool_calls;
+    return { choices: [{ message }], usage } as unknown as OpenAIChatResponse;
+  } catch (streamErr: unknown) {
+    // 已吐出部分 delta 再失败，不能回退（会重复），直接抛给外层
+    if (emitted) throw streamErr;
+    // 流式不支持（部分 provider / 模型）→ 回退非流式
+    console.warn('[Executor] 流式请求失败，回退非流式:', (streamErr as Error)?.message || streamErr);
+    return await client.chat.completions.create(requestParams, signal ? { signal } : undefined) as OpenAIChatResponse;
+  }
+}
+
 export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsResult> {
   const {
     client,
@@ -396,6 +557,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
     onToolCall,
     onToolResult,
     onThink,
+    onChunk,
+    onSegmentEnd,
   } = options;
 
   const result: RunToolsResult = {
@@ -491,7 +654,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     let aiResponse: OpenAIChatResponse;
     try {
-      aiResponse = await client.chat.completions.create(requestParams, signal ? { signal } : undefined) as OpenAIChatResponse;
+      aiResponse = await requestCompletion(client, requestParams, signal, onChunk, onThink) as OpenAIChatResponse;
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error(`[Executor] AI 调用失败 (iteration ${i + 1}):`, errMsg);
@@ -525,7 +688,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
     // 提取推理/思考过程（DeepSeek-R1/o1/GPT-5 等推理模型会返回）
     const reasoningContent = (assistantMsg as any)?.reasoning_content ?? (assistantMsg as any)?.reasoning;
-    if (reasoningContent && onThink) {
+    if (reasoningContent && onThink && !(assistantMsg as any).__streamed) {
       onThink(reasoningContent);
     }
 
@@ -629,6 +792,10 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       },
     }));
     result.messages.push(assistantEntry);
+
+    // ⭐ 时序封块：本轮正文已流完且要开始调工具了，通知前端把当前气泡定稿，
+    //    随后的 tool.call 卡片会追加到封块之后，保证时间线正确。
+    if (onChunk && onSegmentEnd) onSegmentEnd();
 
     // ── 执行所有工具调用 ──
     // v1.5.0: 注入上下文给子程序

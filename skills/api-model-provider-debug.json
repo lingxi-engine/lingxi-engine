@@ -1,0 +1,14 @@
+{
+  "name": "api-model-provider-debug",
+  "displayName": "模型 API 接入排查",
+  "description": "排查并修复 AI 模型 provider 调用失败问题，如 400 非法模型 ID、410 模型下线、Key 或配置错误。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户反馈某个模型引擎调用 NVIDIA、OpenRouter 等 provider 失败时，按以下步骤排查：1. 读取本地 provider 配置文件与相关代码，确认 API Key、baseURL、模型 ID 的实际配置。2. 使用 shell_exec 配合 curl 或项目脚本，用真实 Key 直接请求 provider 的模型列表或 chat completions 接口，做对照实验。3. 区分错误类型：401/403 多为 Key 问题，400 多为模型 ID 非法或格式错误，410 多为模型已下线/EOL。4. 对比 provider 官网或官方文档中的准确模型 ID，不要猜测；必要时测试多个候选 ID。5. 找到根因后，用 write_file 修正配置或代码中的模型 ID、provider 映射等。6. 最后重新调用验证，确认返回 HTTP 200 或正常响应，并简要总结病根、修改点和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1789246462836
+}

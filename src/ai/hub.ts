@@ -4,6 +4,8 @@
  * 支持：英伟达 NIM + OpenAI + Ollama + 自定义
  */
 import OpenAI from "openai";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
+import { join, dirname } from "path";
 
 // ─────────────────── 配置 ───────────────────
 
@@ -36,22 +38,32 @@ const DEEPSEEK_API_KEY = process.env.DEEPSEEK_API_KEY || "";
 const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || "https://api.deepseek.com/v1";
 
 // 英伟达 NIM 推荐模型（支持 function calling + 中文）
+// 英伟达 NIM 推荐模型（2026-09-13 全量实测 HTTP 200 复核）
+// ⚠️ 旧列表已作废：minimaxai/minimax-m3(410 EOL)、z-ai/glm-5.2(410 EOL)、
+//    stepfun-ai/step-3.7-flash(410 EOL)、moonshotai/kimi-k2.6(404 账号无授权)
+// ⚠️ 注意：NIM 部分模型非流式请求会挂起，必须 stream:true（deepseek-v4-flash-0731 即属此类）
 const NVIDIA_RECOMMENDED_MODELS = [
-  "minimaxai/minimax-m3",                 // ⭐ 默认主模型
-  "minimaxai/minimax-m2.7",               // MiniMax 上代
-  "z-ai/glm-5.2",                         // 智谱 GLM-5.2
-  "moonshotai/kimi-k2.6",                 // Kimi K2.6 多模态 MoE
-  "stepfun-ai/step-3.7-flash",            // StepFun 3.7 Flash
-  "stepfun-ai/step-3.5-flash",            // StepFun 3.5 Flash
-  "qwen/qwen3-next-80b-a3b-instruct",    // Qwen3 80B 中文+工具调用强
-  "qwen/qwen3.5-122b-a10b",              // Qwen 3.5 122B
-  "qwen/qwen3.5-397b-a17b",              // Qwen 3.5 397B 大参数
-  "deepseek-ai/deepseek-v4-flash",        // DeepSeek V4 Flash
-  "deepseek-ai/deepseek-v4-pro",          // DeepSeek V4 Pro
-  "openai/gpt-oss-120b",                  // GPT-OSS 120B 推理
-  "openai/gpt-oss-20b",                   // GPT-OSS 20B 轻量推理
-  "google/gemma-4-31b-it",               // Gemma 4 31B
+  "nvidia/nemotron-3-ultra-550b-a55b",            // ⭐ 默认主模型
+  "nvidia/nemotron-3-super-120b-a12b",            // Nemotron 3 Super
+  "nvidia/nemotron-3.5-lightning-30b-a3b",        // Nemotron 3.5 轻量
+  "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",// Nemotron Nano 推理
+  "z-ai/glm-5.3-flash",                           // 智谱 GLM-5.3 Flash
+  "openai/gpt-oss-20b",                           // GPT-OSS 20B 轻量推理
+  "deepseek-ai/deepseek-v4-flash-0731",           // DeepSeek V4 Flash（需流式）
 ];
+
+// 模型级黑名单持久化路径：记录「目录里有、但账号无授权 / 模型已下线」的模型，
+// 防止 syncNvidiaModels() 反复把死模型灌回 providers。
+const MODEL_BLACKLIST_PATH = join(process.cwd(), "data", "nvidia-model-blacklist.json");
+
+/** 模型级黑名单条目 */
+export interface ModelBlacklistEntry {
+  model: string;
+  status: number; // 触发拉黑的 HTTP 状态码（400/403/404/410/422）
+  reason: string; // 服务端返回的原始错误摘要
+  at: string;     // ISO 时间戳
+  count: number;  // 累计命中次数
+}
 
 // 默认提供商配置
 const DEFAULT_PROVIDERS: AIProviderConfig[] = [
@@ -249,7 +261,7 @@ const DEFAULT_PROVIDERS: AIProviderConfig[] = [
     type: "openrouter",
     apiKey: process.env.OPENROUTER_API_KEY || "",
     baseUrl: "https://openrouter.ai/api/v1",
-    models: ["z-ai/glm-5.2", "openai/gpt-5.6-luna-pro", "anthropic/claude-sonnet-5", "google/gemini-3.1-flash-image", "google/gemini-3-pro-image", "x-ai/grok-4.5", "moonshotai/kimi-k2.7-code", "tencent/hy3", "meta-llama/llama-3.3-70b-instruct"],
+    models: ["nvidia/nemotron-3-ultra-550b-a55b:free", "nvidia/nemotron-3-super-120b-a12b:free", "nvidia/nemotron-3.5-lightning:free", "minimax/minimax-m3", "liquid/lfm-2.5-2.6b:free", "meta-llama/llama-3.3-70b-instruct"],
     isLocal: false,
   },
   // ── Together AI ──
@@ -290,6 +302,15 @@ export class AIHub {
   private circuitBreaker = new Map<string, { failures: number; lastFail: number }>();
   private readonly CB_THRESHOLD = 5;
   private readonly CB_COOLDOWN = 60_000;
+  // 不可重试的"配置类"错误：模型 ID 非法 / 已下线 / 无权限 / 区域封锁
+  //   400 非法模型 ID（含 embedding 模型误走 chat）  401 Key 无效
+  //   403 无权限/区域封锁   404 模型不存在或账号无授权   410 模型已 EOL 下线   422 参数不合法
+  private readonly FATAL_STATUSES = new Set([400, 401, 403, 404, 410, 422]);
+  // 模型级黑名单：与熔断器不同，这是「配置类」长期失效（无授权/EOL/非法 ID），需持久化且不自动恢复
+  //   401 不拉黑（Key 问题，非模型问题）；403 拉黑（区域封锁是模型级的）
+  private readonly BLACKLIST_STATUSES = new Set([400, 403, 404, 410, 422]);
+  private modelBlacklist = new Map<string, ModelBlacklistEntry>();
+  private blacklistLoaded = false;
 
   constructor() {
     for (const cfg of DEFAULT_PROVIDERS) {
@@ -303,6 +324,8 @@ export class AIHub {
       });
       this.providers.set(cfg.id, { client, config: cfg });
     }
+    // 启动时加载持久化的模型黑名单（失败不阻塞启动）
+    this.loadModelBlacklist();
   }
 
   /** 外部动态添加 Provider（从 UI 设置同步） */
@@ -416,6 +439,80 @@ export class AIHub {
     }
   }
 
+  // ─────────────────── 模型黑名单 ───────────────────
+
+  /** 懒加载黑名单文件（幂等） */
+  private loadModelBlacklist(): void {
+    if (this.blacklistLoaded) return;
+    this.blacklistLoaded = true;
+    try {
+      if (!existsSync(MODEL_BLACKLIST_PATH)) return;
+      const raw = readFileSync(MODEL_BLACKLIST_PATH, "utf8");
+      const arr = JSON.parse(raw) as ModelBlacklistEntry[];
+      for (const e of arr) if (e && e.model) this.modelBlacklist.set(e.model, e);
+      if (this.modelBlacklist.size) {
+        console.log(`[AI Hub] 已加载模型黑名单 ${this.modelBlacklist.size} 条: ${[...this.modelBlacklist.keys()].join(", ")}`);
+      }
+    } catch (err: any) {
+      console.warn(`[AI Hub] 模型黑名单加载失败: ${err.message}`);
+    }
+  }
+
+  /** 写回黑名单文件 */
+  private persistModelBlacklist(): void {
+    try {
+      mkdirSync(dirname(MODEL_BLACKLIST_PATH), { recursive: true });
+      const arr = [...this.modelBlacklist.values()].sort((a, b) => a.model.localeCompare(b.model));
+      writeFileSync(MODEL_BLACKLIST_PATH, JSON.stringify(arr, null, 2), "utf8");
+    } catch (err: any) {
+      console.warn(`[AI Hub] 模型黑名单保存失败: ${err.message}`);
+    }
+  }
+
+  /** 判断模型是否在黑名单（支持归一化匹配，裸名 ↔ 带 :free 后缀可互相命中） */
+  isModelBlacklisted(model: string): boolean {
+    this.loadModelBlacklist();
+    if (!model) return false;
+    if (this.modelBlacklist.has(model)) return true;
+    const norm = this.normalizeModelName(model);
+    if (norm && norm !== model && this.modelBlacklist.has(norm)) return true;
+    for (const key of this.modelBlacklist.keys()) {
+      if (this.normalizeModelName(key) === norm) return true;
+    }
+    return false;
+  }
+
+  /** 记录一次「配置类」模型失败；命中即拉黑并落盘 */
+  recordModelFailure(model: string, status: number, reason: string): void {
+    if (!model || !this.BLACKLIST_STATUSES.has(status)) return;
+    this.loadModelBlacklist();
+    const prev = this.modelBlacklist.get(model);
+    const entry: ModelBlacklistEntry = {
+      model,
+      status,
+      reason: String(reason || "").slice(0, 200),
+      at: new Date().toISOString(),
+      count: (prev?.count || 0) + 1,
+    };
+    this.modelBlacklist.set(model, entry);
+    this.persistModelBlacklist();
+    console.warn(`[AI Hub] 模型已加入黑名单 (HTTP ${status}, 命中${entry.count}次): ${model}`);
+  }
+
+  /** 手动将模型移出黑名单 */
+  unblacklistModel(model: string): boolean {
+    this.loadModelBlacklist();
+    const ok = this.modelBlacklist.delete(model);
+    if (ok) this.persistModelBlacklist();
+    return ok;
+  }
+
+  /** 查看当前黑名单快照 */
+  getModelBlacklist(): ModelBlacklistEntry[] {
+    this.loadModelBlacklist();
+    return [...this.modelBlacklist.values()];
+  }
+
   /**
    * 动态拉取英伟达可用模型（可选，验证 API 连通性）
    */
@@ -435,13 +532,21 @@ export class AIHub {
       console.log(`[AI Hub] NVIDIA NIM 连通，共 ${allModels.length} 个可用模型`);
 
       // 用推荐列表过滤，只保留推荐模型（已验证支持 function calling）
-      const available = NVIDIA_RECOMMENDED_MODELS.filter(m => allModels.includes(m));
+      const available = NVIDIA_RECOMMENDED_MODELS.filter(m => allModels.includes(m) && !this.isModelBlacklisted(m));
+      // 黑名单模型（目录里有但实测无授权/已下线）单独打印，便于排查
+      const blocked = NVIDIA_RECOMMENDED_MODELS.filter(m => allModels.includes(m) && this.isModelBlacklisted(m));
+      if (blocked.length) console.log(`[AI Hub] 已跳过黑名单模型 ${blocked.length} 个: ${blocked.join(", ")}`);
       if (available.length > 0) {
         nvidiaEntry.config.models = available;
         console.log(`[AI Hub] NVIDIA NIM 推荐模型可用: ${available.join(", ")}`);
       } else {
         // 如果推荐模型不在列表里，用完整列表里的 instruct 模型
-        const instructModels = allModels.filter(m => /instruct|chat|glm|qwen|minimax|deepseek/.test(m)).slice(0, 8);
+        // 过滤出对话类模型，剔除 embedding/rerank/reward/guard/vision 等非对话模型
+        const instructModels = allModels
+          .filter(m => /instruct|chat|glm|qwen|minimax|deepseek|nemotron/.test(m))
+          .filter(m => !/embed|rerank|reward|guard|safety|parse|clip|detector|deplot|translate|calibration|fuyu|kosmos|vila|neva|video|visual/i.test(m))
+          .filter(m => !this.isModelBlacklisted(m))
+          .slice(0, 8);
         if (instructModels.length > 0) {
           nvidiaEntry.config.models = instructModels;
           console.log(`[AI Hub] NVIDIA NIM 自动选择: ${instructModels.join(", ")}`);
@@ -460,10 +565,12 @@ export class AIHub {
    * 这样用户在 UI 里选 "glm-5.2:cloud" 也能正确匹配到 zhipu provider 的 "glm-5.2"
    */
   private normalizeModelName(model: string): string {
-    // 剥离后缀：:cloud, :local, :latest 等
-    let normalized = model.replace(/:(cloud|local|latest)$/i, "");
-    // 剥离前缀：xxx-ai/ 或 xxx/
-    normalized = normalized.replace(/^[a-z]+(?:-ai)?\//, "");
+    // 剥离供应商/聚合器后缀：:cloud :local :latest :free :batch :thinking :nitro :online 等
+    // 说明：OpenRouter 免费模型形如 "vendor/model:free"，需能被正确归一化匹配
+    let normalized = model.replace(/:(cloud|local|latest|free|batch|thinking|nitro|online|extended|floor|auto)$/i, "");
+    // 剥离命名空间前缀：xxx/ 或 xxx-ai/（仅剥一层；剥完为空则保留原值）
+    const stripped = normalized.replace(/^[a-z0-9][a-z0-9._-]*\//i, "");
+    if (stripped) normalized = stripped;
     return normalized;
   }
 
@@ -706,10 +813,13 @@ export class AIHub {
           cb.lastFail = Date.now();
           this.circuitBreaker.set(cbKey, cb);
         }
-        // 不可重试的错误直接抛
-        if (error.status === 401 || error.status === 403 || error.status === 404) {
-          console.error(`[AI Hub] 不可重试的错误 (${request.model}):`, error.message);
-          throw new Error(`AI 生成失败: ${error.message}`);
+        // 不可重试的"配置类"错误直接抛（400/401/403/404/410/422）
+        // 旧逻辑只拦 401/403/404，导致 400(非法ID)、410(已下线) 被白重试 3 次 + 指数退避
+        if (this.FATAL_STATUSES.has(error.status)) {
+          console.error(`[AI Hub] 不可重试的错误 (${request.model}, HTTP ${error.status}):`, error.message);
+          // 持久化模型级黑名单：400/403/404/410/422 代表模型本身不可用，避免下次再被 sync 灌回
+          this.recordModelFailure(resolvedModel, error.status, error.message);
+          throw new Error(`AI 生成失败(HTTP ${error.status}，模型 ID 可能非法或已下线，请检查 providers.json): ${error.message}`);
         }
         if (attempt >= MAX_RETRIES) {
           console.error(`[AI Hub] 重试耗尽 (${request.model}):`, error.message);

@@ -697,7 +697,7 @@ async function triggerAgentReply(
       timestamp: Date.now(),
     });
 
-    // ⭐ 心跳保活：AI 处理期间每 5 秒发一次心跳，防止 WS 连接超时断开
+    // ⭐ 心跳保活：AI 处理期间每 3 秒发一次心跳，防止 WS 连接超时断开
     heartbeatId = setInterval(() => {
       broadcast({
         type: "agent.streaming.heartbeat",
@@ -738,11 +738,13 @@ async function triggerAgentReply(
       },
       // taskGoal 可选
       undefined,
-      // ⭐ 工具调用进度广播：把工具 call/result 转给前端
+      // ⭐ 工具调用进度广播：把工具 call/result/seal 转给前端
+      //   必须带 msgId：前端据此把 tool.call 卡片、streaming.seal 归位到当前正在流的气泡时间线上
       (event: any) => {
         broadcast({
           ...event,
           chatId,
+          msgId,
           from: agentSenderId,
           senderId: agentSenderId,
           senderType: 'agent',
@@ -765,13 +767,14 @@ async function triggerAgentReply(
       from: agentSenderId,
       msgId,
     });
-    // 再广播最终完整消息（前端替换打字气泡为正式消息）
+    // 再广播最终完整消息（前端按 msgId 校正已流式渲染的气泡，而非重复追加）
     broadcast({
       type: "message.new",
       chatId,
       from: agentSenderId,
       senderId: agentSenderId,
       senderType: "agent",
+      msgId,
       content: fullContent || reply,
       replyTo: triggerMsgId,
       timestamp: Date.now(),

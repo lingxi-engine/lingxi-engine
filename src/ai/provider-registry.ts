@@ -219,12 +219,14 @@ export class ProviderRegistry {
         apiKey: process.env.NVIDIA_API_KEY,
         baseUrl: process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1',
         models: [
-          'minimaxai/minimax-m3',          // 默认主模型
-          'minimaxai/minimax-m2.7',        // 备选
-          'z-ai/glm-5.2',                  // GLM 5.2
-          'stepfun-ai/step-3.7-flash',     // StepFun 3.7 Flash
-          'qwen/qwen3-next-80b-a3b-instruct', // Qwen 80B
-          'deepseek-ai/deepseek-v4-flash', // DeepSeek V4 Flash
+          // 2026-09-13 全量实测 HTTP 200 复核（旧列表多个模型已 410 EOL / 404 无授权）
+          'nvidia/nemotron-3-ultra-550b-a55b',
+          'nvidia/nemotron-3-super-120b-a12b',
+          'nvidia/nemotron-3.5-lightning-30b-a3b',
+          'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+          'z-ai/glm-5.3-flash',
+          'openai/gpt-oss-20b',
+          'deepseek-ai/deepseek-v4-flash-0731',
         ],
         isLocal: false,
         enabled: true,
@@ -295,7 +297,8 @@ export class ProviderRegistry {
         name: 'OpenRouter',
         apiKey: process.env.OPENROUTER_API_KEY,
         baseUrl: 'https://openrouter.ai/api/v1',
-        models: ['anthropic/claude-sonnet-4', 'google/gemini-2.5-flash', 'meta-llama/llama-3.3-70b-instruct'],
+        // ⚠️ claude-sonnet-4 / gemini-2.5-flash 在本地区返回 403（区域封锁），已移除
+        models: ['nvidia/nemotron-3-ultra-550b-a55b:free', 'nvidia/nemotron-3-super-120b-a12b:free', 'nvidia/nemotron-3.5-lightning:free', 'minimax/minimax-m3', 'liquid/lfm-2.5-2.6b:free', 'meta-llama/llama-3.3-70b-instruct'],
         isLocal: false,
         enabled: true,
       }, sp);

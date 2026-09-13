@@ -385,6 +385,9 @@ export class MessageRouter {
 
     // ── 尝试流式 ──
     const useStream = !!onChunk;
+    // 真流式：跟踪是否已经实时推过正文，结束后避免重复回放
+    let streamedLive = false;
+    const liveOnChunk = onChunk ? (ck: string) => { streamedLive = true; onChunk(ck); } : undefined;
 
     if (agentTools.length > 0) {
       // 有工具：走工具调用循环，最终回复支持流式
@@ -422,6 +425,9 @@ export class MessageRouter {
         onToolCall: onBroadcast ? (e) => onBroadcast({ type: 'tool.call', ...e }) : undefined,
         onToolResult: onBroadcast ? (e) => onBroadcast({ type: 'tool.result', ...e }) : undefined,
         onThink: onThink,
+        onChunk: liveOnChunk,
+        // ⭐ 时序封块：每轮正文流完、即将调工具时，通知前端封块（前端把 seal 事件按 msgId 处理）
+        onSegmentEnd: onBroadcast ? () => onBroadcast({ type: 'agent.streaming.seal' }) : undefined,
       }).finally(() => {
         clearTimeout(timeoutId);
         if (signal) signal.removeEventListener('abort', onExternalAbort);
@@ -477,6 +483,8 @@ export class MessageRouter {
               onToolCall: onBroadcast ? (e) => onBroadcast({ type: 'tool.call', ...e }) : undefined,
               onToolResult: onBroadcast ? (e) => onBroadcast({ type: 'tool.result', ...e }) : undefined,
               onThink: onThink,
+        onChunk: liveOnChunk,
+              onSegmentEnd: onBroadcast ? () => onBroadcast({ type: 'agent.streaming.seal' }) : undefined,
             });
           } catch (resumeErr: any) {
             console.warn('[Router] 自动续跑轮失败:', resumeErr?.message || resumeErr);
@@ -507,7 +515,7 @@ export class MessageRouter {
         }
         // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
         // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作
-        if (replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {
+        if (!onChunk && replyClient.resolvedModel !== toolClient.resolvedModel && result.toolResults.length > 0 && finalContent) {
           try {
             const replyResp = await replyClient.client.chat.completions.create({
               model: replyClient.resolvedModel,
@@ -547,13 +555,11 @@ export class MessageRouter {
             });
           }
         }
-        // 工具调用后有最终回复时，按词块流式输出（比逐字快3倍，体验更自然）
-        if (finalContent && onChunk) {
-          const chunks = finalContent.match(/[^\s，。！？、；：]+[\s，。！？、；：]?/g) || [finalContent];
-          for (const chunk of chunks) {
-            onChunk(chunk);
-            await new Promise(r => setTimeout(r, 15));
-          }
+        // ⭐ 删除伪流式回放：正文已在工具循环里通过 liveOnChunk 实时逐 delta 推过。
+        // 仅当"从未实时流过"(streamedLive=false，如兜底重生成)时，一次性补推最终正文，
+        // 不再用 setTimeout 假装打字机（那种回放与真流式时序冲突，观感割裂）。
+        if (finalContent && onChunk && !streamedLive) {
+          onChunk(finalContent);
         }
       } catch (err: any) {
         // ⭐ 用户停止：不回退重新生成，直接抛给上层按"已停止"处理
@@ -578,13 +584,9 @@ export class MessageRouter {
         if (finalContent && finalContent.includes('｜DSML｜')) {
           finalContent = this.stripDsml(finalContent) || finalContent;
         }
-        // 回退也走词块流式
-        if (finalContent && onChunk) {
-          const chunks = finalContent.match(/[^\s，。！？、；：]+[\s，。！？、；：]?/g) || [finalContent];
-          for (const chunk of chunks) {
-            onChunk(chunk);
-            await new Promise(r => setTimeout(r, 15));
-          }
+        // ⭐ 回退路径同样不再伪流式回放，一次性补推最终正文
+        if (finalContent && onChunk && !streamedLive) {
+          onChunk(finalContent);
         }
       }
     } else if (useStream) {
@@ -668,38 +670,52 @@ export class MessageRouter {
       const startCritic = Date.now();
       const triggerContent = (recentMessages.find(m => m.id === triggerMsgId)?.content
         || recentMessages[recentMessages.length - 1]?.content || '').slice(0, 500);
-      try {
-        if (!this.critic) {
-          this.critic = new Critic(replyClient.client, replyClient.resolvedModel, { threshold: 70, maxRounds: 1 });
+      const contentForCritic = finalContent;
+      // 封装成异步任务：流式场景「只评测不修正」(skipRevise)，无需阻塞回复返回；
+      // 非流式场景才 await 并应用修正结果。
+      const runCritic = async (): Promise<string> => {
+        try {
+          if (!this.critic) {
+            this.critic = new Critic(replyClient.client, replyClient.resolvedModel, { threshold: 70, maxRounds: 1 });
+          }
+          const pipe = await this.critic.runPipeline(contentForCritic, {
+            userMessage: triggerContent,
+            agentName: agent.displayName,
+            taskGoal,
+            modePrompt: customPrompt,
+          }, { skipRevise: !!onChunk });
+          let out = contentForCritic;
+          if (pipe.content !== contentForCritic) {
+            console.log(`[Router] Critic 修正回复 (${contentForCritic.length}字 → ${pipe.content.length}字, rounds=${pipe.rounds})`);
+            out = pipe.content;
+          }
+          if (pipe.critique) {
+            this.evaluator.record({
+              agentId: agent.id,
+              chatId,
+              model: replyClient.resolvedModel,
+              triggerLen: triggerContent.length,
+              replyLen: out.length,
+              score: pipe.critique.score,
+              issues: pipe.critique.issues,
+              revised: pipe.revised,
+              latencyMs: Date.now() - startCritic,
+              rounds: pipe.rounds,
+            });
+            console.log(`[Router] 评测记录: score=${pipe.critique.score}, issues=${pipe.critique.issues.length}, revised=${pipe.revised}, rounds=${pipe.rounds}`);
+          }
+          return out;
+        } catch (err: any) {
+          console.warn('[Router] Critic 流水线失败，不阻塞主流程:', err?.message || err);
+          return contentForCritic;
         }
-        // 流式回复已推给用户（打字气泡），只评测不修正，避免用户看到的与落库不一致
-        const pipe = await this.critic.runPipeline(finalContent, {
-          userMessage: triggerContent,
-          agentName: agent.displayName,
-          taskGoal,
-          modePrompt: customPrompt,
-        }, { skipRevise: !!onChunk });
-        if (pipe.content !== finalContent) {
-          console.log(`[Router] Critic 修正回复 (${finalContent.length}字 → ${pipe.content.length}字, rounds=${pipe.rounds})`);
-          finalContent = pipe.content;
-        }
-        if (pipe.critique) {
-          this.evaluator.record({
-            agentId: agent.id,
-            chatId,
-            model: replyClient.resolvedModel,
-            triggerLen: triggerContent.length,
-            replyLen: finalContent.length,
-            score: pipe.critique.score,
-            issues: pipe.critique.issues,
-            revised: pipe.revised,
-            latencyMs: Date.now() - startCritic,
-            rounds: pipe.rounds,
-          });
-          console.log(`[Router] 评测记录: score=${pipe.critique.score}, issues=${pipe.critique.issues.length}, revised=${pipe.revised}, rounds=${pipe.rounds}`);
-        }
-      } catch (err: any) {
-        console.warn('[Router] Critic 流水线失败，不阻塞主流程:', err?.message || err);
+      };
+      if (onChunk) {
+        // ⭐ 流式：正文已实时推给用户，Critic 只做事后评测，异步跑，绝不阻塞回复落地
+        void runCritic();
+      } else {
+        // 非流式：等待 Critic，应用可能的修正后再落库
+        finalContent = await runCritic();
       }
     }
 
