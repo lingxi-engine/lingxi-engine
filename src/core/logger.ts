@@ -17,8 +17,8 @@ import { stdout as _stdout, stderr as _stderr } from 'process';
 
 const LOG_DIR = join(process.cwd(), process.env.DATA_DIR || 'data', 'logs');
 const LOG_LEVELS = { debug: 0, info: 1, warn: 2, error: 3 } as const;
-const MAX_LOG_AGE_DAYS = 7;
-const MAX_LOG_SIZE_MB = 100; // P1-2: 单个日志文件最大 100MB
+const MAX_LOG_AGE_DAYS = 3; // 瘦身: 3 天（原 7 天）
+const MAX_LOG_SIZE_MB = 8; // EPIPE防护+瘦身: 原 100MB，配合下面的频率限制
 const MAX_LOG_SIZE_BYTES = MAX_LOG_SIZE_MB * 1024 * 1024;
 type LogLevel = keyof typeof LOG_LEVELS;
 
@@ -92,9 +92,12 @@ function write(level: LogLevel, module: string, message: string, audit?: string)
   const line = `[${time}] [${level.toUpperCase()}] [${module}]${auditTag} ${message}`;
 
   // 控制台 — 始终用原始 console，避免 attachToConsole 后无限递归
-  if (level === 'error') _origConsole.error(line);
-  else if (level === 'warn') _origConsole.warn(line);
-  else _origConsole.log(line);
+  // EPIPE防护: 控制台管道可能已断开，任何写入异常都必须吞掉，否则会反向触发 uncaughtException
+  try {
+    if (level === 'error') _origConsole.error(line);
+    else if (level === 'warn') _origConsole.warn(line);
+    else _origConsole.log(line);
+  } catch { /* 管道已断，静默 */ }
 
   // P0-2: 敏感字段脱敏
   const safeLine = redactMessage(line);
@@ -156,8 +159,18 @@ export const logger = {
     if (_consoleHijacked) return;
     _consoleHijacked = true;
     const _log = console.log, _warn = console.warn, _error = console.error;
-    console.log = (...args: any[]) => { _log(...args); write('info', 'console', args.map(String).join(' ')); };
-    console.warn = (...args: any[]) => { _warn(...args); write('warn', 'console', args.map(String).join(' ')); };
-    console.error = (...args: any[]) => { _error(...args); write('error', 'console', args.map(String).join(' ')); };
+    // EPIPE防护: 可重入锁——日志写入过程中产生的 console 输出直接放行，不再进 logger，
+    // 否则"写日志 → 触发 console → 再写日志"会无限自噬
+    let _inHijack = false;
+    const safeWrite = (fn: (...a: any[]) => void, level: LogLevel, args: any[]) => {
+      if (_inHijack) { try { fn(...args); } catch { /* 管道断 */ } return; }
+      _inHijack = true;
+      try { fn(...args); } catch { /* EPIPE: 管道已断，吞掉，绝不外抛 */ }
+      try { write(level, 'console', args.map(String).join(' ')); } catch { /* 落盘失败不中断 */ }
+      _inHijack = false;
+    };
+    console.log = (...args: any[]) => safeWrite(_log, 'info', args);
+    console.warn = (...args: any[]) => safeWrite(_warn, 'warn', args);
+    console.error = (...args: any[]) => safeWrite(_error, 'error', args);
   },
 };

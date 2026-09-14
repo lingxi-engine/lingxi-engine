@@ -30,6 +30,7 @@ import { createServer } from 'http';
 import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { randomInt, timingSafeEqual, randomBytes } from 'crypto';
 import * as path from 'path';
+import * as zlib from 'zlib';
 import { join } from 'path';
 import multer from 'multer';
 import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgent, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
@@ -99,8 +100,31 @@ process.on('unhandledRejection', (reason, promise) => {
   console.error('[FATAL] Unhandled Rejection at:', promise, 'reason:', reason);
   // 不退出进程，unhandledRejection 在 Node 默认也是 warn 不 crash
 });
-process.on('uncaughtException', async (err) => {
-  console.error('[FATAL] Uncaught Exception:', err.message, '\n', err.stack);
+// ═══ EPIPE 防雪崩（P0）═══
+// stdout/stderr 管道断开时，Node 默认会把 EPIPE 升级成 uncaughtException；
+// 而异常处理器里的 console.error 又被 logger 接管，于是"写日志→再抛 EPIPE→再写日志"
+// 形成死循环。实测峰值 11,299 次/秒，一轮刷出 168.8 MB 栈回溯。
+// 第一道防线：给两个流挂上 error 监听，把 EPIPE 就地吃掉，不让它变成未捕获异常。
+for (const _s of [process.stdout, process.stderr]) {
+  _s.on('error', (e: any) => {
+    if (e && (e.code === 'EPIPE' || e.code === 'ERR_STREAM_DESTROYED' || e.code === 'EIO')) return; // 管道已断，静默
+  });
+}
+
+// 第二道防线：异常处理器绝不使用 console.*，改写独立的 crash.log；并设自毁上限。
+let _fatalCount = 0;
+process.on('uncaughtException', async (err: any) => {
+  _fatalCount++;
+  try {
+    const _fs = await import('fs');
+    const _p = await import('path');
+    const _dir = _p.join(process.cwd(), process.env.DATA_DIR || 'data', 'logs');
+    try { _fs.mkdirSync(_dir, { recursive: true }); } catch {}
+    _fs.appendFileSync(_p.join(_dir, 'crash.log'),
+      `[${new Date().toISOString()}] #${_fatalCount} ${err && err.message}\n${err && err.stack}\n\n`,
+      'utf8');
+  } catch { /* 连 crash.log 都写不进去，就放弃记录，保命优先 */ }
+  if (_fatalCount > 5) process.exit(1); // 连环崩溃：不再纠缠，直接退，避免再次自噬
   try { await closeDB(); } catch (_) {}
   process.exit(1);
 });
@@ -592,7 +616,8 @@ setSearchManager(searchManagerInstance);
 
     const COMPRESSIBLE = /^(?:text\/|application\/(?:javascript|json|xml|manifest\+json)|image\/svg\+xml)/i;
     const MIN_SIZE = 1024;
-    const zlib = require('zlib');
+    // ESM 修复(2026-09-14): zlib 改用文件顶部 import。此前用 require('zlib') 在 ESM 下直接抛
+    // "require is not defined"，导致每个静态资源请求 500、Web 全站白屏。
     const chunks: Buffer[] = [];
     const origWrite = res.write.bind(res);
     const origEnd = res.end.bind(res);

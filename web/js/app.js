@@ -895,8 +895,9 @@ function handleMessage(msg) {
       maybeFlushQueue(msg.chatId);
       break;
     case 'friend.request':
-      requestNotifyCount++;
-      updateBadge(); loadRequests(); toast(t('friends.requestReceived', { name: (msg.fromName || msg.fromUserId) }));
+      // v2.1.7: 不再本地自增（接口一旦失败红点会永久虚高），红点一律以服务端 pending 数为准
+      toast(t('friends.requestReceived', { name: (msg.fromName || msg.fromUserId) }));
+      loadRequests().catch(function(e){ console.warn('[friend.request] refresh failed', e); });
       break;
     case 'friend.accepted':
       toast(t('friends.requestAccepted')); loadFriends(); loadRequests();
@@ -2074,19 +2075,22 @@ async function loadRequests() {
     }
     incomingRequests = d.incoming||[];
     outgoingRequests = d.outgoing||[];
-    requestNotifyCount = incomingRequests.length;
+    // v2.1.7: 红点只数待处理申请(pending)，历史 accepted/denied 不再顶数字
+    requestNotifyCount = (d.pendingIncoming || incomingRequests.filter(function(r){ return r.status === 'pending'; })).length;
     updateBadge();
     renderRequests();
-  } catch(e){}
+  } catch(e){ console.warn('[loadRequests] failed', e); }
 }
 function renderRequests() {
   // 收到的申。
   const inEl = document.getElementById('incomingRequests');
   if (!inEl) return;
-  if (!incomingRequests.length) {
+  // v2.1.7: 「收到的好友申请」只展示 pending，历史记录不在这里重复出现
+  const pendingIn = incomingRequests.filter(function(r){ return r.status === 'pending'; });
+  if (!pendingIn.length) {
     inEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">'+t('friends.noNewRequests')+'</div>';
   } else {
-    inEl.innerHTML = incomingRequests.map(r => {
+    inEl.innerHTML = pendingIn.map(r => {
       const name = r.fromName || (t('profile.defaultUser')+r.fromUserId);
       const initial = name[0].toUpperCase();
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">'+esc(initial)+'</div>';

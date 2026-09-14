@@ -1026,10 +1026,13 @@ export function respondFriendRequest(requestId: string, action: 'accept' | 'reje
   return { ok: true, status };
 }
 export function getFriendRequests(userId: string) {
-  const incoming = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as from_name FROM friendships f LEFT JOIN users u ON f.from_user_id = u.id WHERE f.to_user_id = ? ORDER BY f.created_at DESC", [userId]);
-  const outgoing = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as to_name FROM friendships f LEFT JOIN users u ON f.to_user_id = u.id WHERE f.from_user_id = ? ORDER BY f.created_at DESC", [userId]);
+  const incoming = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as from_name FROM friendships f LEFT JOIN users u ON f.from_user_id = u.id WHERE f.to_user_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC", [userId]);
+  const outgoing = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as to_name FROM friendships f LEFT JOIN users u ON f.to_user_id = u.id WHERE f.from_user_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC", [userId]);
   return {
     incoming: incoming.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, toUserId: r.to_user_id, status: r.status, message: r.message, createdAt: r.created_at, fromName: r.from_name })),
+    // 红点修复(2026-09-14 重部署善后): incoming 已在 SQL 层过滤为 pending，
+    // pendingIncoming 显式提供同口径字段，供红点计数与 LAN 链路透传使用
+    pendingIncoming: incoming.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, toUserId: r.to_user_id, status: r.status, message: r.message, createdAt: r.created_at, fromName: r.from_name })),
     outgoing: outgoing.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, toUserId: r.to_user_id, status: r.status, message: r.message, createdAt: r.created_at, toName: r.to_name })),
   };
 }

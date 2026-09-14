@@ -343,7 +343,7 @@ export class LanSocialHub {
   }
 
   friendRequests(userId: string) {
-    const { incoming, outgoing } = getFriendRequests(userId);
+    const { incoming, outgoing, pendingIncoming } = getFriendRequests(userId);
     const resolve = (uid: string) => {
       const local = this.localUsers().find((u) => u.id === uid);
       if (local) return { displayName: local.displayName, numericId: local.numericId };
@@ -352,6 +352,8 @@ export class LanSocialHub {
     };
     return {
       incoming: incoming.map((r: any) => ({ ...r, fromName: resolve(r.fromUserId).displayName, fromNumericId: resolve(r.fromUserId).numericId })),
+      // v2.1.7: 红点专用 —— 只含待处理(pending)申请，历史 accepted/denied 不参与计数
+      pendingIncoming: (pendingIncoming || []).map((r: any) => ({ ...r, fromName: resolve(r.fromUserId).displayName, fromNumericId: resolve(r.fromUserId).numericId })),
       outgoing: outgoing.map((r: any) => ({ ...r, toName: resolve(r.toUserId).displayName })),
     };
   }

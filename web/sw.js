@@ -1,5 +1,5 @@
 // 灵犀引擎 Service Worker - PWA 离线支持 (v2.0.13)
-const CACHE_NAME = 'lingxi-v18'; // v18: LAN 推理过程持久化(气泡常驻+历史回读)，强制刷新旧缓存
+const CACHE_NAME = 'lingxi-v19'; // v19: 好友红点修复(v2.1.7) 强制刷新旧缓存 // v18: LAN 推理过程持久化(气泡常驻+历史回读)，强制刷新旧缓存
 const STATIC_ASSETS = ['/', '/index.html', '/install.html', '/manifest.json', '/css/style.css', '/css/mobile.css', '/js/app.js', '/js/i18n.js', '/icon.svg'];
 
 self.addEventListener('install', (event) => {

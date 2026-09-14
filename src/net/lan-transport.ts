@@ -11,6 +11,7 @@
 
 import type { LanPeer } from './lan-discovery.js';
 import { getLanInstanceId } from './lan-discovery.js';
+import { createHmac } from 'crypto';
 
 /** 协议标识头 */
 const PROTO_HEADER = 'x-lingxi-lan-proto';
@@ -195,7 +196,7 @@ export function verifyLanRequest(req: any, res: any): string | null {
     // v5-P1-D 修复: GET 请求无 body，发送方签空串，接收方必须同样签空串（JSON.stringify({}) 会得到 '{}' 导致签名不匹配）
     const body = req.method === 'GET' ? '' : (typeof req.body === 'string' ? req.body : JSON.stringify(req.body || {}));
     const reqPath = req.path || req.url || '';
-    const { createHmac } = require('crypto');
+    // ESM 修复(2026-09-14): createHmac 改用文件顶部 import
     const expectedSig = createHmac('sha256', secret).update(timestamp + ':' + nonce + ':' + reqPath + ':' + body).digest('hex');
     if (provided !== expectedSig) {
       res.status(403).json({ error: '局域网签名校验失败' });

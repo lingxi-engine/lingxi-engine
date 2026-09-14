@@ -13,7 +13,7 @@
  *  - 幂等：resume 时只补做未完成步骤
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, unlinkSync, readdirSync } from 'fs';
 import * as path from 'path';
 import { getDB } from '../storage/db.js';
 
@@ -204,7 +204,7 @@ export class TaskStore {
     const dir = getCheckpointDir();
     const all: TaskCheckpoint[] = [];
     try {
-      const files = require('fs').readdirSync(dir).filter((f: string) => f.endsWith('.checkpoint.json'));
+      const files = readdirSync(dir).filter((f: string) => f.endsWith('.checkpoint.json'));
       for (const f of files) {
         try {
           const cp = JSON.parse(readFileSync(path.join(dir, f), 'utf8')) as TaskCheckpoint;

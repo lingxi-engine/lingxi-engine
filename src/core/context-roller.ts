@@ -13,7 +13,7 @@
  *  - 摘要文件按目标隔离，互不干扰
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import * as path from 'path';
 
 interface StageSummary {
@@ -76,7 +76,7 @@ export class ContextRoller {
   /** 清除某目标的历史摘要（目标完成/删除时） */
   static clear(goalId: string): void {
     const f = ContextRoller.file(goalId);
-    try { if (existsSync(f)) require('fs').unlinkSync(f); } catch { /* ignore */ }
+    try { if (existsSync(f)) unlinkSync(f); } catch { /* ignore */ }
   }
 }
 
