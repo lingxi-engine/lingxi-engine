@@ -1,14 +1,14 @@
-# Lingxi Engine pack script v6.7 (2026-09-12: ÐÞ¸´Ç¶Ì×À¬»ø¹ýÂË + ±£Áô .env Ä£°å)
-#   v6.7 ±ä¸ü:
-#     - ÐÂÔö Remove-JunkFiles: µÝ¹éÇåÀí __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
-#       (v6.6 µÄ $excludeFilesRegex Ö»×÷ÓÃÓÚ¶¥²ã£¬µ¼ÖÂ src/¡¢lingxi_engine/ ÄÚµÄÀ¬»øËæ°ü·¢³ö)
-#     - Remove-EnvFiles ¸ÄÎª±£Áô .env.example / .env.template£¨install.sh ÒÀÀµ .env.example£©
-#     - ÐÂÔö: À¬»øÎÄ¼þÁã²ÐÁôÐ£Ñé + .env.example ´æÔÚÐÔÐ£Ñé
+# Lingxi Engine pack script v6.8 (2026-09-14: assertions -> v2.0.20/sw-v20 + credit-backfill/no-require guards (v6.7 2026-09-12: ï¿½Þ¸ï¿½Ç¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + ï¿½ï¿½ï¿½ï¿½ .env Ä£ï¿½ï¿½)
+#   v6.7 ï¿½ï¿½ï¿½:
+#     - ï¿½ï¿½ï¿½ï¿½ Remove-JunkFiles: ï¿½Ý¹ï¿½ï¿½ï¿½ï¿½ï¿½ __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
+#       (v6.6 ï¿½ï¿½ $excludeFilesRegex Ö»ï¿½ï¿½ï¿½ï¿½ï¿½Ú¶ï¿½ï¿½ã£¬ï¿½ï¿½ï¿½ï¿½ src/ï¿½ï¿½lingxi_engine/ ï¿½Úµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½)
+#     - Remove-EnvFiles ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½ .env.example / .env.templateï¿½ï¿½install.sh ï¿½ï¿½ï¿½ï¿½ .env.exampleï¿½ï¿½
+#     - ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½ + .env.example ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.18.tar.gz"
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.20.tar.gz"
 
 # Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
 $StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
@@ -20,7 +20,7 @@ $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs'
 $excludeDirsRegex = '^backup[_-]'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$'
 
-# Ö»ÔÊÐíÕâÐ© env Ä£°å½ø°ü£¬ÆäÓà .env* Ò»ÂÉ°þÀë
+# Ö»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð© env Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ .env* Ò»ï¿½É°ï¿½ï¿½ï¿½
 $keptEnvNames = @('.env.example', '.env.template')
 
 function Remove-EnvFiles($path) {
@@ -33,7 +33,7 @@ function Remove-EnvFiles($path) {
 }
 
 function Remove-JunkFiles($path) {
-    # µÝ¹éÇåÀí¹¹½¨/ÔËÐÐÀ¬»ø¡£v6.6 Ö»ÔÚ¶¥²ã¹ýÂË£¬×ÓÄ¿Â¼ÀïµÄÀ¬»ø»áÂ©½ø·¢²¼°ü¡£
+    # ï¿½Ý¹ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½v6.6 Ö»ï¿½Ú¶ï¿½ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½Ä¿Â¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â©ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     $junkDirs = @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache')
     Get-ChildItem $path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in $junkDirs } |
@@ -181,7 +181,7 @@ try {
 
     # Verify v2.0.18 platform admin features
     Write-Host ""
-    Write-Host "Verify v2.0.18 platform admin..." -ForegroundColor Yellow
+    Write-Host "Verify v2.0.20 platform admin..." -ForegroundColor Yellow
     $adminPage = $tarList | Where-Object { $_ -match 'platform-admin\.html$' }
     if ($adminPage) {
         Write-Host "  [OK] platform-admin.html present ($($adminPage[0]))" -ForegroundColor Green
@@ -204,25 +204,48 @@ try {
         throw "[FAIL] admin credits grant API missing"
     }
     $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
-    if ($pkgJson -match '"version":\s*"2\.0\.18"') {
-        Write-Host "  [OK] package.json version = 2.0.18" -ForegroundColor Green
+    if ($pkgJson -match '"version":\s*"2\.0\.20"') {
+        Write-Host "  [OK] package.json version = 2.0.20" -ForegroundColor Green
     } else {
-        throw "[FAIL] package.json version is not 2.0.18"
+        throw "[FAIL] package.json version is not 2.0.20"
     }
 
     # Verify v2.0.18 reasoning-stream fixes
     Write-Host ""
-    Write-Host "Verify v2.0.18 reasoning stream..." -ForegroundColor Yellow
+    Write-Host "Verify v2.0.20 reasoning stream..." -ForegroundColor Yellow
     if ($appJs -match '_lanThink' -and $appJs -match '_thinkBlock') {
         Write-Host "  [OK] app.js reasoning render markers (_lanThink/_thinkBlock)" -ForegroundColor Green
     } else {
         throw "[FAIL] app.js reasoning render markers missing"
     }
     $swJs = tar -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
-    if ($swJs -match 'lingxi-v19') {
-        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v19" -ForegroundColor Green
+    if ($swJs -match 'lingxi-v20') {
+        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v20" -ForegroundColor Green
     } else {
-        throw "[FAIL] sw.js CACHE_NAME not bumped to v19"
+        throw "[FAIL] sw.js CACHE_NAME not bumped to v20"
+    }
+    $indexSrc = tar -xzf $OutFile -O './lingxi-engine/index.ts' 2>$null
+    if ($indexSrc -match 'credits: creditRow \? Number\(creditRow\.credits\) : 1000') {
+        Write-Host "  [OK] credits ||-bug fixed (ternary guards real 0)" -ForegroundColor Green
+    } else {
+        throw "[FAIL] credits ||-bug fix missing from index.ts"
+    }
+    # scan CODE lines only: the fix comment itself mentions require('zlib') and would false-positive
+    $indexCodeOnly = ( ($indexSrc -split "`n") | Where-Object { $_ -notmatch '^\s*(//|\*|/\*)' } ) -join "`n"
+    if ($indexCodeOnly -match 'require\(') {
+        throw "[FAIL] ESM require() landmine is BACK in index.ts (code line)"
+    }
+    $dbSrc = tar -xzf $OutFile -O './lingxi-engine/src/storage/db.ts' 2>$null
+    if ($dbSrc -match 'credit rows backfilled') {
+        Write-Host "  [OK] user_credits startup backfill present" -ForegroundColor Green
+    } else {
+        throw "[FAIL] credit backfill missing from db.ts"
+    }
+    $payClosed = ($indexSrc -match 'settle[\s\S]{0,400}?catch \(err: any\) \{ res\.status\(500\)')
+    if ($payClosed) {
+        Write-Host "  [OK] wallet pay/freeze/unfreeze/settle route block closed" -ForegroundColor Green
+    } else {
+        Write-Host "  [WARN] could not auto-verify pay-route closure (manual check)" -ForegroundColor Yellow
     }
     $routerSrc = tar -xzf $OutFile -O './lingxi-engine/src/core/router.ts' 2>$null
     if ($routerSrc -match 'reasoning_content') {
