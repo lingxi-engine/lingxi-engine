@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ÏÂÔØ²¿Êð ¡¤ ÁéÏ¬ÒýÇæ v2.0.18</title>
+<title>ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½Ï¬ï¿½ï¿½ï¿½ï¿½ v2.0.20</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -61,11 +61,11 @@
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="/">¡û ·µ»ØÊ×Ò³</a>
-  <h1>?? ÏÂÔØ²¿ÊðÁéÏ¬ÒýÇæ <span class="ver">v2.0.18</span></h1>
-  <p class="sub">±¾µØÓÅÏÈµÄ AI ÖúÊÖÆ½Ì¨ ¡¤ Windows / Linux / macOS Èý¶ËÒ»ÐÐÃüÁî²¿Êð</p>
+  <a class="back" href="/">ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³</a>
+  <h1>?? ï¿½ï¿½ï¿½Ø²ï¿½ï¿½ï¿½ï¿½ï¿½Ï¬ï¿½ï¿½ï¿½ï¿½ <span class="ver">v2.0.20</span></h1>
+  <p class="sub">ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Èµï¿½ AI ï¿½ï¿½ï¿½ï¿½Æ½Ì¨ ï¿½ï¿½ Windows / Linux / macOS ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½î²¿ï¿½ï¿½</p>
 
-  <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">ÕýÔÚÊ¶±ðÄãµÄ²Ù×÷ÏµÍ³¡­</span></div>
+  <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">ï¿½ï¿½ï¿½ï¿½Ê¶ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½</span></div>
 
   <div class="tabs" id="tabs">
     <div class="tab" data-p="mac"><span class="tabic">??</span>macOS</div>
@@ -76,18 +76,18 @@
   <!-- ============ macOS ============ -->
   <div class="panel" id="panel-mac">
     <div class="card">
-      <h2>?? macOS Ò»ÐÐÃüÁî²¿Êð</h2>
-      <p>×Ô¶¯Ê¶±ð Apple Silicon / Intel Ð¾Æ¬£¬×Ô¶¯°²×° Homebrew Óë Node.js£¬ÅäÖÃ LaunchAgent ¿ª»ú×ÔÆô£¬×°Íê×Ô¶¯´ò¿ª <b>http://localhost:3456</b>¡£</p>
+      <h2>?? macOS Ò»ï¿½ï¿½ï¿½ï¿½ï¿½î²¿ï¿½ï¿½</h2>
+      <p>ï¿½Ô¶ï¿½Ê¶ï¿½ï¿½ Apple Silicon / Intel Ð¾Æ¬ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×° Homebrew ï¿½ï¿½ Node.jsï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ LaunchAgent ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×°ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ <b>http://localhost:3456</b>ï¿½ï¿½</p>
       <div class="cmdbox">
-        <div class="label">´ò¿ª¡¸ÖÕ¶Ë¡¹£¨Terminal£©£¬Õ³ÌùÖ´ÐÐ£º</div>
+        <div class="label">ï¿½ò¿ª¡ï¿½ï¿½Õ¶Ë¡ï¿½ï¿½ï¿½Terminalï¿½ï¿½ï¿½ï¿½Õ³ï¿½ï¿½Ö´ï¿½Ð£ï¿½</div>
         <code class="cmd" id="cmd-mac">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</code>
-        <button class="copy" data-target="cmd-mac">¸´ÖÆ</button>
+        <button class="copy" data-target="cmd-mac">ï¿½ï¿½ï¿½ï¿½</button>
       </div>
       <div class="tips">
-        ?? <b>³£ÓÃ×ÓÃüÁî</b>£¨¹ÜµÀÖ´ÐÐÊ±²ÎÊý¸úÔÚ <span class="ic">bash -s --</span> ºóÃæ£©£º<br>
-        ¡¤ ½â³ý dmg Ó¦ÓÃÀ¹½Ø£º<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</b><br>
-        ¡¤ Ð¶ÔØ£º<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b><br>
-        ¡¤ ¹Ø±Õ¿ª»ú×ÔÆô£º¼Ó <b>--no-autostart</b>£»ÏÈÑÝÁ·²»Êµ¼Ê°²×°£º¼Ó <b>--dry-run</b>
+        ?? <b>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</b>ï¿½ï¿½ï¿½Üµï¿½Ö´ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ <span class="ic">bash -s --</span> ï¿½ï¿½ï¿½æ£©ï¿½ï¿½<br>
+        ï¿½ï¿½ ï¿½ï¿½ï¿½ dmg Ó¦ï¿½ï¿½ï¿½ï¿½ï¿½Ø£ï¿½<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</b><br>
+        ï¿½ï¿½ Ð¶ï¿½Ø£ï¿½<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b><br>
+        ï¿½ï¿½ ï¿½Ø±Õ¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ <b>--no-autostart</b>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Êµï¿½Ê°ï¿½×°ï¿½ï¿½ï¿½ï¿½ <b>--dry-run</b>
       </div>
     </div>
   </div>
@@ -95,21 +95,21 @@
   <!-- ============ Linux ============ -->
   <div class="panel" id="panel-linux">
     <div class="card">
-      <h2>?? Linux ×ÀÃæ / ·þÎñÆ÷Ò»ÐÐÃüÁî²¿Êð</h2>
-      <p>Ö§³Ö Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9£¬×Ô¶¯°²×° Node.js 20 ÓëÈ«²¿ÒÀÀµ¡£DGX£¨DGX OS ¼´ Ubuntu£©Í¬ÑùÊÊÓÃ£¬×ÀÃæ¶Ë×Ô¶¯ÅäÖÃÓ¦ÓÃ²Ëµ¥ + systemd ÓÃ»§·þÎñ×ÔÆô¡£</p>
+      <h2>?? Linux ï¿½ï¿½ï¿½ï¿½ / ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½î²¿ï¿½ï¿½</h2>
+      <p>Ö§ï¿½ï¿½ Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½×° Node.js 20 ï¿½ï¿½È«ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½DGXï¿½ï¿½DGX OS ï¿½ï¿½ Ubuntuï¿½ï¿½Í¬ï¿½ï¿½ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½Ó¦ï¿½Ã²Ëµï¿½ + systemd ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</p>
       <div class="cmdbox">
-        <div class="label">×ÀÃæ¶Ë / DGX °²×°£¨ÓÃ»§Ì¬£¬×Ô¶¯ÅäÖÃ×ÀÃæÈë¿ÚÓë×ÔÆô£©£º</div>
+        <div class="label">ï¿½ï¿½ï¿½ï¿½ï¿½ / DGX ï¿½ï¿½×°ï¿½ï¿½ï¿½Ã»ï¿½Ì¬ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</div>
         <code class="cmd" id="cmd-linux">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</code>
-        <button class="copy" data-target="cmd-linux">¸´ÖÆ</button>
+        <button class="copy" data-target="cmd-linux">ï¿½ï¿½ï¿½ï¿½</button>
       </div>
       <div class="cmdbox">
-        <div class="label">ÔÆ·þÎñÆ÷²¿Êð£¨/opt Ä¿Â¼ + PM2 ÍÐ¹Ü£¬¶ÔÍâ·þÎñÓÃÕâ¸ö£©£º</div>
+        <div class="label">ï¿½Æ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½/opt Ä¿Â¼ + PM2 ï¿½Ð¹Ü£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</div>
         <code class="cmd" id="cmd-deploy">curl -fsSL http://47.93.157.83:8080/install.sh | bash</code>
-        <button class="copy" data-target="cmd-deploy">¸´ÖÆ</button>
+        <button class="copy" data-target="cmd-deploy">ï¿½ï¿½ï¿½ï¿½</button>
       </div>
       <div class="tips">
-        ?? ×°Íê×ÀÃæ¶Ë»áµÃµ½£º<b>~/.local/bin/lingxi</b> ÃüÁîÐÐÈë¿Ú + Ó¦ÓÃ²Ëµ¥Í¼±ê + ¿ª»ú×ÔÆô£¨ÎÞ systemd ×Ô¶¯½µ¼¶ XDG autostart£©¡£<br>
-        Ð¶ÔØ£º<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b>
+        ?? ×°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë»ï¿½Ãµï¿½ï¿½ï¿½<b>~/.local/bin/lingxi</b> ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ + Ó¦ï¿½Ã²Ëµï¿½Í¼ï¿½ï¿½ + ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ systemd ï¿½Ô¶ï¿½ï¿½ï¿½ï¿½ï¿½ XDG autostartï¿½ï¿½ï¿½ï¿½<br>
+        Ð¶ï¿½Ø£ï¿½<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b>
       </div>
     </div>
   </div>
@@ -117,105 +117,105 @@
   <!-- ============ Windows ============ -->
   <div class="panel" id="panel-win">
     <div class="card">
-      <h2>??? Windows ×ÀÃæ±ãÐ¯°æ</h2>
-      <p>Ö§³Ö Windows 10 1809+ / Windows 11£¬±ãÐ¯°æ¿ªÏä¼´ÓÃ£¬¼¯³É 15 ÖÖ AI Ä£ÐÍ£¬ÎÞÐèÃüÁîÐÐ¡£</p>
-      <a class="btn btn-primary" href="/public/ÁéÏ¬ÒýÇæ-desktop-1.1.0-portable.exe" download>? ÏÂÔØ ÁéÏ¬ÒýÇæ.exe</a>
-      <a class="btn btn-ghost" href="/public/install.ps1" download>? PowerShell °²×°½Å±¾</a>
+      <h2>??? Windows ï¿½ï¿½ï¿½ï¿½ï¿½Ð¯ï¿½ï¿½</h2>
+      <p>Ö§ï¿½ï¿½ Windows 10 1809+ / Windows 11ï¿½ï¿½ï¿½ï¿½Ð¯ï¿½æ¿ªï¿½ä¼´ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ 15 ï¿½ï¿½ AI Ä£ï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð¡ï¿½</p>
+      <a class="btn btn-primary" href="/public/ï¿½ï¿½Ï¬ï¿½ï¿½ï¿½ï¿½-desktop-1.1.0-portable.exe" download>? ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½Ï¬ï¿½ï¿½ï¿½ï¿½.exe</a>
+      <a class="btn btn-ghost" href="/public/install.ps1" download>? PowerShell ï¿½ï¿½×°ï¿½Å±ï¿½</a>
       <div class="cmdbox" style="margin-top:18px">
-        <div class="label">»òÓÃ PowerShell Ò»ÐÐÃüÁî£¨¹ÜÀíÔ±£©£º</div>
+        <div class="label">ï¿½ï¿½ï¿½ï¿½ PowerShell Ò»ï¿½ï¿½ï¿½ï¿½ï¿½î£¨ï¿½ï¿½ï¿½ï¿½Ô±ï¿½ï¿½ï¿½ï¿½</div>
         <code class="cmd" id="cmd-win">irm http://47.93.157.83:8080/install.ps1 | iex</code>
-        <button class="copy" data-target="cmd-win">¸´ÖÆ</button>
+        <button class="copy" data-target="cmd-win">ï¿½ï¿½ï¿½ï¿½</button>
       </div>
-      <div class="tips">?? °²×°Íê³ÉºóÔËÐÐ <b>start.bat</b>£¬ä¯ÀÀÆ÷´ò¿ª <b>http://localhost:3456</b>¡£</div>
+      <div class="tips">?? ï¿½ï¿½×°ï¿½ï¿½Éºï¿½ï¿½ï¿½ï¿½ï¿½ <b>start.bat</b>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ <b>http://localhost:3456</b>ï¿½ï¿½</div>
     </div>
   </div>
 
   </div>
 
-  <!-- ============ Ô´Âë°ü£¨È«Æ½Ì¨Í¨ÓÃ£© ============ -->
+  <!-- ============ Ô´ï¿½ï¿½ï¿½ï¿½ï¿½È«Æ½Ì¨Í¨ï¿½Ã£ï¿½ ============ -->
   <div class="card">
-    <h2>?? Ô´Âë°ü£¨È«Æ½Ì¨Í¨ÓÃ£©</h2>
-    <p>ÍêÕûÔ´Âë£¬½âÑ¹ºó npm install ¼´¿ÉÔËÐÐ£¬ÊÊÓÃÓÚËùÓÐÆ½Ì¨¡¢¶þ´Î¿ª·¢ÓëÀëÏß²¿Êð¡£</p>
-    <a class="btn btn-primary" href="/public/lingxi-engine-v2.0.18.tar.gz" download>? ÏÂÔØ ÒýÇæÔ´Âë°ü v2.0.18</a>
-    <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>? ×îÐÂ°æ£¨Í¨ÓÃÃû£©</a>
+    <h2>?? Ô´ï¿½ï¿½ï¿½ï¿½ï¿½È«Æ½Ì¨Í¨ï¿½Ã£ï¿½</h2>
+    <p>ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ë£¬ï¿½ï¿½Ñ¹ï¿½ï¿½ npm install ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ð£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ½Ì¨ï¿½ï¿½ï¿½ï¿½ï¿½Î¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß²ï¿½ï¿½ï¿½</p>
+    <a class="btn btn-primary" href="/public/lingxi-engine-v2.0.20.tar.gz" download>? ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ï¿½ï¿½ v2.0.20</a>
+    <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>? ï¿½ï¿½ï¿½Â°æ£¨Í¨ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</a>
   </div>
 
-  <!-- ============ ²¿ÊðÎÄµµ ============ -->
+  <!-- ============ ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ ============ -->
   <details>
-    <summary>?? ¶àÆ½Ì¨²¿ÊðÎÄµµ£¨Õ¹¿ª²é¿´£©</summary>
+    <summary>?? ï¿½ï¿½Æ½Ì¨ï¿½ï¿½ï¿½ï¿½ï¿½Äµï¿½ï¿½ï¿½Õ¹ï¿½ï¿½ï¿½é¿´ï¿½ï¿½</summary>
     <div class="dbody">
-      <h3>ÏµÍ³ÒªÇóÓë²¿ÊðÃüÁî×ÜÀÀ</h3>
+      <h3>ÏµÍ³Òªï¿½ï¿½ï¿½ë²¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</h3>
       <table>
-        <tr><th>Æ½Ì¨</th><th>ÒªÇó</th><th>²¿ÊðÃüÁî</th></tr>
-        <tr><td>Windows</td><td>Win10 1809+ / Win11£¬PowerShell 5.1+£¬´ÅÅÌ ¡Ý 2GB</td><td><span class="ic">irm http://47.93.157.83:8080/install.ps1 | iex</span></td></tr>
-        <tr><td>macOS</td><td>macOS 12+£¬Apple Silicon »ò Intel£¬´ÅÅÌ ¡Ý 2GB</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
-        <tr><td>Linux ×ÀÃæ</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
-        <tr><td>Linux ·þÎñÆ÷</td><td>Í¬ÉÏ£¬½¨Òé 1 ºË 2GB Æð²½</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
-        <tr><td>NVIDIA DGX</td><td>DGX OS£¨Ubuntu »ùµ×£©£¬×Ô´ø CUDA Çý¶¯</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
-        <tr><td>CentOS 7</td><td>? ²»Ö§³Ö£¨glibc 2.17 ¹ý¾É£©</td><td>¡ª</td></tr>
+        <tr><th>Æ½Ì¨</th><th>Òªï¿½ï¿½</th><th>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</th></tr>
+        <tr><td>Windows</td><td>Win10 1809+ / Win11ï¿½ï¿½PowerShell 5.1+ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ 2GB</td><td><span class="ic">irm http://47.93.157.83:8080/install.ps1 | iex</span></td></tr>
+        <tr><td>macOS</td><td>macOS 12+ï¿½ï¿½Apple Silicon ï¿½ï¿½ Intelï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ 2GB</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux ï¿½ï¿½ï¿½ï¿½</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</td><td>Í¬ï¿½Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ 1 ï¿½ï¿½ 2GB ï¿½ï¿½</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
+        <tr><td>NVIDIA DGX</td><td>DGX OSï¿½ï¿½Ubuntu ï¿½ï¿½ï¿½×£ï¿½ï¿½ï¿½ï¿½Ô´ï¿½ CUDA ï¿½ï¿½ï¿½ï¿½</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
+        <tr><td>CentOS 7</td><td>? ï¿½ï¿½Ö§ï¿½Ö£ï¿½glibc 2.17 ï¿½ï¿½ï¿½É£ï¿½</td><td>ï¿½ï¿½</td></tr>
       </table>
 
-      <h3>°²×°½Å±¾»á×Ô¶¯×öÊ²Ã´</h3>
+      <h3>ï¿½ï¿½×°ï¿½Å±ï¿½ï¿½ï¿½ï¿½Ô¶ï¿½ï¿½ï¿½Ê²Ã´</h3>
       <ol>
-        <li>Ê¶±ð²Ù×÷ÏµÍ³ÓëÐ¾Æ¬¼Ü¹¹£¨x86_64 / arm64£©</li>
-        <li>°²×° Node.js ÔËÐÐÊ±£¨apt / dnf / yum / Homebrew ×Ô¶¯·ÖÖ§£©</li>
-        <li>ÏÂÔØÒýÇæ·Ö·¢°ü£¨Ô¼ 2.65MB£©²¢½âÑ¹µ½°²×°Ä¿Â¼</li>
-        <li>Éú³É .env ÅäÖÃ£¨º¬Ëæ»ú JWT ÃÜÔ¿£©²¢°²×° npm ÒÀÀµ</li>
-        <li>ÅäÖÃ¿ª»ú×ÔÆô£¨macOS LaunchAgent / Linux systemd ÓÃ»§·þÎñ»ò XDG autostart£©</li>
-        <li>Æô¶¯ÒýÇæ²¢´ò¿ª <b>http://localhost:3456</b></li>
+        <li>Ê¶ï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½Ð¾Æ¬ï¿½Ü¹ï¿½ï¿½ï¿½x86_64 / arm64ï¿½ï¿½</li>
+        <li>ï¿½ï¿½×° Node.js ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½apt / dnf / yum / Homebrew ï¿½Ô¶ï¿½ï¿½ï¿½Ö§ï¿½ï¿½</li>
+        <li>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö·ï¿½ï¿½ï¿½ï¿½ï¿½Ô¼ 2.65MBï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ñ¹ï¿½ï¿½ï¿½ï¿½×°Ä¿Â¼</li>
+        <li>ï¿½ï¿½ï¿½ï¿½ .env ï¿½ï¿½ï¿½Ã£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ JWT ï¿½ï¿½Ô¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×° npm ï¿½ï¿½ï¿½ï¿½</li>
+        <li>ï¿½ï¿½ï¿½Ã¿ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½macOS LaunchAgent / Linux systemd ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ XDG autostartï¿½ï¿½</li>
+        <li>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ²¢ï¿½ï¿½ <b>http://localhost:3456</b></li>
       </ol>
 
-      <h3>DGX / GPU ·þÎñÆ÷×·¼Ó²½Öè£¨±¾µØ´óÄ£ÐÍÍÆÀí£©</h3>
-      <p>ÒýÇæ×°ºÃºó£¬ÈçÐè½Ó±¾µØ GPU Ä£ÐÍ£º</p>
+      <h3>DGX / GPU ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×·ï¿½Ó²ï¿½ï¿½è£¨ï¿½ï¿½ï¿½Ø´ï¿½Ä£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</h3>
+      <p>ï¿½ï¿½ï¿½ï¿½×°ï¿½Ãºï¿½ï¿½ï¿½ï¿½ï¿½Ó±ï¿½ï¿½ï¿½ GPU Ä£ï¿½Í£ï¿½</p>
       <pre>curl -fsSL https://ollama.com/install.sh | sh
-ollama pull qwen2.5:14b          # °´ÏÔ´æÑ¡Ä£ÐÍ
+ollama pull qwen2.5:14b          # ï¿½ï¿½ï¿½Ô´ï¿½Ñ¡Ä£ï¿½ï¿½
 cat &gt;&gt; /opt/lingxi-engine/.env &lt;&lt;'EOF'
 OPENAI_BASE_URL=http://localhost:11434/v1
 OPENAI_API_KEY=ollama
 MODEL_NAME=qwen2.5:14b
 EOF
 pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
-      <p>DGX OS ×Ô´ø CUDA£¬Ollama Ö±½ÓÊ¶±ð GPU£¬ÎÞÐè¶îÍâ×°Çý¶¯£»¶Ë¿Ú¶ÔÍâÐè <span class="ic">sudo ufw allow 3456</span>¡£</p>
+      <p>DGX OS ï¿½Ô´ï¿½ CUDAï¿½ï¿½Ollama Ö±ï¿½ï¿½Ê¶ï¿½ï¿½ GPUï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ë¿Ú¶ï¿½ï¿½ï¿½ï¿½ï¿½ <span class="ic">sudo ufw allow 3456</span>ï¿½ï¿½</p>
 
-      <h3>°²×°ºóÑéÖ¤</h3>
+      <h3>ï¿½ï¿½×°ï¿½ï¿½ï¿½ï¿½Ö¤</h3>
       <pre>curl http://localhost:3456/api/health
-# ÆÚÍû·µ»Ø {"ok":true,"version":"2.0.18","agents":11,...}</pre>
+# ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ {"ok":true,"version":"2.0.20","agents":11,...}</pre>
 
-      <h3>ÊÖ¶¯²¿Êð£¨²»ÓÃ½Å±¾£©</h3>
-      <p>ÍêÕûÊÖ¶¯²½Öè£¨Node °²×° ¡ú tarball ½âÑ¹ ¡ú .env ÅäÖÃ ¡ú npm install ¡ú PM2/systemd ÍÐ¹Ü£©²Î¿¼ <span class="ic">install.sh</span> ÄÚµÄ°²×°Âß¼­£»Linux ×ÀÃæ»¹¿ÉÑ¡ deb / AppImage °²×°°ü£¨¹¹½¨½Å±¾ÔÚ²Ö¿â <span class="ic">linux_packaging/</span> Ä¿Â¼£©¡£</p>
-      <p>?? ¸üÍêÕûµÄÍ¼ÎÄ²¿ÊðÖ¸ÄÏ£¨º¬ÀëÏß²¿Êð¡¢PM2 ÍÐ¹Ü¡¢³£¼ûÅÅÕÏ£©¼û <a href="/docs/">Õ¾ÄÚÎÄµµ</a>¡£</p>
+      <h3>ï¿½Ö¶ï¿½ï¿½ï¿½ï¿½ð£¨²ï¿½ï¿½Ã½Å±ï¿½ï¿½ï¿½</h3>
+      <p>ï¿½ï¿½ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½ï¿½ï¿½è£¨Node ï¿½ï¿½×° ï¿½ï¿½ tarball ï¿½ï¿½Ñ¹ ï¿½ï¿½ .env ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ npm install ï¿½ï¿½ PM2/systemd ï¿½Ð¹Ü£ï¿½ï¿½Î¿ï¿½ <span class="ic">install.sh</span> ï¿½ÚµÄ°ï¿½×°ï¿½ß¼ï¿½ï¿½ï¿½Linux ï¿½ï¿½ï¿½æ»¹ï¿½ï¿½Ñ¡ deb / AppImage ï¿½ï¿½×°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Å±ï¿½ï¿½Ú²Ö¿ï¿½ <span class="ic">linux_packaging/</span> Ä¿Â¼ï¿½ï¿½ï¿½ï¿½</p>
+      <p>?? ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Í¼ï¿½Ä²ï¿½ï¿½ï¿½Ö¸ï¿½Ï£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ß²ï¿½ï¿½ï¿½PM2 ï¿½Ð¹Ü¡ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ï£ï¿½ï¿½ï¿½ <a href="/docs/">Õ¾ï¿½ï¿½ï¿½Äµï¿½</a>ï¿½ï¿½</p>
     </div>
   </details>
 
   <!-- ============ FAQ ============ -->
   <details>
-    <summary>? ³£¼ûÎÊÌâ FAQ£¨Õ¹¿ª²é¿´£©</summary>
+    <summary>? ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ FAQï¿½ï¿½Õ¹ï¿½ï¿½ï¿½é¿´ï¿½ï¿½</summary>
     <div class="dbody">
-      <h3>°²×°Àà</h3>
-      <p><b>Q£ºcurl ÃüÁîÖ´ÐÐºóÃ»·´Ó¦ / ¿¨×¡£¿</b><br>
-      A£º¼ì²éÍøÂçÄÜ·ñ·ÃÎÊ <span class="ic">http://47.93.157.83:8080</span>£¨¹«Ë¾ÄÚÍø¿ÉÄÜÀ¹½Ø·Ç³£ÓÃ¶Ë¿Ú£©£»macOS ÓÃ»§È·ÈÏÓÃµÄÊÇ¡¸ÖÕ¶Ë¡¹¶ø·Ç IDE ÄÚÖÃÊÜÏÞÖÕ¶Ë¡£</p>
-      <p><b>Q£ºmacOS ÉÏ dmg Ó¦ÓÃ±»ÏµÍ³À¹½Ø£¿</b><br>
-      A£ºÖ´ÐÐ <span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</span> Ò»¼ü½â³ý Gatekeeper À¹½Ø¡£</p>
-      <p><b>Q£ºLinux ÌáÊ¾ glibc too old£¿</b><br>
-      A£ºÏµÍ³¹ý¾É£¨Èç CentOS 7£©£¬ÇëÉý¼¶µ½ Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8+¡£</p>
-      <p><b>Q£ºnpm °²×°ºÜÂý»ò³¬Ê±£¿</b><br>
-      A£ºÇÐ»»¹úÄÚ¾µÏñ <span class="ic">npm config set registry https://registry.npmmirror.com</span> ºóÖØÅÜ½Å±¾¡£</p>
+      <h3>ï¿½ï¿½×°ï¿½ï¿½</h3>
+      <p><b>Qï¿½ï¿½curl ï¿½ï¿½ï¿½ï¿½Ö´ï¿½Ðºï¿½Ã»ï¿½ï¿½Ó¦ / ï¿½ï¿½×¡ï¿½ï¿½</b><br>
+      Aï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ü·ï¿½ï¿½ï¿½ï¿½ <span class="ic">http://47.93.157.83:8080</span>ï¿½ï¿½ï¿½ï¿½Ë¾ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ø·Ç³ï¿½ï¿½Ã¶Ë¿Ú£ï¿½ï¿½ï¿½macOS ï¿½Ã»ï¿½È·ï¿½ï¿½ï¿½Ãµï¿½ï¿½Ç¡ï¿½ï¿½Õ¶Ë¡ï¿½ï¿½ï¿½ï¿½ï¿½ IDE ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Õ¶Ë¡ï¿½</p>
+      <p><b>Qï¿½ï¿½macOS ï¿½ï¿½ dmg Ó¦ï¿½Ã±ï¿½ÏµÍ³ï¿½ï¿½ï¿½Ø£ï¿½</b><br>
+      Aï¿½ï¿½Ö´ï¿½ï¿½ <span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</span> Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ Gatekeeper ï¿½ï¿½ï¿½Ø¡ï¿½</p>
+      <p><b>Qï¿½ï¿½Linux ï¿½ï¿½Ê¾ glibc too oldï¿½ï¿½</b><br>
+      Aï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½É£ï¿½ï¿½ï¿½ CentOS 7ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8+ï¿½ï¿½</p>
+      <p><b>Qï¿½ï¿½npm ï¿½ï¿½×°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê±ï¿½ï¿½</b><br>
+      Aï¿½ï¿½ï¿½Ð»ï¿½ï¿½ï¿½ï¿½Ú¾ï¿½ï¿½ï¿½ <span class="ic">npm config set registry https://registry.npmmirror.com</span> ï¿½ï¿½ï¿½ï¿½ï¿½Ü½Å±ï¿½ï¿½ï¿½</p>
 
-      <h3>ÔËÐÐÀà</h3>
-      <p><b>Q£º¶Ë¿Ú 3456 ±»Õ¼ÓÃ£¿</b><br>
-      A£º±à¼­ .env ÐÞ¸Ä <span class="ic">PORT</span> ºóÖØÆô£»»òÓÃ <span class="ic">ss -tlnp | grep 3456</span>£¨Linux£©/ <span class="ic">lsof -i :3456</span>£¨macOS£©ÕÒµ½Õ¼ÓÃ½ø³Ì¡£</p>
-      <p><b>Q£ºÔõÃ´ÑéÖ¤×°ºÃÁË£¿</b><br>
-      A£ºä¯ÀÀÆ÷´ò¿ª <span class="ic">http://localhost:3456</span>£¬»òÖÕ¶ËÖ´ÐÐ <span class="ic">curl http://localhost:3456/api/health</span>£¬·µ»Ø ok ¼´³É¹¦¡£</p>
-      <p><b>Q£º¿ª»úÃ»ÓÐ×ÔÆô£¿</b><br>
-      A£ºmacOS ¼ì²é¡¸ÏµÍ³ÉèÖÃ ¡ú Í¨ÓÃ ¡ú µÇÂ¼Ïî¡¹£»Linux ¼ì²é <span class="ic">systemctl --user status lingxi-engine</span>£»ÖØÅÜ°²×°½Å±¾¿ÉÐÞ¸´¡£</p>
-      <p><b>Q£ºÔõÃ´³¹µ×Ð¶ÔØ£¿</b><br>
-      A£º<span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</span>£¬»áÇåÀí³ÌÐòÎÄ¼þ¡¢×ÔÆôÅäÖÃºÍ²Ëµ¥Í¼±ê£¨±£ÁôÓÃ»§Êý¾Ý£©¡£</p>
-      <p><b>Q£ºWSL ÀïÄÜÅÜÂð£¿</b><br>
-      A£ºÄÜ¡£°´ Linux ·½Ê½°²×°£¬Windows ä¯ÀÀÆ÷Ö±½Ó·ÃÎÊ localhost:3456 ¼´¿É¡£</p>
+      <h3>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</h3>
+      <p><b>Qï¿½ï¿½ï¿½Ë¿ï¿½ 3456 ï¿½ï¿½Õ¼ï¿½Ã£ï¿½</b><br>
+      Aï¿½ï¿½ï¿½à¼­ .env ï¿½Þ¸ï¿½ <span class="ic">PORT</span> ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ <span class="ic">ss -tlnp | grep 3456</span>ï¿½ï¿½Linuxï¿½ï¿½/ <span class="ic">lsof -i :3456</span>ï¿½ï¿½macOSï¿½ï¿½ï¿½Òµï¿½Õ¼ï¿½Ã½ï¿½ï¿½Ì¡ï¿½</p>
+      <p><b>Qï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½Ö¤×°ï¿½ï¿½ï¿½Ë£ï¿½</b><br>
+      Aï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ <span class="ic">http://localhost:3456</span>ï¿½ï¿½ï¿½ï¿½ï¿½Õ¶ï¿½Ö´ï¿½ï¿½ <span class="ic">curl http://localhost:3456/api/health</span>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ok ï¿½ï¿½ï¿½É¹ï¿½ï¿½ï¿½</p>
+      <p><b>Qï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</b><br>
+      Aï¿½ï¿½macOS ï¿½ï¿½é¡¸ÏµÍ³ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ Í¨ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½Â¼ï¿½î¡¹ï¿½ï¿½Linux ï¿½ï¿½ï¿½ <span class="ic">systemctl --user status lingxi-engine</span>ï¿½ï¿½ï¿½ï¿½ï¿½Ü°ï¿½×°ï¿½Å±ï¿½ï¿½ï¿½ï¿½Þ¸ï¿½ï¿½ï¿½</p>
+      <p><b>Qï¿½ï¿½ï¿½ï¿½Ã´ï¿½ï¿½ï¿½ï¿½Ð¶ï¿½Ø£ï¿½</b><br>
+      Aï¿½ï¿½<span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</span>ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ä¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÃºÍ²Ëµï¿½Í¼ï¿½ê£¨ï¿½ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½ï¿½ï¿½Ý£ï¿½ï¿½ï¿½</p>
+      <p><b>Qï¿½ï¿½WSL ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½</b><br>
+      Aï¿½ï¿½ï¿½Ü¡ï¿½ï¿½ï¿½ Linux ï¿½ï¿½Ê½ï¿½ï¿½×°ï¿½ï¿½Windows ï¿½ï¿½ï¿½ï¿½ï¿½Ö±ï¿½Ó·ï¿½ï¿½ï¿½ localhost:3456 ï¿½ï¿½ï¿½É¡ï¿½</p>
     </div>
   </details>
 
-  <div class="foot">ÁéÏ¬ÒýÇæ v2.0.18 ¡¤ <a href="/">·µ»ØÊ×Ò³</a></div>
+  <div class="foot">ï¿½ï¿½Ï¬ï¿½ï¿½ï¿½ï¿½ v2.0.20 ï¿½ï¿½ <a href="/">ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò³</a></div>
 </div>
 
 <script>
@@ -237,9 +237,9 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   var txt = document.getElementById('detectText');
 
   if (os !== 'unknown') {
-    txt.innerHTML = 'ÒÑÊ¶±ðÄãµÄÏµÍ³£º<b>' + icons[os] + ' ' + names[os] + '</b>£¬ÒÑÎªÄãÕ¹Ê¾¶ÔÓ¦ÃüÁî';
+    txt.innerHTML = 'ï¿½ï¿½Ê¶ï¿½ï¿½ï¿½ï¿½ï¿½ÏµÍ³ï¿½ï¿½<b>' + icons[os] + ' ' + names[os] + '</b>ï¿½ï¿½ï¿½ï¿½Îªï¿½ï¿½Õ¹Ê¾ï¿½ï¿½Ó¦ï¿½ï¿½ï¿½ï¿½';
   } else {
-    txt.innerHTML = 'Î´ÄÜÊ¶±ðÏµÍ³ÀàÐÍ£¬Çë´ÓÏÂ·½ÊÖ¶¯Ñ¡ÔñÄãµÄ²Ù×÷ÏµÍ³';
+    txt.innerHTML = 'Î´ï¿½ï¿½Ê¶ï¿½ï¿½ÏµÍ³ï¿½ï¿½ï¿½Í£ï¿½ï¿½ï¿½ï¿½ï¿½Â·ï¿½ï¿½Ö¶ï¿½Ñ¡ï¿½ï¿½ï¿½ï¿½Ä²ï¿½ï¿½ï¿½ÏµÍ³';
     bar.style.background = 'rgba(251,191,36,.1)';
     bar.style.borderColor = 'rgba(251,191,36,.3)';
   }
@@ -251,16 +251,16 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     for (var j = 0; j < panels.length; j++) panels[j].classList.toggle('active', panels[j].id === 'panel-' + p);
   }
 
-  // Ä¬ÈÏÕ¹Ê¾¼ì²âµ½µÄÏµÍ³£»Ê¶±ðÊ§°ÜÄ¬ÈÏ macOS£¨½Å±¾Ë«¶ËÍ¨ÓÃ£©
+  // Ä¬ï¿½ï¿½Õ¹Ê¾ï¿½ï¿½âµ½ï¿½ï¿½ÏµÍ³ï¿½ï¿½Ê¶ï¿½ï¿½Ê§ï¿½ï¿½Ä¬ï¿½ï¿½ macOSï¿½ï¿½ï¿½Å±ï¿½Ë«ï¿½ï¿½Í¨ï¿½Ã£ï¿½
   showPanel(os !== 'unknown' ? os : 'mac');
 
-  // ÊÖ¶¯ÇÐ»»
+  // ï¿½Ö¶ï¿½ï¿½Ð»ï¿½
   document.getElementById('tabs').addEventListener('click', function(e) {
     var t = e.target.closest('.tab');
     if (t) showPanel(t.getAttribute('data-p'));
   });
 
-  // ¸´ÖÆ°´Å¥
+  // ï¿½ï¿½ï¿½Æ°ï¿½Å¥
   document.addEventListener('click', function(e) {
     var btn = e.target.closest('.copy');
     if (!btn) return;
@@ -268,9 +268,9 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     if (!code) return;
     var text = code.textContent.trim();
     function ok() {
-      btn.textContent = '? ÒÑ¸´ÖÆ';
+      btn.textContent = '? ï¿½Ñ¸ï¿½ï¿½ï¿½';
       btn.classList.add('done');
-      setTimeout(function() { btn.textContent = '¸´ÖÆ'; btn.classList.remove('done'); }, 1800);
+      setTimeout(function() { btn.textContent = 'ï¿½ï¿½ï¿½ï¿½'; btn.classList.remove('done'); }, 1800);
     }
     function fallback() {
       var ta = document.createElement('textarea');
