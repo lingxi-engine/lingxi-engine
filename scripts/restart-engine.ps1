@@ -1,8 +1,8 @@
-# 灵犀引擎一键重启脚本（2026-09-14 重部署善后）
-# 只杀命令行里同时含 lingxi-engine 和 index.ts 的 node 进程，不误伤其他程序
+# LingXi Engine one-click restart (v2.0.19 fix: previous version had broken nested quotes on line 21)
+# Only kills node.exe whose command line contains BOTH 'lingxi-engine' AND 'index.ts' - never touches other programs
 $ErrorActionPreference = 'SilentlyContinue'
-# v2.0.19: 仓库根目录从脚本自身位置推导，其它电脑部署到任意路径都能用（旧版硬编码了本机路径）
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
 $targets = Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
   Where-Object { $_.CommandLine -match 'lingxi-engine' -and $_.CommandLine -match 'index\.ts' }
 
@@ -19,7 +19,8 @@ Start-Sleep -Seconds 3
 Write-Host "  [2/3] starting engine (new minimized window)..."
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "cmd.exe"
-$psi.Arguments = "/c cd /d "$repoRoot"" && npm start"
+$psi.Arguments = '/c cd /d "' + $repoRoot + '" && npm start'
+$psi.WorkingDirectory = $repoRoot
 $psi.WindowStyle = "Minimized"
 $psi.UseShellExecute = $true
 [System.Diagnostics.Process]::Start($psi) | Out-Null
