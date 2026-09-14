@@ -680,7 +680,7 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.19',
+        version: (process.env.npm_package_version) || '2.0.20',
         agents: manager.list().length,
         time: Date.now(),
         uptime: Math.floor(process.uptime()),
@@ -2067,6 +2067,9 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       if (!spend.ok) return res.status(400).json({ error: spend.error, balance: spend.balance });
       addWalletBalance(toUserId, cur as 'usd' | 'cny', amt, reason || '来自 ' + fromUserId + ' 的转账');
       res.json({ ok: true, currency: cur, amount: amt, message: '转账成功' });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // v2.4.0: 冻结（发布商品/下单时调用）
   app.post('/api/wallet/freeze', optAuth, (req, res) => {
     try {
@@ -2134,9 +2137,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       // 卖家入账（占位模式：100% 到账；真实模式接支付通道后按抽成规则）
       addWalletBalance(sellerId, cur as 'usd' | 'cny', amt, note || '交易结算收入: ' + (refId || ''));
       res.json({ ok: true, buyer: getWallet(buyerId), seller: getWallet(sellerId), placeholder: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** v2.0.12: 雇佣到期惰性检查——超过 expires_at 则标记 expired 并把被雇 agent 移出工作群（保留聊天记录） */
@@ -4389,7 +4389,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           status: user.status,
           created_at: user.created_at,
         },
-        credits: creditRow?.credits || 1000,
+        credits: creditRow ? Number(creditRow.credits) : 1000,
         totalEarned: creditRow?.total_earned || 0,
         totalSpent: creditRow?.total_spent || 0,
         usage: usage.total,

@@ -74,6 +74,19 @@ export async function initDB(dbPath: string) {
   }
   if (!_db) _db = new SQL.Database();
   _dbInit(_db);
+  // v2.0.20: 存量用户积分建档——补齐 user_credits 缺失记录，避免各处读到兜底值
+  try {
+    const missing = _db.exec('SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM user_credits)');
+    const rows = (missing[0] && missing[0].values) || [];
+    if (rows.length) {
+      const now = Date.now();
+      const ins = _db.prepare('INSERT OR IGNORE INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, 1000, 0, 0, ?)');
+      for (const r of rows) { ins.run([String(r[0]), now]); }
+      ins.free();
+      markDirty();
+      console.log('[DB] credit rows backfilled: ' + rows.length);
+    }
+  } catch (e: any) { console.error('[DB] credit backfill failed:', e.message); }
   console.log(`[DB] initialized: ${dbPath}`);
   return _db;
 }

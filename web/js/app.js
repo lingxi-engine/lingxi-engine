@@ -3398,7 +3398,7 @@ async function loadProfileCard() {
         var pw2 = document.getElementById('pcWallet'); if (pw2) pw2.textContent = '$' + wu.toFixed(2) + ' / ¥' + wc.toFixed(2);
       }
     } catch(_we) {}
-    el = document.getElementById('pdCredits'); if (el) el.textContent = '⚠' + Number(credits).toLocaleString();
+    el = document.getElementById('pdCredits'); if (el) el.textContent = t('profile.creditsVal', {n: Number(credits).toLocaleString()});
     el = document.getElementById('pdRating'); if (el) el.textContent = rating;
     el = document.getElementById('pdUsage'); if (el) el.textContent = t('profile.usageLine', {tokens: Number(tokens).toLocaleString(), calls: Number(calls).toLocaleString()});
     el = document.getElementById('pdBio'); if (el) el.textContent = bio ? t('profile.bioPrefix') + esc(bio) : t('profile.noBio');
@@ -3613,7 +3613,7 @@ async function loadProfile() {
       if (p.display_name && !/^用户\d+$/.test(p.display_name)) name = p.display_name;
       idShow = p.numeric_id || p.id;
       credits = pr.credits || 0;
-      rating = pr.ratings?.avgRating ? '⚠' + Number(pr.ratings.avgRating).toFixed(1) : t('common.none');
+      rating = pr.ratings?.avgRating ? t('profile.starUnit', {n: Number(pr.ratings.avgRating).toFixed(1)}) : t('common.none');
       tokens = pr.usage?.totalTokens || 0;
       calls = pr.usage?.calls || 0;
       createdAt = new Date(p.created_at).toLocaleString('zh-CN');
