@@ -4584,13 +4584,29 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const { execSync } = await import('child_process');
       const out = execSync('git pull --ff-only', { cwd: process.cwd(), timeout: 120000, encoding: 'utf8' });
       console.log('[Update] git pull 完成:', String(out).slice(0, 500));
-      res.json({ ok: true, output: String(out).slice(0, 1000) });
-      // 延迟 1.5s 触发 pm2 重启，确保响应先返回
+      // v2.0.19: 拉取后补跑 npm install（幂等），防止新版本新增依赖没装导致重启后起不来
+      let npmOut = '';
+      try {
+        npmOut = String(execSync('npm install --no-audit --no-fund', { cwd: process.cwd(), timeout: 240000, encoding: 'utf8' }));
+      } catch (e: any) {
+        console.error('[Update] npm install 失败:', e?.message || e);
+        return res.status(500).json({ ok: false, error: '升级中断: npm install 未成功，服务未重启（代码已拉取，可重试或手动 npm install）' });
+      }
+      // v2.0.19: 重启按平台分流——Windows 桌面版引擎不在 pm2 下，旧逻辑 npx pm2 restart lingxi 静默失败，
+      // 导致「升级成功」但服务仍跑旧代码。Windows 改调已验证的 restart-engine.ps1（精准杀旧进程+重启+HTTP 验证）。
+      res.json({ ok: true, output: (String(out) + '\n' + npmOut).slice(0, 1000), restarting: process.platform === 'win32' ? 'restart-engine.ps1' : 'pm2 restart lingxi' });
       setTimeout(async () => {
         try {
           const { exec } = await import('child_process');
-          exec('npx pm2 restart lingxi', { cwd: process.cwd() });
-        } catch (e: any) { console.error('[Update] pm2 重启失败:', e?.message || e); }
+          if (process.platform === 'win32') {
+            const ps1 = join(process.cwd(), 'scripts', 'restart-engine.ps1');
+            const { spawn } = await import('child_process');
+            const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1], { cwd: process.cwd(), detached: true, windowsHide: true, stdio: 'ignore' });
+            child.unref();
+          } else {
+            exec('npx pm2 restart lingxi', { cwd: process.cwd() });
+          }
+        } catch (e: any) { console.error('[Update] 重启失败:', e?.message || e); }
       }, 1500);
     } catch (err: any) {
       res.status(500).json({ error: '升级失败: ' + (err?.message || err) });
