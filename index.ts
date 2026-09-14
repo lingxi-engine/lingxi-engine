@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Project Hub - 主入口
  */
 // 必须最先加载 .env：ESM 中 import 会被提升，若在模块体中调用 dotenvConfig()，
@@ -4579,7 +4579,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const isAdmin = (jwtUser?.roles || []).includes('admin');
       if (!isAdmin) return res.status(403).json({ error: '仅管理员可执行升级' });
       if (!existsSync(join(process.cwd(), '.git'))) {
-        return res.json({ ok: false, error: '当前部署不是 git 仓库，无法自动升级' });
+        return res.json({ ok: false, error: '当前部署不是 git 仓库（tar 包安装），无法用升级按钮自动更新。请到浏览器重新运行安装命令完成升级：iwr -useb http://47.93.157.83:8080/install.ps1 | iex' });
       }
       const { execSync } = await import('child_process');
       const out = execSync('git pull --ff-only', { cwd: process.cwd(), timeout: 120000, encoding: 'utf8' });
