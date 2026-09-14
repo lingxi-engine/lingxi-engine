@@ -1,14 +1,14 @@
-ï»¿# Lingxi Engine pack script v6.7 (2026-09-12: ä¿®å¤åµŒå¥—åžƒåœ¾è¿‡æ»¤ + ä¿ç•™ .env æ¨¡æ¿)
-#   v6.7 å˜æ›´:
-#     - æ–°å¢ž Remove-JunkFiles: é€’å½’æ¸…ç† __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
-#       (v6.6 çš„ $excludeFilesRegex åªä½œç”¨äºŽé¡¶å±‚ï¼Œå¯¼è‡´ src/ã€lingxi_engine/ å†…çš„åžƒåœ¾éšåŒ…å‘å‡º)
-#     - Remove-EnvFiles æ”¹ä¸ºä¿ç•™ .env.example / .env.templateï¼ˆinstall.sh ä¾èµ– .env.exampleï¼‰
-#     - æ–°å¢ž: åžƒåœ¾æ–‡ä»¶é›¶æ®‹ç•™æ ¡éªŒ + .env.example å­˜åœ¨æ€§æ ¡éªŒ
+# Lingxi Engine pack script v6.7 (2026-09-12: ÐÞ¸´Ç¶Ì×À¬»ø¹ýÂË + ±£Áô .env Ä£°å)
+#   v6.7 ±ä¸ü:
+#     - ÐÂÔö Remove-JunkFiles: µÝ¹éÇåÀí __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
+#       (v6.6 µÄ $excludeFilesRegex Ö»×÷ÓÃÓÚ¶¥²ã£¬µ¼ÖÂ src/¡¢lingxi_engine/ ÄÚµÄÀ¬»øËæ°ü·¢³ö)
+#     - Remove-EnvFiles ¸ÄÎª±£Áô .env.example / .env.template£¨install.sh ÒÀÀµ .env.example£©
+#     - ÐÂÔö: À¬»øÎÄ¼þÁã²ÐÁôÐ£Ñé + .env.example ´æÔÚÐÔÐ£Ñé
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.17.tar.gz"
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.18.tar.gz"
 
 # Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
 $StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
@@ -20,7 +20,7 @@ $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs'
 $excludeDirsRegex = '^backup[_-]'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$'
 
-# åªå…è®¸è¿™äº› env æ¨¡æ¿è¿›åŒ…ï¼Œå…¶ä½™ .env* ä¸€å¾‹å‰¥ç¦»
+# Ö»ÔÊÐíÕâÐ© env Ä£°å½ø°ü£¬ÆäÓà .env* Ò»ÂÉ°þÀë
 $keptEnvNames = @('.env.example', '.env.template')
 
 function Remove-EnvFiles($path) {
@@ -33,7 +33,7 @@ function Remove-EnvFiles($path) {
 }
 
 function Remove-JunkFiles($path) {
-    # é€’å½’æ¸…ç†æž„å»º/è¿è¡Œåžƒåœ¾ã€‚v6.6 åªåœ¨é¡¶å±‚è¿‡æ»¤ï¼Œå­ç›®å½•é‡Œçš„åžƒåœ¾ä¼šæ¼è¿›å‘å¸ƒåŒ…ã€‚
+    # µÝ¹éÇåÀí¹¹½¨/ÔËÐÐÀ¬»ø¡£v6.6 Ö»ÔÚ¶¥²ã¹ýÂË£¬×ÓÄ¿Â¼ÀïµÄÀ¬»ø»áÂ©½ø·¢²¼°ü¡£
     $junkDirs = @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache')
     Get-ChildItem $path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in $junkDirs } |
@@ -179,9 +179,9 @@ try {
         throw "[FAIL] verify-email POST route missing"
     }
 
-    # Verify v2.0.17 platform admin features
+    # Verify v2.0.18 platform admin features
     Write-Host ""
-    Write-Host "Verify v2.0.17 platform admin..." -ForegroundColor Yellow
+    Write-Host "Verify v2.0.18 platform admin..." -ForegroundColor Yellow
     $adminPage = $tarList | Where-Object { $_ -match 'platform-admin\.html$' }
     if ($adminPage) {
         Write-Host "  [OK] platform-admin.html present ($($adminPage[0]))" -ForegroundColor Green
@@ -204,25 +204,25 @@ try {
         throw "[FAIL] admin credits grant API missing"
     }
     $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
-    if ($pkgJson -match '"version":\s*"2\.0\.17"') {
-        Write-Host "  [OK] package.json version = 2.0.17" -ForegroundColor Green
+    if ($pkgJson -match '"version":\s*"2\.0\.18"') {
+        Write-Host "  [OK] package.json version = 2.0.18" -ForegroundColor Green
     } else {
-        throw "[FAIL] package.json version is not 2.0.17"
+        throw "[FAIL] package.json version is not 2.0.18"
     }
 
-    # Verify v2.0.17 reasoning-stream fixes
+    # Verify v2.0.18 reasoning-stream fixes
     Write-Host ""
-    Write-Host "Verify v2.0.17 reasoning stream..." -ForegroundColor Yellow
+    Write-Host "Verify v2.0.18 reasoning stream..." -ForegroundColor Yellow
     if ($appJs -match '_lanThink' -and $appJs -match '_thinkBlock') {
         Write-Host "  [OK] app.js reasoning render markers (_lanThink/_thinkBlock)" -ForegroundColor Green
     } else {
         throw "[FAIL] app.js reasoning render markers missing"
     }
     $swJs = tar -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
-    if ($swJs -match 'lingxi-v18') {
-        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v18" -ForegroundColor Green
+    if ($swJs -match 'lingxi-v19') {
+        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v19" -ForegroundColor Green
     } else {
-        throw "[FAIL] sw.js CACHE_NAME not bumped to v18"
+        throw "[FAIL] sw.js CACHE_NAME not bumped to v19"
     }
     $routerSrc = tar -xzf $OutFile -O './lingxi-engine/src/core/router.ts' 2>$null
     if ($routerSrc -match 'reasoning_content') {
