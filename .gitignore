@@ -262,3 +262,10 @@ backup_*/
 release/
 release-v2/
 src/index.ts
+ 
+# 2026-09-16 mobile app build artifacts
+mobile-app/.gradle/ 
+mobile-app/app/build/ 
+mobile-app/local.properties
+app/android/app/src/main/assets/nodejs-project/ 
+app/ios/App/App/nodejs-project/

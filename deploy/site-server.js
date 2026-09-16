@@ -51,6 +51,68 @@ function proxyAdminToPlatform(req, res) {
   req.pipe(proxy);
 }
 
+const ENGINE_PORT = 3456;
+
+function proxyToEngine(req, res) {
+  const options = {
+    hostname: '127.0.0.1',
+    port: ENGINE_PORT,
+    path: req.url,
+    method: req.method,
+    headers: { ...req.headers, host: '127.0.0.1:' + ENGINE_PORT, 'x-forwarded-for': req.socket.remoteAddress || '' },
+  };
+  const proxy = http.request(options, (apiRes) => {
+    res.writeHead(apiRes.statusCode, apiRes.headers);
+    apiRes.pipe(res);
+  });
+  proxy.on('error', () => {
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Engine API unavailable' }));
+  });
+  req.pipe(proxy);
+}
+
+function proxyToEnginePfx(req, res, pfx) {
+  let fwd = req.url || '/';
+  if (fwd === pfx) fwd = '/';
+  else if (fwd.startsWith(pfx + '/')) fwd = fwd.slice(pfx.length);
+  const options = {
+    hostname: '127.0.0.1',
+    port: ENGINE_PORT,
+    path: fwd,
+    method: req.method,
+    headers: { ...req.headers, host: '127.0.0.1:' + ENGINE_PORT, 'x-forwarded-for': req.socket.remoteAddress || '' },
+  };
+  const proxy = http.request(options, (apiRes) => {
+    res.writeHead(apiRes.statusCode, apiRes.headers);
+    apiRes.pipe(res);
+  });
+  proxy.on('error', () => {
+    res.writeHead(502, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Engine unavailable' }));
+  });
+  req.pipe(proxy);
+}
+
+function proxyWsToEngine(req, socket, head) {
+  const options = {
+    hostname: '127.0.0.1',
+    port: ENGINE_PORT,
+    path: req.url,
+    method: 'GET',
+    headers: { ...req.headers, host: '127.0.0.1:' + ENGINE_PORT },
+  };
+  const proxy = http.request(options);
+  proxy.on('upgrade', (proxyRes, proxySocket) => {
+    socket.write('HTTP/1.1 101 Switching Protocols\r\n' +
+      Object.entries(proxyRes.headers).map(([k,v]) => k + ': ' + v).join('\r\n') + '\r\n\r\n');
+    if (head.length) proxySocket.write(head);
+    proxySocket.pipe(socket);
+    socket.pipe(proxySocket);
+  });
+  proxy.on('error', () => { socket.destroy(); });
+  proxy.end();
+}
 const server = http.createServer((req, res) => {
   // 2026-09-12: malformed URI (bare % etc.) must not crash - fall back to raw path
   let urlPath;
@@ -64,12 +126,17 @@ const server = http.createServer((req, res) => {
 
   // ===== 引擎不对外开放：API 只留管理后台 =====
   if (urlPath.startsWith('/api/')) {
-    if (urlPath.startsWith('/api/admin/')) {
-      return proxyAdminToPlatform(req, res);
-    }
-    res.writeHead(403, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: '引擎 API 已不对外开放。请下载灵犀引擎本地部署：/download.html' }));
+    return proxyToEngine(req, res);
+  }
+
+  // ===== 移动端引擎入口 /m/（App WebView 用，剥前缀代理到引擎；不影响 /app 桌面导流） =====
+  if (urlPath === '/m') {
+    res.writeHead(301, { Location: '/m/' });
+    res.end();
     return;
+  }
+  if (urlPath === '/m/' || urlPath.startsWith('/m/')) {
+    return proxyToEnginePfx(req, res, '/m');
   }
 
   // ===== 网页版引擎入口下线 =====
@@ -187,6 +254,13 @@ const server = http.createServer((req, res) => {
 
 // ===== WebSocket 代理已关闭 — 引擎不对外开放 =====
 server.on('upgrade', (req, socket, head) => {
+  socket.destroy();
+});
+
+server.on("upgrade", (req, socket, head) => {
+  if (req.url && req.url.startsWith("/ws")) {
+    return proxyWsToEngine(req, socket, head);
+  }
   socket.destroy();
 });
 

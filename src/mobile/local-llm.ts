@@ -12,7 +12,7 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { createRequire } from 'module';
 
-const require = createRequire(import.meta.url);
+const require = createRequire(typeof __filename !== 'undefined' ? __filename : import.meta.url);
 
 // ═══ 类型定义 ═══
 export interface ChatMessage {
