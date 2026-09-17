@@ -35,9 +35,16 @@ jobs:
           node-version: '20'
       - name: Install dependencies
         run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Failover unit tests
+        run: |
+          if grep -q "getFailoverCandidates" src/ai/hub.ts; then
+            npx tsx tests/verify-failover.ts
+          else
+            echo "::notice::hub.ts has no failover implementation yet; skipping"
+          fi
       - name: TypeScript type check
-        run: npx tsc --noEmit --skipLibCheck 2>&1 | head -50
-        continue-on-error: true
+        # 2026-09-17 fix: remove continue-on-error and head pipe (pipe swallows tsc exit code)
+        run: npx tsc --noEmit --skipLibCheck
 
   hygiene-check:
     name: Workspace hygiene check

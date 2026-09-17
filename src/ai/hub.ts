@@ -654,6 +654,29 @@ export class AIHub {
   }
 
   /**
+   * Provider 级故障转移候选：同模型、排除故障 provider、跳过熔断中的备胎
+   * 与 feature/add-ci 的"跨模型降级"版不同——verify-failover 场景6 契约
+   * 要求未知模型返回空候选，故只做严格同模型匹配。
+   */
+  getFailoverCandidates(model: string, failedBaseUrl?: string, failedClient?: OpenAI): { client: OpenAI; resolvedModel: string }[] {
+    const candidates: { client: OpenAI; resolvedModel: string }[] = [];
+    const stripped = this.normalizeModelName(model);
+    for (const [pid, entry] of this.providers) {
+      if (failedBaseUrl && entry.config.baseUrl === failedBaseUrl) continue;
+      if (failedClient && entry.client === failedClient) continue;
+      const matched = entry.config.models.find(m => model === m || stripped === m || model.includes(m) || m.includes(model));
+      if (!matched) continue;
+      const cbState = this.circuitBreaker.get(matched);
+      if (cbState && cbState.failures >= this.CB_THRESHOLD && (Date.now() - cbState.lastFail) < this.CB_COOLDOWN) {
+        console.log(`[AI Hub] 故障转移候选 ${pid} 熔断器开启中，跳过`);
+        continue;
+      }
+      candidates.push({ client: entry.client, resolvedModel: matched });
+    }
+    return candidates;
+  }
+
+  /**
    * 获取特定角色的 AI 客户端（多模型协作）
    * role: 'tool'（工具调用/摘要/压缩）| 'reply'（最终回复）| 'default'
    */
@@ -762,6 +785,11 @@ export class AIHub {
       throw new Error(`找不到模型 ${request.model}，且无可用 fallback。请检查：1) NVIDIA_API_KEY / OPENAI_API_KEY  2) Ollama 是否启动`);
     }
     const { client, resolvedModel } = result;
+    // 记录主 client 对应的 provider baseUrl，供故障转移排除用
+    let failedBaseUrl: string | undefined;
+    for (const [, entry] of this.providers) {
+      if (entry.client === client) { failedBaseUrl = entry.config.baseUrl; break; }
+    }
 
     // P1-7: 熔断器检查 — 连续失败过多时快速失败
     const cbKey = resolvedModel;
@@ -821,8 +849,45 @@ export class AIHub {
           this.recordModelFailure(resolvedModel, error.status, error.message);
           throw new Error(`AI 生成失败(HTTP ${error.status}，模型 ID 可能非法或已下线，请检查 providers.json): ${error.message}`);
         }
+        // 备胎接管尝试：任一候选成功即返回，全部失败返回 null 由调用方抛错
+        const tryFailover = async (reason: string) => {
+          const candidates = this.getFailoverCandidates(request.model, failedBaseUrl, client);
+          for (const cand of candidates) {
+            try {
+              console.log(`[AI Hub] 故障转移 → 备胎 provider ${cand.resolvedModel} (${reason})`);
+              const resp = await cand.client.chat.completions.create({
+                model: cand.resolvedModel,
+                messages: request.messages as any,
+                temperature: request.temperature ?? 0.7,
+                max_tokens: request.maxTokens ?? 16384,
+              });
+              this.circuitBreaker.delete(cand.resolvedModel);
+              console.log(`[AI Hub] 备胎接管成功 (${cand.resolvedModel})`);
+              return {
+                content: resp.choices[0].message.content || "",
+                usage: resp.usage
+                  ? { promptTokens: resp.usage.prompt_tokens, completionTokens: resp.usage.completion_tokens ?? 0 }
+                  : undefined,
+              };
+            } catch (fe: any) {
+              console.error(`[AI Hub] 备胎失败 (${cand.resolvedModel}):`, fe.message);
+              lastError = fe;
+            }
+          }
+          return null;
+        };
+        // 402 余额不足：对同一 provider 重试毫无意义，跳过指数退避立即故障转移
+        // （402 不在 FATAL_STATUSES/BLACKLIST_STATUSES 中，不会误入模型黑名单）
+        if (error.status === 402) {
+          console.error(`[AI Hub] 402 余额不足 (${request.model})，立即故障转移`);
+          const rescued = await tryFailover('402 快速转移');
+          if (rescued) return rescued;
+          throw new Error(`AI 生成失败(主与备胎均失败): ${error.message}`);
+        }
         if (attempt >= MAX_RETRIES) {
           console.error(`[AI Hub] 重试耗尽 (${request.model}):`, error.message);
+          const rescued = await tryFailover('重试耗尽');
+          if (rescued) return rescued;
           throw new Error(`AI 生成失败(已重试${MAX_RETRIES}次): ${error.message}`);
         }
       }
