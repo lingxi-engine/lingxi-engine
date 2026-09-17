@@ -51,6 +51,20 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+      - name: BOM gate on critical configs
+        # 2026-09-18 fix: main 分支 package.json 曾带 UTF-8 BOM(EF BB BF)，tsx 启动即报
+        # "Error parsing package.json"（run 35250772658）。门禁只扫关键构建配置，
+        # 历史遗留的 17 个 BOM 文件不在范围内（避免误伤），新增 BOM 会直接红灯。
+        run: |
+          set -euo pipefail
+          BAD=0
+          for f in package.json package-lock.json tsconfig.json .github/workflows/ci.yml; do
+            if [ -f "$f" ] && [ "$(head -c 3 "$f" | od -An -tx1 | tr -d ' \n')" = "efbbbf" ]; then
+              echo "::error::$f has UTF-8 BOM"
+              BAD=1
+            fi
+          done
+          [ "$BAD" = "0" ] && echo "BOM gate: all critical configs clean"
       - name: Count junk files and warn
         run: |
           BAK=$(find . -path ./node_modules -prune -o \( -name '*.bak' -o -name '*.~1~' -o -name '*.bak-*' -o -name '*.pre-*' \) -print | wc -l)
