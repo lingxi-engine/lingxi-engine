@@ -269,3 +269,19 @@ mobile-app/app/build/
 mobile-app/local.properties
 app/android/app/src/main/assets/nodejs-project/ 
 app/ios/App/App/nodejs-project/
+
+# 2026-09-18: local scratch/junk never to be tracked
+fo_main.txt
+tsc_main.txt
+query_db.cjs
+query_db.mjs
+patch_backend.cjs
+patch-platform-admin.mjs
+_boot-bench*
+_smoke_v5_data/
+data-boottest/
+data-smoke-b13b/
+ws-boot.log
+
+# CI fix report + session skills ARE tracked (negate if ignored)
+!docs/ci-fix-report-*.md

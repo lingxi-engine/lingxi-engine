@@ -1,0 +1,15 @@
+{
+  "name": "mobile-app-build-and-site-download-publish",
+  "displayName": "移动端构建与官网下载发布",
+  "description": "完成移动端应用构建、修复缺失脚本，并在官网发布可下载测试入口。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec",
+    "web_search"
+  ],
+  "prompt": "当用户要求把移动端功能做好并在官网提供下载测试时，先检查项目结构、构建配置和 git 状态，定位缺失的移动端构建脚本或产物；实现或修复构建流程，生成适合手机安装的包；在官网相应页面新增或更新下载入口，确保链接可访问；最后验证构建产物、下载链接和页面展示，并汇报完成状态与测试方式。",
+  "autoCreated": true,
+  "createdAt": 1789533726818
+}

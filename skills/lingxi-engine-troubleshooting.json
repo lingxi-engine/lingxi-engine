@@ -1,0 +1,14 @@
+{
+  "name": "lingxi-engine-troubleshooting",
+  "displayName": "灵犀引擎问题排查修复",
+  "description": "排查并修复灵犀引擎的好友红点、服务异常、部署同步、升级按钮等常见故障",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "遇到灵犀引擎相关故障时，先用 shell_exec/read_file 检查代码与 data/main.db 数据库，定位问题根因；再修改相关文件并用 shell_exec 验证修复效果；最后检查官网、git、备份等各端是否同步更新，并提醒用户强制刷新前端。若 AI 调用失败或上下文过长，提示用户简化任务或继续。",
+  "autoCreated": true,
+  "createdAt": 1789379999511
+}

@@ -1,0 +1,15 @@
+{
+  "name": "github-actions-ci-triage",
+  "displayName": "GitHub CI 失败排查与修复",
+  "description": "分析 CI/GitHub Actions 失败通知和日志，定位根因、修复并验证。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file",
+    "write_file",
+    "get_time"
+  ],
+  "prompt": "当用户提供 CI 失败邮件、GitHub Actions 日志或测试失败输出时：\n1. 提取失败 job、命令、工作目录、错误关键字、耗时和断言数量。\n2. 若仓库不可公网访问，不要臆测；优先读取本地仓库、工作流配置、测试脚本和 git 状态。\n3. 检查 working-directory、路径大小写、文件是否存在、依赖安装、测试命令、分支/远端提交是否一致。\n4. 用最小命令复现失败，读取相关代码定位根因。\n5. 修复配置或代码，必要时提交/推送并核验远端文件；不要只放宽断言掩盖问题。\n6. 输出根因、修改点、验证结果和后续建议。",
+  "autoCreated": true,
+  "createdAt": 1789663139913
+}

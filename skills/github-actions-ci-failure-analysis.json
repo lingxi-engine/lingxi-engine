@@ -1,0 +1,13 @@
+{
+  "name": "github-actions-ci-failure-analysis",
+  "displayName": "GitHub Actions CI 失败分析",
+  "description": "分析 GitHub Actions CI 失败通知、日志和 annotations，定位根因并验证修复。",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file"
+  ],
+  "prompt": "当用户提供 GitHub CI 失败通知、annotations 或 job 日志时，先提取失败的 workflow/job、命令、working-directory、错误信息。若仓库无法公网访问，则在本地工作区使用 list_dir/read_file 检查仓库结构、CI 配置、测试入口和依赖路径；用 shell_exec 复现失败命令。重点区分配置路径错误、缺失文件、测试断言与实现不一致、依赖未安装、环境变量缺失等根因。定位后给出最小修复方案，运行相关测试或脚本验证，并输出根因、证据、修复内容和验证结果。",
+  "autoCreated": true,
+  "createdAt": 1789661610743
+}

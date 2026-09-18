@@ -1,0 +1,15 @@
+{
+  "name": "github-ci-failure-diagnosis",
+  "displayName": "GitHub CI 失败诊断与修复",
+  "description": "根据 GitHub Actions 失败通知或日志，定位 CI 失败根因并在本地复现、修复、验证。",
+  "tools": [
+    "list_dir",
+    "get_time",
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户提供 GitHub CI 失败邮件、job annotations 或日志时，先解析失败的 workflow/job 和关键错误。若仓库不可公网访问，则从本地工作区查找对应仓库、workflow YAML、测试脚本和日志路径。优先复现失败命令，检查 working-directory、依赖安装、测试入口、断言目标与当前分支代码是否一致。区分配置错误、测试过时、功能未合入、环境差异等根因。修复时保持最小改动，运行相关测试或构建验证，检查 git diff/log，确认修复有效后再提交或总结。输出需包含：失败原因、证据、修复方案、验证结果。",
+  "autoCreated": true,
+  "createdAt": 1789666762768
+}
