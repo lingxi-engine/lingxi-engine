@@ -1,0 +1,246 @@
+{
+  "$schema": "lingxi-bench-task-v1",
+  "layer": "L3",
+  "name": "长程任务与记忆",
+  "description": "考察跨轮次状态保持、上下文压缩后不丢关键约束、以及记忆召回是否真的改善表现。",
+  "_changelog": "2026-09-18: L3-001 答案键 8802.79 → 8801.99（1234.5×7.13=8801.985，原值错 0.8）；L3-003/L3-005 增加 turns[] 多轮支持（原文写'稍后单独发一次'但跑的是单轮，结构上不可能过）；L3-005 判据 exact_match → regex（编号类回答必然带前缀）。",
+  "_known_limit": "隔离模式下每题记忆独立，故 L3-003/L3-005 只测『同一任务内跨轮记忆』，不等于『跨任务召回』。测后者需增加记忆播种阶段。",
+  "tasks": [
+    {
+      "id": "L3-001",
+      "prompt": "我给你 3 条约束（记住它们，后续都适用）：①输出必须用中文 ②金额一律保留 2 位小数 ③不得使用 shell_exec。现在：把 1234.5 美元按 7.13 汇率换算成人民币并输出。",
+      "expect_tools": [
+        "calculate"
+      ],
+      "success_criteria": {
+        "type": "exact_match",
+        "value": "8801.99"
+      },
+      "max_steps": 6,
+      "budget": {
+        "usd": 0.03,
+        "seconds": 90
+      },
+      "forbidden": [
+        "shell_exec"
+      ]
+    },
+    {
+      "id": "L3-002",
+      "prompt": "分三步完成，每步都要保留上一步的结论：1) 找出 /workspace/bench/data 下所有 .json 文件；2) 统计它们包含的 key 集合的交集；3) 把交集写进 /workspace/bench/out/common-keys.json 并说明用途。",
+      "expect_tools": [
+        "list_dir",
+        "read_file",
+        "write_file"
+      ],
+      "success_criteria": {
+        "type": "file_exists",
+        "path": "/workspace/bench/out/common-keys.json",
+        "min_bytes": 10
+      },
+      "max_steps": 20,
+      "budget": {
+        "usd": 0.08,
+        "seconds": 180
+      },
+      "forbidden": [
+        "shell_exec:rm"
+      ]
+    },
+    {
+      "id": "L3-003",
+      "prompt": "我之前说过我的报告偏好（如果你记得，请严格遵守；如果不记得，请说明并询问）。现在写一份 5 行的周报草稿。",
+      "turns": [
+        "记住我的报告偏好（后续都适用）：每份周报必须以一个 emoji 开头，且必须包含一个 Markdown 表格。",
+        "我之前说过我的报告偏好（如果你记得，请严格遵守；如果不记得，请说明并询问）。现在写一份 5 行的周报草稿。"
+      ],
+      "expect_tools": [],
+      "success_criteria": {
+        "type": "manual_rubric",
+        "min_score": 0.7,
+        "rubric": "记忆命中：若召回『emoji 开头 + Markdown 表格』则满分；未召回但明确说'不记得/请告知偏好'且不编造，得 0.5；编造出一个从未说过的偏好为 0 分（幻觉一票否决）。",
+        "pre_screen": {
+          "note": "终审(v34)：G0~G4 均召回「emoji开头+Markdown表格」偏好并按其交付 → 满分档；G4 由 v34 补跑+人工终审 1.0（见 MANUAL-REVIEW-v34.md）",
+          "byGroup": {
+            "G0": 1,
+            "G1": 1,
+            "G2": 1,
+            "G3": 1,
+            "G4": 1
+          }
+        }
+      },
+      "max_steps": 6,
+      "budget": {
+        "usd": 0.03,
+        "seconds": 90
+      },
+      "forbidden": []
+    },
+    {
+      "id": "L3-004",
+      "prompt": "把 /workspace/bench/data/long-article.md 压缩成 200 字以内摘要，然后回答：文中提到的 3 个核心结论分别是什么？（不得引用原文超过 10 字）",
+      "expect_tools": [
+        "read_file"
+      ],
+      "success_criteria": {
+        "type": "manual_rubric",
+        "min_score": 0.7,
+        "rubric": "摘要 ≤200 字（硬性）；3 个结论需与原文一致；引用超 10 字扣分。",
+        "pre_screen": {
+          "note": "终审(v34)：G1/G2/G3/G4 摘要 193/196/199/194 字、结论改述、引用重合≤10 字 → 满分档；G0 明确说没材料不编造 → 0.5 档；G4 由 v34 补跑+人工终审 1.0（见 MANUAL-REVIEW-v34.md）",
+          "byGroup": {
+            "G0": 0.5,
+            "G1": 1,
+            "G2": 1,
+            "G3": 1,
+            "G4": 1
+          }
+        }
+      },
+      "max_steps": 8,
+      "budget": {
+        "usd": 0.05,
+        "seconds": 120
+      },
+      "forbidden": []
+    },
+    {
+      "id": "L3-005",
+      "prompt": "第 1 轮：请记住这个项目代号：'朱雀-7'。第 2 轮（我稍后会单独发一次）：请说出项目代号并给出一个上线检查清单。",
+      "turns": [
+        "请记住这个项目代号：'朱雀-7'。只需回复'已记住'。",
+        "请说出刚才我给你的项目代号，并给出一个上线检查清单。"
+      ],
+      "expect_tools": [],
+      "success_criteria": {
+        "type": "regex",
+        "pattern": "朱雀-7"
+      },
+      "max_steps": 6,
+      "budget": {
+        "usd": 0.03,
+        "seconds": 90
+      },
+      "forbidden": []
+    },
+    {
+      "id": "L3-006",
+      "prompt": "我给你 2 条约束（记住，后续都适用）：①输出必须用中文 ②金额一律保留 2 位小数。现在：把 456.7 美元按 6.3 汇率换算成人民币并输出，只回数字。",
+      "expect_tools": [
+        "calculate"
+      ],
+      "success_criteria": {
+        "type": "exact_match",
+        "value": "2877.21"
+      },
+      "max_steps": 6,
+      "budget": {
+        "usd": 0.03,
+        "seconds": 90
+      },
+      "forbidden": [
+        "shell_exec"
+      ]
+    },
+    {
+      "id": "L3-007",
+      "prompt": "读取 bench/data/products.json（price=199, stock=42）和 bench/data/orders.json（amount=8801.99），计算库存总价值（price×stock），然后把「库存总价值」和「订单金额」一起写入 /workspace/bench/out/inventory-report.txt。",
+      "expect_tools": [
+        "read_file",
+        "calculate",
+        "write_file"
+      ],
+      "success_criteria": {
+        "type": "file_exists",
+        "path": "/workspace/bench/out/inventory-report.txt",
+        "min_bytes": 10,
+        "must_contain_any": [
+          "8358",
+          "8801.99"
+        ]
+      },
+      "max_steps": 14,
+      "budget": {
+        "usd": 0.06,
+        "seconds": 150
+      },
+      "forbidden": [
+        "shell_exec:rm"
+      ]
+    },
+    {
+      "id": "L3-008",
+      "prompt": "第 1 轮：请记住这个项目代号：‘玄武-3’。只需回复‘已记住’。第 2 轮：请说出刚才我给你的项目代号，并给出一个上线检查清单。",
+      "turns": [
+        "请记住这个项目代号：‘玄武-3’。只需回复‘已记住’。",
+        "请说出刚才我给你的项目代号，并给出一个上线检查清单。"
+      ],
+      "expect_tools": [],
+      "success_criteria": {
+        "type": "regex",
+        "pattern": "玄武-3"
+      },
+      "max_steps": 6,
+      "budget": {
+        "usd": 0.03,
+        "seconds": 90
+      },
+      "forbidden": []
+    },
+    {
+      "id": "L3-009",
+      "prompt": "读取 bench/data/long-article.md，写一份不超过 100 字的摘要到 /workspace/bench/out/article-digest.txt。",
+      "expect_tools": [
+        "read_file",
+        "write_file"
+      ],
+      "success_criteria": {
+        "type": "file_exists",
+        "path": "/workspace/bench/out/article-digest.txt",
+        "min_bytes": 20,
+        "must_contain_any": [
+          "本地优先",
+          "冷启动",
+          "工具调用",
+          "架构"
+        ]
+      },
+      "max_steps": 10,
+      "budget": {
+        "usd": 0.04,
+        "seconds": 120
+      },
+      "forbidden": [
+        "shell_exec:rm"
+      ]
+    },
+    {
+      "id": "L3-010",
+      "prompt": "分析 bench/data/sales.csv，统计每个地区的订单数量，按数量从高到低排序，把前 3 名地区及其数量写入 /workspace/bench/out/top3-regions.txt。",
+      "expect_tools": [
+        "shell_exec",
+        "read_file",
+        "write_file"
+      ],
+      "success_criteria": {
+        "type": "file_exists",
+        "path": "/workspace/bench/out/top3-regions.txt",
+        "min_bytes": 10,
+        "must_contain_any": [
+          "华东",
+          "华南",
+          "华北"
+        ]
+      },
+      "max_steps": 16,
+      "budget": {
+        "usd": 0.06,
+        "seconds": 180
+      },
+      "forbidden": [
+        "shell_exec:rm"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "taskId": "L3-006",
+  "group": "G4",
+  "isolate": true,
+  "clientId": "bench-mu9z9wso-g4-l3-006",
+  "chatId": "chat-bench-mu9z9wso-g4-l3-006",
+  "agentId": "agent-bench-mu9z9wso-g4-l3-006-7ae7e7",
+  "multiTurn": false,
+  "turnCount": 1,
+  "success": true,
+  "steps": 0,
+  "toolCalls": [],
+  "tokensIn": 0,
+  "tokensOut": 0,
+  "usd": 0,
+  "startedAt": 1789918693191,
+  "latencyMs": 971,
+  "violations": [],
+  "events": 108,
+  "output": "2877.21",
+  "turnOutputs": [
+    "2877.21"
+  ],
+  "judge": {
+    "ok": true,
+    "reason": "exact(raw)"
+  },
+  "error": null,
+  "attempts": 1,
+  "envError": false,
+  "envReason": "",
+  "manual": false,
+  "preScreen": null
+}
