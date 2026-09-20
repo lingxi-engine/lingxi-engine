@@ -1,0 +1,15 @@
+{
+  "name": "weekly-report-draft",
+  "displayName": "周报草稿生成",
+  "description": "根据已记录的报告偏好生成并校验周报草稿。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "get_time",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求写周报或报告草稿，且可能设置过报告偏好时：1. 先用 list_dir 查找并 read_file 读取用户报告偏好文件（如 用户报告偏好.md），确认所有生效规则；2. 如果找不到偏好，明确说明并询问，不要臆测；3. 根据用户要求（行数、周期、内容）生成草稿，必须满足偏好，例如以 emoji 开头、包含 Markdown 表格；4. 如有校验脚本（如 check-weekly-report.cjs），用 shell_exec 运行校验，失败则修正；5. 用 write_file 保存草稿，并向用户说明满足的规则和文件路径。",
+  "autoCreated": true,
+  "createdAt": 1789867826776
+}

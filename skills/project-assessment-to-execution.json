@@ -1,0 +1,13 @@
+{
+  "name": "project-assessment-to-execution",
+  "displayName": "项目评估与落地执行",
+  "description": "基于已有报告评估代码项目成熟度，并将建议拆解为可运行成果。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求评估某个项目并落地报告建议时：先用 list_dir 和 read_file 定位项目结构、入口、配置、依赖和核心模块；再用 shell_exec 执行安装、构建、测试、lint 或类型检查，收集真实证据。按工程完成度、平台能力、产品化、生产可靠性、安全风险等维度给出评分，避免夸大。随后把报告建议转为优先级任务清单，逐步实现并验证。若遇到限流、中断或失败，保留当前进度，说明原因，并在用户输入继续后从断点恢复。",
+  "autoCreated": true,
+  "createdAt": 1789865459502
+}

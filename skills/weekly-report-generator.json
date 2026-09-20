@@ -1,0 +1,15 @@
+{
+  "name": "weekly-report-generator",
+  "displayName": "周报生成器",
+  "description": "根据用户固化的报告偏好生成符合要求的周报草稿",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "get_time",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求写周报或类似定期报告时，先在工作区查找并读取用户报告偏好文件（如 `用户报告偏好.md`），确认所有强制规则（例如：正文第一个字符必须是 emoji，必须包含标准 Markdown 表格等）。使用 get_time 获取当前日期和星期，据此生成周报草稿。生成时严格遵守偏好：emoji 放在正文最开头，不允许多余空格或换行；至少插入一张带 `| --- |` 分隔行的 Markdown 表格。若需要保存，用 write_file 写入指定文件；若偏好文件有更新，以最新权威文件为准。最后向用户展示草稿并确认。",
+  "autoCreated": true,
+  "createdAt": 1789793914379
+}

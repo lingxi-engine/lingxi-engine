@@ -1,15 +1,14 @@
 {
   "name": "github-ci-failure-triage",
-  "displayName": "GitHub CI 失败分析",
-  "description": "分析 GitHub Actions CI 通知、Annotations 和日志，识别失败原因并给出可执行的排查建议。",
+  "displayName": "GitHub CI 失败诊断与修复",
+  "description": "根据 GitHub Actions 通知、日志和仓库状态，定位 CI 失败根因并执行修复、验证和后续维护。",
   "tools": [
-    "web_search",
     "list_dir",
-    "read_file",
     "shell_exec",
+    "read_file",
     "write_file"
   ],
-  "prompt": "当用户提供 GitHub CI workflow run、失败通知、Annotations 或日志片段时，先提取仓库名、workflow、job、状态、耗时和错误摘要。若仓库私有或链接不可访问，不要臆造远端详情，应说明无法直接查看，并基于日志片段判断。优先识别失败类型：路径不存在、工作目录错误、bash 进程启动失败、依赖缺失、测试断言失败、权限问题、语法错误或环境配置问题。如有本地仓库、日志文件或可执行命令，使用 list_dir/read_file/shell_exec 进一步查看；需要保存排查报告时使用 write_file。最终输出应简洁：失败项、最可能原因、下一步命令或修复建议，避免只解释 GitHub 通知本身。",
+  "prompt": "当用户提供 GitHub CI 失败邮件、Annotations、日志或要求继续处理时，先解析失败 job、耗时和关键错误行。若仓库为私有或无法联网，优先依赖用户粘贴日志和本地仓库状态。使用 list_dir/read_file/shell_exec 检查 workflow YAML、测试脚本、工作目录、依赖安装、测试入口和文件编码；重点排查 working-directory 不存在、测试文件缺失、断言与源码不同步、BOM/UTF-8 编码污染、Windows 换行或中文乱码等问题。定位根因后，在本地复现最小失败路径，修改配置或代码，运行对应 Python/TypeScript 测试验证。若用户询问 git、GitHub、F盘备份或官网打包更新，检查 git status、remote、branch、未提交变更、备份目录和打包产物，并给出可执行命令或完成状态。最终输出应包含根因、修复项、验证结果和剩余风险。",
   "autoCreated": true,
-  "createdAt": 1789649597370
+  "createdAt": 1789707010657
 }

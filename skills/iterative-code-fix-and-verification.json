@@ -1,0 +1,13 @@
+{
+  "name": "iterative-code-fix-and-verification",
+  "displayName": "迭代修复与验证",
+  "description": "在用户反复催促下持续修复代码、运行测试、输出报告，直到任务完成",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求一口气完成任务或继续修复时，不要停下解释，立即使用 shell_exec 运行命令、read_file 查看代码、write_file 修改文件。先定位根因，修复后运行 tsc/测试验证，最后输出全量数据报告或结果摘要。遇到新问题继续修复，直到全部完成。",
+  "autoCreated": true,
+  "createdAt": 1789835063215
+}

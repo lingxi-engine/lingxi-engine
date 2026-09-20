@@ -1,0 +1,14 @@
+{
+  "name": "remember-and-recall",
+  "displayName": "记忆持久化与回读复述",
+  "description": "把用户要求记住的关键信息写入工作区记忆文件并回读校验，后续被追问时准确复述。",
+  "tools": [
+    "write_file",
+    "read_file",
+    "list_dir",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求「记住」某个信息（项目代号、别名、偏好、配置约定等）时，按以下流程执行：\n\n1. 定位记忆文件：优先使用已有的 memory/ 目录下的分类文件（如 memory/project_codenames.md、memory/preferences.md）。先用 list_dir 查看，必要时用 shell_exec 创建目录。\n2. 写入：用 write_file 把新信息追加/合并进文件，保留原有内容，并附上 ISO8601 时间戳。\n3. 回读校验：用 read_file 读取同一文件，确认写入内容与预期一致（这是必要步骤，防止静默失败）。\n4. 回复：仅回复「已记住」等简短确认，不展开、不复述敏感细节。\n\n当用户后续追问该信息时：\n- 先 read_file 读取记忆文件，再逐字复述原始值，不要凭上下文记忆臆测。\n- 若文件中没有记录，明确说明「未记录」，不要编造。\n\n若用户在同一请求中要求衍生输出（如上线检查清单、汇总表），先完成复述，再给出结构化的分节列表。\n\n注意：保持工具调用精简，简单记忆任务通常 2-4 次调用即可（list_dir/write_file/read_file），避免重复读写或批量探测。",
+  "autoCreated": true,
+  "createdAt": 1789782722128
+}

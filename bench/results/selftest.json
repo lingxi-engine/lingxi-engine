@@ -1,0 +1,46 @@
+{
+  "generatedAt": "2026-09-19T18:22:01.923Z",
+  "cases": [
+    {
+      "name": "exact_match 命中",
+      "pass": true
+    },
+    {
+      "name": "exact_match 未命中",
+      "pass": true
+    },
+    {
+      "name": "regex 命中",
+      "pass": true
+    },
+    {
+      "name": "regex 未命中",
+      "pass": true
+    },
+    {
+      "name": "file_exists 命中",
+      "pass": true
+    },
+    {
+      "name": "file_exists 不存在",
+      "pass": true
+    },
+    {
+      "name": "tool_call_args 命中",
+      "pass": true
+    },
+    {
+      "name": "manual_rubric 不进自动判据",
+      "pass": true
+    },
+    {
+      "name": "forbidden 命中检测",
+      "pass": true
+    },
+    {
+      "name": "forbidden 未命中",
+      "pass": true
+    }
+  ],
+  "pass": true
+}
