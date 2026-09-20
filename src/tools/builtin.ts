@@ -57,6 +57,7 @@ dockerReady = import('../core/docker-sandbox.js').then(mod => {
     runShellInDockerFn = mod.runShellInDocker;
     console.log('[Tools] Docker 沙箱已启用（shell_exec / code_execute 在隔离容器中运行）');
   } else {
+    console.warn('[Security] Docker unavailable - shell_exec/code_execute will run ON THE HOST (degraded mode). Install Docker or set SANDBOX_ENABLED=true for confinement.');
     console.log('[Tools] Docker 不可用，回退到内置沙箱（安全级别：标准）');
   }
 }).catch(() => {
@@ -70,6 +71,19 @@ export async function ensureDockerReady() { await dockerReady; }
 // ═══════════════════════════════════════════════
 
 let WORKSPACE_SANDBOX_ENABLED = loadSandboxConfig();
+// SANDBOX_SECURITY_BANNER (2026-09-20, P0): sandbox defaults to OFF since v1.9.7.
+// Make the security posture impossible to miss at startup instead of one quiet log line.
+if (!WORKSPACE_SANDBOX_ENABLED) {
+  console.warn('');
+  console.warn('[Security] ============================================================');
+  console.warn('[Security]  WORKSPACE SANDBOX IS DISABLED (default since v1.9.7)');
+  console.warn('[Security]  File tools are NOT confined to the workspace directory.');
+  console.warn('[Security]  shell_exec/code_execute fall back to host execution when');
+  console.warn('[Security]  Docker is unavailable. For public/multi-user deployments:');
+  console.warn('[Security]  set SANDBOX_ENABLED=true or ensure Docker is running.');
+  console.warn('[Security] ============================================================');
+  console.warn('');
+}
 let _workspaceRoot = process.env.WORKSPACE_DIR ? join(process.cwd(), process.env.WORKSPACE_DIR) : join(process.cwd(), "workspace");
 try { if (!existsSync(_workspaceRoot)) mkdirSync(_workspaceRoot, { recursive: true }); } catch {}
 
