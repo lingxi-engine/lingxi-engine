@@ -6,7 +6,7 @@
  */
 
 import { logger } from './logger.js';
-import { getChatMemory, upsertChatMemory } from '../storage/db.js';
+import { getChatMemory, upsertChatMemory, listChatMemoryPairs } from '../storage/db.js';
 
 // ─── 类型 ───
 
@@ -32,6 +32,7 @@ export class Dreamer {
   private timer: ReturnType<typeof setInterval> | null = null;
   private aiClient: any;
   private aiModel: string;
+  private dreaming = false; // 防止并发重入
 
   constructor(aiClient: any, aiModel: string) {
     this.aiClient = aiClient;
@@ -58,9 +59,42 @@ export class Dreamer {
   private async checkAndDream() {
     const idle = Date.now() - this.lastActivity;
     if (idle < IDLE_TIMEOUT) return;
+    if (this.dreaming) return; // 上一轮还没结束
 
-    // 遍历所有有记忆的群聊
-    // 这里需要外部注入群聊列表，简化为：外部调 dream()
+    this.dreaming = true;
+    try {
+      // v29: 补上「遍历所有有记忆的群聊」—— 从 chat_memories 表拉出所有 (chat_id, agent_id) 对
+      let pairs: Array<{ chat_id: string; agent_id: string }> = [];
+      try {
+        pairs = listChatMemoryPairs();
+      } catch (err: any) {
+        logger.warn('Dreamer', `列出记忆对失败: ${err.message}`);
+        return;
+      }
+
+      if (pairs.length === 0) {
+        // 没有可整理的记忆，诚实记录而不是假装在跑
+        logger.debug('Dreamer', '无待整理记忆（chat_memories 为空）');
+        return;
+      }
+
+      let dreamed = 0;
+      for (const p of pairs) {
+        if (!p?.chat_id || !p?.agent_id) continue;
+        // 每处理完一个就刷新活动时间，避免长时间批量 dream 时被判定空闲
+        try {
+          const report = await this.dream(p.chat_id, p.agent_id);
+          if (report) dreamed++;
+        } catch (err: any) {
+          logger.warn('Dreamer', `Dream ${p.chat_id}/${p.agent_id} 失败: ${err.message}`);
+        }
+      }
+      if (dreamed > 0) {
+        logger.audit('Dreamer', 'auto-dream', `本轮整理 ${dreamed}/${pairs.length} 组记忆`);
+      }
+    } finally {
+      this.dreaming = false;
+    }
   }
 
   /**

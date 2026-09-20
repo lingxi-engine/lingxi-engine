@@ -20,6 +20,7 @@
     "node_modules",
     "dist",
     "workspace",
+    "bench",
     "src/core/index.ts",
     "src/router.ts",
     "src/index.ts",

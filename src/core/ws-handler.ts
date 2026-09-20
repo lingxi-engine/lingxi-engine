@@ -121,8 +121,8 @@ export function handleWSMessage(
     }
 
     case "message": {
-      const { chatId, content, replyTo } = event;
-      processUserMessage(chatId, clientId, content, replyTo, router, broadcast);
+      const { chatId, content, replyTo, meta } = event;
+      processUserMessage(chatId, clientId, content, replyTo, router, broadcast, meta);
       break;
     }
 
@@ -555,16 +555,18 @@ export function processUserMessage(
   content: string,
   replyTo: string | undefined,
   router: MessageRouter,
-  broadcast: (event: any) => void
+  broadcast: (event: any) => void,
+  meta?: any
 ): void {
   // ── 复杂度判断：如果消息看起来需要多步骤，自动触发任务拆解 ──
-  if (shouldAutoDecompose(content)) {
+  if (!meta && shouldAutoDecompose(content)) {
     router.handleIncoming({
       chatId,
       senderType: "user",
       senderId,
       content,
       replyTo,
+      meta,
     }).then(async (result) => {
       // 广播用户消息
       broadcast({
@@ -608,6 +610,7 @@ export function processUserMessage(
     senderId,
     content,
     replyTo,
+    meta,
   }).then(async (result) => {
     // 广播用户消息
     broadcast({
@@ -674,7 +677,8 @@ async function triggerAgentReply(
   triggerMsgId: string,
   broadcast: (event: any) => void,
   router: MessageRouter,
-  customPrompt?: string
+  customPrompt?: string,
+  bench?: any
 ): Promise<string> {
   const msgId = 'msg-agent-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
   let fullContent = '';
@@ -753,7 +757,9 @@ async function triggerAgentReply(
       // ⭐ 协作模式指令注入（辩论立场/链式步骤/圆桌轮次/投票选项等）
       customPrompt,
       // ⭐ 停止信号：用户点"停止"时中断本次生成
-      ctrl.signal
+      ctrl.signal,
+      // ⭐ bench 对照组开关（G0–G4）
+      { bench }
     );
 
     // 如果 generateReply 内部已经拼接了 fullContent（工具调用场景），用返回值
@@ -852,7 +858,7 @@ async function runResponses(
   if (sequential) {
     for (const resp of responses) {
       const content = await triggerAgentReply(
-        chatId, resp.agentId, resp.triggerMessage.id, broadcast, router, resp.customPrompt
+        chatId, resp.agentId, resp.triggerMessage.id, broadcast, router, resp.customPrompt, resp.bench
       );
       collected.push({ agentId: resp.agentId, agentName: nameOf(resp.agentId), content });
     }
@@ -862,7 +868,7 @@ async function runResponses(
         await new Promise(r => setTimeout(r, resp.delayMs));
       }
       const content = await triggerAgentReply(
-        chatId, resp.agentId, resp.triggerMessage.id, broadcast, router, resp.customPrompt
+        chatId, resp.agentId, resp.triggerMessage.id, broadcast, router, resp.customPrompt, resp.bench
       );
       collected.push({ agentId: resp.agentId, agentName: nameOf(resp.agentId), content });
     }));

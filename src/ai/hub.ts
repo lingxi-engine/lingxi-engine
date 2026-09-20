@@ -9,6 +9,22 @@ import { join, dirname } from "path";
 
 // ─────────────────── 配置 ───────────────────
 
+/** patch-v20:applied — 解析结果（带来源标记，供「模型归属可见化」使用） */
+export interface AIResolvedClient {
+  client: OpenAI;
+  resolvedModel: string;
+  /** 实际服务的 provider id */
+  providerId?: string;
+  /** provider 是否为本机 daemon（注意：经本机转发的云端模型也会是 true，见 viaLocalDaemon） */
+  isLocal?: boolean;
+  /** patch-v22:applied true = 经本机 Ollama daemon 转发，但推理发生在远端（:cloud / -cloud 后缀） */
+  viaLocalDaemon?: boolean;
+  /** patch-v22:applied true = 推理真在本机 CPU/GPU 上跑（慢，是"跑到本地模型"的真正含义） */
+  realLocal?: boolean;
+  /** true = 请求的模型未被精确命中，属降级结果 */
+  degraded?: boolean;
+}
+
 export interface AIProviderConfig {
   id: string;
   type: "nvidia" | "openai" | "ollama" | "anthropic" | "custom" | "deepseek" | "google" | "minimax" | "moonshot" | "zhipu" | "qwen" | "stepfun" | "siliconflow" | "groq" | "openrouter" | "llama-cpp" | "vllm" | "lm-studio" | "tgi" | "text-gen-webui" | "baidu" | "yi" | "baichuan" | "zero-one" | "mistral" | "cohere" | "together" | "fireworks" | "perplexity" | "01ai" | "sensetime" | "kunlun" | "iflytek" | "volcengine" | "tencent" | "huawei" | "xai" | "mistral-large" | "cloudflare";
@@ -99,7 +115,7 @@ const DEFAULT_PROVIDERS: AIProviderConfig[] = [
     type: "deepseek",
     apiKey: process.env.DEEPSEEK_API_KEY || "",
     baseUrl: DEEPSEEK_BASE_URL,
-    models: ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
+    models: ["deepseek-flash", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"],
     isLocal: false,
   },
   // ── 智谱 GLM ──
@@ -578,7 +594,28 @@ export class AIHub {
    * 获取可用的 AI 客户端
    * 匹配顺序：精确 → 规范化后精确 → 模糊 → fallback
    */
-  getClient(model: string): { client: OpenAI; resolvedModel: string } | null {
+  /**
+   * patch-v22:applied 归一化包装：区分「本机 daemon 转发」与「真本机推理」，并支持严格模型模式。
+   * 语义修正：glm-5.2:cloud / kimi-k2.7-code:cloud 等后缀是 Ollama 云端中继壳，
+   * 推理在远端进行，不应等同于"跑到了本地模型"（旧代码把它们都标成 isLocal=true，误导排查）。
+   */
+  getClient(model: string): AIResolvedClient | null {
+    return this.normalizeResolved(model, this.getClientInner(model));
+  }
+
+  private normalizeResolved(model: string, r: AIResolvedClient | null): AIResolvedClient | null {
+    if (!r) return r;
+    const strict = String(process.env.LINGXI_STRICT_MODEL || 'false').toLowerCase() !== 'false';
+    if (r.degraded && strict && model && model.trim()) {
+      console.error(`[AI Hub][STRICT] 模型 "${model}" 未命中且 LINGXI_STRICT_MODEL=true → 拒绝静默替换，返回 null`);
+      return null;
+    }
+    const shell = /:(cloud|remote)$|-cloud$/i.test(r.resolvedModel);
+    if (shell) return { ...r, isLocal: false, viaLocalDaemon: true, realLocal: false };
+    return { ...r, realLocal: !!r.isLocal };
+  }
+
+  private getClientInner(model: string): AIResolvedClient | null {
     // 0. 空模型名兜底
     if (!model) {
       const defaultModel = this.getDefaultModel();
@@ -589,21 +626,48 @@ export class AIHub {
       return first ? { client: first.client, resolvedModel: first.config.models[0] || "" } : null;
     }
 
-    // 1. 精确匹配
-    for (const [, entry] of this.providers) {
-      if (entry.config.models.some(m => model === m)) {
-        return { client: entry.client, resolvedModel: model };
+    // 1. 精确匹配（patch-v20:applied：同名命中多个 provider 时优先「非本地」）
+    //    根因修复：providers Map 中 local-ollama 注册最早，其动态模型清单含 "glm-5.2:cloud"
+    //    这类转发壳，会把同名云请求静默劫持到本机 Ollama（isLocal=true）。
+    const exactHits: { pid: string; entry: any }[] = [];
+    for (const [pid, entry] of this.providers) {
+      if (entry.config.models.some((m: string) => model === m)) exactHits.push({ pid, entry });
+    }
+    if (exactHits.length > 0) {
+      const cloudHit = exactHits.find(h => !h.entry.config.isLocal);
+      if (cloudHit) {
+        return { client: cloudHit.entry.client, resolvedModel: model, providerId: cloudHit.pid, isLocal: false, degraded: false };
       }
+      // 只命中本地：若请求名是 Ollama 云端转发壳（:cloud/:free 等）而规范化名在云 provider 存在 → 改走云端
+      const strictCloudSuffix = String(process.env.LINGXI_CLOUD_SUFFIX_STRICT || 'true').toLowerCase() !== 'false';
+      if (strictCloudSuffix && /:(cloud|remote)$/i.test(model)) {
+        const nm = this.normalizeModelName(model);
+        for (const [pid, e2] of this.providers) {
+          if (!e2.config.isLocal && e2.config.models.some((m: string) => m === nm)) {
+            console.warn(`[AI Hub][MODEL] "${model}" 是 Ollama 转发壳且只命中本地 → 规范化名 "${nm}" 在云 provider ${pid} 存在，改走云端`);
+            return { client: e2.client, resolvedModel: nm, providerId: pid, isLocal: false, degraded: false };
+          }
+        }
+      }
+      console.warn(`[AI Hub][MODEL] "${model}" 精确命中 ${exactHits.length} 个 provider 且均为本地：${exactHits.map(h => h.pid).join(',')}`);
+      const pick = exactHits[0];
+      return { client: pick.entry.client, resolvedModel: model, providerId: pick.pid, isLocal: true, degraded: false };
     }
 
     // 2. 规范化后精确匹配（剥离 :cloud/:local 后缀 + xxx/ 前缀）
     // 修复：原代码使用了不存在的变量 matchModel，导致 ReferenceError 崩溃
     const strippedModel = this.normalizeModelName(model);
     if (strippedModel !== model) {
-      for (const [, entry] of this.providers) {
-        if (entry.config.models.some(m => strippedModel === m)) {
-          return { client: entry.client, resolvedModel: strippedModel };
-        }
+      // patch-v20:applied：规范化后同样优先非本地
+      const normHits: { pid: string; entry: any }[] = [];
+      for (const [pid, entry] of this.providers) {
+        if (entry.config.models.some((m: string) => strippedModel === m)) normHits.push({ pid, entry });
+      }
+      if (normHits.length > 0) {
+        const c = normHits.find(h => !h.entry.config.isLocal);
+        const p = c || normHits[0];
+        if (!c) console.warn(`[AI Hub][MODEL] "${model}" 规范化后 "${strippedModel}" 只命中本地 provider：${p.pid}`);
+        return { client: p.entry.client, resolvedModel: strippedModel, providerId: p.pid, isLocal: !!p.entry.config.isLocal, degraded: false };
       }
       // 也尝试用规范化后的名字做模糊匹配
       for (const [, entry] of this.providers) {
@@ -615,42 +679,88 @@ export class AIHub {
     }
 
     // 3. provider id 与模型名有共同前缀的优先（避免 deepseek-ai/ 抢 deepseek 的模型）
+    const prefixHits: { pid: string; entry: any; matched: string }[] = [];
     for (const [pid, entry] of this.providers) {
-      if (entry.config.models.some(m => model.includes(m) || m.includes(model))) {
-        if (model.toLowerCase().includes(pid.toLowerCase()) || pid.toLowerCase().includes(model.split("-")[0])) {
-          const matchedModel = entry.config.models.find(m => model.includes(m) || m.includes(model));
-          return { client: entry.client, resolvedModel: matchedModel || model };
-        }
+      const m0 = entry.config.models.find((m: string) => model.includes(m) || m.includes(model));
+      if (!m0) continue;
+      if (model.toLowerCase().includes(pid.toLowerCase()) || pid.toLowerCase().includes(model.split("-")[0])) {
+        prefixHits.push({ pid, entry, matched: m0 });
       }
     }
+    if (prefixHits.length > 0) {
+      const ordered = prefixHits.filter(h => !h.entry.config.isLocal).concat(prefixHits.filter(h => h.entry.config.isLocal));
+      const h = ordered[0];
+      return { client: h.entry.client, resolvedModel: h.matched || model, providerId: h.pid, isLocal: !!h.entry.config.isLocal, degraded: false };
+    }
 
-    // 4. 最后模糊匹配兜底
-    for (const [, entry] of this.providers) {
-      const matchedModel = entry.config.models.find(m => model.includes(m) || m.includes(model));
-      if (matchedModel) {
-        return { client: entry.client, resolvedModel: matchedModel };
-      }
+    // 4. 最后模糊匹配兜底（patch-v20:applied：非本地优先）
+    const fuzzyHits: { pid: string; entry: any; matchedModel: string }[] = [];
+    for (const [pid, entry] of this.providers) {
+      const mm = entry.config.models.find((m: string) => model.includes(m) || m.includes(model));
+      if (mm) fuzzyHits.push({ pid, entry, matchedModel: mm });
+    }
+    if (fuzzyHits.length > 0) {
+      const ordered = fuzzyHits.filter(h => !h.entry.config.isLocal).concat(fuzzyHits.filter(h => h.entry.config.isLocal));
+      const h = ordered[0];
+      return { client: h.entry.client, resolvedModel: h.matchedModel, providerId: h.pid, isLocal: !!h.entry.config.isLocal, degraded: false };
     }
 
     // 5. fallback: 英伟达 → Ollama → 第一个 provider
     for (const [, entry] of this.providers) {
       if (entry.config.type === "nvidia" && entry.config.models.length > 0) {
         const fallbackModel = entry.config.models[0];
-        console.log(`[AI Hub] 模型 "${model}" 不可用，fallback 到 NVIDIA: ${fallbackModel}`);
-        return { client: entry.client, resolvedModel: fallbackModel };
+        console.error(`[AI Hub][DEGRADED] 模型 "${model}" 未命中任何 provider → 降级到 NVIDIA: ${fallbackModel}。请检查模型名与 *_API_KEY。`);
+        return { client: entry.client, resolvedModel: fallbackModel, providerId: 'nvidia-nim', isLocal: false, degraded: true };
       }
     }
-    for (const [, entry] of this.providers) {
+    // ★ patch-v20:applied 核心护栏：静默降级到本地 = 速度掉 10~60 倍 + 任务超时，必须显形且可控
+    const allowLocalFallback = String(process.env.LINGXI_ALLOW_LOCAL_FALLBACK || 'false').toLowerCase() !== 'false';
+    for (const [pid, entry] of this.providers) {
       if (entry.config.isLocal && entry.config.models.length > 0) {
-        const fallbackModel = entry.config.models[0];
-        console.log(`[AI Hub] 模型 "${model}" 不可用，fallback 到本地: ${fallbackModel}`);
-        return { client: entry.client, resolvedModel: fallbackModel };
+        // 优先选工具能力更好的本地模型，而非盲取 models[0]（可能是无关的转发壳/实验模型）
+        // patch-v21:applied：优先选「云端中继壳」（远端推理），避免直接掉进本机 CPU
+        const shell = entry.config.models.find((m: string) => /:(cloud|remote)$|-cloud$/i.test(m));
+        const fallbackModel = shell || entry.config.models.find((m: string) => /^(llama|qwen)/i.test(m)) || entry.config.models[0];
+        const realLocal = !/:(cloud|remote)$|-cloud$/i.test(fallbackModel);
+        const detail =
+          `[AI Hub][DEGRADED-TO-LOCAL] ✗✗ 模型 "${model}" 未命中任何可用 provider，正降级到本地 (${pid}) 的 "${fallbackModel}"。` +
+          `本地推理通常比云端慢 10~60 倍，极易触发 executor 超时（表现为「任务干到一半突然没了」）。` +
+          `排查：① DEFAULT_MODEL / TOOL_MODEL / REPLY_MODEL 是否为真实云端模型名 ` +
+          `② 对应 *_API_KEY 是否已配置 ③ 模型名是否在 hub 的 provider models 清单内。`;
+        if (realLocal && !allowLocalFallback) {
+          console.error(detail + ` [${fallbackModel} 属真本机推理且 LINGXI_ALLOW_LOCAL_FALLBACK=false → 拒绝，返回 null]`);
+          return null;
+        }
+        console.error(detail + ` [${realLocal ? '真本机推理' : '云端中继壳'} → 已放行，标记 degraded=true]`);
+        return { client: entry.client, resolvedModel: fallbackModel, providerId: pid, isLocal: !!entry.config.isLocal, degraded: true };
       }
     }
 
-    // 6. 最后兜底
-    const first = this.providers.values().next().value;
-    return first ? { client: first.client, resolvedModel: first.config.models[0] || model } : null;
+    // 6. 最后兜底（patch-v20:applied：该路径同属降级，必须标记）
+    const firstEntry: any = this.providers.entries().next().value;
+    if (!firstEntry) return null;
+    // patch-v21:applied ★ 不谎报：models 未同步时不能把请求名当"已解析"；真本机推理受开关约束
+    const firstCfg = firstEntry[1].config;
+    const firstModels: string[] = Array.isArray(firstCfg.models) ? firstCfg.models : [];
+    const allowLocal2 = String(process.env.LINGXI_ALLOW_LOCAL_FALLBACK || 'false').toLowerCase() !== 'false';
+    if (firstModels.length === 0) {
+      console.error(
+        `[AI Hub][MODEL-UNVERIFIED] 模型 "${model}" 无处可去且 provider ${firstEntry[0]} 型号清单为空` +
+        `（可能 Ollama 未同步）→ 仍按 ${model} 发给该 provider，但标记 degraded（未经校验）`
+      );
+      return { client: firstEntry[1].client, resolvedModel: model, providerId: firstEntry[0], isLocal: !!firstCfg.isLocal, degraded: true };
+    }
+    const firstFallback = firstModels[0];
+    const firstRealLocal = !!firstCfg.isLocal && !/:(cloud|remote)$|-cloud$/i.test(firstFallback);
+    console.error(
+      `[AI Hub][DEGRADED-TO-LOCAL] 模型 "${model}" 无处可去 → 仅剩 ${firstEntry[0]}/${firstFallback}` +
+      ` (真本机推理=${firstRealLocal}, allowLocalFallback=${allowLocal2})`
+    );
+    if (firstRealLocal && !allowLocal2) {
+      console.error('[AI Hub][FATAL] 唯一可用 provider 为真本机推理且开关关闭 → 返回 null（拒绝静默降级）');
+      return null;
+    }
+    return { client: firstEntry[1].client, resolvedModel: firstFallback, providerId: firstEntry[0], isLocal: !!firstCfg.isLocal, degraded: true };
   }
 
   /**
@@ -702,8 +812,13 @@ export class AIHub {
       model = this.getDefaultModel();
     }
     const result = this.getClient(model);
-    if (result && result.resolvedModel !== model) {
-      console.warn(`[AIHub] getRoleClient(${role}): 请求 ${model} → 实际 ${result.resolvedModel} (模型名不匹配，可能是 provider 未配置 API Key 或模型名不在列表中)`);
+    if (result && (result.resolvedModel !== model || result.degraded || result.isLocal)) {
+      // patch-v20:applied：模型归属漂移必须 error 级可见（此前只有一行 warn，前端零感知）
+      const tag = result.isLocal ? 'LOCAL!' : result.degraded ? 'DEGRADED' : 'RENAMED';
+      console.error(
+        `[AIHub][MODEL-DRIFT][${tag}] getRoleClient(${role}): 请求 ${model} → 实际 ${result.resolvedModel}` +
+        ` @ ${result.providerId || '?'} (isLocal=${!!result.isLocal}, degraded=${!!result.degraded})`
+      );
     } else if (!result) {
       console.error(`[AIHub] getRoleClient(${role}): 模型 ${model} 完全不可用，无 fallback`);
     }

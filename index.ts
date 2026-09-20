@@ -4,6 +4,50 @@
 // 必须最先加载 .env：ESM 中 import 会被提升，若在模块体中调用 dotenvConfig()，
 // 则 hub.ts 等模块加载时读取的 process.env.* 全为空。用副作用导入置于首位可修复。
 import 'dotenv/config';
+// ── patch-v21:applied ★ .env 生效性诊断与覆盖 ──────────────────────────────────────
+// 背景：dotenv 默认「不覆盖」已存在于 process.env 的键。若服务由带环境变量的父进程拉起
+//（Windows 服务 / IDE / 上层平台 / setx），.env 会被静默遮蔽 → 表现为「改了 .env 却没生效」，
+// 且模型路由会跑到意料之外的模型（例如本机 Ollama）上，全程无任何提示。
+(() => {
+  try {
+    const envPath = path.join(process.cwd(), '.env');
+    if (!existsSync(envPath)) return;
+    const fileVals = new Map<string, string>();
+    for (const rawLine of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      const k = line.slice(0, eq).trim();
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) continue;
+      let v = line.slice(eq + 1).trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+      fileVals.set(k, v);
+    }
+    const override = String(process.env.LINGXI_ENV_OVERRIDE ?? 'true').toLowerCase() !== 'false';
+    const mask = (x: string) => (!x ? x : x.length <= 10 ? x.slice(0, 3) + '***' : x.slice(0, 8) + '***');
+    const shadows: string[] = [];
+    for (const [k, fv] of fileVals) {
+      const pv = process.env[k];
+      if (pv === undefined) { process.env[k] = fv; continue; }
+      if (pv === fv) continue;
+      shadows.push(`${k}: 进程=${mask(pv)} / .env=${mask(fv)}`);
+      if (override) process.env[k] = fv;
+    }
+    if (shadows.length > 0) {
+      console.warn(`[ENV-SHADOW] ⚠️ 检测到 ${shadows.length} 个键被父进程环境遮蔽（dotenv 默认不覆盖）`);
+      shadows.forEach(l => console.warn(`[ENV-SHADOW]   ${l}`));
+      console.warn(override
+        ? '[ENV-SHADOW] → 已按 .env 覆盖（LINGXI_ENV_OVERRIDE=false 可关闭该行为）'
+        : '[ENV-SHADOW] → 保留进程环境值，.env 未生效！');
+    } else {
+      console.log(`[ENV-SHADOW] .env 未被遮蔽（${fileVals.size} 个键一致）`);
+    }
+    console.log(`[ENV] 生效模型配置: DEFAULT_MODEL=${process.env.DEFAULT_MODEL || '(未设)'} | TOOL_MODEL=${process.env.TOOL_MODEL || '(未设)'} | REPLY_MODEL=${process.env.REPLY_MODEL || '(未设)'} | ROUTE_ENABLED=${process.env.ROUTE_ENABLED || '(未设)'} | ALLOW_LOCAL_FALLBACK=${process.env.LINGXI_ALLOW_LOCAL_FALLBACK || '(未设)'}`);
+  } catch (e) {
+    console.warn('[ENV-SHADOW] 诊断失败（不影响启动）:', (e as Error).message);
+  }
+})();
 // P1-B: LAN_SECRET 安全默认 —— 缺失时自动生成并持久化到 .env（局域网传输层 HMAC 签名）
 (() => {
   try {

@@ -74,6 +74,12 @@ export async function initDB(dbPath: string) {
   }
   if (!_db) _db = new SQL.Database();
   _dbInit(_db);
+  // ── P0-3 接入点：显式迁移账本 + 漂移自检（幂等、可重入）──
+  try {
+    const _schemaStatus = runMigrations({ autoAddMissingColumns: true, failFast: false });
+    if (_schemaStatus.drift.length) console.warn('[schema] 迁移后仍有漂移:', JSON.stringify(_schemaStatus.drift));
+    else console.log('[schema] ✅ 迁移账本一致 · 漂移 0 处 · checksum=' + _schemaStatus.checksum);
+  } catch (e: any) { console.error('[schema] runMigrations 失败:', e.message); }
   // v2.0.20: 存量用户积分建档——补齐 user_credits 缺失记录，避免各处读到兜底值
   try {
     const missing = _db.exec('SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM user_credits)');
@@ -697,7 +703,7 @@ function queryAll(sql: string, params: any[] = []): any[][] {
   return rows;
 }
 
-function queryOne(sql: string, params: any[] = []): any | null {
+export function queryOne(sql: string, params: any[] = []): any | null {
   const stmt = _db.prepare(sql);
   if (params.length) stmt.bind(params);
   const result = stmt.step() ? stmt.get() : null;
@@ -705,7 +711,7 @@ function queryOne(sql: string, params: any[] = []): any | null {
   return result;
 }
 
-function queryObjects(sql: string, params: any[] = []): any[] {
+export function queryObjects(sql: string, params: any[] = []): any[] {
   const stmt = _db.prepare(sql);
   if (params.length) stmt.bind(params);
   const rows: any[] = [];
@@ -835,6 +841,10 @@ export function getChatMemory(chatId: string, agentId: string) {
 
 export function getChatMemories(chatId: string) {
   return queryObjects("SELECT * FROM chat_memories WHERE chat_id = ?", [chatId]);
+}
+
+export function listChatMemoryPairs(): Array<{ chat_id: string; agent_id: string }> {
+  return queryObjects("SELECT DISTINCT chat_id, agent_id FROM chat_memories WHERE memory_summary IS NOT NULL AND length(memory_summary) >= 100");
 }
 
 
@@ -1857,34 +1867,403 @@ export function deleteFriendRequest(requestId: string): void {
 }
 
 // ==================== deleteUser: cascade delete a user and all related data ====================
-export function deleteUser(userId: string): void {
-  // 1. Delete point transactions
-  _db.run('DELETE FROM point_transactions WHERE user_id = ?', [userId]);
-  // 2. Delete friendships (both directions)
-  _db.run('DELETE FROM friendships WHERE requester_id = ? OR addressee_id = ?', [userId, userId]);
-  // 3. Delete agent market listings owned by this user
-  _db.run('DELETE FROM agent_market WHERE owner_id = ?', [userId]);
-  // 4. Delete market orders by this user (buyer or seller)
-  _db.run('DELETE FROM market_orders WHERE buyer_id = ? OR seller_id = ?', [userId, userId]);
-  // 5. Delete LAN group memberships
-  _db.run('DELETE FROM lan_group_members WHERE user_id = ?', [userId]);
-  // 6. Delete LAN groups created by this user
-  _db.run('DELETE FROM lan_groups WHERE creator_id = ?', [userId]);
-  // 7. Delete private chats and messages
-  const chatRows = queryObjects('SELECT id FROM chats WHERE user1_id = ? OR user2_id = ?', [userId, userId]);
-  if (chatRows.length > 0) {
-    for (const cr of chatRows) {
-      _db.run('DELETE FROM messages WHERE chat_id = ?', [cr.id]);
-    }
-    _db.run('DELETE FROM chats WHERE user1_id = ? OR user2_id = ?', [userId, userId]);
+/**
+ * [P0-1 修复 · v3 · 2026-09-18]
+ *
+ * v3 相对 v2 的两处实质修正（均由"真实库 schema"验证抓出，见
+ * scripts/verify-deleteuser-on-live-schema.cjs）：
+ *
+ *   [FIX-A] 删掉"全库孤儿清理"——v2 的 `chats(orphan)` 语句是
+ *           `DELETE FROM chats WHERE id NOT IN (SELECT chat_id FROM participants)`，
+ *           它在**真实库上删掉了 89 条与本用户无关的 chat**。这是越界破坏。
+ *           v3 改为：先收集"本用户（及其 Agent）参与过的 chat_id"白名单，
+ *           只在**白名单内**做孤儿回收，绝不触碰无关数据。
+ *
+ *   [FIX-B] 补上"缺列"防护——v2 声明了 PlanStep.need 却从未使用（死代码），
+ *           导致真实库缺 lan_groups.owner_user_id 时两条语句抛错并整体回滚，
+ *           deleteUser 在真实库上**依然失败**。v3 用 SAVEPOINT 逐条隔离：
+ *             · 失败原因是"缺列/缺表"（schema 漂移）→ 记录哨兵值并继续，大声告警
+ *             · 其它原因 → 整个事务 ROLLBACK，保证账目与数据一致性
+ *
+ * 保留 v2 的正确设计：单事务、真实列名、私聊抹除/群聊保留他人、覆盖 31 张表、返回结构化结果。
+ *
+ * ⚠️ 顺序约束：所有"按参与关系定位 chat_id"的语句必须在删除 participants 之前执行。
+ *
+ * 安全性：表名/列名全部来自本文件硬编码白名单，无外部输入拼接。
+ */
+export function deleteUser(userId: string): { ok: boolean; deleted: Record<string, number>; skipped: string[]; error?: string } {
+  const deleted: Record<string, number> = {};
+  const skipped: string[] = [];
+
+  const tableExists = (t: string): boolean => {
+    try {
+      const r = _db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${t}'`);
+      return !!(r[0] && r[0].values.length);
+    } catch { return false; }
+  };
+
+  let userEmail: string | null = null;
+  try {
+    const row = queryOne(`SELECT email FROM users WHERE id = ?`, [userId]);
+    userEmail = row && row[0] ? String(row[0]) : null;
+  } catch { /* 表缺失时忽略 */ }
+
+  // ── [FIX-A] 前置：收集本用户（及其 Agent）参与过的 chat_id 白名单 ──
+  const myChatIds: string[] = [];
+  try {
+    const rows = queryObjects(
+      `SELECT DISTINCT chat_id FROM participants
+        WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)`,
+      [userId, userId]
+    );
+    for (const r of rows) if (r && r[0]) myChatIds.push(String(r[0]));
+  } catch { /* participants 缺失则白名单为空，后续按空处理 */ }
+
+  interface PlanStep { label: string; table: string; sql: string; params: any[] }
+  const PLAN: PlanStep[] = [
+    // A. 账务 / 凭证
+    { label: 'credit_log',            table: 'credit_log',            sql: `DELETE FROM credit_log WHERE user_id = ?`,         params: [userId] },
+    { label: 'wallet_tx',             table: 'wallet_tx',             sql: `DELETE FROM wallet_tx WHERE user_id = ?`,          params: [userId] },
+    { label: 'wallets',               table: 'wallets',               sql: `DELETE FROM wallets WHERE user_id = ?`,            params: [userId] },
+    { label: 'user_credits',          table: 'user_credits',          sql: `DELETE FROM user_credits WHERE user_id = ?`,       params: [userId] },
+    { label: 'user_sessions',         table: 'user_sessions',         sql: `DELETE FROM user_sessions WHERE user_id = ?`,      params: [userId] },
+    { label: 'user_verifications',    table: 'user_verifications',    sql: `DELETE FROM user_verifications WHERE user_id = ?`, params: [userId] },
+    { label: 'invite_codes',          table: 'invite_codes',          sql: `DELETE FROM invite_codes WHERE created_by = ?`,    params: [userId] },
+    { label: 'verification_codes',    table: 'verification_codes',    sql: `DELETE FROM verification_codes WHERE email = ?`,   params: [userEmail ?? ''] },
+    { label: 'message_ratings',       table: 'message_ratings',       sql: `DELETE FROM message_ratings WHERE user_id = ?`,    params: [userId] },
+
+    // B. 社交 / 交易
+    { label: 'friendships',   table: 'friendships',   sql: `DELETE FROM friendships WHERE from_user_id = ? OR to_user_id = ?`, params: [userId, userId] },
+    { label: 'hires',         table: 'hires',         sql: `DELETE FROM hires WHERE buyer_id = ? OR seller_id = ?`,            params: [userId, userId] },
+    { label: 'market_orders', table: 'market_orders', sql: `DELETE FROM market_orders WHERE buyer_id = ? OR listing_id IN (SELECT id FROM agent_market WHERE publisher_id = ?)`, params: [userId, userId] },
+    { label: 'agent_market',  table: 'agent_market',  sql: `DELETE FROM agent_market WHERE publisher_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)`,           params: [userId, userId] },
+
+    // C. 局域网组网
+    //   注意：lan_groups 在不同血统的库里可能是 owner_user_id（代码声明）或 owner_instance（真实库），
+    //   缺列由 SAVEPOINT 兜底为"跳过并告警"，绝不误删他人在群。
+    { label: 'lan_group_members',     table: 'lan_group_members',     sql: `DELETE FROM lan_group_members WHERE user_id = ? OR group_id IN (SELECT id FROM lan_groups WHERE owner_user_id = ?)`, params: [userId, userId] },
+    { label: 'lan_group_invites',     table: 'lan_group_invites',     sql: `DELETE FROM lan_group_invites WHERE invited_user_id = ? OR owner_user_id = ?`,                                          params: [userId, userId] },
+    { label: 'lan_groups',            table: 'lan_groups',            sql: `DELETE FROM lan_groups WHERE owner_user_id = ?`,                                                                       params: [userId] },
+    { label: 'lan_remote_identities', table: 'lan_remote_identities', sql: `DELETE FROM lan_remote_identities WHERE user_id = ?`,                                                                  params: [userId] },
+
+    // D. Agent 派生数据（须在 participants 之前）
+    { label: 'inbox',        table: 'inbox',        sql: `DELETE FROM inbox WHERE agent_id IN (SELECT id FROM agents WHERE user_id = ?)`, params: [userId] },
+    { label: 'team_members', table: 'team_members', sql: `DELETE FROM team_members WHERE agent_id IN (SELECT id FROM agents WHERE user_id = ?) OR team_id IN (SELECT id FROM team_groups WHERE owner_id = ?)`, params: [userId, userId] },
+    { label: 'team_groups',  table: 'team_groups',  sql: `DELETE FROM team_groups WHERE owner_id = ? OR chat_id IN (SELECT DISTINCT chat_id FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?))`, params: [userId, userId, userId] },
+    { label: 'workflows',    table: 'workflows',    sql: `DELETE FROM workflows WHERE created_by = ?`, params: [userId] },
+
+    // E. 会话内容（chat_id 维度；必须在 participants 之前）
+    { label: 'entities',         table: 'entities',         sql: `DELETE FROM entities WHERE chat_id IN (SELECT DISTINCT chat_id FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)) OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)`, params: [userId, userId, userId] },
+    { label: 'chat_memories',    table: 'chat_memories',    sql: `DELETE FROM chat_memories WHERE chat_id IN (SELECT DISTINCT chat_id FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)) OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)`, params: [userId, userId, userId] },
+    { label: 'messages(private)',table: 'messages',         sql: `DELETE FROM messages WHERE chat_id IN (SELECT id FROM chats WHERE type = 'private' AND id IN (SELECT DISTINCT chat_id FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)))`, params: [userId, userId] },
+    { label: 'chats(private)',   table: 'chats',            sql: `DELETE FROM chats WHERE type = 'private' AND id IN (SELECT DISTINCT chat_id FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?))`, params: [userId, userId] },
+
+    // F. 成员关系（本人及本人 Agent；群聊保留他人）
+    { label: 'participants',      table: 'participants',   sql: `DELETE FROM participants WHERE user_id = ? OR agent_id IN (SELECT id FROM agents WHERE user_id = ?)`, params: [userId, userId] },
+    { label: 'chat_read_state',   table: 'chat_read_state',sql: `DELETE FROM chat_read_state WHERE user_id = ?`, params: [userId] },
+
+    // G. 主体
+    { label: 'agents', table: 'agents', sql: `DELETE FROM agents WHERE user_id = ?`, params: [userId] },
+    { label: 'users',  table: 'users',  sql: `DELETE FROM users WHERE id = ?`,       params: [userId] },
+  ];
+
+  // ── [FIX-A] 白名单内的孤儿回收（替换 v2 的全局清理）──
+  const cleanup: PlanStep[] = [];
+  if (myChatIds.length) {
+    const inList = myChatIds.map(() => '?').join(',');
+    cleanup.push(
+      { label: 'chats(orphan-mine)', table: 'chats', sql: `DELETE FROM chats WHERE id IN (${inList}) AND id NOT IN (SELECT DISTINCT chat_id FROM participants)`, params: [...myChatIds] },
+      { label: 'participants(orphan-mine)', table: 'participants', sql: `DELETE FROM participants WHERE chat_id IN (${inList}) AND chat_id NOT IN (SELECT id FROM chats)`, params: [...myChatIds] },
+    );
   }
-  // 8. Delete agents owned by this user
-  _db.run('DELETE FROM agents WHERE owner_id = ?', [userId]);
-  // 9. Delete workflows
-  _db.run('DELETE FROM workflows WHERE user_id = ?', [userId]);
-  // 10. Delete sessions
-  _db.run('DELETE FROM sessions WHERE user_id = ?', [userId]);
-  // 11. Delete the user record itself
-  _db.run('DELETE FROM users WHERE id = ?', [userId]);
+
+  // 执行顺序：主体删除 → 白名单孤儿回收（回收必须在 participants 删净之后）
+  const ORDERED: PlanStep[] = [...PLAN.filter((s) => s.label !== 'agents' && s.label !== 'users'), ...cleanup,
+    ...PLAN.filter((s) => s.label === 'agents' || s.label === 'users')];
+
+  const runnable = ORDERED.filter((st) => {
+    if (!tableExists(st.table)) { deleted[st.label] = -1; skipped.push(`${st.label}(表缺失)`); return false; }
+    if (st.label === 'verification_codes' && !userEmail) { deleted[st.label] = -3; skipped.push(`${st.label}(无 email 键)`); return false; }
+    return true;
+  });
+
+  try {
+    _db.run('BEGIN');
+    let sp = 0;
+    for (const st of runnable) {
+      const name = `sp_${sp++}`;
+      try {
+        _db.run(`SAVEPOINT ${name}`);
+        _db.run(st.sql, st.params);
+        _db.run(`RELEASE ${name}`);
+        deleted[st.label] = _db.getRowsModified();
+      } catch (e: any) {
+        try { _db.run(`ROLLBACK TO ${name}`); _db.run(`RELEASE ${name}`); } catch { /* ignore */ }
+        const msg = String(e?.message || e);
+        const isDrift = /no such column|no such table/i.test(msg);
+        if (isDrift) {
+          // [FIX-B] schema 漂移：跳过该条并大声告警，不拖垮整个删除
+          deleted[st.label] = -2;
+          skipped.push(`${st.label}(${msg})`);
+          console.warn(`[DB] deleteUser(${userId}) 跳过 ${st.label}：${msg} —— 该库 schema 与代码声明不一致，建议跑迁移`);
+          continue;
+        }
+        throw e; // 其它错误 → 交给外层整体回滚
+      }
+    }
+    _db.run('COMMIT');
+    markDirty();
+    return { ok: true, deleted, skipped };
+  } catch (e: any) {
+    try { _db.run('ROLLBACK'); } catch { /* ignore */ }
+    console.error(`[DB] deleteUser(${userId}) 失败并已回滚: ${e.message}`);
+    return { ok: false, deleted, skipped, error: e.message };
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// P0-3 落地：显式迁移账本（schema_migrations）+ 漂移自检
+// 来源补丁: patches/db.schema-migrations.fixed.ts
+// 落地调整: 类型统一用 any（本文件已有 `export class DB`，避免类型名冲突）
+// ════════════════════════════════════════════════════════════════════════════
+
+const MIGRATIONS_TABLE = `
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    id           TEXT PRIMARY KEY,
+    description  TEXT NOT NULL DEFAULT '',
+    applied_at   INTEGER NOT NULL,
+    checksum     TEXT NOT NULL DEFAULT '',
+    ok           INTEGER NOT NULL DEFAULT 1
+  );`;
+
+interface Migration {
+  id: string;
+  description: string;
+  /** 幂等：内部必须自行判断"列/索引是否已存在"后再执行 */
+  up: (db: any) => void;
+}
+
+/** 列是否存在 */
+function hasColumn(db: any, table: string, col: string): boolean {
+  try {
+    const r = db.exec(`PRAGMA table_info(${table})`);
+    return !!(r[0] && r[0].values.some((v: any[]) => v[1] === col));
+  } catch { return false; }
+}
+/** 表是否存在 */
+function hasTable(db: any, table: string): boolean {
+  try {
+    const r = db.exec(`SELECT name FROM sqlite_master WHERE type='table' AND name='${table}'`);
+    return !!(r[0] && r[0].values.length);
+  } catch { return false; }
+}
+/** 幂等加列 */
+function addColumnIfMissing(db: any, table: string, col: string, ddl: string): boolean {
+  if (!hasTable(db, table)) return false;
+  if (hasColumn(db, table, col)) return false;
+  db.run(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+  return true;
+}
+
+// ────────────────────────── 显式迁移清单 ──────────────────────────
+// 原 db.ts 里散的 16 条裸 ALTER 全部收编为具名迁移（语义不变：仍只在缺列时加）。
+// 今后新增结构变更 = 往数组尾部追加一条，不再往启动流程塞 try/catch。
+const MIGRATIONS: Migration[] = [
+  {
+    id: '20260901_001_chats_columns',
+    description: 'chats 增加 shared_workspace / chat_mode / name',
+    up: (db) => {
+      addColumnIfMissing(db, 'chats', 'shared_workspace', 'TEXT');
+      addColumnIfMissing(db, 'chats', 'chat_mode', "TEXT NOT NULL DEFAULT 'free'");
+      addColumnIfMissing(db, 'chats', 'name', 'TEXT');
+    },
+  },
+  {
+    id: '20260901_002_agents_personality_dims',
+    description: 'agents 增加 personality_dims',
+    up: (db) => { addColumnIfMissing(db, 'agents', 'personality_dims', "TEXT DEFAULT '{}'"); },
+  },
+  {
+    id: '20260905_001_lan_group_columns',
+    description: 'lan_groups.member_count / lan_group_members.agent_id',
+    up: (db) => {
+      addColumnIfMissing(db, 'lan_groups', 'member_count', 'INTEGER DEFAULT 0');
+      addColumnIfMissing(db, 'lan_group_members', 'agent_id', 'TEXT');
+      addColumnIfMissing(db, 'lan_group_members', 'role', "TEXT DEFAULT 'member'");
+    },
+  },
+  {
+    id: '20260910_001_agent_market_columns',
+    description: 'agent_market 增加 duration/duration_unit/item_type/preview_url/file_url/license/cover_url/currency',
+    up: (db) => {
+      addColumnIfMissing(db, 'agent_market', 'duration', 'INTEGER NOT NULL DEFAULT 0');
+      addColumnIfMissing(db, 'agent_market', 'duration_unit', "TEXT NOT NULL DEFAULT 'permanent'");
+      addColumnIfMissing(db, 'agent_market', 'item_type', "TEXT NOT NULL DEFAULT 'agent'");
+      addColumnIfMissing(db, 'agent_market', 'preview_url', "TEXT DEFAULT ''");
+      addColumnIfMissing(db, 'agent_market', 'file_url', "TEXT DEFAULT ''");
+      addColumnIfMissing(db, 'agent_market', 'license', "TEXT DEFAULT ''");
+      addColumnIfMissing(db, 'agent_market', 'cover_url', "TEXT DEFAULT ''");
+      addColumnIfMissing(db, 'agent_market', 'currency', "TEXT NOT NULL DEFAULT 'credits'");
+    },
+  },
+  {
+    id: '20260912_001_hires_expires_at',
+    description: 'hires 增加 expires_at（原 v2.0.12 迁移）',
+    up: (db) => { addColumnIfMissing(db, 'hires', 'expires_at', 'INTEGER NOT NULL DEFAULT 0'); },
+  },
+  {
+    id: '20260918_001_hires_align_code_schema',
+    description:
+      '⚠️ 对齐 hires：代码 INSERT 需要 agent_id/title/price/hired_at，' +
+      '而真实库用的是 buyer_agent_id/seller_agent_id/credits_paid/created_at。' +
+      '只补列 + 尽力回填，不破坏既有行。',
+    up: (db) => {
+      addColumnIfMissing(db, 'hires', 'agent_id', 'TEXT');
+      addColumnIfMissing(db, 'hires', 'title', "TEXT DEFAULT ''");
+      addColumnIfMissing(db, 'hires', 'price', 'INTEGER DEFAULT 0');
+      addColumnIfMissing(db, 'hires', 'hired_at', 'INTEGER DEFAULT 0');
+      addColumnIfMissing(db, 'hires', 'fired_at', 'INTEGER');
+      if (hasColumn(db, 'hires', 'created_at')) {
+        try { db.run(`UPDATE hires SET hired_at = created_at WHERE (hired_at IS NULL OR hired_at = 0) AND created_at IS NOT NULL`); } catch { /* ignore */ }
+      }
+      if (hasColumn(db, 'hires', 'buyer_agent_id')) {
+        try { db.run(`UPDATE hires SET agent_id = buyer_agent_id WHERE agent_id IS NULL`); } catch { /* ignore */ }
+      }
+      if (hasColumn(db, 'hires', 'credits_paid')) {
+        try { db.run(`UPDATE hires SET price = credits_paid WHERE (price IS NULL OR price = 0) AND credits_paid IS NOT NULL`); } catch { /* ignore */ }
+      }
+    },
+  },
+  {
+    id: '20260918_002_market_orders_hire_id',
+    description: 'market_orders 增加 hire_id',
+    up: (db) => { addColumnIfMissing(db, 'market_orders', 'hire_id', 'TEXT'); },
+  },
+  {
+    id: '20260918_003_hire_idempotency_index',
+    description: 'hires 幂等键：同一买家对同一 listing 最多一条 active 雇约（P0-2 的数据库级兜底）',
+    up: (db) => {
+      if (!hasTable(db, 'hires')) return;
+      try {
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS uniq_hire_active ON hires(buyer_id, listing_id) WHERE status = 'active'`);
+      } catch (e: any) {
+        console.error('[schema] ⚠️ 幂等索引创建失败（可能存在重复 active 雇约，需人工清理）:', e.message);
+      }
+    },
+  },
+  {
+    id: '20260918_004_lan_groups_owner_user_id',
+    description: 'lan_groups 增加 owner_user_id（代码声明列；真实库缺失）',
+    up: (db) => { addColumnIfMissing(db, 'lan_groups', 'owner_user_id', 'TEXT'); },
+  },
+];
+
+// ────────────────────────── 迁移执行器 ──────────────────────────
+/** 迁移清单稳定摘要，用于"清单被改过"的检测 */
+function migrationsChecksum(migs: Migration[]): string {
+  const src = migs.map((m) => `${m.id}|${m.description}`).join('\n');
+  let h = 0;
+  for (let i = 0; i < src.length; i++) { h = (h * 31 + src.charCodeAt(i)) | 0; }
+  return (h >>> 0).toString(16).padStart(8, '0');
+}
+
+export interface SchemaStatus {
+  applied: string[];
+  pending: string[];
+  drift: Array<{ table: string; column: string }>;
+  checksum: string;
+}
+
+/**
+ * 执行迁移（幂等、可重入）。返回可观测状态。
+ * @param opts.failFast 遇错是否中断启动（默认 false：只记账 + 告警，不阻断服务启动）
+ */
+export function runMigrations(opts: { autoAddMissingColumns?: boolean; failFast?: boolean } = {}): SchemaStatus {
+  const { autoAddMissingColumns = true, failFast = false } = opts;
+  const db = _db;
+  try { db.exec(MIGRATIONS_TABLE); } catch (e: any) {
+    console.error('[schema] 无法创建 schema_migrations 表:', e.message);
+  }
+
+  const appliedSet = new Set<string>();
+  try {
+    const r = db.exec('SELECT id FROM schema_migrations WHERE ok = 1');
+    if (r[0]) for (const v of r[0].values) appliedSet.add(String(v[0]));
+  } catch { /* ignore */ }
+
+  const checksum = migrationsChecksum(MIGRATIONS);
+  const applied: string[] = [];
+  const pending: string[] = [];
+
+  for (const m of MIGRATIONS) {
+    if (appliedSet.has(m.id)) { applied.push(m.id); continue; }
+    try {
+      db.run('BEGIN');
+      m.up(db);
+      db.run(
+        'INSERT OR REPLACE INTO schema_migrations (id, description, applied_at, checksum, ok) VALUES (?, ?, ?, ?, 1)',
+        [m.id, m.description, Date.now(), checksum]
+      );
+      db.run('COMMIT');
+      applied.push(m.id);
+      console.log(`[schema] ✅ 迁移已应用: ${m.id} — ${m.description}`);
+    } catch (e: any) {
+      try { db.run('ROLLBACK'); } catch { /* ignore */ }
+      pending.push(m.id);
+      console.error(`[schema] ❌ 迁移失败: ${m.id} — ${e.message}`);
+      try {
+        db.run(
+          'INSERT OR REPLACE INTO schema_migrations (id, description, applied_at, checksum, ok) VALUES (?, ?, ?, ?, 0)',
+          [m.id, m.description + ' | ERROR: ' + e.message, Date.now(), checksum]
+        );
+      } catch { /* ignore */ }
+      if (failFast) throw e;
+    }
+  }
+
+  const drift = detectDrift();
+  if (autoAddMissingColumns && drift.length) {
+    console.warn(`[schema] ⚠️ 检测到 ${drift.length} 处 schema 漂移（缺失列）`);
+  }
   markDirty();
+  return { applied, pending, drift, checksum };
+}
+
+/** 漂移检测：返回"迁移清单期望但库中缺失"的列 */
+export function detectDrift(): Array<{ table: string; column: string }> {
+  const expected: Array<[string, string]> = [
+    ['chats', 'shared_workspace'], ['chats', 'chat_mode'], ['chats', 'name'],
+    ['agents', 'personality_dims'],
+    ['lan_groups', 'member_count'], ['lan_groups', 'owner_user_id'],
+    ['lan_group_members', 'agent_id'],
+    ['lan_group_members', 'role'],
+    ['agent_market', 'duration'], ['agent_market', 'duration_unit'], ['agent_market', 'item_type'],
+    ['agent_market', 'preview_url'], ['agent_market', 'file_url'], ['agent_market', 'license'],
+    ['agent_market', 'cover_url'], ['agent_market', 'currency'],
+    ['hires', 'expires_at'], ['hires', 'agent_id'], ['hires', 'title'], ['hires', 'price'],
+    ['hires', 'hired_at'], ['hires', 'fired_at'],
+    ['market_orders', 'hire_id'],
+  ];
+  const out: Array<{ table: string; column: string }> = [];
+  for (const [t, c] of expected) {
+    if (!hasTable(_db, t)) { out.push({ table: t, column: `${c}(表缺失)` }); continue; }
+    if (!hasColumn(_db, t, c)) out.push({ table: t, column: c });
+  }
+  return out;
+}
+
+/** 供 /api/health 暴露的库健康度 */
+export function getSchemaStatus(): SchemaStatus & { ledgerRows: number } {
+  let ledgerRows = 0;
+  try { const r = _db.exec('SELECT COUNT(*) FROM schema_migrations WHERE ok = 1'); ledgerRows = r[0] ? Number(r[0].values[0][0]) : 0; } catch { /* ignore */ }
+  const appliedRows: string[] = [];
+  try { const r = _db.exec('SELECT id FROM schema_migrations WHERE ok = 1'); if (r[0]) for (const v of r[0].values) appliedRows.push(String(v[0])); } catch { /* ignore */ }
+  const appliedSet = new Set(appliedRows);
+  return {
+    applied: MIGRATIONS.filter((m) => appliedSet.has(m.id)).map((m) => m.id),
+    pending: MIGRATIONS.filter((m) => !appliedSet.has(m.id)).map((m) => m.id),
+    drift: detectDrift(),
+    checksum: migrationsChecksum(MIGRATIONS),
+    ledgerRows,
+  };
 }

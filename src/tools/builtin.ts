@@ -83,10 +83,25 @@ export function setWorkspaceRoot(path: string) {
 }
 
 
+// v30: 会话级沙箱子目录（benchmark per-task 隔离）
+let _sessionSubdir: string | null = null;
+export function setSessionWorkspaceSubdir(subdir: string | null) { _sessionSubdir = subdir; }
+export function getSessionWorkspaceSubdir(): string | null { return _sessionSubdir; }
+function sessionRoot(): string {
+  return _sessionSubdir ? resolve(_workspaceRoot, _sessionSubdir) : _workspaceRoot;
+}
+
 function safePath(relativePath: string): string {
+  const base = sessionRoot();
   if (!WORKSPACE_SANDBOX_ENABLED) {
     if (!isAbsolute(relativePath)) {
-      const resolved = resolve(_workspaceRoot, relativePath);
+      const resolved = resolve(base, relativePath);
+      return resolved;
+    }
+    // v30: 会话子目录隔离时，绝对路径也约束在 base 内，防止逃逸到共享 workspace
+    if (_sessionSubdir) {
+      const resolved = resolve(base, relativePath);
+      if (!resolved.startsWith(base)) throw new Error(`安全限制：会话沙箱内禁止访问外部目录 (${base})`);
       return resolved;
     }
     // v1.9.2: 沙箱关闭时，绝对路径只保护系统核心目录，其余全部放开（对标 OpenClaw 默认全开）
@@ -95,9 +110,9 @@ function safePath(relativePath: string): string {
     for (const b of blocked) { if (normalized.includes(b)) throw new Error(`安全限制：禁止访问系统目录 (${b}...)`); }
     return relativePath;
   }
-  const resolved = resolve(_workspaceRoot, relativePath);
-  if (!resolved.startsWith(_workspaceRoot)) {
-    throw new Error(`安全沙箱已开启：禁止访问工作区外部。当前 workspace: ${_workspaceRoot}。如需访问其他目录，请切换到个人模式。`);
+  const resolved = resolve(base, relativePath);
+  if (!resolved.startsWith(base)) {
+    throw new Error(`安全沙箱已开启：禁止访问工作区外部。当前 workspace: ${base}。如需访问其他目录，请切换到个人模式。`);
   }
   return resolved;
 }

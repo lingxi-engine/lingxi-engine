@@ -131,7 +131,7 @@ export interface RunToolsResult {
   aborted: boolean;
   consecutiveErrors?: number;
   /** v2.1: 循环终止原因，供上层（router 断点续跑）判断是否需要自动续跑 */
-  stopReason?: 'completed' | 'idle_stop' | 'max_iterations' | 'aborted' | 'tool_failures' | 'ai_errors';
+  stopReason?: 'completed' | 'idle_stop' | 'max_iterations' | 'aborted' | 'tool_failures' | 'ai_errors' | 'repeat_tool';
 }
 
 // ═══════════════════════════════════════════════
@@ -571,6 +571,13 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
 
   // ⭐ 连续工具失败计数器：防止 AI 反复尝试失败的工具导致死循环
   let consecutiveToolFailures = 0;
+  // v2.6 重复调用收敛：防"搜索命中缓存 / 工具无新信息"导致的死循环
+  let lastToolSignature = '';
+  let sameSignatureCount = 0;
+  let searchCallCount = 0;
+  const REPEAT_TOOL_LIMIT = Math.max(3, parseInt(process.env.EXECUTOR_REPEAT_TOOL_LIMIT || '4', 10));
+  const SEARCH_CALL_LIMIT = Math.max(5, parseInt(process.env.EXECUTOR_SEARCH_CALL_LIMIT || '8', 10));
+  const isSearchTool = (name: string) => name === 'web_search' || name === 'search' || name === 'scrape_url' || name === 'browser';
   // AGI 持续执行：AI 连续 N 轮只出文字不调工具时，判定为"确实完成"才停（防止无限追问）
   // v2.1 放宽空闲容忍：任务模式下默认 3 → 8（env MAX_IDLE_ROUNDS 可覆盖）。
   // 用户反馈"干活老是停下来问要不要继续"，3 轮太少——AI 写两轮汇报文字就被判完成退出；
@@ -823,6 +830,15 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
       });
 
       // 构建合法的 ToolCallRequest
+      // v2.6 重复调用检测：相同工具+相同参数连续调用 -> 原地打转；搜索工具累计计数 -> 反复搜索
+      const toolSignature = toolName + '::' + JSON.stringify(toolArgs);
+      if (toolSignature === lastToolSignature) {
+        sameSignatureCount += 1;
+      } else {
+        lastToolSignature = toolSignature;
+        sameSignatureCount = 1;
+      }
+      if (isSearchTool(toolName)) searchCallCount += 1;
       const toolRequest: ToolCallRequest = {
         id: tc.id,
         name: toolName,
@@ -911,6 +927,25 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         content: resultContent,
       };
       result.messages.push(toolMessage);
+      // v2.6 重复调用收敛：达到阈值先注入"降级作答"提示，再超 +2 次则硬停止（走兜底强制出答案）
+      const degradeReason = sameSignatureCount === REPEAT_TOOL_LIMIT
+        ? `已连续 ${sameSignatureCount} 次用相同参数调用「${toolName}」`
+        : (isSearchTool(toolName) && searchCallCount === SEARCH_CALL_LIMIT)
+          ? `已累计调用 ${searchCallCount} 次搜索工具`
+          : '';
+      if (degradeReason) {
+        console.warn(`[Executor] 重复调用收敛：${degradeReason}，注入降级提示`);
+        result.messages.push({
+          role: 'user',
+          content: `系统提示：${degradeReason}，继续调用不会得到新信息（很可能是命中了搜索缓存或结果无更新）。请立即停止调用该工具，基于已有信息和你的知识直接给出最终答案；如信息不足，请明确说明不确定性并给出最佳估计，不要再搜索、不要再重复调用。`,
+        });
+      }
+      if (sameSignatureCount >= REPEAT_TOOL_LIMIT + 2 || (isSearchTool(toolName) && searchCallCount >= SEARCH_CALL_LIMIT + 2)) {
+        console.warn(`[Executor] 重复调用收敛：硬停止（sameSignature=${sameSignatureCount}, searchCalls=${searchCallCount}）`);
+        result.stopReason = 'repeat_tool';
+        i = maxIterations; // 强制退出外层循环
+        break; // 退出内层工具循环
+      }
 
       console.log(
         `[Executor] 工具结果: ${toolName}`,

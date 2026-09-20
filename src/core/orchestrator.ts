@@ -112,6 +112,8 @@ export class Orchestrator {
             // 依赖失败 → 跳过此任务
             result.status = 'skipped';
             result.error = '依赖任务失败';
+            result.finishedAt = Date.now();
+            failed.add(id); // v28: skipped joins failed set to cascade-skip downstream, prevents permanent-pending deadlock
             continue;
           }
 
