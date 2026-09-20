@@ -261,7 +261,7 @@ backup-*/
 backup_*/
 release/
 release-v2/
-src/index.ts
+# src/index.ts  # 2026-09-20: landmine removed - this rule silently ignored the monolith-split entry file; root index.ts remains the real entry until split is redone with CI ratchet
  
 # 2026-09-16 mobile app build artifacts
 mobile-app/.gradle/ 
@@ -285,3 +285,10 @@ ws-boot.log
 
 # CI fix report + session skills ARE tracked (negate if ignored)
 !docs/ci-fix-report-*.md
+
+# 2026-09-20: root scratch archive + bench runtime data (kept on disk, never tracked)
+_archive/
+data-bench*/
+_creditfix/
+bench/out/
+bench/results/selftest-tmp/

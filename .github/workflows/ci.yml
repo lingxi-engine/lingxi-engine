@@ -65,10 +65,37 @@ jobs:
             fi
           done
           [ "$BAD" = "0" ] && echo "BOM gate: all critical configs clean"
-      - name: Count junk files and warn
+      - name: Count junk files (hard gate)
+        # 2026-09-20: warning -> error. Tracked junk count verified 0 on main
+        # (141 local .bak files are all gitignored), so hard-failing at >100 is safe
+        # and prevents junk from ever being committed again.
         run: |
           BAK=$(find . -path ./node_modules -prune -o \( -name '*.bak' -o -name '*.~1~' -o -name '*.bak-*' -o -name '*.pre-*' \) -print | wc -l)
           echo "junk files: $BAK"
           if [ "$BAK" -gt 100 ]; then
-            echo "::warning::too many junk files ($BAK), consider cleanup"
+            echo "::error::too many junk files ($BAK > 100); clean up before merging"
+            exit 1
           fi
+      - name: Monolith line ratchet
+        # 2026-09-20: ratchet gate. Root index.ts (4832 lines) and web/js/app.js
+        # (5333 lines) are known monoliths; a previous split attempt regressed
+        # silently. This gate only prevents GROWTH - every refactor that shrinks
+        # a file should also lower its cap here (ratchet down, never up).
+        run: |
+          set -euo pipefail
+          FAIL=0
+          check() {
+            local file="$1" cap="$2"
+            if [ -f "$file" ]; then
+              lines=$(wc -l < "$file")
+              echo "$file: $lines lines (cap $cap)"
+              if [ "$lines" -gt "$cap" ]; then
+                echo "::error::$file grew to $lines lines (cap $cap). Split it or raise the cap ONLY with an approved refactor plan."
+                FAIL=1
+              fi
+            fi
+          }
+          check index.ts 4900
+          check web/js/app.js 5400
+          check src/storage/db.ts 2150
+          [ "$FAIL" = "0" ] && echo "line ratchet: all monoliths within caps"
