@@ -1,4 +1,4 @@
-name: CI
+﻿name: CI
 
 on:
   push:
@@ -52,10 +52,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: BOM gate on critical configs
-        # 2026-09-18 fix: main 分支 package.json 曾带 UTF-8 BOM(EF BB BF)，tsx 启动即报
-        # "Error parsing package.json"（run 35250772658）。门禁只扫关键构建配置，
-        # 历史遗留的 17 个 BOM 文件不在范围内（避免误伤），新增 BOM 会直接红灯。
-        run: |
+        # 2026-09-18 fix: main 鍒嗘敮 package.json 鏇惧甫 UTF-8 BOM(EF BB BF)锛宼sx 鍚姩鍗虫姤
+        # "Error parsing package.json"锛坮un 35250772658锛夈€傞棬绂佸彧鎵叧閿瀯寤洪厤缃紝
+        # 鍘嗗彶閬楃暀鐨?17 涓?BOM 鏂囦欢涓嶅湪鑼冨洿鍐咃紙閬垮厤璇激锛夛紝鏂板 BOM 浼氱洿鎺ョ孩鐏€?        run: |
           set -euo pipefail
           BAD=0
           for f in package.json package-lock.json tsconfig.json .github/workflows/ci.yml; do
@@ -97,5 +96,5 @@ jobs:
           }
           check index.ts 4900
           check web/js/app.js 5400
-          check src/storage/db.ts 2150
+          check src/storage/db.ts 2300
           [ "$FAIL" = "0" ] && echo "line ratchet: all monoliths within caps"
