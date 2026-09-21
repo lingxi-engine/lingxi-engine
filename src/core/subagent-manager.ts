@@ -575,19 +575,33 @@ export class SubAgentManager {
       if (signal.aborted) ctrl.abort();
       else signal.addEventListener('abort', onOuterAbort);
     }
+    let hardTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const resp = await this.aiClient.chat.completions.create({
-        model,
-        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        temperature: 0.6,
-        max_tokens: 2000,
-        signal: ctrl.signal,
+      // 硬超时兜底：即使底层 client 不遵守 signal / 请求挂死，也保证 promise 一定 settle，
+      // 避免 Promise.allSettled 永不 resolve 导致整个 collab 会话永久停留在 running。
+      const hardTimeout = new Promise<never>((_, reject) => {
+        hardTimer = setTimeout(
+          () => reject(new Error(`collabSpeak hard-timeout after ${timeoutMs}ms (model=${model})`)),
+          timeoutMs + 3000
+        );
+        if (hardTimer && (hardTimer as any).unref) (hardTimer as any).unref();
       });
+      const resp: any = await Promise.race([
+        this.aiClient.chat.completions.create({
+          model,
+          messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+          temperature: 0.6,
+          max_tokens: 2000,
+          signal: ctrl.signal,
+        }),
+        hardTimeout,
+      ]);
       const content = resp?.choices?.[0]?.message?.content;
       if (!content || !content.trim()) return '(无内容)';
       return content.trim();
     } finally {
       clearTimeout(timer);
+      if (hardTimer) clearTimeout(hardTimer);
       if (signal) signal.removeEventListener('abort', onOuterAbort);
     }
   }

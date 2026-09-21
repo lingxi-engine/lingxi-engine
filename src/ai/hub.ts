@@ -337,6 +337,8 @@ export class AIHub {
       const client = new OpenAI({
         apiKey,
         baseURL,
+        timeout: 120000, // 2min 硬上限：避免挂死请求拖到 SDK 默认 10min
+        maxRetries: 1, // 降低重试：挂死请求不做二次放大
       });
       this.providers.set(cfg.id, { client, config: cfg });
     }
@@ -399,6 +401,8 @@ export class AIHub {
     const client = new OpenAI({
       apiKey: key || 'local',
       baseURL,
+      timeout: 120000, // 2min 硬上限：避免挂死请求拖到 SDK 默认 10min
+      maxRetries: 1, // 降低重试：挂死请求不做二次放大
     });
     this.providers.set(cfg.id, { client, config: { ...cfg, baseUrl: baseURL } });
     console.log(`[AI Hub] 动态注册 Provider: ${cfg.id} (${(cfg.models || []).length} 模型, ${baseURL})`);
