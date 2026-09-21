@@ -13,6 +13,8 @@
 ### 版本治理
 - `/api/health` 的 `version` 改为运行时读取 `package.json`（回退 `version.txt`），消除硬编码漂移
 - 版本统一至 **2.0.22**（`package.json` / `package-lock.json` / `version.txt`）
+- **打包脚本版本动态化**：`scripts/pack-release.ps1` 原本硬编码 `2.0.20`（升版后必 FAIL），改为从 `package.json` 读取；打包时写入 `BUILD-INFO.json`（version/commit/buildTime）并加一致性断言
+- **部署后 SHA 校验**：新增 `scripts/verify-deploy.cjs`（`npm run verify:deploy`），比对线上 `/api/health` 的 version/commit 与代码，漂移则 exit 1
 
 ## [2.0.21] - 2026-09-21
 
