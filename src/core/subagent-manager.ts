@@ -108,6 +108,8 @@ export class SubAgentManager {
   private aiClient: any;
   private aiModel: string;
   private onResult: ((task: SubAgentTask) => void) | null = null;
+  // v2.0.22: 全局进度回调（用于把子代理内部工具调用回传父级，修 G6 steps=0）
+  private onGlobalProgress: ((task: SubAgentTask, step: string, status: string, output?: string) => void) | null = null;
 
   // v2.0: Agent 间消息系统
   private agentMessages = new Map<string, AgentMessage[]>();  // agentId -> 消息队列
@@ -134,6 +136,11 @@ export class SubAgentManager {
     this.onResult = handler;
   }
 
+  /** v2.0.22: 全局进度回调 —— 子代理每次工具调用/结果都会触发，供上层（WebSocket）广播。 */
+  setProgressHandler(handler: (task: SubAgentTask, step: string, status: string, output?: string) => void): void {
+    this.onGlobalProgress = handler;
+  }
+
   // ═══════════════════════════════════════════════
   // 子代理任务管理（原有功能）
   // ═══════════════════════════════════════════════
@@ -152,10 +159,15 @@ export class SubAgentManager {
       timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '1800', 10),
       toolRegistry: opts.toolRegistry,
       agentIdForTools: opts.agentIdForTools || opts.parentId,
-      onProgress: opts.onProgress,
+      onProgress: undefined,
       messageHistory: [],
     };
 
+    const _userProgress = opts.onProgress;
+    task.onProgress = (step: string, status: string, output?: string) => {
+      try { if (_userProgress) _userProgress(step, status, output); } catch { /* ignore */ }
+      try { if (this.onGlobalProgress) this.onGlobalProgress(task, step, status, output); } catch { /* ignore */ }
+    };
     this.tasks.set(taskId, task);
     this.executeTask(task).catch(err => {
       console.error(`[SubAgent] ${taskId} 执行异常:`, err.message);

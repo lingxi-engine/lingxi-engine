@@ -509,6 +509,13 @@ setSearchManager(searchManagerInstance);
   // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
   setSubAgentManager(subAgentManager);
   console.log('[SubAgent] 已注入工具系统，delegate_task 可用');
+  // v2.0.22: 把子代理工具调用广播出去，修复多 Agent(agent.task) 场景 bench steps=0 的度量缺陷
+  subAgentManager.setProgressHandler((task: any, step: string, _status: string, output?: string) => {
+    if (step !== 'tool_call') return;
+    try {
+      broadcast({ type: 'agent.tool_call', chatId: task.parentChatId || task.chatId, subagent: task.id, toolName: output || '?', args: {} });
+    } catch (e) { /* ignore */ }
+  });
 
   // v2.0: 注册 Agent 间消息处理器 — Agent 收到其他 Agent 的消息时，用 generateOneShot 生成回复
   // 对标 CrewAI delegation + AutoGen GroupChat
@@ -734,7 +741,7 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.21',
+        version: (process.env.npm_package_version) || (() => { try { return JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version || '0.0.0'; } catch { try { return readFileSync(join(process.cwd(), 'version.txt'), 'utf8').trim(); } catch { return '0.0.0'; } } })(),
         commit: BUILD_COMMIT,
         buildTime: BUILD_TIME,
         agents: manager.list().length,

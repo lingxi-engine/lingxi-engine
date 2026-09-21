@@ -2,6 +2,18 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.22] - 2026-09-22
+
+### 工具层 & 评测度量修复（解锁 L4/L5 重跑）
+- **web_fetch 大页面截断修复**（`src/tools/builtin.ts`）：新增 `offset` 分段读取，返回 `total_chars`/`truncated`/`next_offset`；HTML 正文抽取（去 nav/header/footer/aside/form/script/style，优先 `<article>/<main>`）；错误分类 `http_403`/`http_429`/`http_5xx`/`timeout`/`too_large`/`network` 并标注 `retryable`。不再仅靠加大预算绕过
+- **多 Agent 事件回传修复（G6 steps=0 根因）**：`SubAgentManager` 新增全局进度回调 `setProgressHandler`，`index.ts` 将其接到 WebSocket `broadcast`，发出 `agent.tool.call`。子代理内部工具调用不再丢失，bench 步数/工具调用统计恢复真实（详见 `bench/L5-STEPS0-ROOTCAUSE.md`）
+- **bench 适配器度量自检**：`ws-adapter.cjs` 对「steps=0 但输出含工具痕迹」的记录打 `metricSuspect` 标记，SUMMARY 追加告警行
+- **修复违规扫描漏报**：`ws-adapter.cjs` 的 `scanViolations` 转义被写坏，导致含正则特殊字符的违规片段永不命中，已修正
+
+### 版本治理
+- `/api/health` 的 `version` 改为运行时读取 `package.json`（回退 `version.txt`），消除硬编码漂移
+- 版本统一至 **2.0.22**（`package.json` / `package-lock.json` / `version.txt`）
+
 ## [2.0.21] - 2026-09-21
 
 ### 版本治理 + 可观测性补齐

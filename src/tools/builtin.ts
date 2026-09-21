@@ -897,33 +897,79 @@ async function handleRenameFile(args: Record<string, any>) {
 // 工具 14: web_fetch — URL 内容抓取（智能 MIME 识别）
 // ═══════════════════════════════════════════════
 
+// v2.0.22: HTML 正文抽取 —— 去 boilerplate（nav/header/footer/aside/form/iframe/svg/noscript/template），
+// 优先取 <article>/<main>；降低「大页面被 slice 截断后正文挤丢」的概率。
+function extractHtmlMainText(raw: string, preferRaw = false): string {
+  // 1. 去非正文标签（含内容）
+  let h = raw
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, ' ')
+    .replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<(nav|header|footer|aside|form|iframe|template)\b[^<]*(?:(?!<\/\1>)<[^<]*)*<\/\1>/gi, ' ');
+
+  // 2. 优先抽 <article> / <main> 主体（需足够长，避免把导航块当正文）
+  if (!preferRaw) {
+    const m = h.match(/<(article|main)\b[^>]*>([\s\S]*?)<\/\1>/i);
+    if (m && m[2] && m[2].replace(/<[^>]+>/g, '').trim().length > 200) h = m[2];
+  }
+
+  // 3. 块级标签转换行，再剥标签
+  let text = h
+    .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/article)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d)));
+
+  return text.replace(/[ \t]+/g, ' ').replace(/\n\s*\n\s*\n+/g, '\n\n').trim();
+}
+
 const TOOL_WEB_FETCH: ToolDefinition = {
   name: "web_fetch",
-  description: "Fetch content from a URL with smart MIME handling: HTML→stripped text, JSON→parsed summary, image→dimensions+format. Read-only, no danger.",
+  description: "Fetch content from a URL with smart MIME handling and paginated reading. HTML is cleaned (scripts/styles/nav/footer removed) and the main content block is extracted. Returns content plus total_chars/truncated/next_offset so large pages can be read in chunks by calling again with offset. Read-only, no danger.",
   parameters: {
     type: "object",
     properties: {
       url: { type: "string", description: "URL to fetch (http/https)" },
-      max_length: { type: "number", description: "Max characters to return", default: 5000 },
+      max_length: { type: "number", description: "Max characters to return in this call", default: 5000 },
       timeout: { type: "number", description: "Timeout in ms", default: 15000 },
+      offset: { type: "number", description: "Character offset to start from (read large pages in chunks)", default: 0 },
+      raw: { type: "boolean", description: "If true, return full cleaned text without <article>/<main> extraction", default: false },
     },
     required: ["url"],
   },
 };
 
 async function handleWebFetch(args: Record<string, any>) {
-  const { url, max_length = 5000, timeout = 15000 } = args;
+  const { url, max_length = 5000, timeout = 15000, offset = 0, raw: wantRaw = false } = args;
+  const maxLen = Math.max(200, Math.min(Number(max_length) || 5000, 200000));
+  const from = Math.max(0, Number(offset) || 0);
+
+  // 1) 分页切片 + 元数据（供大页面分段读取）
+  const page = (full: string) => {
+    const total = full.length;
+    const slice = full.slice(from, from + maxLen);
+    const done = from + maxLen >= total;
+    return {
+      content: slice,
+      total_chars: total,
+      offset: from,
+      returned_chars: slice.length,
+      truncated: !done,
+      next_offset: done ? null : from + maxLen,
+    };
+  };
 
   // 验证 URL
   if (typeof url !== 'string' || !/^https?:\/\/[^\s]+$/i.test(url)) {
-    return { error: 'Invalid URL. Must start with http:// or https://', url };
+    return { error: 'Invalid URL. Must start with http:// or https://', url, error_type: 'invalid_url' };
   }
 
-  // v2.0: 使用统一 SSRF 策略（与系统其他部分一致）
-  // Agent 运行在用户本机，需要访问 localhost/Ollama/局域网服务
-  // 只屏蔽云环境元数据端点（防止云端部署时被利用窃取 IAM 凭证）
+  // v2.0: 统一 SSRF 策略。Agent 跑在本机，需访问 localhost/Ollama/局域网；仅屏蔽云元数据端点。
   if (!isSsrfSafeUrl(url)) {
-    return { error: 'URL 被安全策略阻止（云元数据端点）', url };
+    return { error: 'URL 被安全策略阻止（云元数据端点）', url, error_type: 'ssrf_blocked' };
   }
 
   try {
@@ -946,64 +992,46 @@ async function handleWebFetch(args: Record<string, any>) {
       const location = finalResp.headers.get('location');
       if (!location) break;
       const redirectUrl = new URL(location, finalResp.url).href;
-      if (!isSsrfSafeUrl(redirectUrl)) return { error: '重定向目标被安全策略阻止' };
+      if (!isSsrfSafeUrl(redirectUrl)) return { error: '重定向目标被安全策略阻止', error_type: 'ssrf_blocked' };
       finalResp = await fetch(redirectUrl, { headers: { 'User-Agent': 'LingXi/1.0' }, signal: AbortSignal.timeout(15000), redirect: 'manual' });
       redirectCount++;
     }
 
+    // 2) 错误分类：403/429 等可被上层区分，便于决定「重试 / 换源 / 放弃」
     if (!finalResp.ok) {
-      return { error: `HTTP ${finalResp.status} ${finalResp.statusText}`, url };
+      const code = finalResp.status;
+      const error_type = code === 403 ? 'http_403' : code === 429 ? 'http_429' : (/^5/.test(String(code)) ? 'http_5xx' : 'http_' + code);
+      return { error: `HTTP ${code} ${finalResp.statusText}`, url, status: code, error_type, retryable: code === 429 || code >= 500 };
     }
 
     const contentType = finalResp.headers.get('content-type') || '';
     const contentLength = finalResp.headers.get('content-length');
     const cl = contentLength ? parseInt(contentLength) : 0;
 
-    // 太大拒绝
     const MAX_BYTES = 5 * 1024 * 1024; // 5MB
     if (cl > MAX_BYTES) {
-      return { error: `Content too large: ${(cl / 1024 / 1024).toFixed(1)}MB (max 5MB)`, url };
+      return { error: `Content too large: ${(cl / 1024 / 1024).toFixed(1)}MB (max 5MB)`, url, error_type: 'too_large' };
     }
 
-    // 读 body
     const buffer = await finalResp.arrayBuffer();
     const bytes = buffer.byteLength;
     if (bytes > MAX_BYTES) {
-      return { error: `Content too large after download: ${(bytes / 1024 / 1024).toFixed(1)}MB`, url };
+      return { error: `Content too large after download: ${(bytes / 1024 / 1024).toFixed(1)}MB`, url, error_type: 'too_large' };
     }
 
-    // HTML → 去标签提取文本
+    // HTML → 正文抽取
     if (contentType.includes('text/html') || contentType.includes('application/xhtml')) {
       const raw = new TextDecoder().decode(buffer);
-      // 简易 HTML→文本
-      let text = raw
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, ' ')
-        .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, ' ')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#x27;/g, "'")
-        .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(parseInt(d)))
-        .replace(/&nbsp;/g, ' ');
-
-      // 压缩空白
-      text = text.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
-
-      // 提取 title
+      const text = extractHtmlMainText(raw, !!wantRaw);
       const titleMatch = raw.match(/<title[^>]*>([^<]*)<\/title>/i);
       const title = titleMatch ? titleMatch[1].trim() : null;
-
-      const truncated = text.length > max_length ? text.slice(0, max_length) + '\n...[truncated]' : text;
-
       return {
         url,
         title: title || '(no title)',
         content_type: 'text/html',
         bytes,
-        text_length: text.length,
-        content: truncated,
+        extraction: wantRaw ? 'cleaned' : 'main-content',
+        ...page(text),
       };
     }
 
@@ -1012,27 +1040,25 @@ async function handleWebFetch(args: Record<string, any>) {
       const raw = new TextDecoder().decode(buffer);
       try {
         const parsed = JSON.parse(raw);
-        const summary = typeof parsed === 'object'
-          ? (Array.isArray(parsed)
-            ? `Array[${parsed.length}] ${JSON.stringify(parsed).slice(0, max_length)}`
-            : `Object{${Object.keys(parsed).length} keys} ${JSON.stringify(parsed).slice(0, max_length)}`)
-          : String(parsed).slice(0, max_length);
-        return { url, content_type: 'application/json', bytes, parsed_keys: Array.isArray(parsed) ? parsed.length : (typeof parsed === 'object' ? Object.keys(parsed) : null), summary };
+        const full = typeof parsed === 'object' ? JSON.stringify(parsed) : String(parsed);
+        return {
+          url, content_type: 'application/json', bytes,
+          parsed_keys: Array.isArray(parsed) ? parsed.length : (typeof parsed === 'object' ? Object.keys(parsed) : null),
+          ...page(full),
+        };
       } catch {
-        return { url, content_type: 'application/json', bytes, raw: raw.slice(0, max_length), parse_error: 'Invalid JSON' };
+        return { url, content_type: 'application/json', bytes, parse_error: 'Invalid JSON', ...page(raw) };
       }
     }
 
     // 纯文本
     if (contentType.includes('text/') || contentType.includes('application/xml') || contentType.includes('application/javascript')) {
       const raw = new TextDecoder().decode(buffer);
-      const truncated = raw.length > max_length ? raw.slice(0, max_length) + '\n...[truncated]' : raw;
-      return { url, content_type: contentType.split(';')[0], bytes, text_length: raw.length, content: truncated };
+      return { url, content_type: contentType.split(';')[0], bytes, ...page(raw) };
     }
 
     // 图片
     if (contentType.includes('image/')) {
-      // 尝试获取图片尺寸（简化：只返回元数据）
       const format = contentType.split('/')[1]?.split(';')[0] || 'unknown';
       return {
         url,
@@ -1045,22 +1071,20 @@ async function handleWebFetch(args: Record<string, any>) {
 
     // 其他
     const raw = new TextDecoder().decode(buffer);
-    const truncated = raw.length > max_length ? raw.slice(0, max_length) + '\n...[truncated]' : raw;
     return {
       url,
       content_type: contentType.split(';')[0] || 'unknown',
       bytes,
-      content: truncated,
+      ...page(raw),
     };
   } catch (err: any) {
     if (err.name === 'AbortError') {
-      return { error: `Request timed out after ${Math.min(timeout, 30000)}ms`, url };
+      return { error: `Request timed out after ${Math.min(timeout, 30000)}ms`, url, error_type: 'timeout', retryable: true };
     }
-    return { error: `Fetch failed: ${err.message}`, url };
+    return { error: `Fetch failed: ${err.message}`, url, error_type: 'network', retryable: true };
   }
 }
 
-// ═══════════════════════════════════════════════
 // 工具 16: delegate_task — AI 自动派生子程序 (v1.5.0)
 // ═══════════════════════════════════════════════
 
