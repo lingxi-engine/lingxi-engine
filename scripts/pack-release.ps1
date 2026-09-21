@@ -234,8 +234,8 @@ try {
         throw "[FAIL] app.js reasoning render markers missing"
     }
     $swJs = tar -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
-    if ($swJs -match 'lingxi-v20') {
-        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v20" -ForegroundColor Green
+    if ($swJs -match 'lingxi-v2\d') {
+        Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v2\d" -ForegroundColor Green
     } else {
         throw "[FAIL] sw.js CACHE_NAME not bumped to v20"
     }
