@@ -17,7 +17,7 @@ if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
 $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2')
-$excludeDirsRegex = '^backup[_-]'
+$excludeDirsRegex = '^backup[_-]|^data-bench'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$'
 
 # ֻ������Щ env ģ����������� .env* һ�ɰ���
