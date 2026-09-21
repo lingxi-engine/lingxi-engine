@@ -8,7 +8,11 @@
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-$OutFile = Join-Path $env:TEMP "lingxi-engine-v2.0.20.tar.gz"
+# v2.0.22: 版本从 package.json 动态读取，禁止硬编码（此前硬编码 2.0.20，升版后必 FAIL）
+$Version = (Get-Content (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json).version
+if (-not $Version) { throw '[FAIL] cannot read version from package.json' }
+$Commit = ''; try { $Commit = (git -C $ProjectRoot rev-parse --short HEAD).Trim() } catch { $Commit = 'unknown' }
+$OutFile = Join-Path $env:TEMP "lingxi-engine-v$Version.tar.gz"
 
 # Stage into a temp dir with lingxi-engine/ prefix so install.ps1 finds the inner dir
 $StageRoot = Join-Path $env:TEMP "lingxi-engine-staging-$(Get-Random)"
@@ -75,6 +79,16 @@ try {
     Write-Host ""
     Write-Host "Stripping nested build junk..." -ForegroundColor Cyan
     Remove-JunkFiles $StageDir
+
+    # v2.0.22: 写入构建信息（版本 + commit），供线上 /api/health 比对
+    $buildInfo = [ordered]@{
+        version   = $Version
+        commit    = $Commit
+        buildTime = (Get-Date).ToUniversalTime().ToString('o')
+        builder   = 'pack-release.ps1'
+    }
+    $buildInfo | ConvertTo-Json | Set-Content (Join-Path $StageDir 'BUILD-INFO.json') -Encoding UTF8
+    Write-Host "  [OK] BUILD-INFO.json written (version=$Version commit=$Commit)" -ForegroundColor Green
 
     # Pack from staging root so tarball top-level is ./lingxi-engine/
     Push-Location $StageRoot
@@ -204,10 +218,11 @@ try {
         throw "[FAIL] admin credits grant API missing"
     }
     $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
-    if ($pkgJson -match '"version":\s*"2\.0\.20"') {
-        Write-Host "  [OK] package.json version = 2.0.20" -ForegroundColor Green
+    $verPat = '"version":\s*"' + [regex]::Escape($Version) + '"'
+    if ($pkgJson -match $verPat) {
+        Write-Host "  [OK] package.json version = $Version" -ForegroundColor Green
     } else {
-        throw "[FAIL] package.json version is not 2.0.20"
+        throw "[FAIL] package.json version is not $Version"
     }
 
     # Verify v2.0.18 reasoning-stream fixes
@@ -252,6 +267,21 @@ try {
         Write-Host "  [OK] router.ts reads reasoning/reasoning_content" -ForegroundColor Green
     } else {
         throw "[FAIL] router.ts reasoning field missing"
+    }
+
+    Write-Host ""
+    Write-Host "Verify BUILD-INFO.json..." -ForegroundColor Yellow
+    $buildInfoInPkg = tar -xzf $OutFile -O './lingxi-engine/BUILD-INFO.json' 2>$null
+    if ($buildInfoInPkg) {
+        $bi = $buildInfoInPkg | ConvertFrom-Json
+        if ($bi.version -eq $Version) {
+            Write-Host "  [OK] BUILD-INFO version = $Version" -ForegroundColor Green
+        } else {
+            throw "[FAIL] BUILD-INFO version ($($bi.version)) != $Version"
+        }
+        Write-Host "  [OK] BUILD-INFO commit = $($bi.commit)" -ForegroundColor Green
+    } else {
+        throw '[FAIL] BUILD-INFO.json missing from package'
     }
 
     Write-Host ""

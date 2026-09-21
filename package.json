@@ -23,7 +23,8 @@
     "dev": "tsx --watch index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:deploy": "node scripts/verify-deploy.cjs"
   },
   "bin": {
     "lingxi": "././src/cli/chat.ts"
