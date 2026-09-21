@@ -57,7 +57,7 @@ function health() {
   };
 
   run('L4 对抗', ['--layers', 'L4', '--group', 'G4', '--out', path.join(BENCH, 'results', `${TAG}-L4`)]);
-  run('L5 多Agent', ['--layers', 'L5', '--group', 'G6', '--out', path.join(BENCH, 'results', `${TAG}-L5`)]);
+  run('L5 多Agent', ['--layers', 'L5', '--group', 'G6', '--min-timeout', '900', '--out', path.join(BENCH, 'results', `${TAG}-L5`)]); // G6 每题下限 900s（多Agent 编排耗时，见 bench/L5-STEPS0-ROOTCAUSE.md）
 
   console.log('\n=== 聚合判分 ===');
   for (const L of ['L4', 'L5']) {

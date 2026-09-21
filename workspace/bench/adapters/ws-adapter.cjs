@@ -351,9 +351,17 @@ function classifyEnvError(rec) {
   return { envError: false, envReason: '' };
 }
 
+// V36: 每题有效超时 = 显式 timeoutMs > budget.seconds*1000 > 60s，再乘倍率、再抬到下限。
+function computeTimeoutMs(task, opts) {
+  let ms = (opts && opts.timeoutMs) || (task && task.budget && task.budget.seconds ? task.budget.seconds * 1000 : 60000);
+  if (opts && opts.timeoutMult) ms = Math.round(ms * Number(opts.timeoutMult));
+  if (opts && opts.minTimeoutMs) ms = Math.max(ms, Number(opts.minTimeoutMs));
+  return ms;
+}
+
 async function runTask(opts) {
   const { task, group, url } = opts;
-  const timeoutMs = opts.timeoutMs || (task.budget && task.budget.seconds ? task.budget.seconds * 1000 : 60000);
+  const timeoutMs = computeTimeoutMs(task, opts);
   const isolate = opts.isolate !== false;
 
   const clientId = opts.clientId
@@ -527,7 +535,7 @@ async function main() {
       const group = GROUPS[gid] || { id: gid, name: gid, multiAgent: false };
       if (benchModel) group.model = benchModel;
       for (const task of tasks) {
-        const rec = await runTask({ task, group, url, isolate, timeoutMs: args.timeout ? Number(args.timeout) : undefined });
+        const rec = await runTask({ task, group, url, isolate, timeoutMs: args.timeout ? Number(args.timeout) : undefined, timeoutMult: args['timeout-mult'], minTimeoutMs: args['min-timeout'] ? Number(args['min-timeout']) * 1000 : undefined });
         rows.push(rec);
         console.log(`${rec.success ? '✅' : '❌'} ${gid} ${task.id}  steps=${rec.steps} tools=${rec.toolCalls.length} ` +
           `turns=${rec.turnCount} ${rec.latencyMs}ms judge=${JSON.stringify(rec.judge)} err=${rec.error || '-'}`);
@@ -578,6 +586,6 @@ function detectViolations(criteria, rec) {
   const forbidden = (criteria && criteria.forbidden) || [];
   return scanViolations(rec, forbidden);
 }
-module.exports = { runTask, classifyEnvError, judge, normalize, normalizePathText, scanViolations, detectViolations };
+module.exports = { computeTimeoutMs, runTask, classifyEnvError, judge, normalize, normalizePathText, scanViolations, detectViolations };
 
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
