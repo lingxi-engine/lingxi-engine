@@ -1,0 +1,14 @@
+{
+  "name": "project-completeness-audit",
+  "displayName": "项目完成度审计",
+  "description": "对 AI/引擎类项目进行完成度审计：检查报告文件、运行验证脚本、交叉核验数据一致性，输出带证据的逐项验收结论",
+  "tools": [
+    "shell_exec",
+    "list_dir",
+    "read_file",
+    "search_file"
+  ],
+  "prompt": "当需要对一个项目（尤其是 AI/引擎/Agent 类项目）进行完成度审计时，按以下步骤执行：\n1. 先定位项目根目录，列出关键文件（BENCHMARK-REPORT、SUMMARY、verify 脚本等）\n2. 读取报告和摘要，提取关键指标和结论\n3. 找到验证/判据脚本，用 shell_exec 实际运行确认结果（如 verify-judge.cjs、rejudge-v33.cjs）\n4. 将报告声称的结果与脚本实际输出逐项交叉核验\n5. 对无法离线验证的部分明确标注\n6. 最终输出带证据的逐项验收表格（每项包含状态、验证方式、证据）\n\n注意：API 调用可能失败，需在 shell 中直接运行验证脚本作为独立证据源。遇到上下文超长时用 shell 命令先提取关键数据再分析。",
+  "autoCreated": true,
+  "createdAt": 1789945545185
+}

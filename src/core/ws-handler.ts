@@ -214,7 +214,7 @@ export function handleWSMessage(
 
           // 规划阶段：无工具一次性调用（修复：原先把 planPrompt 传到 generateReply 的 taskGoal 参数位，
           // 被包成“自主执行任务”模式与“只返回 JSON”指令冲突，且会误触发工具循环）
-          const planResponse = await router.generateOneShot(agentId, planPrompt, { temperature: 0.2, timeoutMs: 90000 });
+          const planResponse = await router.generateOneShot(agentId, planPrompt, { temperature: 0.2, timeoutMs: 300000 });
 
           // parse JSON plan (tolerant: extract first JSON array)
           let steps: any[] = [];
@@ -327,7 +327,9 @@ export function handleWSMessage(
                   broadcast({ type: "agent.streaming.think", chatId, from: agentSenderId, msgId: taskMsgId, think: thinkChunk });
                 },
                 undefined,
-                undefined,
+                (event: any) => {
+                  broadcast({ ...event, chatId, from: agentSenderId, msgId: taskMsgId });
+                },
                 fullPrompt,
                 merged.signal,
                 { skipPersist: true }

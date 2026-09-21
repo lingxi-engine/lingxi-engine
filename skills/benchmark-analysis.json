@@ -1,0 +1,14 @@
+{
+  "name": "benchmark-analysis",
+  "displayName": "基准测试分析",
+  "description": "对项目基准测试报告进行多步核验：收集数据→运行验证脚本→交叉比对版本→人工复核→输出综合评估结论",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "你正在对项目的基准测试/评估报告进行系统性分析。请按以下步骤执行：\n1. 定位基准测试报告文件（如 BENCHMARK-REPORT-*.md）和结果目录\n2. 运行验证脚本（如 verify-judge.cjs、rejudge-v33.cjs）确认判据通过\n3. 跨版本交叉核验（如 v33 vs v34），确保数字一致性和结论可复现\n4. 逐项检查收官件状态，带证据标注完成情况\n5. 如遇 API 失败，记录断点位置，等用户输入「继续」后从断点恢复\n6. 最终输出带证据链的综合评估报告，每项结论附验证方式和文件路径\n\n注意：所有能离线验证的内容必须亲手重跑，不可直接引用 AI 的中间结论。",
+  "autoCreated": true,
+  "createdAt": 1789953142102
+}

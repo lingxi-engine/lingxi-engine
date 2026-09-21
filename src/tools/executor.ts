@@ -297,7 +297,9 @@ export function isCompletionSignal(content: string): boolean {
   const lastParaStart = lastPara ? t.lastIndexOf(lastPara) : -1;
   const inLast200 = t.length - lastMatchEnd <= 200;
   const inLastPara = lastParaStart >= 0 && lastMatchEnd >= lastParaStart && lastMatchEnd <= lastParaStart + lastPara.length;
-  if (!inLast200 && !inLastPara) return false;
+  const afterLastMatch = t.slice(lastMatchEnd);
+  const isChecklistTail = /^\s*[\s\S]{0,600}?(已满足(?:的|全部|的以下)?(?:条件|验收|要求)|验收(?:标准|条件)(?:已|均已)?(?:满足|达到|通过))/.test(afterLastMatch);
+  if (!inLast200 && !inLastPara && !isChecklistTail) return false;
 
   // ── 要求 2：声明之后不得有继续意图（否则是进度汇报，不是完成声明）──
   const after = t.slice(lastMatchEnd);

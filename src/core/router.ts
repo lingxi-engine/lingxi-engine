@@ -400,6 +400,13 @@ export class MessageRouter {
       })),
     ];
 
+    // ⭐ 防御：本地模型（qwen/ollama）要求消息序列至少含一个 user 角色。
+    // 新 agent 首次触发时 recentMessages 为空 → 只有 system → ollama 报 500 "no user query found in messages"。
+    // 云端模型宽容不报，本地模型严格会炸。此处兜底补一个 user 消息（对云端无副作用）。
+    if (!messages.some((m) => m.role === 'user')) {
+      messages.push({ role: 'user', content: effectiveTaskGoal || customPrompt || triggerContent || '请开始执行任务。' });
+    }
+
     // ── 上下文压缩：超限时用工具模型摘要旧消息 ──
     const compactResult = await compactMessages(messages, {
       client: toolClient.client,
