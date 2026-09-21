@@ -717,6 +717,16 @@ setSearchManager(searchManagerInstance);
 
   // ── v2.0.7: 健康检查端点（置于鉴权/限流之前，供探针与部署脚本使用）──
   // 同时保留旧响应字段 status/agents/time，兼容前端状态栏与冒烟测试
+  // ── v2.0.21: 暴露 commit SHA 与构建时间，消除“代码态 ≠ 运行态”盲区 ──
+  let BUILD_COMMIT = process.env.LINGXI_COMMIT || '';
+  if (!BUILD_COMMIT) {
+    try {
+      const { execSync } = await import('node:child_process');
+      BUILD_COMMIT = execSync('git rev-parse --short HEAD', { timeout: 3000 }).toString().trim();
+    } catch { BUILD_COMMIT = 'unknown'; }
+  }
+  const BUILD_TIME = process.env.LINGXI_BUILD_TIME || new Date().toISOString();
+
   app.get('/api/health', (_req, res) => {
     try {
       let dbOk = false;
@@ -724,7 +734,9 @@ setSearchManager(searchManagerInstance);
       res.json({
         ok: true,
         status: 'ok',
-        version: (process.env.npm_package_version) || '2.0.20',
+        version: (process.env.npm_package_version) || '2.0.21',
+        commit: BUILD_COMMIT,
+        buildTime: BUILD_TIME,
         agents: manager.list().length,
         time: Date.now(),
         uptime: Math.floor(process.uptime()),
