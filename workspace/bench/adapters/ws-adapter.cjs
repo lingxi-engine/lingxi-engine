@@ -535,7 +535,7 @@ async function main() {
       const group = GROUPS[gid] || { id: gid, name: gid, multiAgent: false };
       if (benchModel) group.model = benchModel;
       for (const task of tasks) {
-        const rec = await runTask({ task, group, url, isolate, timeoutMs: args.timeout ? Number(args.timeout) : undefined, timeoutMult: args['timeout-mult'], minTimeoutMs: args['min-timeout'] ? Number(args['min-timeout']) * 1000 : undefined });
+        const rec = await runTask({ task, group, url, isolate, timeoutMs: args.timeout ? Number(args.timeout) * 1000 : undefined, timeoutMult: args['timeout-mult'], minTimeoutMs: args['min-timeout'] ? Number(args['min-timeout']) * 1000 : undefined });
         rows.push(rec);
         console.log(`${rec.success ? '✅' : '❌'} ${gid} ${task.id}  steps=${rec.steps} tools=${rec.toolCalls.length} ` +
           `turns=${rec.turnCount} ${rec.latencyMs}ms judge=${JSON.stringify(rec.judge)} err=${rec.error || '-'}`);
