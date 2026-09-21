@@ -290,5 +290,9 @@ ws-boot.log
 _archive/
 data-bench*/
 _creditfix/
+data-v36local/
+data-v36/
+data-smoke-2022/
+data-preflight-tmp/
 bench/out/
 bench/results/selftest-tmp/
