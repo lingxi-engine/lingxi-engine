@@ -512,6 +512,7 @@ const GROUPS = {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.selftest) process.exit(selftest() ? 0 : 1);
+  if (args.summarize) return summarizeDir(args.summarize); // V39b: 离线重算 SUMMARY，不连引擎
 
   const url = args.url || process.env.LINGXI_BENCH_URL || 'ws://localhost:3599/ws?id=bench-runner';
   const layers = (args.layers || args.layer || 'L1').split(',').map((s) => s.trim()).filter(Boolean);
@@ -546,31 +547,46 @@ async function main() {
     }
   }
 
+  const summary = buildSummary(rows);
+  console.log('\n' + summary);
+  fs.writeFileSync(path.join(outDir, 'SUMMARY.txt'), summary + '\n');
+  fs.writeFileSync(path.join(outDir, 'raw.json'), JSON.stringify(rows, null, 2));
+  console.log(`\n✔ 结果写入 ${outDir}`);
+}
+
+// V39b: 由 rows 生成 SUMMARY 文本（main 与 --summarize 共用，口径唯一）
+function buildSummary(rows) {
   const byGroup = {};
   for (const r of rows) {
-    const g = (byGroup[r.group] = byGroup[r.group] || { n: 0, ok: 0, steps: 0, tools: 0, ms: [], env: 0, manual: 0, mrows: [] }); // V33
+    const g = (byGroup[r.group || 'UNKNOWN'] = byGroup[r.group || 'UNKNOWN'] || { n: 0, ok: 0, all: 0, allSteps: 0, allTools: 0, steps: 0, tools: 0, ms: [], env: 0, manual: 0, mrows: [] }); // V39
+    g.all++; g.allSteps += (r.steps || 0); g.allTools += ((r.toolCalls || []).length); // V39: manual 也跑过，实测指标照收
     if (r.manual) { g.manual++; g.ms.push(r.latencyMs); g.mrows.push({ t: r.taskId, env: !!r.envError, ps: r.preScreen || null, out: String(r.output || '').replace(/\s+/g, ' ').slice(0, 90) }); continue; } // V33
-    g.n++; if (r.success) g.ok++; g.steps += r.steps; g.tools += r.toolCalls.length; g.ms.push(r.latencyMs);
+    g.n++; if (r.success) g.ok++; g.steps += (r.steps || 0); g.tools += ((r.toolCalls || []).length); g.ms.push(r.latencyMs || 0); // V39: 容错残缺 JSON
     if (r.envError) g.env++;
   }
   const lines = ['组别\t达标率(去环境错误)\t达标率(原始)\t环境错误\t需人工\t平均步数\t工具调用\tP50ms', '─'.repeat(66)];
   for (const [gid, g] of Object.entries(byGroup)) {
     const ms = g.ms.slice().sort((a, b) => a - b);
     const valid = g.n - g.env;
-    const rateValid = valid > 0 ? Math.round((g.ok / valid) * 100) : 0;
-    const rateRaw = Math.round((g.ok / g.n) * 100);
-    lines.push(`${gid}\t${rateValid}%\t${rateRaw}%\t${g.env}\t${g.manual}\t${(g.n ? g.steps / g.n : 0).toFixed(1)}\t${(g.n ? g.tools / g.n : 0).toFixed(1)}\t${ms.length ? ms[Math.floor(ms.length / 2)] : 0}`);
+    const rateValid = valid > 0 ? Math.round((g.ok / valid) * 100) + '%' : '-';
+    const rateRaw = g.n > 0 ? Math.round((g.ok / g.n) * 100) + '%' : '-';
+    lines.push(`${gid}\t${rateValid}\t${rateRaw}\t${g.env}\t${g.manual}\t${(g.n ? g.steps / g.n : 0).toFixed(1)}\t${(g.n ? g.tools / g.n : 0).toFixed(1)}\t${ms.length ? ms[Math.floor(ms.length / 2)] : 0}`);
   }
+  // V39: manual 组实测参考（含 manual）——修复 100%-manual 组均步数被展示成 0.0 的误导
+  const manRef = [];
+  for (const [gid, g] of Object.entries(byGroup)) {
+    if (!g.manual) continue;
+    const avgAllSteps = g.all ? (g.allSteps / g.all).toFixed(1) : '0.0';
+    const avgAllTools = g.all ? (g.allTools / g.all).toFixed(1) : '0.0';
+    manRef.push(`  ${gid}: 全组实测(含manual) 均步数=${avgAllSteps} 均工具=${avgAllTools}  manual=${g.manual}/${g.all}` + (g.manual === g.all ? '  ← 本组全为 manual，能力达标率不适用，以人工终审为准' : ''));
+  }
+  if (manRef.length) lines.push('', 'manual 组实测参考（含 manual，不改冻结口径）:', ...manRef);
   const mr = [];
   for (const [gid, g] of Object.entries(byGroup)) for (const m of (g.mrows || [])) mr.push(`  ${gid} ${m.t}${m.env ? ' [ENV:待补]' : ''}${m.ps && m.ps.note ? ' 初判:' + m.ps.note : ''} :: ${m.out}`);
   if (mr.length) lines.push('', 'MANUAL(不计能力分母):', ...mr); // V33
   const suspectN = rows.filter((r) => r.metricSuspect).length;
   if (suspectN) lines.push('', '⚠️ metricSuspect: ' + suspectN + '/' + rows.length + ' 题 steps=0 但输出含工具痕迹（事件管道缺陷，非能力为零，见 bench/L5-STEPS0-ROOTCAUSE.md）');
-  const summary = lines.join('\n');
-  console.log('\n' + summary);
-  fs.writeFileSync(path.join(outDir, 'SUMMARY.txt'), summary + '\n');
-  fs.writeFileSync(path.join(outDir, 'raw.json'), JSON.stringify(rows, null, 2));
-  console.log(`\n✔ 结果写入 ${outDir}`);
+  return lines.join('\n');
 }
 
 /* TODO（服务端契约，非本文件可解）
@@ -580,6 +596,20 @@ async function main() {
  * 并在 router 里据 meta.memory/reflect/metacog 决定是否注入记忆/触发反思。
  */
 
+
+// V39b: 离线重算 SUMMARY.txt（不连引擎、不重跑，仅读已有单题 JSON）
+function summarizeDir(dir) {
+  const d = path.resolve(WORKSPACE, dir);
+  const files = fs.readdirSync(d)
+    .filter((f) => /\.json$/i.test(f) && f.toLowerCase() !== 'raw.json')
+    .sort();
+  if (!files.length) { console.error('✗ 目录内无单题 JSON: ' + d); process.exit(2); }
+  const rows = files.map((f) => JSON.parse(fs.readFileSync(path.join(d, f), 'utf8')));
+  const summary = buildSummary(rows);
+  console.log(summary);
+  fs.writeFileSync(path.join(d, 'SUMMARY.txt'), summary + '\n');
+  console.log(`\n✔ 已重算 SUMMARY.txt（${rows.length} 题）→ ${d}`);
+}
 
 // v27: run.ts 期望的 detectViolations(criteria, rec) 接口，转发到 scanViolations
 function detectViolations(criteria, rec) {
