@@ -230,8 +230,8 @@ export class LanSocialHub {
   }
 
   /** 本机用户处理好友请求（accept/reject） */
-  async respondFriendRequest(requestId: string, action: 'accept' | 'reject'): Promise<any> {
-    const result = respondFriendRequest(requestId, action);
+  async respondFriendRequest(requestId: string, action: 'accept' | 'reject', responderUserId?: string): Promise<any> {
+    const result = respondFriendRequest(requestId, action, responderUserId);
     if (result.error) throw new Error(result.error);
     if (action !== 'accept') return { ok: true, status: 'denied' };
 
@@ -302,7 +302,7 @@ export class LanSocialHub {
         stmt.free();
       } catch (_e) { /* 忽略查询错误 */ }
     }
-    if (row) respondFriendRequest(row.id, 'accept');
+    if (row) respondFriendRequest(row.id, 'accept', String(to.userId || ''));
     else sendFriendRequest(to.userId, from.userId, '');
     // 建私聊（用对方给的 chatId 保证一致）
     this.ensurePrivateChat(to.userId, from.userId, from.agentId, chatId);

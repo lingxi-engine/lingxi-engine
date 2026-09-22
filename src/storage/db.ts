@@ -4,6 +4,8 @@
  */
 import initSqlJs from "sql.js";
 import bcrypt from 'bcryptjs';
+import { isFinitePositiveAmount } from './amount-guards.js';
+import { buildFriendRequestLookup } from './friend-guards.js';
 
 let _db: any = null;
 let _dbPath: string = "";
@@ -1023,9 +1025,10 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
   _db.run("INSERT INTO friendships (id, from_user_id, to_user_id, status, message, created_at, updated_at) VALUES (?, ?, ?, 'pending', ?, ?, ?)", [id, fromUserId, toUserId, message, now, now]);
   return { ok: true, id, status: 'pending' };
 }
-export function respondFriendRequest(requestId: string, action: 'accept' | 'reject') {
-  const stmt = _db.prepare("SELECT * FROM friendships WHERE id = ?");
-  stmt.bind([requestId]);
+export function respondFriendRequest(requestId: string, action: 'accept' | 'reject', responderUserId?: string) {
+  const lookup = buildFriendRequestLookup(responderUserId);
+  const stmt = _db.prepare(lookup.sql);
+  stmt.bind([requestId, ...lookup.params]);
   if (!stmt.step()) { stmt.free(); return { error: "friend_request_not_found" }; }
   const row = stmt.getAsObject(); stmt.free();
   if (row.status !== "pending") return { error: "request_already_processed" };
@@ -1059,6 +1062,8 @@ export function getFriendRequests(userId: string) {
     outgoing: outgoing.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, toUserId: r.to_user_id, status: r.status, message: r.message, createdAt: r.created_at, toName: r.to_name })),
   };
 }
+
+const isValidPositiveAmount = isFinitePositiveAmount;
 export function listFriends(userId: string) {
   const rows = queryObjects(
     `SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as friend_name, u.agent_id as friend_agent_id
@@ -1211,6 +1216,9 @@ export function getUserCredits(userId: string): { credits: number; totalEarned: 
 }
 
 export function addCredits(userId: string, amount: number, note?: string): number {
+  if (!isValidPositiveAmount(amount)) {
+    throw new Error('invalid_credit_amount');
+  }
   ensureUserCredits(userId);
   _db.run(
     "UPDATE user_credits SET credits = credits + ?, total_earned = total_earned + ?, updated_at = ? WHERE user_id = ?",
@@ -1218,11 +1226,14 @@ export function addCredits(userId: string, amount: number, note?: string): numbe
   );
   const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
   const balance = row ? Number(row[0]) : 0;
-  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, Math.abs(amount), note || '系统奖励', balance, Date.now()]); } catch {}
+  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, amount, note || '系统奖励', balance, Date.now()]); } catch {}
   return balance;
 }
 
 export function spendCredits(userId: string, amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
+  if (!isValidPositiveAmount(amount)) {
+    return { ok: false, balance: 0, error: '积分金额必须为大于 0 的有限数值' };
+  }
   ensureUserCredits(userId);
   const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
   const balance = row ? Number(row[0]) : 1000;
@@ -1283,7 +1294,7 @@ export function _walletTx(userId: string, currency: string, amount: number, type
 }
 
 export function addWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): number {
-  if (!['usd', 'cny'].includes(currency) || amount <= 0) return 0;
+  if (!['usd', 'cny'].includes(currency) || !isValidPositiveAmount(amount)) return 0;
   ensureWallet(userId);
   _db.run(`UPDATE wallets SET balance_${currency} = balance_${currency} + ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
   const w = getWallet(userId);
@@ -1293,7 +1304,7 @@ export function addWalletBalance(userId: string, currency: 'usd' | 'cny', amount
 }
 
 export function spendWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
-  if (!['usd', 'cny'].includes(currency) || amount <= 0) return { ok: false, balance: 0, error: '不支持的币种或金额' };
+  if (!['usd', 'cny'].includes(currency) || !isValidPositiveAmount(amount)) return { ok: false, balance: 0, error: '不支持的币种或金额' };
   ensureWallet(userId);
   const w = getWallet(userId);
   const bal = currency === 'usd' ? w.balanceUsd : w.balanceCny;
@@ -1414,7 +1425,7 @@ export class DB {
   getVerificationCode(email: string) { return getVerificationCode(email); }
   deleteVerificationCode(email: string) { return deleteVerificationCode(email); }
   sendFriendRequest(fromUserId: string, toUserId: string, message?: string) { return sendFriendRequest(fromUserId, toUserId, message); }
-  respondFriendRequest(requestId: string, action: 'accept' | 'reject') { return respondFriendRequest(requestId, action); }
+  respondFriendRequest(requestId: string, action: 'accept' | 'reject', responderUserId?: string) { return respondFriendRequest(requestId, action, responderUserId); }
   getFriendRequests(userId: string) { return getFriendRequests(userId); }
   listFriends(userId: string) { return listFriends(userId); }
   /** 让 manager.update 这种 `db.db.prepare(...)` 风格也能工作 */

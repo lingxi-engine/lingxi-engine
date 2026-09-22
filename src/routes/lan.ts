@@ -104,7 +104,9 @@ export function registerLanRoutes(app: Express, deps: {
       // 优先从平台搜索用户
       if (platformApiUrl && platformAdminToken) {
         try {
-          const resp = await fetch(`${platformApiUrl}/api/admin/search?q=${encodeURIComponent(q)}&token=${platformAdminToken}`);
+          const resp = await fetch(`${platformApiUrl}/api/admin/search?q=${encodeURIComponent(q)}`, {
+            headers: { 'x-admin-token': String(platformAdminToken) },
+          });
           const d = await resp.json() as any;
           if (d.ok && d.results) {
             platformResults = d.results.map((u: any) => ({
@@ -200,7 +202,8 @@ export function registerLanRoutes(app: Express, deps: {
     try {
       const { requestId, action } = req.body || {};
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
-      const r = await lanSocial.respondFriendRequest(requestId, action);
+      const responderUserId = String((req as any).user?.sub || '');
+      const r = await lanSocial.respondFriendRequest(requestId, action, responderUserId || undefined);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });

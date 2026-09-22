@@ -80,10 +80,10 @@ export function createFriendsRoutes(ctx: ServerContext): Router {
   // ── 响应好友请求 ──
   router.post('/friends/respond', (req, res) => {
     try {
-      const { requestId, action } = req.body;
+      const { requestId, action, toUserId } = req.body;
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
       if (!['accept', 'reject'].includes(action)) return res.status(400).json({ error: 'action 只能是 accept 或 reject' });
-      const result = db.respondFriendRequest(requestId, action);
+      const result = db.respondFriendRequest(requestId, action, toUserId ? String(toUserId) : undefined);
       if (result.error) return res.status(400).json(result);
       res.json({ ok: true, ...result });
     } catch (err: any) {

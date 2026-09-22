@@ -103,7 +103,7 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
           return res.status(403).json({ error: '无法验证好友请求归属' });
         }
       }
-      const result = db.respondFriendRequest(requestId, action);
+      const result = db.respondFriendRequest(requestId, action, jwtUserId5 || jwtNumericId5 || undefined);
       if (result.error) return res.status(400).json(result);
       res.json({ ok: true, ...result });
     } catch (err: any) {

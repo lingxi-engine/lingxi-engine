@@ -1,6 +1,7 @@
 import { v4 as uuid } from 'uuid';
 
 export type AutonomyLevel = 'passive' | 'semi' | 'full';
+const AUTONOMY_LEVELS: readonly AutonomyLevel[] = ['passive', 'semi', 'full'];
 
 export interface AgentDTO {
   id: string;
@@ -104,15 +105,20 @@ export class AgentManager {
   update(id: string, updates: Partial<AgentDTO>): AgentDTO {
     const agent: AgentRow | undefined = this.db.getAgent(id);
     if (!agent) throw new Error('Agent not found: ' + id);
-    if (updates.displayName) agent.display_name = updates.displayName;
-    if (updates.model) agent.model = updates.model;
-    if (updates.modelSource) agent.model_source = updates.modelSource;
-    if (updates.personality) agent.personality = updates.personality as string;
-    if (updates.autonomy) agent.autonomy = updates.autonomy as string;
-    if (updates.skills) agent.skills = JSON.stringify(updates.skills);
+    if (updates.displayName !== undefined) agent.display_name = updates.displayName;
+    if (updates.model !== undefined) agent.model = updates.model;
+    if (updates.modelSource !== undefined) agent.model_source = updates.modelSource;
+    if (updates.personality !== undefined) agent.personality = updates.personality as string;
+    if (updates.autonomy !== undefined) {
+      if (!AUTONOMY_LEVELS.includes(updates.autonomy as AutonomyLevel)) {
+        throw new Error('Invalid autonomy: ' + updates.autonomy);
+      }
+      agent.autonomy = updates.autonomy as string;
+    }
+    if (updates.skills !== undefined) agent.skills = JSON.stringify(updates.skills);
     if (updates.memorySummary !== undefined) agent.memory_summary = updates.memorySummary;
-    if (updates.memoryFacts) agent.memory_facts = JSON.stringify(updates.memoryFacts);
-    if (updates.status) agent.status = updates.status;
+    if (updates.memoryFacts !== undefined) agent.memory_facts = JSON.stringify(updates.memoryFacts);
+    if (updates.status !== undefined) agent.status = updates.status;
     const dbRef: any = this.db;
     dbRef.raw.run('UPDATE agents SET display_name=?,model=?,model_source=?,personality=?,autonomy=?,skills=?,memory_summary=?,memory_facts=?,status=? WHERE id=?',
       [agent.display_name, agent.model, agent.model_source, agent.personality, agent.autonomy, agent.skills, agent.memory_summary, agent.memory_facts, agent.status, id]);

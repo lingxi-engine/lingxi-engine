@@ -23,6 +23,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import initSqlJs from 'sql.js';
 import { config as dotenvConfig } from 'dotenv';
+import { isDevMode, timingSafeTokenEqual } from './security/token-compare.js';
 // 2026-09-09 v2.0.15: PM2 环境下加载 .env.platform（平台专属配置；不读主引擎 .env，避免误吞 PORT=3456）
 dotenvConfig({ path: process.env.PLATFORM_ENV_FILE || '.env.platform' });
 
@@ -150,6 +151,7 @@ async function initDB() {
   }
   sqlDb.run(SCHEMA);
   migrateUsersTable();
+  migrateHireOrdersTable();
   saveDB();
   migrateFromJson();
 }
@@ -183,6 +185,18 @@ function migrateUsersTable() {
     addIf('status', 'TEXT DEFAULT "active"');
   } catch (e: any) {
     console.error('[DB] migrateUsersTable 失败:', e.message);
+  }
+
+  function migrateHireOrdersTable() {
+    try {
+      const cols = sqlDb.exec("PRAGMA table_info(hire_orders)")[0]?.values?.map((r: any) => r[1]) || [];
+      if (!cols.includes('request_id')) {
+        sqlDb.run(`ALTER TABLE hire_orders ADD COLUMN request_id TEXT DEFAULT ''`);
+      }
+      sqlDb.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hire_orders_idem ON hire_orders(listing_id, buyer_id, request_id) WHERE request_id <> ''`);
+    } catch (e: any) {
+      console.error('[DB] migrateHireOrdersTable 失败:', e.message);
+    }
   }
 }
 
@@ -257,6 +271,27 @@ function authUser(req: express.Request): string | null {
   return parseJwt(req.headers.authorization?.replace('Bearer ', ''));
 }
 
+function parsePositiveAmount(v: unknown): number | null {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+function parseCurrency(v: unknown): 'USD' | 'CNY' | null {
+  const cur = String(v || '').trim().toUpperCase();
+  if (cur === 'USD' || cur === 'CNY') return cur;
+  return null;
+}
+
+function parseTokenFromRequest(req: express.Request, allowDevQuery = false): string {
+  const headerToken = String(req.headers['x-admin-token'] || '').trim();
+  if (headerToken) return headerToken;
+  const bearer = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  if (bearer) return bearer;
+  const allowQuery = allowDevQuery && isDevMode() && (process.env.ALLOW_DEV_QUERY_ADMIN_TOKEN === '1' || process.env.ALLOW_DEV_QUERY_ADMIN_TOKEN === 'true');
+  return allowQuery ? String((req.query as any).token || '').trim() : '';
+}
+
 // ============ 内存实例 + WS 连接 ============
 interface Instance {
   id: string; ws: WebSocket; hostname: string; lanIp: string; port: number;
@@ -275,8 +310,9 @@ const PUBLIC_ACCESS_TOKEN = MESH_TOKEN;
 app.use((req, res, next) => {
   const p = req.path;
   if (p === '/api/health' || p === '/health') return next();
-  const h = req.headers['x-mesh-token'] || req.headers['x-admin-token'] || (req.headers.authorization || '').replace('Bearer ', '') || (req.query.token as string) || '';
-  if (h === PUBLIC_ACCESS_TOKEN || h === PLATFORM_ADMIN_TOKEN) return next();
+  const meshToken = String(req.headers['x-mesh-token'] || '').trim();
+  const adminToken = parseTokenFromRequest(req, true);
+  if (timingSafeTokenEqual(meshToken, PUBLIC_ACCESS_TOKEN) || timingSafeTokenEqual(adminToken, PLATFORM_ADMIN_TOKEN)) return next();
   return res.status(403).json({ ok: false, error: 'Platform closed to public access (403). MESH_TOKEN or PLATFORM_ADMIN_TOKEN required.' });
 });
 
@@ -379,10 +415,11 @@ app.post('/api/user/credits/add', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
   const { amount, currency } = req.body || {};
-  const amt = Number(amount);
-  if (!amt || amt <= 0 || amt > 100000) return res.status(400).json({ error: '金额无效' });
-  const cur = String(currency || 'USD').toUpperCase();
-  const rate = CREDIT_RATES[cur] || CREDIT_RATES.USD;
+  const amt = parsePositiveAmount(amount);
+  if (!amt || amt > 100000) return res.status(400).json({ error: '金额无效' });
+  const cur = parseCurrency(currency);
+  if (!cur) return res.status(400).json({ error: '币种无效，仅支持 USD/CNY' });
+  const rate = CREDIT_RATES[cur];
   const credits = Math.round(amt * rate);
   sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $c) ON CONFLICT(user_id) DO UPDATE SET balance = balance + $c`, { $u: uid, $c: credits });
   saveDB();
@@ -560,36 +597,71 @@ app.get('/api/hire/market', (req, res) => {
 app.post('/api/hire/order', (req, res) => {
   const uid = authUser(req);
   if (!uid) return res.status(401).json({ error: '未登录' });
-  const { listingId, goal } = req.body || {};
-  const stmt = sqlDb.prepare(`SELECT id, owner_id, price_per_task, status FROM hires WHERE id = $id`);
-  stmt.bind({ $id: listingId });
-  if (!stmt.step()) { stmt.free(); return res.status(404).json({ error: '该员工不可用' }); }
-  const h = stmt.getAsObject();
-  stmt.free();
-  if (h.status !== 'active') return res.status(404).json({ error: '该员工不可用' });
+  const { listingId, goal, idempotencyKey } = req.body || {};
+  const listing = String(listingId || '').trim();
+  if (!listing) return res.status(400).json({ error: 'listingId 必填' });
 
-  const price = h.price_per_task as number;
-  // P0-1 修复: 参数化查询
-  const crStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
-  crStmt.bind({ $u: uid });
-  const bal = crStmt.step() ? (crStmt.getAsObject().balance as number) : 0;
-  crStmt.free();
-  if (bal < price) return res.status(402).json({ error: '积分不足，需 ' + price + ' 积分' });
+  const idemKey = String((req.headers['idempotency-key'] as string) || idempotencyKey || '').trim().slice(0, 128);
+  const now = Date.now();
+  try {
+    sqlDb.run('BEGIN IMMEDIATE TRANSACTION');
 
-  sqlDb.run(`UPDATE credits SET balance = balance - $p WHERE user_id = $u`, { $p: price, $u: uid });
-  sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $p) ON CONFLICT(user_id) DO UPDATE SET balance = balance + $p2`,
-    { $u: h.owner_id, $p: price, $p2: price });
-  sqlDb.run(`UPDATE hires SET last_order_at = $t WHERE id = $id`, { $t: Date.now(), $id: listingId });
-  sqlDb.run(`INSERT INTO hire_orders (listing_id, buyer_id, goal, price, created_at) VALUES ($l,$b,$g,$p,$c)`,
-    { $l: listingId, $b: uid, $g: goal || '', $p: price, $c: Date.now() });
-  saveDB();
+    const stmt = sqlDb.prepare(`SELECT id, owner_id, price_per_task, status FROM hires WHERE id = $id`);
+    stmt.bind({ $id: listing });
+    if (!stmt.step()) { stmt.free(); sqlDb.run('ROLLBACK'); return res.status(404).json({ error: '该员工不可用' }); }
+    const h = stmt.getAsObject() as any;
+    stmt.free();
 
-  // P0-1 修复: 参数化查询
-  const cr2Stmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
-  cr2Stmt.bind({ $u: uid });
-  const remaining = cr2Stmt.step() ? (cr2Stmt.getAsObject().balance as number) : 0;
-  cr2Stmt.free();
-  res.json({ ok: true, remaining, message: '已下单，等待对方引擎执行' });
+    if (h.status !== 'active') { sqlDb.run('ROLLBACK'); return res.status(404).json({ error: '该员工不可用' }); }
+    if (String(h.owner_id) === uid) { sqlDb.run('ROLLBACK'); return res.status(400).json({ error: '不能雇佣自己' }); }
+
+    const price = Number(h.price_per_task);
+    if (!Number.isFinite(price) || price <= 0) { sqlDb.run('ROLLBACK'); return res.status(400).json({ error: '挂单价格无效' }); }
+
+    if (idemKey) {
+      const dupStmt = sqlDb.prepare(`SELECT id, created_at FROM hire_orders WHERE listing_id = $l AND buyer_id = $b AND request_id = $r LIMIT 1`);
+      dupStmt.bind({ $l: listing, $b: uid, $r: idemKey });
+      if (dupStmt.step()) {
+        dupStmt.free();
+        const remStmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
+        remStmt.bind({ $u: uid });
+        const remaining = remStmt.step() ? (remStmt.getAsObject().balance as number) : 0;
+        remStmt.free();
+        sqlDb.run('COMMIT');
+        return res.json({ ok: true, remaining, duplicated: true, message: '重复请求已忽略' });
+      }
+      dupStmt.free();
+    }
+
+    sqlDb.run(`UPDATE credits SET balance = balance - $p WHERE user_id = $u AND balance >= $p`, { $p: price, $u: uid });
+    const ch1 = sqlDb.exec('SELECT changes() AS c');
+    const debited = Number(ch1?.[0]?.values?.[0]?.[0] || 0);
+    if (debited !== 1) {
+      sqlDb.run('ROLLBACK');
+      return res.status(402).json({ error: '积分不足或账户不存在' });
+    }
+
+    sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $p) ON CONFLICT(user_id) DO UPDATE SET balance = balance + $p2`,
+      { $u: String(h.owner_id), $p: price, $p2: price });
+    sqlDb.run(`INSERT INTO hire_orders (listing_id, buyer_id, goal, price, created_at, request_id) VALUES ($l,$b,$g,$p,$c,$r)`,
+      { $l: listing, $b: uid, $g: String(goal || ''), $p: price, $c: now, $r: idemKey });
+    sqlDb.run(`UPDATE hires SET last_order_at = $t WHERE id = $id`, { $t: now, $id: listing });
+
+    const cr2Stmt = sqlDb.prepare("SELECT balance FROM credits WHERE user_id = $u");
+    cr2Stmt.bind({ $u: uid });
+    const remaining = cr2Stmt.step() ? (cr2Stmt.getAsObject().balance as number) : 0;
+    cr2Stmt.free();
+
+    sqlDb.run('COMMIT');
+    saveDB();
+    res.json({ ok: true, remaining, message: '已下单，等待对方引擎执行' });
+  } catch (e: any) {
+    try { sqlDb.run('ROLLBACK'); } catch {}
+    if ((e?.message || '').includes('idx_hire_orders_idem')) {
+      return res.status(409).json({ ok: false, error: '重复请求，请勿重复扣款' });
+    }
+    return res.status(500).json({ ok: false, error: e?.message || '下单失败' });
+  }
 });
 
 app.get('/api/hire/my-orders', (req, res) => {
@@ -681,8 +753,8 @@ setInterval(cleanExpiredInstances, 30_000);
 // 鉴权中间件：fail-secure，token 未配置 → 503；token 不匹配 → 401
 function platformAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!PLATFORM_ADMIN_TOKEN) return res.status(503).json({ ok: false, error: '管理后台未配置 PLATFORM_ADMIN_TOKEN，接口已锁定' });
-  const provided = (req.headers['x-admin-token'] as string) || (req.headers.authorization?.replace('Bearer ', '') || '') || (req.query.token as string) || '';
-  if (provided !== PLATFORM_ADMIN_TOKEN) return res.status(401).json({ ok: false, error: '管理员令牌错误' });
+  const provided = parseTokenFromRequest(req, true);
+  if (!timingSafeTokenEqual(provided, PLATFORM_ADMIN_TOKEN)) return res.status(401).json({ ok: false, error: '管理员令牌错误' });
   next();
 }
 
@@ -691,7 +763,7 @@ const WEB_DIR = join(process.cwd(), 'web');
 app.use(express.static(WEB_DIR));
 
 // ── 仪表盘：全局统计 + 用户列表 ──
-// 兼容本地引擎启动拉取格式：GET /api/admin/users?token=xxx → { ok, users:[{id, role, username, points}] }
+// 兼容本地引擎启动拉取格式：GET /api/admin/users → { ok, users:[{id, role, username, points}] }（管理 token 走 header/Bearer）
 app.get('/api/admin/users', platformAdminAuth, (req, res) => {
   const stmt = sqlDb.prepare(`SELECT u.id, u.numeric_id, u.email, u.display_name, u.avatar_url, u.bio, u.status, u.created_at,
     COALESCE(c.balance, 0) as balance
@@ -722,8 +794,9 @@ app.get('/api/admin/users', platformAdminAuth, (req, res) => {
 app.post('/api/admin/credits/grant', platformAdminAuth, (req, res) => {
   const { userId, amount, reason } = req.body || {};
   const amt = Number(amount);
-  if (!userId || !Number.isFinite(amt) || amt === 0)
+  if (!userId || !Number.isFinite(amt) || amt === 0 || !Number.isInteger(amt))
     return res.status(400).json({ ok: false, error: 'userId 和非零 amount 必填' });
+  if (Math.abs(amt) > 1_000_000) return res.status(400).json({ ok: false, error: 'amount 超出允许范围' });
   const uStmt = sqlDb.prepare('SELECT id FROM users WHERE id = $u');
   uStmt.bind({ $u: String(userId) });
   if (!uStmt.step()) { uStmt.free(); return res.status(404).json({ ok: false, error: '用户不存在' }); }
@@ -804,17 +877,33 @@ app.delete('/api/admin/users/:id', platformAdminAuth, (req, res) => {
   uStmt.bind({ $u: id });
   if (!uStmt.step()) { uStmt.free(); return res.status(404).json({ ok: false, error: '用户不存在' }); }
   uStmt.free();
-  // 级联清理：积分 → 好友双向 → 好友请求 → 挂单 → 订单 → 实例用户映射 → 本体
-  sqlDb.run('DELETE FROM credits WHERE user_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM friends WHERE from_id = $u OR user_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM friend_requests WHERE from_id = $u OR to_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM hires WHERE owner_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM hire_orders WHERE buyer_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM instance_users WHERE user_id = $u', { $u: id });
-  sqlDb.run('DELETE FROM users WHERE id = $u', { $u: id });
-  saveDB();
-  console.log(`[Admin] 删除用户及级联数据: ${id}`);
-  res.json({ ok: true, deleted: id });
+  const deleted: Record<string, number> = {};
+  const skipped: string[] = [];
+  const cascade = [
+    { key: 'credits', sql: 'DELETE FROM credits WHERE user_id = $u' },
+    { key: 'friends', sql: 'DELETE FROM friends WHERE from_id = $u OR user_id = $u' },
+    { key: 'friend_requests', sql: 'DELETE FROM friend_requests WHERE from_id = $u OR to_id = $u' },
+    { key: 'hires', sql: 'DELETE FROM hires WHERE owner_id = $u' },
+    { key: 'hire_orders', sql: 'DELETE FROM hire_orders WHERE buyer_id = $u' },
+    { key: 'instance_users', sql: 'DELETE FROM instance_users WHERE user_id = $u' },
+    { key: 'users', sql: 'DELETE FROM users WHERE id = $u' },
+  ];
+  try {
+    sqlDb.run('BEGIN IMMEDIATE TRANSACTION');
+    for (const step of cascade) {
+      sqlDb.run(step.sql, { $u: id });
+      const changed = Number(sqlDb.exec('SELECT changes() AS c')?.[0]?.values?.[0]?.[0] || 0);
+      deleted[step.key] = changed;
+      if (changed === 0) skipped.push(step.key);
+    }
+    sqlDb.run('COMMIT');
+    saveDB();
+    console.log(`[Admin] 删除用户及级联数据: ${id}`);
+    res.json({ ok: true, deleted: id, report: { deleted, skipped } });
+  } catch (e: any) {
+    try { sqlDb.run('ROLLBACK'); } catch {}
+    res.status(500).json({ ok: false, error: e?.message || '删除失败', report: { deleted, skipped } });
+  }
 });
 
 // ── 实例列表（运维视角）──

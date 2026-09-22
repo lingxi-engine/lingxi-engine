@@ -217,7 +217,9 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
               // 补充积分等信息
               if (platformAdminToken) {
                 try {
-                  const ar = await fetch(`${platformApiUrl}/api/admin/users/${user.id}?token=${platformAdminToken}`);
+                  const ar = await fetch(`${platformApiUrl}/api/admin/users/${user.id}`, {
+                    headers: { 'x-admin-token': String(platformAdminToken) },
+                  });
                   const ad = await ar.json() as any;
                   if (ad.ok && ad.user) {
                     user.points = ad.user.points;

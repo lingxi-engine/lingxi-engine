@@ -12,6 +12,7 @@ import { QQBotAdapter } from '../channels/qqbot.js';
 import { WhatsAppAdapter } from '../channels/whatsapp.js';
 import { SignalAdapter } from '../channels/signal.js';
 import { IMessageAdapter } from '../channels/imessage.js';
+import { verifyWeChatWebhook } from './webhook-auth.js';
 
 export function createChannelRoutes(ctx: ServerContext): Router {
   const router = Router();
@@ -61,8 +62,8 @@ export function createChannelRoutes(ctx: ServerContext): Router {
       if (!ch) return res.status(404).send('Not configured');
       const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
       if (!adapter) return res.status(500).send('Adapter not started');
-      const { signature, timestamp, nonce, echostr } = req.query as any;
-      if (adapter.verifySignature(signature, timestamp, nonce)) res.send(echostr);
+      const { echostr } = req.query as any;
+      if (verifyWeChatWebhook(adapter, req.query as Record<string, unknown>)) res.send(echostr);
       else res.status(403).send('Invalid signature');
     } catch (err: any) { res.status(500).send(err.message); }
   });
@@ -72,6 +73,10 @@ export function createChannelRoutes(ctx: ServerContext): Router {
       const ch = channelManager.list().find((c: any) => c.type === 'wechat');
       if (!ch) return res.status(404).send('Not configured');
       const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
+      if (!adapter) return res.status(500).send('Adapter not started');
+      if (!verifyWeChatWebhook(adapter, req.query as Record<string, unknown>)) {
+        return res.status(403).send('Invalid signature');
+      }
       const result = adapter ? await adapter.handleMessage(req.body) : 'adapter not started';
       res.type('text/xml').send(result);
     } catch (err: any) { res.status(500).send(err.message); }
@@ -83,6 +88,7 @@ export function createChannelRoutes(ctx: ServerContext): Router {
       if (!ch) return res.status(404).json({ error: 'Feishu 渠道未配置' });
       const adapter = channelManager.getAdapter(ch.id) as FeishuAdapter;
       const result = adapter ? await adapter.handleEvent(req.body) : { ok: false, error: 'adapter not started' };
+      if ((result as any)?.error === 'invalid token') return res.status(403).json({ error: '签名验证失败' });
       res.json(result);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
