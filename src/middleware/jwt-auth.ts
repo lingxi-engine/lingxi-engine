@@ -9,6 +9,7 @@
 
 import type { Request } from 'express';
 import { verifyAccessToken, JwtPayload } from '../auth/index.js';
+import { isDevMode, timingSafeTokenEqual } from '../security/token-compare.js';
 
 export interface AuthOptions {
   required?: boolean; // true = 必须 token，false = 可选
@@ -34,7 +35,8 @@ export interface AuthedRequest extends Request {
 let lastPublicWarn = 0; // 公网无凭证拒绝日志限频：每 60s 最多一条，防日志洪水
 export function isTrustedLocalSource(req: Request): boolean {
   // 显式开启公网免登录（不推荐，仅向后兼容）
-  if (process.env.ALLOW_PUBLIC_ADMIN_AUTO === '1' || process.env.ALLOW_PUBLIC_ADMIN_AUTO === 'true') return true;
+  const allowPublicAuto = process.env.ALLOW_PUBLIC_ADMIN_AUTO === '1' || process.env.ALLOW_PUBLIC_ADMIN_AUTO === 'true';
+  if (allowPublicAuto && isDevMode()) return true;
   const raw = req.socket?.remoteAddress || '';
   const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   if (!ip) return false; // 无法确定来源时一律不可信（fail-closed）
@@ -64,7 +66,7 @@ export function jwtAuth(options: AuthOptions = {}) {
     if (adminToken) {
       // 显式携带 token（Bearer 或 x-admin-token）
       const providedToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : adminTokenHeader;
-      if (providedToken === adminToken) {
+      if (timingSafeTokenEqual(providedToken, adminToken)) {
         (req as any).user = { sub: 'admin', numeric_id: 0, sid: 'admin-token', iat: 0, exp: 0, roles: ['admin'] };
         return next();
       }

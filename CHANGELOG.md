@@ -10,6 +10,18 @@
 - **bench SUMMARY 汇总修复**（ws-adapter.cjs）：manual 题不再被跳过统计；NaN% 改为 -；残缺 JSON 容错；新增 --summarize 离线重算入口
 - **打包器修复**（pack-release.ps1）：SW 缓存门禁改为正则，修复打包永久失败；排除测试数据目录
 - **版本治理**：.gitignore 清理；新增诊断技能文件
+- **安全与一致性修复（platform/runtime）**：
+  - `src/storage/db.ts`：积分/钱包金额统一拒绝 `<=0`、`NaN`、`Infinity`，阻断负数消费绕过；
+  - `src/platform-server.ts`：充值仅接受 `USD/CNY`，管理员积分变更限制为有限整数且禁止扣成负余额；
+  - `src/platform-server.ts`：`/api/hire/order` 改为事务执行（扣款/入账/订单/listing 更新时间同事务），扣款使用余额条件原子更新并检查 `changes()`，新增 `hire_orders.request_id` + 幂等唯一索引；
+  - `src/routes/channel.ts`：微信 POST webhook 补齐与 GET 一致的签名校验；飞书无效 token 返回 403；
+  - `src/middleware/*` + `src/platform-server.ts`：管理 token 比较统一为 timing-safe，query token 默认禁用，仅允许显式开发模式开关兼容；
+  - `src/tools/executor.ts`：最终兜底 completion 透传 `AbortSignal`；
+  - `src/core/docker-sandbox.ts`：Docker 可用性检测缓存复用，`network` 安全默认改为禁网（显式开启才联网）。
+
+### 迁移说明
+
+- 平台库 `hire_orders` 新增 `request_id` 字段与唯一索引 `idx_hire_orders_idem(listing_id,buyer_id,request_id) WHERE request_id <> ''`；旧数据可无缝迁移。
 
 ### 版本对齐
 

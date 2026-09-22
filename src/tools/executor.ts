@@ -971,7 +971,7 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<RunToolsRe
         messages: [...result.messages, { role: "user", content: "请根据以上工具返回的结果，给出最终回复。如果工具没有返回有用信息，请说明情况。" }],
         temperature,
         max_tokens: maxTokens,
-      }) as OpenAIChatResponse;
+      }, signal ? { signal } : undefined) as OpenAIChatResponse;
       result.finalContent = stripDsmlMarkup(finalResp.choices[0]?.message?.content || "");
       if (finalResp.usage) {
         UsageTracker.record({

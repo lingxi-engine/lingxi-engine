@@ -42,8 +42,8 @@ const SANDBOX_TIMEOUT = parseInt(process.env.SANDBOX_TIMEOUT || '10000');
 const SANDBOX_MEMORY = process.env.SANDBOX_MEMORY || '128m';
 const SANDBOX_CPUS = process.env.SANDBOX_CPUS || '0.5';
 
-// 降级标志
-export const DOCKER_FALLBACK = !detectDocker() && process.env.USE_DOCKER_SANDBOX === 'true';
+// 降级标志（复用缓存探测，避免重复执行 docker info）
+export const DOCKER_FALLBACK = USE_DOCKER && !dockerReallyAvailable();
 
 // 多语言镜像映射
 const LANGUAGE_IMAGES: Record<string, string> = {
@@ -73,7 +73,7 @@ export interface DockerRunResult {
 }
 
 export function isDockerAvailable(): boolean {
-  return USE_DOCKER;
+  return USE_DOCKER && dockerReallyAvailable();
 }
 
 async function execDocker(args: string[], options: { timeout: number; input?: string }): Promise<DockerRunResult> {
@@ -126,7 +126,7 @@ export async function runInDocker(options: DockerRunOptions): Promise<DockerRunR
     image,
     cwd,
     timeout = SANDBOX_TIMEOUT,
-    network = true,   // 默认允许联网（沙箱容器可访问外网）
+    network = false,   // 默认禁网，调用方需要联网时显式开启
     binds = [],
     input,
   } = options;

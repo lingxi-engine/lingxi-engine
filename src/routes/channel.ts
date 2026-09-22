@@ -12,6 +12,29 @@ import { QQBotAdapter } from '../channels/qqbot.js';
 import { WhatsAppAdapter } from '../channels/whatsapp.js';
 import { SignalAdapter } from '../channels/signal.js';
 import { IMessageAdapter } from '../channels/imessage.js';
+import { verifyWeChatWebhook } from './webhook-auth.js';
+
+const _webhookRate = new Map<string, { ts: number; count: number }>();
+function allowWebhookRequest(req: any, key: string, limit = 60, windowMs = 60_000): boolean {
+  const ip = String(req.ip || req.socket?.remoteAddress || 'unknown');
+  const now = Date.now();
+  const k = `${key}:${ip}`;
+  const prev = _webhookRate.get(k);
+  if (!prev || now - prev.ts > windowMs) {
+    _webhookRate.set(k, { ts: now, count: 1 });
+    return true;
+  }
+  if (prev.count >= limit) return false;
+  prev.count += 1;
+  _webhookRate.set(k, prev);
+  return true;
+}
+function webhookRateLimit(key: string) {
+  return (req: any, res: any, next: any) => {
+    if (!allowWebhookRequest(req, key)) return res.status(429).send('Too Many Requests');
+    next();
+  };
+}
 
 export function createChannelRoutes(ctx: ServerContext): Router {
   const router = Router();
@@ -55,26 +78,31 @@ export function createChannelRoutes(ctx: ServerContext): Router {
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.get('/channels/wechat/webhook', (req, res) => {
+  router.get('/channels/wechat/webhook', webhookRateLimit('wechat:get'), (req, res) => {
     try {
       const ch = channelManager.list().find((c: any) => c.type === 'wechat');
       if (!ch) return res.status(404).send('Not configured');
       const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
       if (!adapter) return res.status(500).send('Adapter not started');
-      const { signature, timestamp, nonce, echostr } = req.query as any;
-      if (adapter.verifySignature(signature, timestamp, nonce)) res.send(echostr);
+      const echostr = String((req.query as any).echostr || '');
+      if (!/^[\w\-]{1,256}$/.test(echostr)) return res.status(400).send('Invalid echostr');
+      if (verifyWeChatWebhook(adapter, req.query as Record<string, unknown>)) res.type('text/plain').send(echostr);
       else res.status(403).send('Invalid signature');
-    } catch (err: any) { res.status(500).send(err.message); }
+    } catch { res.status(500).send('Webhook error'); }
   });
 
-  router.post('/channels/wechat/webhook', async (req, res) => {
+  router.post('/channels/wechat/webhook', webhookRateLimit('wechat:post'), async (req, res) => {
     try {
       const ch = channelManager.list().find((c: any) => c.type === 'wechat');
       if (!ch) return res.status(404).send('Not configured');
       const adapter = channelManager.getAdapter(ch.id) as WeChatAdapter;
+      if (!adapter) return res.status(500).send('Adapter not started');
+      if (!verifyWeChatWebhook(adapter, req.query as Record<string, unknown>)) {
+        return res.status(403).send('Invalid signature');
+      }
       const result = adapter ? await adapter.handleMessage(req.body) : 'adapter not started';
       res.type('text/xml').send(result);
-    } catch (err: any) { res.status(500).send(err.message); }
+    } catch { res.status(500).send('Webhook error'); }
   });
 
   router.post('/channels/feishu/webhook', async (req, res) => {
@@ -83,6 +111,7 @@ export function createChannelRoutes(ctx: ServerContext): Router {
       if (!ch) return res.status(404).json({ error: 'Feishu 渠道未配置' });
       const adapter = channelManager.getAdapter(ch.id) as FeishuAdapter;
       const result = adapter ? await adapter.handleEvent(req.body) : { ok: false, error: 'adapter not started' };
+      if ((result as any)?.error === 'invalid token') return res.status(403).json({ error: '签名验证失败' });
       res.json(result);
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
