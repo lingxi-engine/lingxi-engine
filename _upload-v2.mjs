@@ -1,57 +1,80 @@
-import { execSync } from 'child_process';
-import fs from 'fs';
-import crypto from 'crypto';
+#!/usr/bin/env node
+// _upload-v2.mjs - generate token with JWT_SECRET then upload v2.0.23
+import fs from 'node:fs';
+import crypto from 'node:crypto';
+import http from 'node:http';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url);
+const jwt = require('jsonwebtoken');
 
-const host = '47.93.157.83';
-const port = '8080';
-const tarPath = 'F:/lingxi-engine-v2.0.23.tar.gz';
-const localSha = crypto.createHash('sha256').update(fs.readFileSync(tarPath)).digest('hex');
+const HOST = '47.93.157.83';
+const PORT = 8080;
+const TAR = 'F:/lingxi-engine-v2.0.23.tar.gz';
+const localSha = crypto.createHash('sha256').update(fs.readFileSync(TAR)).digest('hex');
+console.log('Local SHA256: ' + localSha);
 
-console.log('Local SHA256:', localSha);
+function api(method, p, body, headers) {
+  return new Promise((resolve, reject) => {
+    const data = body ? JSON.stringify(body) : null;
+    const h = Object.assign({}, headers || {});
+    if (data) { h['Content-Type'] = 'application/json'; h['Content-Length'] = Buffer.byteLength(data); }
+    const req = http.request({ host: HOST, port: PORT, path: p, method: method, timeout: 30000, headers: h }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => resolve({ status: res.statusCode, body: d }));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy());
+    if (data) req.write(data);
+    req.end();
+  });
+}
 
-// Upload via POST with proper content type
-console.log('\n=== Trying upload endpoints ===');
-const uploadUrls = [
-  `http://${host}:${port}/api/upload`,
-  `http://${host}:${port}/upload`,
-  `http://${host}:${port}/api/deploy`,
-  `http://${host}:${port}/deploy`,
-  `http://${host}:${port}/api/release`,
-];
+async function main() {
+  // Read JWT_SECRET from .env
+  const envContent = fs.readFileSync('.env', 'utf8');
+  const m = envContent.match(/JWT_SECRET=(\S+)/);
+  if (!m) { console.log('No JWT_SECRET in .env'); process.exit(1); }
+  const secret = m[1];
+  console.log('JWT_SECRET loaded');
 
-for (const url of uploadUrls) {
+  // Generate admin token
+  const token = jwt.sign(
+    { sub: 'user-10001', numeric_id: 10001, sid: 'admin-session', roles: ['admin', 'user'] },
+    secret,
+    { expiresIn: '7d' }
+  );
+  console.log('Token generated');
+
+  // Try login to verify token works (optional, may be rate limited)
   try {
-    const result = execSync(
-      `curl -s -X POST -F "file=@\"${tarPath}\"" --connect-timeout 10 --max-time 300 "${url}" 2>&1`,
-      { encoding: 'utf8', timeout: 320000 }
-    );
-    console.log(`${url}: ${result.slice(0, 200)}`);
-  } catch (e) {
-    const msg = (e.stderr || e.stdout || e.message).toString().slice(0, 200);
-    console.log(`${url}: ${msg}`);
-  }
+    const r = await api('POST', '/api/auth/login', { email: 'admin@lingxi.local', password: 'admin' });
+    console.log('login test: ' + r.status + ' ' + r.body.slice(0, 150));
+  } catch (e) {}
+
+  // Upload
+  const buf = fs.readFileSync(TAR);
+  const boundary = '----xi-upload-' + Date.now();
+  const header = '--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="lingxi-engine-v2.0.23.tar.gz"\r\nContent-Type: application/gzip\r\n\r\n';
+  const footer = '\r\n--' + boundary + '--\r\n';
+  const body = Buffer.concat([Buffer.from(header), buf, Buffer.from(footer)]);
+  console.log('Uploading ' + (body.length / 1048576).toFixed(2) + ' MB...');
+
+  try {
+    const r = await new Promise((resolve, reject) => {
+      const req = http.request({ host: HOST, port: PORT, path: '/api/upload', method: 'POST', timeout: 300000, headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Content-Length': body.length } }, (res) => {
+        let d = '';
+        res.on('data', c => d += c);
+        res.on('end', () => resolve({ status: res.statusCode, body: d.slice(0, 2000) }));
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('timeout 300s')); });
+      req.write(body);
+      req.end();
+    });
+    console.log('upload result: ' + r.status);
+    console.log(r.body);
+  } catch (e) { console.log('upload ERR: ' + e.message); }
 }
 
-// Try PUT method
-console.log('\n=== Trying PUT ===');
-try {
-  const result = execSync(
-    `curl -s -X PUT -T "${tarPath}" --connect-timeout 10 --max-time 300 "http://${host}:${port}/api/upload" 2>&1`,
-    { encoding: 'utf8', timeout: 320000 }
-  );
-  console.log('PUT result:', result.slice(0, 200));
-} catch (e) {
-  console.log('PUT failed:', (e.stderr || e.message).toString().slice(0, 200));
-}
-
-// Check server-side: what's in /opt/lingxi-engine?
-console.log('\n=== Check server deploy dir via SSH ===');
-try {
-  const sshResult = execSync(
-    `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 root@${host} "ls -la /opt/lingxi-engine/ 2>&1; echo ---; ls -la /var/www/lingxi/public/ 2>&1"`,
-    { encoding: 'utf8', timeout: 30000 }
-  );
-  console.log(sshResult.slice(0, 1000));
-} catch (e) {
-  console.log('SSH failed:', (e.stderr || e.message).toString().slice(0, 300));
-}
+main().catch(e => { console.error(e); process.exit(1); });

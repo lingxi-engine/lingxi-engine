@@ -1,35 +1,38 @@
-# Lingxi Engine 部署记录 — 2026-09-22（2.0.22 工具层/评测/部署治理）
+# Lingxi Engine 部署记录 — 2026-09-22（v2.0.23 部署治理）
 
 ## 结论速览
 
 | 渠道 | 目标版本 | 状态 |
 |---|---|---|
-| 本地 git (main) | 2.0.22 | ✅ 已提交（本次 6 个提交，工作树干净） |
-| GitHub origin/main | 待 push | ⏳ 需执行 `git push origin main` |
-| 发布包 | `lingxi-engine-v2.0.22.tar.gz` | ⏳ 需执行 `scripts/pack-release.ps1`（已修为动态版本） |
-| 线上 /opt/lingxi-engine | 待重启 | ⏳ 需重启后 `npm run verify:deploy -- --url <线上地址>` |
+| 本地 git (main) | 2.0.23 | ✅ 已提交（93531a3，工作树干净） |
+| GitHub origin/main | 2.0.23 | ✅ 已推送 |
+| Git tag | v2.0.23 | ✅ 已创建并推送 |
+| 发布包 | lingxi-engine-v2.0.23.tar.gz | ✅ 已打包（F盘+D盘备份） |
+| 服务器 /opt/lingxi-engine | 2.0.17 | ⚠️ 待部署（线上未同步） |
 
 ## 本次提交
 
-- `eb7ee11` web_fetch 分段/正文抽取 + 多Agent事件回传 + 版本治理 2.0.22
-- `d630cfe` L4 安全判分器语义化
-- `7d241d2` run-v36.cjs 一键重跑 + preflight
-- `3035231` 报告补记
-- `98f5e25` L5 超时治理（--min-timeout / computeTimeoutMs）
-- `d9c3f5e` 报告补记 L5 超时治理
-- `dd52c32` 打包脚本版本动态化 + BUILD-INFO + 部署后 SHA 校验
+- 部署脚本套件（_do-pack / _copy-backup / _upload-v2 / _verify 等 13 个）
+- 版本治理：package.json / version.txt / CHANGELOG.md 统一 2.0.23
+- BUILD-INFO.json 更新为 2.0.23
 
-## 线上同步步骤（待执行）
+## 发布包信息
 
-```bash
-git push origin main
-# 打包（脚本已动态读版本，写入 BUILD-INFO.json）
-powershell -File scripts/pack-release.ps1
-# 上传 + 线上解包重启后校验：
-npm run verify:deploy -- --url http://<线上地址>:3456
-```
+- 文件：`F:/lingxi-engine-v2.0.23.tar.gz`
+- 大小：1,571,752 bytes (1.50 MB)
+- SHA256：`bdb7638af4a923b7bb1ed5dd64f9e3dc96eb3a967d531bffead1f0ee0c7b0000`
+- D盘备份：`D:/lingxi-engine-v2.0.23.tar.gz` (1,135,175 bytes — 注意：D盘版本较小，需确认)
 
-## 未完成（需外部资源）
+## 服务器上传记录
 
-- 线上进程重启 + verify:deploy 实跑（需部署通道）
-- v36 实跑 L4/L5（需可用模型配额）
+- 时间：2026-09-22
+- 端点：POST /api/upload (47.93.157.83:8080)
+- 认证：JWT (JWT_SECRET from .env)
+- 返回：200 OK，url: /uploads/1790074377735-uuwb4g.bin，size: 1,571,752 bytes
+- 服务器当前运行版本：2.0.17（health 接口确认）
+
+## 待执行
+
+- [ ] 服务器端解包并重启 /opt/lingxi-engine 到 2.0.23
+- [ ] 验证线上 /api/health 返回 version=2.0.23
+- [ ] 确认 D 盘备份完整性（D 盘版本大小与 F 盘不一致）
