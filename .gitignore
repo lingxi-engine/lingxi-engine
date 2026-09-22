@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 
 # Build output
@@ -296,9 +296,3 @@ data-smoke-2022/
 data-preflight-tmp/
 bench/out/
 bench/results/selftest-tmp/
-# 2026-09-22: bench runtime data + build artifacts (v37/v38 + verify)
-data-v37/
-data-v38/
-data-verify-3633/
-BUILD-INFO.json
-_usage_snapshot_*.json
