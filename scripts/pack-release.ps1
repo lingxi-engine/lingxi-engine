@@ -87,7 +87,10 @@ try {
         buildTime = (Get-Date).ToUniversalTime().ToString('o')
         builder   = 'pack-release.ps1'
     }
-    $buildInfo | ConvertTo-Json | Set-Content (Join-Path $StageDir 'BUILD-INFO.json') -Encoding UTF8
+    $buildInfoJson = $buildInfo | ConvertTo-Json
+    # v6.9: PowerShell 'Set-Content -Encoding UTF8' emits a BOM (EF BB BF), which breaks
+    # strict JSON parsers on the server. Write UTF8 WITHOUT BOM via .NET instead.
+    [System.IO.File]::WriteAllText((Join-Path $StageDir 'BUILD-INFO.json'), $buildInfoJson, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "  [OK] BUILD-INFO.json written (version=$Version commit=$Commit)" -ForegroundColor Green
 
     # Pack from staging root so tarball top-level is ./lingxi-engine/
