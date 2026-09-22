@@ -2,10 +2,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'events';
 
 let lastSpawnArgs: string[] = [];
+let execShouldThrow = true;
 
 vi.mock('child_process', () => {
   return {
-    execSync: vi.fn(() => { throw new Error('no docker'); }),
+    execSync: vi.fn(() => {
+      if (execShouldThrow) throw new Error('no docker');
+      return Buffer.from('ok');
+    }),
     spawn: vi.fn((_cmd: string, args: string[]) => {
       lastSpawnArgs = args;
       const child = new EventEmitter() as any;
@@ -22,6 +26,7 @@ describe('docker sandbox defaults', () => {
   beforeEach(() => {
     vi.resetModules();
     lastSpawnArgs = [];
+    execShouldThrow = true;
     process.env.USE_DOCKER_SANDBOX = 'true';
   });
 
@@ -31,5 +36,14 @@ describe('docker sandbox defaults', () => {
     const networkIndex = lastSpawnArgs.indexOf('--network');
     expect(networkIndex).toBeGreaterThan(-1);
     expect(lastSpawnArgs[networkIndex + 1]).toBe('none');
+  });
+
+  it('reports docker availability using runtime detection cache', async () => {
+    const mod1 = await import('../core/docker-sandbox.js');
+    expect(mod1.isDockerAvailable()).toBe(false);
+    vi.resetModules();
+    execShouldThrow = false;
+    const mod2 = await import('../core/docker-sandbox.js');
+    expect(mod2.isDockerAvailable()).toBe(true);
   });
 });

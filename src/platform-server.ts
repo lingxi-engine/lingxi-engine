@@ -753,7 +753,7 @@ setInterval(cleanExpiredInstances, 30_000);
 // 鉴权中间件：fail-secure，token 未配置 → 503；token 不匹配 → 401
 function platformAdminAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
   if (!PLATFORM_ADMIN_TOKEN) return res.status(503).json({ ok: false, error: '管理后台未配置 PLATFORM_ADMIN_TOKEN，接口已锁定' });
-  const provided = parseTokenFromRequest(req, true);
+  const provided = parseTokenFromRequest(req, false);
   if (!timingSafeTokenEqual(provided, PLATFORM_ADMIN_TOKEN)) return res.status(401).json({ ok: false, error: '管理员令牌错误' });
   next();
 }
@@ -805,10 +805,19 @@ app.post('/api/admin/credits/grant', platformAdminAuth, (req, res) => {
   cStmt.bind({ $u: String(userId) });
   const before = cStmt.step() ? (cStmt.getAsObject().balance as number) : 0;
   cStmt.free();
-  const after = before + amt;
-  if (after < 0) return res.status(400).json({ ok: false, error: `扣减后余额为负（当前 ${before}）` });
-  sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $after)
-    ON CONFLICT(user_id) DO UPDATE SET balance = $after2`, { $u: String(userId), $after: after, $after2: after });
+  if (amt < 0) {
+    const deduct = Math.abs(amt);
+    sqlDb.run(`UPDATE credits SET balance = balance - $d WHERE user_id = $u AND balance >= $d`, { $d: deduct, $u: String(userId) });
+    const changed = Number(sqlDb.exec('SELECT changes() AS c')?.[0]?.values?.[0]?.[0] || 0);
+    if (changed !== 1) return res.status(400).json({ ok: false, error: `扣减后余额为负（当前 ${before}）` });
+  } else {
+    sqlDb.run(`INSERT INTO credits (user_id, balance) VALUES ($u, $a)
+      ON CONFLICT(user_id) DO UPDATE SET balance = balance + $a2`, { $u: String(userId), $a: amt, $a2: amt });
+  }
+  const aftStmt = sqlDb.prepare('SELECT balance FROM credits WHERE user_id = $u');
+  aftStmt.bind({ $u: String(userId) });
+  const after = aftStmt.step() ? (aftStmt.getAsObject().balance as number) : before;
+  aftStmt.free();
   saveDB();
   console.log(`[Admin] 积分操作: ${userId} ${amt > 0 ? '+' : ''}${amt} (${reason || '无备注'}) → ${after}`);
   res.json({ ok: true, userId, before, after, changed: amt });
@@ -883,6 +892,7 @@ app.delete('/api/admin/users/:id', platformAdminAuth, (req, res) => {
     { key: 'credits', sql: 'DELETE FROM credits WHERE user_id = $u' },
     { key: 'friends', sql: 'DELETE FROM friends WHERE from_id = $u OR user_id = $u' },
     { key: 'friend_requests', sql: 'DELETE FROM friend_requests WHERE from_id = $u OR to_id = $u' },
+    { key: 'hire_orders_as_seller', sql: 'DELETE FROM hire_orders WHERE listing_id IN (SELECT id FROM hires WHERE owner_id = $u)' },
     { key: 'hires', sql: 'DELETE FROM hires WHERE owner_id = $u' },
     { key: 'hire_orders', sql: 'DELETE FROM hire_orders WHERE buyer_id = $u' },
     { key: 'instance_users', sql: 'DELETE FROM instance_users WHERE user_id = $u' },
