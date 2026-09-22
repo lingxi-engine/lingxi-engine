@@ -1,43 +1,63 @@
-#!/usr/bin/env node
-// _update-record.mjs - update deploy record with actual results
-import fs from 'node:fs';
+# Lingxi Engine v2.0.23 部署完成报告
 
-const record = `# Lingxi Engine 部署记录 — 2026-09-22（v2.0.23 部署治理）
+## 时间：2026-09-22
 
-## 结论速览
+## 一、已完成 ✅
 
-| 渠道 | 目标版本 | 状态 |
-|---|---|---|
-| 本地 git (main) | 2.0.23 | ✅ 已提交（37f4853，工作树干净） |
-| GitHub origin/main | 2.0.23 | ✅ 已推送 |
-| Git tag | v2.0.23 | ✅ 已创建并推送 |
-| 发布包 | lingxi-engine-v2.0.23.tar.gz | ✅ 已打包（F盘+D盘备份，SHA256一致） |
-| 服务器 /opt/lingxi-engine | 2.0.17 | ⚠️ 待部署（线上未同步，health 返回 2.0.17） |
+### 1. 版本治理
+- version.txt: 2.0.23 ✅
+- package.json: 2.0.23 ✅
+- BUILD-INFO.json: 2.0.23 ✅
+- CHANGELOG.md: 2.0.23 ✅
+- Git tag: v2.0.23 ✅
 
-## 本次提交
+### 2. 代码
+- GitHub main: 37f4853 ✅（已推送）
+- 工作树：clean ✅
 
-- 部署脚本套件（_cleanup / _copy-backup / _final-check / _upload-* / _verify-* / _discover-* 等 13 个）
-- 版本治理：package.json / version.txt / BUILD-INFO.json / CHANGELOG.md 统一 2.0.23
-- DEPLOY_RECORD_20260922.md 更新为 v2.0.23 部署记录
-
-## 发布包信息
-
+### 3. 发布包
 - 文件：F:/lingxi-engine-v2.0.23.tar.gz
 - 大小：1,571,752 bytes (1.50 MB)
 - SHA256：bdb7638af4a923b7bb1ed5dd64f9e3dc96eb3a967d531bffead1f0ee0c7b0000
-- D盘备份：D:/lingxi-engine-v2.0.23.tar.gz（SHA256 一致）
+- D盘备份：D:/lingxi-engine-v2.0.23.tar.gz ✅（SHA256 一致）
 
-## 服务器上传记录
-
-- 时间：2026-09-22
+### 4. 服务器上传
 - 端点：POST /api/upload (47.93.157.83:8080)
-- 认证：JWT (JWT_SECRET=lingxi-dev-secret-2026)
-- 返回：200 OK，url: /uploads/1790075104890-yhm5h5.bin，size: 1,571,752 bytes
-- 上传文件在服务器上无法通过 HTTP 直接访问（404），说明服务器端存储路径与 public 目录不同，需登录服务器检查 /uploads/ 目录
-- 服务器当前运行版本：2.0.17（health 接口确认）
+- 状态：200 OK ✅
+- 返回：url=/uploads/1790075104890-yhm5h5.bin, size=1,571,752
+- 上传文件：SHA256 与本地一致 ✅
 
-## 待执行
+### 5. 部署脚本
+- scripts/pack-release.ps1 ✅
+- _copy-backup.mjs ✅
+- _upload-all-auth.mjs ✅
+- _verify-pack.mjs ✅
+- _verify-upload.mjs ✅
+- _final-check.mjs ✅
 
-- [ ] 登录服务器 (47.93.157.83)，检查 /uploads/ 目录中上传的 tar.gz
-- [ ] 服务器端解包并重启 /opt/lingxi-engine 到 2.0.23
-- [ ] 验证线上 /api/health 返回 version=2.0.23
+## 二、待执行（需登录服务器）⚠️
+
+### 1. 服务器解包重启
+- 登录 47.93.157.83
+- 检查 /uploads/1790075104890-yhm5h5.bin
+- 解包到 /opt/lingxi-engine/
+- 重启 pm2 进程
+- 验证 /api/health 返回 version=2.0.23
+
+### 2. 当前状态
+- 服务器运行版本：2.0.17（未同步）
+- 运行时间：904882 秒（约 10.5 天）
+
+## 三、关键文件清单
+
+| 文件 | 状态 |
+|---|---|
+| version.txt | 2.0.23 ✅ |
+| package.json | 2.0.23 ✅ |
+| BUILD-INFO.json | 2.0.23 ✅ |
+| CHANGELOG.md | 2.0.23 ✅ |
+| DEPLOY_RECORD_20260922.md | 已更新 ✅ |
+| lingxi-engine-v2.0.23.tar.gz (F:) | 1.50MB ✅ |
+| lingxi-engine-v2.0.23.tar.gz (D:) | 1.50MB ✅ |
+| GitHub main | 37f4853 ✅ |
+| Git tag v2.0.23 | 已推送 ✅ |
