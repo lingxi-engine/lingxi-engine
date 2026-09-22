@@ -186,17 +186,17 @@ function migrateUsersTable() {
   } catch (e: any) {
     console.error('[DB] migrateUsersTable 失败:', e.message);
   }
+}
 
-  function migrateHireOrdersTable() {
-    try {
-      const cols = sqlDb.exec("PRAGMA table_info(hire_orders)")[0]?.values?.map((r: any) => r[1]) || [];
-      if (!cols.includes('request_id')) {
-        sqlDb.run(`ALTER TABLE hire_orders ADD COLUMN request_id TEXT DEFAULT ''`);
-      }
-      sqlDb.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hire_orders_idem ON hire_orders(listing_id, buyer_id, request_id) WHERE request_id <> ''`);
-    } catch (e: any) {
-      console.error('[DB] migrateHireOrdersTable 失败:', e.message);
+function migrateHireOrdersTable() {
+  try {
+    const cols = sqlDb.exec("PRAGMA table_info(hire_orders)")[0]?.values?.map((r: any) => r[1]) || [];
+    if (!cols.includes('request_id')) {
+      sqlDb.run(`ALTER TABLE hire_orders ADD COLUMN request_id TEXT DEFAULT ''`);
     }
+    sqlDb.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_hire_orders_idem ON hire_orders(listing_id, buyer_id, request_id) WHERE request_id <> ''`);
+  } catch (e: any) {
+    console.error('[DB] migrateHireOrdersTable 失败:', e.message);
   }
 }
 
