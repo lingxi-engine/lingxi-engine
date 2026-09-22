@@ -2,6 +2,20 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.23] - 2026-09-22
+
+### 修复（自 v2.0.22 tag 以来 7 个 commit 的累积变更）
+
+- **collab 黑洞修复**（hub.ts + subagent-manager.ts）：collabSpeak 新增 Promise.race 硬超时兜底，消除 L5-005 永久卡 running；OpenAI client 补齐 timeout:120000 + maxRetries:1
+- **bench SUMMARY 汇总修复**（ws-adapter.cjs）：manual 题不再被跳过统计；NaN% 改为 -；残缺 JSON 容错；新增 --summarize 离线重算入口
+- **打包器修复**（pack-release.ps1）：SW 缓存门禁改为正则，修复打包永久失败；排除测试数据目录
+- **版本治理**：.gitignore 清理；新增诊断技能文件
+
+### 版本对齐
+
+- package.json / version.txt / CHANGELOG.md 统一 2.0.23
+- Git tag v2.0.23 指向 HEAD
+
 ## [2.0.22] - 2026-09-22
 
 ### 工具层 & 评测度量修复（解锁 L4/L5 重跑）
@@ -156,7 +170,7 @@
 - 依据：交付物 lingxi-engine-v2.0.0.tar.gz
 
 ### [1.8.x]（1.8.0 / 1.8.1 / 1.8.2 / 1.8.5）
-- 依据：workspace/ 留存四个对应版本交付包；v1.8.0 引入模板引擎（存在欠账，见开发文档 P1-3）
+- 依据：`workspace/` 留存四个对应版本交付包；v1.8.0 引入模板引擎（存在欠账，见开发文档 P1-3）
 - 无逐版提交记录，详情不可考
 
 ### [1.7.x]（1.7.1 / 1.7.2 / 1.7.3）

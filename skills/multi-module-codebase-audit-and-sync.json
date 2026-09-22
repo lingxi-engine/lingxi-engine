@@ -1,0 +1,14 @@
+{
+  "name": "multi-module-codebase-audit-and-sync",
+  "displayName": "多端代码审查与同步发布",
+  "description": "审查多端/多模块代码库状态，执行批量修改、编译验证，并处理版本同步与下架操作。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "处理多端或多模块代码库的审查、修改与发布任务时：1. 现状盘点：使用 list_dir 和 read_file 检查各端/模块的文件更新时间、内容哈希及代码实现，输出对比表格和证据。2. 批量修改与验证：使用 write_file 落实代码修改，并通过 shell_exec 运行编译或类型检查（如 tsc --noEmit）确保无报错。3. 版本同步与下架：根据需求使用 shell_exec 执行文件清理、多端同步或下架操作。4. 结果汇报：以清晰的清单和表格形式向用户汇报每个模块的修改状态、验证结果及最终部署情况。",
+  "autoCreated": true,
+  "createdAt": 1788111081551
+}

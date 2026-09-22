@@ -1,12 +1,12 @@
 {
   "name": "lingxi-engine",
-  "version": "2.0.22",
-  "description": "LingXi Engine 閳?AI-native IM platform where every user gets an AI agent",
+  "version": "2.0.23",
+  "description": "LingXi Engine - AI-native IM platform where every user gets an AI agent",
   "license": "MIT",
   "author": "LingXi Engine",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lingxi-engine/lingxi-engine"
+    "url": "https://github.com/lingxi-engine/lingxi-engine.git"
   },
   "keywords": [
     "ai-agent",

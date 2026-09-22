@@ -1,6 +1,6 @@
-﻿{
-    "version":  "2.0.22",
-    "commit":  "1dbeeaa",
-    "buildTime":  "2026-09-21T17:16:31.4979586Z",
-    "builder":  "pack-release.ps1"
+{
+    "version": "2.0.23",
+    "commit": "de40501",
+    "buildTime": "2026-09-22T10:30:00.000Z",
+    "builder": "pack-release.ps1"
 }
