@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Project Hub - 主入口
  */
 // 必须最先加载 .env：ESM 中 import 会被提升，若在模块体中调用 dotenvConfig()，
@@ -88,7 +88,7 @@ import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
 import { AgentManager } from './src/agents/manager.js';
-import { handleWSMessage, wsSubscriptions, processUserMessage } from './src/core/ws-handler.js';
+import { handleWSMessage, wsSubscriptions, processUserMessage, setSubAgentManagerForWS } from './src/core/ws-handler.js';
 import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage } from './src/core/instance-mesh.js';
 import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
 import { verifyLanRequest } from './src/net/lan-transport.js';
