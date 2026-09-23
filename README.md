@@ -46,7 +46,7 @@ See [docs/roadmap.md](docs/roadmap.md) for the public roadmap and support level 
 
 ### Prerequisites
 
-- Node.js **18+** (CI currently runs on Node 20)
+- Node.js **18+**
 - npm **9+**
 - Optional: Docker for isolated tool execution
 - Optional: Python **3.11+** for the `lingxi_engine/` regression suite
@@ -76,7 +76,7 @@ Open `http://localhost:3456`.
 | Cloud model access | `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `NVIDIA_API_KEY` | Configure only the providers you actually use |
 | Tool/reply split | `TOOL_MODEL`, `REPLY_MODEL` | Lets tool-use and final replies use different models |
 | Approval mode | `APPROVAL_AUTO_APPROVE` | Leave unset to keep manual approvals |
-| Docker sandbox | `USE_DOCKER_SANDBOX=true` | **Off by default**; when enabled, Docker runs with network isolation defaults |
+| Docker sandbox | `USE_DOCKER_SANDBOX=true` | **Off by default**; when enabled, tool execution goes through the repository's Docker sandbox path |
 | Cross-instance mesh | `MESH_PLATFORM_URL`, `MESH_TOKEN` | Treat as advanced/experimental setup |
 
 ## Security and operational limits
@@ -119,7 +119,7 @@ npm test
 python lingxi_engine/tests/run_all.py
 ```
 
-The GitHub Actions workflow also runs hygiene checks for BOMs, junk files, and monolith growth limits.
+The repository also includes a GitHub Actions workflow for hygiene checks such as BOM detection, junk-file limits, and monolith-growth gates.
 
 ## Documentation and project links
 

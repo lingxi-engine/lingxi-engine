@@ -64,6 +64,7 @@
   <a class="back" href="/">← 返回首页</a>
   <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.24</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署</p>
+  <p class="sub" style="margin-top:-8px">页面内的安装命令是模板；请先将 <span class="ic">your-domain.example</span> 替换为你的发布域名，再执行命令。</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
 
@@ -151,8 +152,12 @@
     <div class="card">
       <h2>📱 iPhone / iPad</h2>
       <p>iOS 版仍处于实验/受控测试阶段。如果你已经部署移动端入口，可先用 Safari 访问：</p>
-      <a class="btn btn-primary" href="https://your-domain.example/m/" rel="noopener">🌐 用 Safari 打开灵犀引擎</a>
-      <div class="tips" style="margin-top:16px">⭐ <b>加到主屏幕：</b>在 /m/ 页面打开后点底栏「分享」→「添加到主屏幕」，即可获得 App 级全屏体验（独立图标 + 无地址栏）。</div>
+      <div class="cmdbox" style="margin-top:16px">
+        <div class="label">Safari 地址模板（请先替换域名）：</div>
+        <code class="cmd" id="cmd-ios">https://your-domain.example/m/</code>
+        <button class="copy" data-target="cmd-ios">复制</button>
+      </div>
+      <div class="tips" style="margin-top:10px">⭐ <b>加到主屏幕：</b>在 /m/ 页面打开后点底栏「分享」→「添加到主屏幕」，即可获得 App 级全屏体验（独立图标 + 无地址栏）。</div>
     </div>
   </div>
 
@@ -245,7 +250,6 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 <script>
 (function() {
   var UA = navigator.userAgent;
-
   function detectOS() {
     if (/Windows/i.test(UA)) return 'win';
     if (/iPhone|iPad|iPod/i.test(UA)) return 'ios';
