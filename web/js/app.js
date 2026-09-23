@@ -985,7 +985,7 @@ function renderChatList() {
     const badge = unread ? '<span class="notify-dot">' + unread + '</span>' : '';
     var displayName = ch.name || ch.id.replace(/^(chat-|team-)/, '');
     var icon = ch.type === 'group' ? '👥' : '💬';
-    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">🗑</span></div></div>';
+    return '<div class="chat-item' + active + '" onclick="switchChat(\'' + ch.id + '\')"><div class="name">' + icon + ' ' + esc(displayName) + badge + '</div><div class="meta">' + (ch.type==='group'?t('chat.groupChat'):t('chat.privateChat')) + ' <span class="chat-rename" onclick="event.stopPropagation();renameChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:13px;margin-right:8px" title="'+t('chat.renameTitle')+'">✏️</span><span class="chat-del" onclick="event.stopPropagation();deleteChat(\'' + ch.id + '\')" style="float:right;color:#666;cursor:pointer;font-size:14px" title="'+t('chat.deleteTitle')+'">🗑</span></div></div>';
   }).join('');
 }
 
@@ -1007,6 +1007,29 @@ async function deleteChat(chatId) {
     renderChatList();
     toast(t('chat.deleted'));
   } catch(e) { toast(t('err.deleteFail') + ': ' + (e.message || '')); }
+}
+
+// ── v2.0.25: 重命名当前会话/群聊（与智能体改名 renameAgent 同风格） ──
+async function renameChat(chatId) {
+  var cid = chatId || currentChat;
+  if (!cid) { toast(t('chat.selectChatFirst')); return; }
+  var oldName = '';
+  try { var _ci = myChats.find(function(c){ return c.id === cid; }); if (_ci && _ci.name) oldName = _ci.name; } catch(e) {}
+  if (!oldName) oldName = String(cid).replace(/^(chat-|team-)/, '');
+  var _n = prompt(t('chat.renameChatPh'), oldName);
+  if (_n === null) return;
+  var name = _n.trim();
+  if (!name) { toast(t('chat.renameEmpty')); return; }
+  if (name.length > 60) { toast(t('chat.renameTooLong')); return; }
+  try {
+    var r = await api('/api/chats/' + encodeURIComponent(cid) + '/name', 'PATCH', { name: name });
+    if (r && r.ok) {
+      myChats = myChats.map(function(c){ return c.id === cid ? Object.assign({}, c, { name: name }) : c; });
+      if (currentChat === cid) document.getElementById('chatTitle').textContent = name;
+      renderChatList();
+      toast(t('chat.renamed'));
+    } else { toast(t('chat.renameFail') + (r && r.error ? ': ' + r.error : '')); }
+  } catch(e) { toast(t('chat.renameFail')); }
 }
 
 async function switchChat(chatId) {
@@ -1556,10 +1579,15 @@ requestNotificationPermission();
 // 新建会话
 function newChat() {
   if (!clientId) { toast(t('toast.notConnected')); return; }
+  // v2.0.25: 与新建群聊(showCreateGroup)一致，先让用户命名
+  var _n = prompt(t('chat.newChatNamePh'), '');
+  if (_n === null) return;
+  var _name = _n.trim();
+  if (!_name) { toast(t('chat.renameEmpty')); return; }
   const newId = 'chat-' + clientId + '-' + Date.now().toString(36);
   // 立即切换到新会话，不。API 返回
   currentChat = newId;
-  document.getElementById('chatTitle').textContent = t('chat.newChat');
+  document.getElementById('chatTitle').textContent = _name;
   document.getElementById('ctxInfo').textContent = '';
   document.getElementById('messages').innerHTML = '<div class="empty">'+t('chat.newChatHint')+'</div>';
   lastMsgTime = 0;
@@ -1567,7 +1595,7 @@ function newChat() {
   streamingMsgs = {};
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({type:'subscribe', chatId: newId}));
   // 异步创建后端记录：聊。+ 用户 participant + AI Agent participant
-  api('/api/chats', 'POST', { id: newId, type: 'private', name: t('chat.newChat') }).then(() => {
+  api('/api/chats', 'POST', { id: newId, type: 'private', name: _name }).then(() => {
     // 加用。
     api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: lanMyId(), role: 'owner' })
       .catch(function(e) { console.warn('participant user:', e); return api('/api/participants', 'POST', { id: 'p-' + newId + '-me', chatId: newId, userId: clientId, role: 'owner' }); })

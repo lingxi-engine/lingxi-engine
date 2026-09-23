@@ -357,6 +357,50 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── 重命名会话/群聊（v2.0.25: 新建会话与新建群聊一致，均可改名）──
+  // 权限: 仅会话参与者可改；本地免登录模式(admin-auto/admin-token)跳过一致性检查
+  // 状态机: 会话必须存在；名称 1-60 字符，去除首尾空白
+  app.patch('/api/chats/:id/name', requireAuth, (req, res) => {
+    try {
+      const chatId = req.params.id as string;
+      const rawName = req.body?.name;
+      const name = typeof rawName === 'string' ? rawName.trim() : '';
+      if (!name) return res.status(400).json({ error: '名称不能为空' });
+      if (name.length > 60) return res.status(400).json({ error: '名称不能超过60个字符' });
+
+      const d = getDB();
+      const stmt = d.prepare('SELECT id, type, name FROM chats WHERE id = ?');
+      stmt.bind([chatId]);
+      let chat: any = null;
+      if (stmt.step()) chat = stmt.getAsObject();
+      stmt.free();
+      if (!chat) return res.status(404).json({ error: '会话不存在' });
+
+      // 权限校验: 当前用户必须是该会话参与者
+      const jwtUser = (req as any).user;
+      const jwtSid = String(jwtUser?.sid || '');
+      const jwtSub = String(jwtUser?.sub || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
+      if (!isLocalAuto) {
+        const ps = d.prepare('SELECT user_id, agent_id, role FROM participants WHERE chat_id = ?');
+        ps.bind([chatId]);
+        const members: any[] = [];
+        while (ps.step()) members.push(ps.getAsObject());
+        ps.free();
+        const uidSet = new Set(members.map((m: any) => String(m.user_id || '')));
+        const isMember = (jwtSub && uidSet.has(jwtSub)) || (jwtNumericId && uidSet.has(jwtNumericId));
+        if (!isMember) return res.status(403).json({ error: '无权修改该会话名称' });
+      }
+
+      const oldName = chat.name ?? null;
+      d.run('UPDATE chats SET name = ? WHERE id = ?', [name, chatId]);
+      broadcast({ type: 'chat.renamed', chatId, name, oldName });
+      res.json({ ok: true, chatId, name, oldName });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
   // ── 群聊协作模式（持久化于 chats.chat_mode，重启不丢）──
   app.get('/api/chats/:id/mode', requireAuth, (req, res) => {
     const mode = getChatMode(req.params.id as string);
