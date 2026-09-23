@@ -236,8 +236,10 @@ src/web/platform-config.js
 *.sqlite
 *.sqlite3
 
-# runtime SQLite storage
-storage/
+# runtime SQLite storage（只忽略数据目录，不误伤 src/storage 源码目录）
+/storage/
+data/storage/
+!src/storage/
 
 
 # Python bytecode cache

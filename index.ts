@@ -134,6 +134,7 @@ import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
+import { createMvpMarketRoutes } from './src/routes/mvp-market.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
@@ -2947,6 +2948,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     pattern.test(req.path) ? requireAuth(req, res, next) : next();
   app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
   app.use('/api', authIfMatch(/^\/evaluations(\/|$)/), createEvaluationRoutes({ router, db } as any));  // AGI: 评测体系
+  // ── 灵犀 MVP 闭环（任务/报价/合同/交付/争议/结算/通知/审计/智能体预算）──
+  app.use('/api/mvp', createMvpMarketRoutes({ db, requireAuth, optAuth, adminAuth } as any));
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
   app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));
