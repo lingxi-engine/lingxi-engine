@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a reproducible problem in LingXi Engine
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please remove secrets, tokens, and private data before submitting.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the actual behavior and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure ...
+        2. Run ...
+        3. Open ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 2.0.24 / commit SHA / branch
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Core TypeScript app
+        - Python collaboration engine
+        - Web UI
+        - Channels/integrations
+        - Mobile packaging
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, Node version, Python version, provider(s), Docker on/off
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Redact secrets before submitting.

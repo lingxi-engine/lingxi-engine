@@ -1,0 +1,38 @@
+name: Installation problem
+description: Get help with setup, install, or first-run failures
+title: "[Install]: "
+labels:
+  - installation
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: What are you trying to install?
+      description: Describe your target platform and what command or guide you followed.
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Commands run
+      placeholder: |
+        npm install
+        npm start
+        python lingxi_engine/tests/run_all.py
+  - type: textarea
+    id: output
+    attributes:
+      label: Error output
+      description: Paste the exact error text and redact secrets.
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      placeholder: Node 20.x, npm 10.x, Python 3.11.x, Docker yes/no
+  - type: textarea
+    id: config
+    attributes:
+      label: Provider/config summary
+      description: Mention whether you are using Ollama, DeepSeek, OpenAI-compatible APIs, or another provider path.

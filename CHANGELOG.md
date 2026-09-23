@@ -2,6 +2,20 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.24] - 2026-09-23
+
+### 文档与发布治理
+
+- 根 README 改为英文优先，并新增 `README.zh-CN.md` 中文配套文档，明确项目定位为**开源、自托管的 AI Agent 平台**
+- 新增公开仓库治理文件：`SECURITY.md`、`CODE_OF_CONDUCT.md`、`SUPPORT.md`
+- 新增 GitHub issue / PR 模板，以及 `docs/release-checklist.md`、`docs/roadmap.md`、`docs/internal-boundaries.md`
+- 对齐公开文档中的版本/环境说明：Node 最低版本按代码与 CI 统一为 `18+`，Docker 沙箱说明改为**默认关闭，需显式启用**
+- 修正文档与静态站点中的若干硬编码公网地址/旧版本展示，避免把受控内部部署误表述为公共托管服务
+
+### 版本对齐
+
+- `package.json` / `package-lock.json` / `version.txt` / `CHANGELOG.md` 对齐 **2.0.24**
+
 ## [2.0.23] - 2026-09-22
 
 ### 修复（自 v2.0.22 tag 以来 7 个 commit 的累积变更）

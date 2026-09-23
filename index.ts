@@ -4643,7 +4643,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const isAdmin = (jwtUser?.roles || []).includes('admin');
       if (!isAdmin) return res.status(403).json({ error: '仅管理员可执行升级' });
       if (!existsSync(join(process.cwd(), '.git'))) {
-        return res.json({ ok: false, error: '当前部署不是 git 仓库（tar 包安装），无法用升级按钮自动更新。请到浏览器重新运行安装命令完成升级：iwr -useb http://47.93.157.83:8080/install.ps1 | iex' });
+        return res.json({ ok: false, error: '当前部署不是 git 仓库（tar 包安装），无法用升级按钮自动更新。请重新运行你当前部署文档中的 install.sh / install.ps1 安装命令完成升级。' });
       }
       const { execSync } = await import('child_process');
       const out = execSync('git pull --ff-only', { cwd: process.cwd(), timeout: 120000, encoding: 'utf8' });
@@ -4849,4 +4849,3 @@ main().catch((err: any) => {
   console.error('启动失败:', err);
   process.exit(1);
 });
-
