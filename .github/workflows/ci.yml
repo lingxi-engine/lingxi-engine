@@ -46,6 +46,9 @@ jobs:
         # 2026-09-17 fix: remove continue-on-error and head pipe (pipe swallows tsc exit code)
         run: npx tsc --noEmit --skipLibCheck
 
+      - name: Vitest suite (90 tests)
+        run: npx vitest run
+
   hygiene-check:
     name: Workspace hygiene check
     runs-on: ubuntu-22.04
