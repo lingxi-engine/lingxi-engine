@@ -1,78 +1,84 @@
 # Contributing to LingXi Engine
 
-欢迎贡献！本项目是 AI-Native IM 平台，接受功能改进、Bug 修复、文档优化、测试用例。
+Thanks for considering a contribution.
 
-## 开发环境
+## Before you start
+
+- Read the [README](README.md) for product positioning and current support boundaries.
+- Read [SECURITY.md](SECURITY.md) before reporting or changing anything security-sensitive.
+- For maintainer-only/public-release cleanup items, check [docs/internal-boundaries.md](docs/internal-boundaries.md).
+
+## Local development
+
+### Requirements
+
+- Node.js 18+
+- npm 9+
+- Optional: Python 3.11+ for `lingxi_engine/` regression checks
+- Optional: Docker if you want to test the opt-in sandbox path
+
+### Setup
 
 ```bash
 git clone https://github.com/lingxi-engine/lingxi-engine.git
 cd lingxi-engine
 npm install
 cp .env.example .env
-# 编辑 .env 配置至少一个 AI Provider
+
+# configure at least one provider or local model endpoint
 npm run dev
 ```
 
-## 分支策略
+By default the main app runs at `http://localhost:3456`.
 
-- `main` — 稳定版本，勿直推
-- `feat/<name>` — 新功能
-- `fix/<name>` — Bug 修复
-- `docs/<name>` — 文档变更
+## Architecture at a glance
 
-## 提交规范
+- `index.ts`: main HTTP + WebSocket server
+- `src/`: core TypeScript runtime (AI routing, tools, auth, storage, channels, platform/mobile helpers)
+- `web/`: static UI/site assets
+- `lingxi_engine/`: Python multi-model collaboration engine
+- `tests/`: TypeScript-side tests and targeted verification scripts
 
-```
-type(scope): 简短描述
+## Checks to run
 
-feat(router): 支持推理过程流式展示
-fix(auth): 修复 refresh token 比对逻辑
-docs(readme): 补充 API Key 配置指南
-...
-```
-
-## 类型检查
+Please run the smallest relevant existing checks for your changes:
 
 ```bash
-npm run typecheck    # 必须通过（exit 0）
+npm run typecheck
+npm test
+python lingxi_engine/tests/run_all.py
 ```
 
-## 技术栈
+For documentation-only changes, at minimum verify links, commands, and version references against the repository.
 
-| 层 | 技术 |
-|---|---|
-| 运行时 | Node.js 24+ |
-| 语言 | TypeScript (ESM) |
-| HTTP | Express 4 |
-| 数据库 | SQLite (better-sqlite3) |
-| AI SDK | OpenAI Node SDK |
-| 实时通信 | WebSocket (ws) |
-| 身份认证 | JWT + bcryptjs |
-| 前端 | 原生 HTML/CSS/JS (单文件) |
+## Change expectations
 
-## 项目结构
+- Keep changes focused and minimal.
+- Do not change core runtime behavior just to make a check pass.
+- Update documentation when behavior, configuration, or public positioning changes.
+- Avoid introducing new dependencies unless there is a strong reason.
+- If your change affects auth, tools, sandboxing, channels, or deployment, explain the risk and validation steps in your PR.
 
+## Pull request process
+
+1. Create a focused branch from the active development branch.
+2. Make the smallest complete change that solves the issue.
+3. Run the relevant checks above.
+4. Update docs/tests when needed.
+5. Fill out the PR template with testing, security, and documentation notes.
+
+## Commit style
+
+Conventional-style messages are preferred:
+
+```text
+type(scope): short summary
+
+docs(readme): rewrite public beta positioning
+fix(auth): reject unauthenticated public admin requests
+test(router): cover tool routing regression
 ```
-src/
-├── ai/          # 多 Provider AI 接入
-├── agents/      # Agent 生命周期管理
-├── auth/        # 认证与 Token
-├── channels/    # 渠道适配 (Telegram, Signal, iMessage)
-├── core/        # 核心逻辑 (路由/记忆/搜索/Cron/沙箱)
-├── mcp/         # MCP 协议
-├── middleware/  # Express 中间件
-├── plugins/     # 插件系统
-├── storage/     # SQLite 数据层
-├── tools/       # 工具系统 (内置/浏览器/搜索)
-└── voice/       # TTS + STT
-```
 
-## Code Review Checklist
+## Security-sensitive contributions
 
-- [ ] `tsc --noEmit` 通过
-- [ ] `npm start` 启动正常
-- [ ] 无 `require()` 残留 (项目是 ESM)
-- [ ] 新增路由需鉴权或显式标注免鉴权
-- [ ] 敏感操作有白名单/沙箱
-- [ ] 错误用 `AppError` 统一格式
-
+If you believe you found a vulnerability, do **not** open a public issue with exploit details. Follow [SECURITY.md](SECURITY.md) instead.

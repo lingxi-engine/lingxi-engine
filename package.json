@@ -1,7 +1,7 @@
 {
   "name": "lingxi-engine",
   "version": "2.0.24",
-  "description": "LingXi Engine - AI-native IM platform where every user gets an AI agent",
+  "description": "Open-source self-hosted AI agent platform with conversation, memory, tools, and multi-model orchestration",
   "license": "MIT",
   "author": "LingXi Engine",
   "repository": {

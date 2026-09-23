@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest an improvement or new capability
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What user or developer pain point does this address?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed approach
+      description: Describe a possible solution if you have one.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - Core TypeScript app
+        - Python collaboration engine
+        - Tooling/sandbox
+        - Docs/governance
+        - Mobile/web assets
+        - Experimental platform/mesh/marketplace
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

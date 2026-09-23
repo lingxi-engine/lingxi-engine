@@ -1,121 +1,139 @@
-# 🐿️ LingXi Engine · 灵犀引擎
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-> **AI-Native 即时通讯平台** — 每个用户绑定一个 AI 智能体，对话时真人与 AI 同在
+# LingXi Engine
+
+Open-source, self-hosted AI agent platform for conversation, memory, tools, and multi-model orchestration.
+
+> Status: **developer preview / public beta preparation**. LingXi Engine is suitable for local and controlled self-hosted deployments. It is **not** presented here as a production-ready managed SaaS or globally hosted public service.
 
 [![License](https://img.shields.io/github/license/lingxi-engine/lingxi-engine?color=blue)](LICENSE)
-[![Node](https://img.shields.io/badge/node-24%2B-brightgreen)](https://nodejs.org)
+[![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
----
+## What it is
 
-## ✨ 特性
+LingXi Engine combines:
 
-- 🤖 **AI Agent 双向对话** — 每个用户自带 AI 分身，群聊中真人与 Agent 共存
-- 🧠 **推理过程可视化** — 支持 DeepSeek R1 / OpenAI o1 等推理模型的思考链流式展示
-- 🔧 **多工具系统** — web_search / code_execute / shell_exec / 文件读写 / 时间计算
-- 🛡️ **安全沙箱** — Docker 隔离执行代码和命令，默认开启
-- 📦 **零依赖前端** — 单文件 HTML (1811 行)，无需 React/Vue
-- 🔌 **多渠道** — 支持 Telegram / Signal / iMessage 接入
-- 🌐 **多 AI Provider** — OpenAI / DeepSeek / NVIDIA NIM / Ollama 即插即用
-- ⏰ **Cron 定时任务** — 带时区支持 + 磁盘持久化
-- 💾 **SQLite 存储** — 零配置本地数据库
-- 🔒 **JWT 认证** — access token + 刷新令牌滚动刷新
-- 📡 **WebSocket 实时推送** — 流式输出 + 工具调用进度广播
+- a TypeScript self-hosted chat and agent application with WebSocket streaming, memory, tools, auth, and channel integrations
+- a Python multi-model collaboration engine under [`lingxi_engine/`](lingxi_engine/README.md) with its own regression suite
+- optional website/mobile assets that are still being prepared for public release
 
-## 🚀 快速开始
+## Capability status
+
+### Stable foundation
+
+- Self-hosted web app with chat, agent conversations, and local persistence
+- Multi-provider model routing and OpenAI-compatible integrations
+- Tool execution, approval flows, and local memory/persistence
+- TypeScript type-checking in CI and Python collaboration-engine regression coverage
+
+### Beta
+
+- Docker-backed tool sandboxing when explicitly enabled
+- Channel adapters and mobile packaging workflows
+- Release packaging and deployment assets intended for maintainer review
+
+### Experimental
+
+- Cross-instance mesh/platform flows
+- Marketplace, hiring, and broader social/distributed workflows
+- Maintainer-specific website/demo deployment automation
+
+See [docs/roadmap.md](docs/roadmap.md) for the public roadmap and support level by area.
+
+## Quick start
+
+### Prerequisites
+
+- Node.js **18+** (CI currently runs on Node 20)
+- npm **9+**
+- Optional: Docker for isolated tool execution
+- Optional: Python **3.11+** for the `lingxi_engine/` regression suite
+
+### Run locally
 
 ```bash
-# 1. 克隆并安装
 git clone https://github.com/lingxi-engine/lingxi-engine.git
 cd lingxi-engine
 npm install
-
-# 2. 配置 API Key
 cp .env.example .env
-# 编辑 .env，至少配置一个 Provider
 
-# 3. 启动
+# configure at least one provider or local model endpoint
+# then start the server
 npm start
-# 打开 http://localhost:3456
 ```
 
-**最简单的配置思路**：
+Open `http://localhost:3456`.
 
-| Provider | 环境变量 | 价格 | 推理过程支持 |
-|---|---|---|---|
-| DeepSeek | `DEEPSEEK_API_KEY` | 便宜 | ✅ R1 推理链 |
-| NVIDIA NIM | `NVIDIA_API_KEY` | 免费额度 | ❌ |
-| Ollama | 无需 Key | 免费 (需 GPU) | 取决于模型 |
+## Configuration and provider overview
 
-## 📋 环境要求
+`/.env.example` is the source of truth for the main TypeScript app. Common settings:
 
-| 依赖 | 版本 | 必须 |
-|---|---|---|
-| Node.js | 18+ (推荐 24+) | ✅ |
-| npm | 9+ | ✅ |
-| Docker | 任意 | 可选 (沙箱隔离) |
-| Ollama | 任意 | 可选 (本地模型) |
+| Purpose | Variables | Notes |
+| --- | --- | --- |
+| Local model endpoint | `OLLAMA_BASE_URL`, `DEFAULT_MODEL` | Useful for fully local/self-hosted experiments |
+| Cloud model access | `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `NVIDIA_API_KEY` | Configure only the providers you actually use |
+| Tool/reply split | `TOOL_MODEL`, `REPLY_MODEL` | Lets tool-use and final replies use different models |
+| Approval mode | `APPROVAL_AUTO_APPROVE` | Leave unset to keep manual approvals |
+| Docker sandbox | `USE_DOCKER_SANDBOX=true` | **Off by default**; when enabled, Docker runs with network isolation defaults |
+| Cross-instance mesh | `MESH_PLATFORM_URL`, `MESH_TOKEN` | Treat as advanced/experimental setup |
 
-## 🏗 架构
+## Security and operational limits
 
-```
-index.ts (1849 行)          ← HTTP + WebSocket 主入口
-├── src/ai/                 ← AI 接入 (RedisHub + ProviderRegistry)
-├── src/agents/             ← Agent 生命周期 (创建/删除/模型切换)
-├── src/auth/               ← JWT + bcrypt 认证
-├── src/core/
-│   ├── router.ts           ← 消息路由 + 工具调用循环
-│   ├── cron-scheduler.ts   ← 定时任务 + IANA时区 + 持久化
-│   ├── docker-sandbox.ts   ← Docker 沙箱隔离
-│   ├── hooks.ts            ← 可编程钩子系统
-│   ├── inbox.ts            ← 站内通知
-│   ├── compaction.ts       ← 上下文压缩
-│   ├── memory-reflector.ts ← 记忆反思
-│   ├── push.ts             ← APNs + FCM 推送
-│   ├── session-manager.ts  ← 会话生命周期
-│   └── ws-handler.ts       ← WebSocket 协议处理
-├── src/tools/
-│   ├── builtin.ts          ← 15 个内置工具 + Docker沙箱集成
-│   ├── executor.ts         ← 工具调用循环
-│   ├── search-providers.ts ← Web 搜索 (3 Provider)
-│   ├── auto-skill.ts       ← 自动技能学习
-│   └── registry.ts         ← 工具注册表
-├── src/middleware/
-│   ├── jwt-auth.ts         ← JWT 鉴权 (required/optional)
-│   ├── admin-auth.ts       ← Admin Token 鉴权 (fail-secure)
-│   └── rate-limit.ts       ← 内存限流 (X-Forwarded-For)
-├── src/storage/db.ts       ← SQLite (better-sqlite3) 数据库
-├── src/channels/           ← Telegram / Signal / iMessage 适配
-├── src/voice/              ← TTS + STT
-└── web/index.html          ← 前端单文件 (1811行)
-```
+- LingXi Engine is currently a **self-hosted developer platform**, not a hosted multi-tenant product.
+- Tool execution and code execution require careful operator review, especially before any public network exposure.
+- Docker sandboxing is **opt-in**, not enabled by default.
+- Default/local install flows are aimed at trusted environments first; review auth tokens, admin flows, channel credentials, and model keys before internet exposure.
+- Some repository files still document maintainer-only deployment workflows and should be reviewed before making the repository public. See [docs/internal-boundaries.md](docs/internal-boundaries.md).
 
-## 🔒 安全
+For vulnerability reporting and supported-version policy, see [SECURITY.md](SECURITY.md).
 
-修复了从 v1.0.0 的 15 个安全漏洞 (详见 [CHANGELOG](CHANGELOG.md))：
+## Demo and deployment status
 
-- ✅ 全局 JWT 鉴权兜底
-- ✅ Admin Token 防护 (fail-secure)
-- ✅ Docker 沙箱隔离 (shell_exec + code_execute)
-- ✅ shell_exec 命令白名单
-- ✅ 文件操作 safePath 约束
-- ✅ WebSocket 生产环境拒绝匿名连接
-- ✅ Slack webhook 签名校验
-- ✅ 备份文件 (.bak) 阻止公开下载
-- ✅ auto-skill 名称路径穿越防护
-- ✅ singal.ts exec → execFile (命令注入修复)
+- No official globally managed SaaS is announced in this repository.
+- No public multi-tenant demo is promised here.
+- Public website/domain rollout, release hosting, and controlled demo environments still require maintainer review of deployment scripts, server addresses, and website assets.
 
-## 🤝 贡献
+See [docs/release-checklist.md](docs/release-checklist.md) for remaining manual release tasks.
 
-欢迎 Pull Request。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+## Project structure
+
+| Path | Purpose |
+| --- | --- |
+| `index.ts` | Main TypeScript server entrypoint |
+| `src/` | Core application logic: AI routing, auth, tools, storage, channels, mobile/platform support |
+| `web/` | Static web assets and website/download pages |
+| `lingxi_engine/` | Python multi-model collaboration engine |
+| `tests/` | TypeScript-side targeted tests |
+| `docs/` | Public release docs plus maintainer review notes |
+| `app/`, `mobile-app/` | Mobile packaging/work-in-progress app shells |
+
+## Validation and testing
+
+Run the checks already used by the repository:
 
 ```bash
-npm run dev        # 开发模式 (热重载)
-npm run typecheck  # 类型检查 (必须通过)
+npm run typecheck
+npm test
+python lingxi_engine/tests/run_all.py
 ```
 
-## 📄 许可证
+The GitHub Actions workflow also runs hygiene checks for BOMs, junk files, and monolith growth limits.
 
-MIT License — 详见 [LICENSE](LICENSE)。
+## Documentation and project links
 
+- [Chinese README](README.zh-CN.md)
+- [Contributing guide](CONTRIBUTING.md)
+- [Support guide](SUPPORT.md)
+- [Security policy](SECURITY.md)
+- [Release checklist](docs/release-checklist.md)
+- [Roadmap](docs/roadmap.md)
+- [Maintainer review boundaries](docs/internal-boundaries.md)
+- [Python collaboration engine](lingxi_engine/README.md)
+- [Changelog](CHANGELOG.md)
+- [Releases](https://github.com/lingxi-engine/lingxi-engine/releases)
+
+## License
+
+MIT — see [LICENSE](LICENSE).

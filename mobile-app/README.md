@@ -1,6 +1,6 @@
 # 灵犀引擎 Android App（mobile-app/）
 
-零第三方依赖的 WebView 壳：打开即连官网移动端引擎入口 `http://47.93.157.83/m/`，
+零第三方依赖的 WebView 壳：打开即连你自托管实例的移动端入口（例如 `https://your-domain.example/m/`），
 聊天、智能体、工作流、技能市场全功能与桌面同源，无需登录配置（token 存 WebView localStorage）。
 
 ## 构建（服务器云构建，本机无需 Android SDK）
