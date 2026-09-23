@@ -5074,11 +5074,27 @@ function handleTaskProgress(msg) {
       }
       renderTaskDecompSteps(msg.msgId);
       break;
+
+    // v2.0.24: 子代理进度 — 与父 Agent 步骤做视觉区分
+    case 'subagent_progress':
+      state.status = 'executing';
+      for (var si = 0; si < state.steps.length; si++) {
+        if (state.steps[si].id === msg.stepId) {
+          state.steps[si].status = 'running';
+          state.steps[si].executor = 'subagent';
+          state.steps[si].detail = msg.output || msg.message || '';
+          break;
+        }
+      }
+      renderTaskDecompSteps(msg.msgId);
+      break;
     
     case 'step_done':
-      for (var i = 0; i < state.steps.length; i++) {
-        if (state.steps[i].id === msg.stepId) {
-          state.steps[i].status = (msg.success === false) ? 'failed' : 'done';
+      for (var di = 0; di < state.steps.length; di++) {
+        if (state.steps[di].id === msg.stepId) {
+          state.steps[di].status = (msg.success === false) ? 'failed' : 'done';
+          if (/^子代理/.test(msg.message || '')) state.steps[di].executor = 'subagent';
+          if (msg.output) state.steps[di].detail = msg.output;
           break;
         }
       }
@@ -5134,7 +5150,12 @@ function renderTaskDecompSteps(msgId) {
     var icon = icons[s.status] || '\u23F3';
     var color = colors[s.status] || 'var(--text3)';
     var anim = s.status === 'running' ? ' style="animation:blink 1s infinite"' : '';
-    return '<div' + anim + ' style="color:' + color + '">' + icon + ' 步骤 ' + (i + 1) + '/' + state.total + ': ' + esc(s.name) + '</div>';
+    // v2.0.24: 子代理执行的步骤加 🤖 标识，与父 Agent 步骤区分
+    var badge = s.executor === 'subagent' ? ' \u{1F916}' : '';
+    var detail = (s.executor === 'subagent' && s.detail)
+      ? '<div style="color:var(--text3);font-size:11px;margin-left:1.6em">\u2514 ' + esc(String(s.detail).slice(0, 120)) + '</div>'
+      : '';
+    return '<div' + anim + ' style="color:' + color + '">' + icon + badge + ' 步骤 ' + (i + 1) + '/' + state.total + ': ' + esc(s.name) + '</div>' + detail;
   }).join('');
   
   el.innerHTML = html;
