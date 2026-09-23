@@ -508,6 +508,7 @@ setSearchManager(searchManagerInstance);
   });
   // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
   setSubAgentManager(subAgentManager);
+  setSubAgentManagerForWS(subAgentManager);
   console.log('[SubAgent] 已注入工具系统，delegate_task 可用');
   // v2.0.22: 把子代理工具调用广播出去，修复多 Agent(agent.task) 场景 bench steps=0 的度量缺陷
   subAgentManager.setProgressHandler((task: any, step: string, _status: string, output?: string) => {

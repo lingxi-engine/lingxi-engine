@@ -2,6 +2,7 @@ import type { MessageRouter } from "./router.js";
 import type { WebSocket } from "ws";
 import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext } from "./chat-modes.js";
 import { Orchestrator, ORCHESTRATOR_DEFAULT_TIMEOUT_MS, type TaskNode } from "./orchestrator.js";
+import { SubAgentManager } from "./subagent-manager.js";
 
 // === 长任务状态追踪（支持断点续做）===
 interface TaskPlan {
@@ -33,6 +34,12 @@ export interface WSResponse {
 
 // V10: subscription tracking per WebSocket connection
 export const wsSubscriptions = new WeakMap<WebSocket, Set<string>>();
+
+// 子代理管理器（由 index.ts 注入，agent.task 无依赖步骤自动派发给子代理）
+let subAgentManagerInstance: SubAgentManager | null = null;
+export function setSubAgentManagerForWS(sm: SubAgentManager | null): void {
+  subAgentManagerInstance = sm;
+}
 
 // ── 停止生成：追踪每个聊天正在进行中的回复（可并发多个 Agent）──
 const activeGenerations = new Map<string, Set<AbortController>>();
@@ -286,6 +293,87 @@ export function handleWSMessage(
               throw new Error('用户已停止任务');
             }
             let abortedByTimeout = false;
+
+            // ⭐ 系统级调度：DAG 中无依赖步骤自动派发给子代理（不依赖模型主动调用 delegate_task）
+            if (task.dependsOn.length === 0 && subAgentManagerInstance) {
+              broadcast({
+                type: "task.progress",
+                chatId, from: agentSenderId, msgId: taskMsgId,
+                phase: "step_start",
+                message: "派发子代理：" + task.name,
+                step: stepIdx + 1, total: steps.length,
+                stepId: task.id, stepName: task.name,
+                timestamp: Date.now(),
+              });
+              try {
+                const spawnedId = await subAgentManagerInstance.spawn({
+                  objective: task.prompt,
+                  parentId: agentId,
+                  chatId,
+                  taskName: task.name,
+                  timeoutSeconds: Math.floor((task.timeout || ORCHESTRATOR_DEFAULT_TIMEOUT_MS) / 1000),
+                  onProgress: (step: string, status: string, output?: string) => {
+                    try {
+                      broadcast({
+                        type: "task.progress",
+                        chatId, from: agentSenderId, msgId: taskMsgId,
+                        phase: "subagent_progress",
+                        message: "[子代理] " + step + "：" + status,
+                        step: stepIdx + 1, total: steps.length,
+                        stepId: task.id, stepName: task.name,
+                        output: output?.slice(0, 800),
+                        timestamp: Date.now(),
+                      });
+                    } catch { /* ignore */ }
+                  },
+                });
+                const subResult = await subAgentManagerInstance.awaitResult(spawnedId);
+                const subOutput = subResult?.result || subResult?.error || "子代理执行完成";
+                const subSuccess = subResult?.status === 'completed';
+
+                broadcast({
+                  type: "task.progress",
+                  chatId, from: agentSenderId, msgId: taskMsgId,
+                  phase: "step_done",
+                  message: (subSuccess ? "子代理完成：" : "子代理失败：") + task.name,
+                  step: stepIdx + 1, total: steps.length,
+                  stepId: task.id, stepName: task.name,
+                  success: subSuccess,
+                  output: subOutput.slice(0, 500),
+                  timestamp: Date.now(),
+                });
+
+                const p = activeTaskPlans.get(taskMsgId);
+                if (p) {
+                  const st = p.steps.find((s: any) => s.id === task.id);
+                  if (st) { st.status = subSuccess ? 'done' : 'failed'; st.output = subOutput; }
+                  p.currentStep = stepIdx + 1;
+                }
+                return subOutput;
+              } catch (subErr: any) {
+                console.error('[WS] subagent spawn error:', subErr);
+                const errMsg = "子代理执行异常：" + (subErr.message || '未知错误');
+                broadcast({
+                  type: "task.progress",
+                  chatId, from: agentSenderId, msgId: taskMsgId,
+                  phase: "step_done",
+                  message: errMsg,
+                  step: stepIdx + 1, total: steps.length,
+                  stepId: task.id, stepName: task.name,
+                  success: false,
+                  output: errMsg.slice(0, 500),
+                  timestamp: Date.now(),
+                });
+                const p = activeTaskPlans.get(taskMsgId);
+                if (p) {
+                  const st = p.steps.find((s: any) => s.id === task.id);
+                  if (st) { st.status = 'failed'; st.output = errMsg; }
+                  p.status = 'failed';
+                }
+                return errMsg;
+              }
+            }
+
             const onAbort = () => { abortedByTimeout = true; };
             if (signal) signal.addEventListener('abort', onAbort, { once: true });
 
