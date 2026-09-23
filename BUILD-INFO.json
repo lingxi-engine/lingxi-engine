@@ -1,5 +1,5 @@
 {
-    "version": "2.0.23",
+    "version": "2.0.24",
     "commit": "de40501",
     "buildTime": "2026-09-22T10:30:00.000Z",
     "builder": "pack-release.ps1"

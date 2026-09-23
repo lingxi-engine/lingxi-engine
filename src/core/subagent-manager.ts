@@ -27,6 +27,8 @@ export interface SubAgentTask {
   timeoutSeconds: number;
   toolRegistry?: any;
   agentIdForTools?: string;
+  skills?: string[];        // v2.0.24: 子代理独立技能集（优先于父 Agent 技能）
+  role?: string;            // v2.0.24: 子代理角色/persona 描述
   onProgress?: (step: string, status: string, output?: string) => void;
   // v2.0: 子代理间消息历史
   messageHistory?: AgentMessage[];
@@ -41,6 +43,8 @@ export interface SpawnOptions {
   taskName?: string;
   toolRegistry?: any;
   agentIdForTools?: string;
+  skills?: string[];        // v2.0.24: 子代理独立技能集
+  role?: string;            // v2.0.24: 子代理角色描述
   onProgress?: (step: string, status: string, output?: string) => void;
 }
 
@@ -159,6 +163,8 @@ export class SubAgentManager {
       timeoutSeconds: opts.timeoutSeconds || parseInt(process.env.SUBAGENT_TIMEOUT_SECONDS || '1800', 10),
       toolRegistry: opts.toolRegistry,
       agentIdForTools: opts.agentIdForTools || opts.parentId,
+      skills: opts.skills,
+      role: opts.role,
       onProgress: undefined,
       messageHistory: [],
     };
@@ -173,6 +179,11 @@ export class SubAgentManager {
       console.error(`[SubAgent] ${taskId} 执行异常:`, err.message);
     });
     return taskId;
+  }
+
+  // v2.0.24: 供 get_subagent_result 工具查询异步子代理状态
+  getTask(taskId: string): SubAgentTask | null {
+    return this.tasks.get(taskId) || null;
   }
 
   async awaitResult(taskId: string, timeoutMs?: number): Promise<SubAgentTask | null> {
@@ -389,17 +400,25 @@ export class SubAgentManager {
       if (task.onProgress) task.onProgress('execute', 'running');
 
       if (task.toolRegistry && task.agentIdForTools) {
-        const tools = task.toolRegistry.listToolsForAgent(task.agentIdForTools);
+        // v2.0.24: 子代理有独立技能集时优先使用，否则回落到父 Agent 技能
+        const tools = (task.skills && task.skills.length > 0 && task.toolRegistry.listToolsForSkills)
+          ? task.toolRegistry.listToolsForSkills(task.skills)
+          : task.toolRegistry.listToolsForAgent(task.agentIdForTools);
         if (tools && tools.length > 0) {
           if (task.onProgress) task.onProgress('execute', 'running', '使用 ' + tools.length + ' 个工具');
 
-          const toolPrompt = '你是一个独立子任务执行器，拥有工具调用能力。请完成以下任务。\n\n任务目标：' + task.objective + '\n\n规则：\n- 主动调用工具完成任务（搜索、读写文件、执行代码等）\n- 如果需要其他 Agent 的协助，可以使用 request_agent_help 工具\n- 完成后给出简洁的结果总结\n- 不要有多余解释';
+          const rolePrefix = task.role ? ('【角色】' + task.role + '\n') : '';
+          const toolPrompt = rolePrefix + '你是一个独立子任务执行器，拥有工具调用能力。请完成以下任务。\n\n任务目标：' + task.objective + '\n\n规则：\n- 主动调用工具完成任务（搜索、读写文件、执行代码等）\n- 如果需要其他 Agent 的协助，可以使用 request_agent_help 工具\n- 完成后给出简洁的结果总结\n- 不要有多余解释';
+
+          const systemPrompt = task.role
+            ? ('你是灵犀引擎的子任务执行器，当前角色：' + task.role + '。拥有工具调用能力，可以通过 request_agent_help 工具请求其他 Agent 协助。')
+            : '你是灵犀引擎的子任务执行器，拥有工具调用能力。你可以通过 request_agent_help 工具请求其他 Agent 协助。';
 
           const result = await runToolsLoop({
             client: this.aiClient,
             model: task.model || this.aiModel,
             messages: [
-              { role: 'system', content: '你是灵犀引擎的子任务执行器，拥有工具调用能力。你可以通过 request_agent_help 工具请求其他 Agent 协助。' },
+              { role: 'system', content: systemPrompt },
               { role: 'user', content: toolPrompt },
             ],
             registry: task.toolRegistry,
@@ -422,7 +441,8 @@ export class SubAgentManager {
       }
 
       // 无工具时走纯文本模式
-      const prompt = `你是一个独立子任务执行器。请完成以下任务，直接给出结果，不要有多余解释。
+      const roleLine = task.role ? ('当前角色：' + task.role + '\n\n') : '';
+      const prompt = `你是一个独立子任务执行器。${roleLine}请完成以下任务，直接给出结果，不要有多余解释。
 
 任务目标：${task.objective}
 

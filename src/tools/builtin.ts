@@ -185,7 +185,7 @@ export const SKILL_CONFIGURATION: Skill[] = [
     id: "general-assistant",
     name: "通用助手",
     description: "基础助手技能，提供搜索、计算、时间查询、文件读写等通用能力",
-    tools: ["web_search", "calculate", "get_time", "read_file", "write_file", "list_dir", "shell_exec", "delegate_task", "request_agent_help", "collab_task"],
+    tools: ["web_search", "calculate", "get_time", "read_file", "write_file", "list_dir", "shell_exec", "delegate_task", "get_subagent_result", "request_agent_help", "collab_task"],
     prompt: "你是一个通用的 AI 助手。可以帮用户搜索信息、做数学计算、查时间、读写文件、浏览目录、执行系统命令。当用户提出问题时，判断是否需要调用工具，需要就直接调用。",
   },
   {
@@ -1099,6 +1099,10 @@ const TOOL_DELEGATE_TASK: ToolDefinition = {
     properties: {
       objective: { type: "string", description: "Clear task description for the sub-agent" },
       timeout: { type: "number", description: "Timeout in seconds (default 60)", default: 60 },
+      wait_for_result: { type: "boolean", description: "true=block until sub-agent finishes and return its result (default); false=return taskId immediately, poll later with get_subagent_result", default: true },
+      task_name: { type: "string", description: "Optional short name for the sub-task, shown in UI progress" },
+      skills: { type: "array", items: { type: "string" }, description: "Optional skill IDs granted to the sub-agent (e.g. [\"general-assistant\",\"code-assistant\"]). If omitted, inherits the parent agent's skills." },
+      role: { type: "string", description: "Optional role/persona for the sub-agent, e.g. 'security auditor' or 'frontend specialist'" },
     },
     required: ["objective"],
   },
@@ -1115,7 +1119,7 @@ export function setDelegateContext(agentId: string, chatId: string, registry?: a
 }
 
 async function handleDelegateTask(args: Record<string, any>) {
-  const { objective, timeout = 60 } = args;
+  const { objective, timeout = 60, wait_for_result = true, task_name, skills, role } = args;
   if (!_subAgentManager) return { error: 'SubAgent 系统未就绪' };
   try {
     const taskId = await _subAgentManager.spawn({
@@ -1125,7 +1129,19 @@ async function handleDelegateTask(args: Record<string, any>) {
       timeoutSeconds: Math.min(timeout, 180),
       toolRegistry: _currentToolRegistry || undefined,
       agentIdForTools: _currentAgentId || undefined,
+      taskName: task_name || undefined,
+      skills: Array.isArray(skills) && skills.length > 0 ? skills : undefined,
+      role: role || undefined,
     });
+    // v2.0.24: 异步委派模式 — 不阻塞父 Agent 回合，稍后用 get_subagent_result 查询
+    if (wait_for_result === false) {
+      return {
+        taskId,
+        status: 'running',
+        async: true,
+        message: '子代理已启动（异步模式）。使用 get_subagent_result 查询结果。',
+      };
+    }
     const result = await _subAgentManager.awaitResult(taskId, Math.min(timeout, 180) * 1000);
     if (!result) return { error: '子任务未返回结果' };
     if (result.status === 'completed') {
@@ -1134,6 +1150,40 @@ async function handleDelegateTask(args: Record<string, any>) {
     return { taskId, status: result.status, error: result.error || '未知错误' };
   } catch (err: any) {
     return { error: `delegate_task 失败: ${err.message}` };
+  }
+}
+
+// 工具 16c: get_subagent_result — 查询异步子代理结果 (v2.0.24)
+// ═══════════════════════════════════════════════
+
+const TOOL_GET_SUBAGENT_RESULT: ToolDefinition = {
+  name: "get_subagent_result",
+  description: "Query the status/result of a sub-agent spawned via delegate_task with wait_for_result=false. Returns 'running' if not finished yet.",
+  parameters: {
+    type: "object",
+    properties: {
+      task_id: { type: "string", description: "The taskId returned by delegate_task in async mode" },
+    },
+    required: ["task_id"],
+  },
+};
+
+async function handleGetSubagentResult(args: Record<string, any>) {
+  const { task_id } = args;
+  if (!_subAgentManager) return { error: 'SubAgent 系统未就绪' };
+  if (!task_id) return { error: '缺少 task_id 参数' };
+  try {
+    const task = _subAgentManager.getTask ? _subAgentManager.getTask(task_id) : null;
+    if (!task) return { error: `找不到子代理任务: ${task_id}` };
+    if (task.status === 'completed') {
+      return { taskId: task_id, status: 'completed', result: task.result, duration: (task.completedAt - task.createdAt) + 'ms' };
+    }
+    if (task.status === 'failed' || task.status === 'timeout') {
+      return { taskId: task_id, status: task.status, error: task.error || '未知错误' };
+    }
+    return { taskId: task_id, status: task.status || 'running', message: '子代理仍在执行中，请稍后重试' };
+  } catch (err: any) {
+    return { error: `get_subagent_result 失败: ${err.message}` };
   }
 }
 
@@ -1740,6 +1790,7 @@ export const BUILTIN_TOOLS: { tool: ToolDefinition; handler: (args: Record<strin
   { tool: TOOL_WEB_FETCH, handler: handleWebFetch },
   { tool: TOOL_JSON_PARSE, handler: handleJsonParse },
   { tool: TOOL_DELEGATE_TASK, handler: handleDelegateTask },
+  { tool: TOOL_GET_SUBAGENT_RESULT, handler: handleGetSubagentResult },
   { tool: TOOL_REQUEST_AGENT_HELP, handler: handleRequestAgentHelp },  // v2.0: Agent 间协作
   { tool: TOOL_COLLAB_TASK, handler: handleCollabTask },  // v2.1: 多智能体协作
   { tool: TOOL_MARK_GOAL_DONE, handler: handleMarkGoalDone },
