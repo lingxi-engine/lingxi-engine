@@ -1,14 +1,14 @@
-# Lingxi Engine pack script v6.8 (2026-09-14: assertions -> v2.0.20/sw-v20 + credit-backfill/no-require guards (v6.7 2026-09-12: �޸�Ƕ���������� + ���� .env ģ��)
-#   v6.7 ���:
-#     - ���� Remove-JunkFiles: �ݹ����� __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
-#       (v6.6 �� $excludeFilesRegex ֻ�����ڶ��㣬���� src/��lingxi_engine/ �ڵ������������)
-#     - Remove-EnvFiles ��Ϊ���� .env.example / .env.template��install.sh ���� .env.example��
-#     - ����: �����ļ������У�� + .env.example ������У��
+# Lingxi Engine pack script v6.8 (2026-09-14: assertions -> v2.0.20/sw-v20 + credit-backfill/no-require guards (v6.7 2026-09-12: 锟睫革拷嵌锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷 + 锟斤拷锟斤拷 .env 模锟斤拷)
+#   v6.7 锟斤拷锟?
+#     - 锟斤拷锟斤拷 Remove-JunkFiles: 锟捷癸拷锟斤拷锟斤拷 __pycache__/*.pyc/*.bak*/_result.txt/tests/data/*.json
+#       (v6.6 锟斤拷 $excludeFilesRegex 只锟斤拷锟斤拷锟节讹拷锟姐，锟斤拷锟斤拷 src/锟斤拷lingxi_engine/ 锟节碉拷锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?
+#     - Remove-EnvFiles 锟斤拷为锟斤拷锟斤拷 .env.example / .env.template锟斤拷install.sh 锟斤拷锟斤拷 .env.example锟斤拷
+#     - 锟斤拷锟斤拷: 锟斤拷锟斤拷锟侥硷拷锟斤拷锟斤拷锟叫ｏ拷锟?+ .env.example 锟斤拷锟斤拷锟斤拷校锟斤拷
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-# v2.0.22: 版本从 package.json 动态读取，禁止硬编码（此前硬编码 2.0.20，升版后必 FAIL）
+# v2.0.22: 鐗堟湰浠?package.json 鍔ㄦ€佽鍙栵紝绂佹纭紪鐮侊紙姝ゅ墠纭紪鐮?2.0.20锛屽崌鐗堝悗蹇?FAIL锛?
 $Version = (Get-Content (Join-Path $ProjectRoot 'package.json') -Raw | ConvertFrom-Json).version
 if (-not $Version) { throw '[FAIL] cannot read version from package.json' }
 $Commit = ''; try { $Commit = (git -C $ProjectRoot rev-parse --short HEAD).Trim() } catch { $Commit = 'unknown' }
@@ -24,7 +24,7 @@ $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs'
 $excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
 
-# ֻ������Щ env ģ����������� .env* һ�ɰ���
+# 只锟斤拷锟斤拷锟斤拷些 env 模锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?.env* 一锟缴帮拷锟斤拷
 $keptEnvNames = @('.env.example', '.env.template')
 
 function Remove-EnvFiles($path) {
@@ -37,7 +37,7 @@ function Remove-EnvFiles($path) {
 }
 
 function Remove-JunkFiles($path) {
-    # �ݹ���������/����������v6.6 ֻ�ڶ�����ˣ���Ŀ¼���������©����������
+    # 锟捷癸拷锟斤拷锟斤拷锟斤拷锟斤拷/锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷v6.6 只锟节讹拷锟斤拷锟斤拷耍锟斤拷锟侥柯硷拷锟斤拷锟斤拷锟斤拷锟斤拷漏锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷
     $junkDirs = @('__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache')
     Get-ChildItem $path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -in $junkDirs } |
@@ -80,7 +80,7 @@ try {
     Write-Host "Stripping nested build junk..." -ForegroundColor Cyan
     Remove-JunkFiles $StageDir
 
-    # v2.0.22: 写入构建信息（版本 + commit），供线上 /api/health 比对
+    # v2.0.22: 鍐欏叆鏋勫缓淇℃伅锛堢増鏈?+ commit锛夛紝渚涚嚎涓?/api/health 姣斿
     $buildInfo = [ordered]@{
         version   = $Version
         commit    = $Commit
@@ -151,6 +151,13 @@ try {
         Write-Host "  [OK] .env.example present ($($envTpl[0]))" -ForegroundColor Green
     } else {
         throw "[FAIL] .env.example missing (install.sh needs it)"
+    }
+
+    # install scripts must be tracked in site/ and shipped in the tarball
+    foreach ($sf in @("site/install.sh", "site/install.ps1")) {
+        $sfEntry = $tarList | Where-Object { $_ -match [regex]::Escape("lingxi-engine/$sf") }
+        if (-not $sfEntry) { throw "[FAIL] $sf not in tarball (publish uploads it - add site/ to staging)" }
+        Write-Host "  [OK] $sf in package ($($sfEntry[0]))" -ForegroundColor Green
     }
 
     # Verify key files

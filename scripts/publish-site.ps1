@@ -27,7 +27,7 @@
 #   LINGXI_DEPLOY_KEY    SSH private key path (optional)
 #
 # SECURITY: this script never reads, prints or writes any .env content.
-# Uploaded artifacts are only lingxi-engine.tar.gz and version.txt.
+# Uploaded artifacts: lingxi-engine.tar.gz, version.txt, install.sh, install.ps1.
 #
 # NOTE: this file is intentionally ASCII-only. PowerShell on a zh-CN box parses
 # a BOM-less UTF-8 .ps1 as GBK, which corrupts non-ASCII text and breaks parsing.
@@ -130,6 +130,18 @@ $verFile = Join-Path $OutDir 'version.txt'
 [System.IO.File]::WriteAllText($verFile, $verBody, [System.Text.Encoding]::UTF8)
 W-OK "version.txt generated (SHA256 $($sha.Substring(0,16))...)"
 
+# ---------- 5.5 install scripts (version drift root cause fix) ----------
+# install.sh used to hardcode VERSION="2.0.23" and lived only on the server,
+# so it never followed the repo. Now it is tracked in site/ and uploaded with
+# every publish, and its version is read from the deployed version.txt.
+$siteDir = Join-Path $RepoRoot 'site'
+$installSh = Join-Path $siteDir 'install.sh'
+$installPs1 = Join-Path $siteDir 'install.ps1'
+foreach ($f in @($installSh, $installPs1)) {
+    if (-not (Test-Path $f)) { W-Fail "install script missing: $f (expected in site/)" }
+}
+W-OK "install scripts staged: install.sh, install.ps1"
+
 # ---------- 6. upload ----------
 $Host_ = $env:LINGXI_DEPLOY_HOST
 $User_ = $env:LINGXI_DEPLOY_USER
@@ -141,6 +153,8 @@ if ($Method -eq 'manual') {
     W-Warn "manual mode: no upload performed. Copy these two files to the server public/ dir:"
     Write-Host "  1) $tarball  ->  $SiteUrl/public/lingxi-engine.tar.gz" -ForegroundColor Yellow
     Write-Host "  2) $verFile  ->  $SiteUrl/public/version.txt" -ForegroundColor Yellow
+    Write-Host "  3) $installSh  ->  $SiteUrl/install.sh" -ForegroundColor Yellow
+    Write-Host "  4) $installPs1 ->  $SiteUrl/install.ps1" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  after upload verify: curl $RemoteVerUrl should return $LocalVersion" -ForegroundColor Yellow
     exit 0
@@ -166,6 +180,14 @@ if ($Method -eq 'scp') {
     W-Info "upload version.txt"
     & scp @sshArgs $verFile "${User_}@${Host_}:${Path_}/version.txt"
     if ($LASTEXITCODE -ne 0) { W-Fail "version.txt upload failed (tarball uploaded but version file stale - retry)" }
+
+    W-Info "upload install.sh"
+    & scp @sshArgs $installSh "${User_}@${Host_}:${Path_}/../install.sh"
+    if ($LASTEXITCODE -ne 0) { W-Fail "install.sh upload failed (tarball+version already live; retry)" }
+
+    W-Info "upload install.ps1"
+    & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/../install.ps1"
+    if ($LASTEXITCODE -ne 0) { W-Fail "install.ps1 upload failed (retry)" }
 }
 elseif ($Method -eq 'ftp') {
     if (-not (Get-Command ftp -ErrorAction SilentlyContinue)) { W-Fail "ftp not found" }
@@ -176,6 +198,8 @@ elseif ($Method -eq 'ftp') {
         "binary"
         "put `"$tarball`" lingxi-engine.tar.gz"
         "put `"$verFile`" version.txt"
+        "put `"$installSh`" install.sh"
+        "put `"$installPs1`" install.ps1"
         "bye"
     )
     [System.IO.File]::WriteAllText($ftpScript, ($cmds -join "`r`n"), [System.Text.Encoding]::ASCII)
