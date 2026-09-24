@@ -357,50 +357,6 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 重命名会话/群聊（v2.0.25: 新建会话与新建群聊一致，均可改名）──
-  // 权限: 仅会话参与者可改；本地免登录模式(admin-auto/admin-token)跳过一致性检查
-  // 状态机: 会话必须存在；名称 1-60 字符，去除首尾空白
-  app.patch('/api/chats/:id/name', requireAuth, (req, res) => {
-    try {
-      const chatId = req.params.id as string;
-      const rawName = req.body?.name;
-      const name = typeof rawName === 'string' ? rawName.trim() : '';
-      if (!name) return res.status(400).json({ error: '名称不能为空' });
-      if (name.length > 60) return res.status(400).json({ error: '名称不能超过60个字符' });
-
-      const d = getDB();
-      const stmt = d.prepare('SELECT id, type, name FROM chats WHERE id = ?');
-      stmt.bind([chatId]);
-      let chat: any = null;
-      if (stmt.step()) chat = stmt.getAsObject();
-      stmt.free();
-      if (!chat) return res.status(404).json({ error: '会话不存在' });
-
-      // 权限校验: 当前用户必须是该会话参与者
-      const jwtUser = (req as any).user;
-      const jwtSid = String(jwtUser?.sid || '');
-      const jwtSub = String(jwtUser?.sub || '');
-      const jwtNumericId = String(jwtUser?.numeric_id || '');
-      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
-      if (!isLocalAuto) {
-        const ps = d.prepare('SELECT user_id, agent_id, role FROM participants WHERE chat_id = ?');
-        ps.bind([chatId]);
-        const members: any[] = [];
-        while (ps.step()) members.push(ps.getAsObject());
-        ps.free();
-        const uidSet = new Set(members.map((m: any) => String(m.user_id || '')));
-        const isMember = (jwtSub && uidSet.has(jwtSub)) || (jwtNumericId && uidSet.has(jwtNumericId));
-        if (!isMember) return res.status(403).json({ error: '无权修改该会话名称' });
-      }
-
-      const oldName = chat.name ?? null;
-      d.run('UPDATE chats SET name = ? WHERE id = ?', [name, chatId]);
-      broadcast({ type: 'chat.renamed', chatId, name, oldName });
-      res.json({ ok: true, chatId, name, oldName });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message });
-    }
-  });
   // ── 群聊协作模式（持久化于 chats.chat_mode，重启不丢）──
   app.get('/api/chats/:id/mode', requireAuth, (req, res) => {
     const mode = getChatMode(req.params.id as string);
@@ -414,6 +370,46 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
         return res.status(400).json({ error: '无效模式，可选: ' + CHAT_MODES.join(', ') });
       }
       res.json({ ok: true, mode });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── 会话/群聊重命名（v2.0.25：与新建群聊的命名体验对齐）──
+  // 背景：此前 newChat() 硬编码「新会话」且无任何改名入口，用户抱怨「点新建总是新会话，不能改名」。
+  // 私聊与群聊通用：仅参与者可改，名称落 chats.name，前端列表/标题即时同步。
+  app.patch('/api/chats/:id/name', requireAuth, (req, res) => {
+    try {
+      const chatId = req.params.id as string;
+      const rawName = req.body?.name;
+      // 1) 会话必须存在
+      const chat = db.getChatById(chatId);
+      if (!chat) return res.status(404).json({ error: '会话不存在' });
+      // 2) 名称校验：必填、去空白、限长 60
+      if (typeof rawName !== 'string' || !rawName.trim()) {
+        return res.status(400).json({ error: '会话名称不能为空' });
+      }
+      const name = rawName.trim();
+      if (name.length > 60) {
+        return res.status(400).json({ error: '会话名称不能超过 60 个字符' });
+      }
+      // 3) 越权防护：仅会话参与者可改名
+      //    v2.1.3 同前：admin-auto/admin-token 本地免登录模式下 sub='admin' 是虚拟身份，跳过一致性检查
+      const jwtUser = (req as any).user;
+      const jwtSid = String(jwtUser?.sid || '');
+      const jwtSub = String(jwtUser?.sub || jwtUser?.id || '');
+      const jwtNumericId = String(jwtUser?.numeric_id || '');
+      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
+      if (jwtSub && !isLocalAuto) {
+        const parts = db.getChatParticipants(chatId);
+        const isMember = parts.some((p: any) => String(p.user_id) === jwtSub || String(p.user_id) === jwtNumericId);
+        if (!isMember) {
+          return res.status(403).json({ error: '无权修改此会话的名称' });
+        }
+      }
+      // 4) 落库 + 广播（多端同步标题）
+      const oldName = (chat as any).name ?? null;
+      db.updateChatName(chatId, name);
+      broadcast({ type: 'chat.renamed', chatId, name, oldName, by: jwtSub || 'admin', timestamp: Date.now() });
+      res.json({ ok: true, chatId, name, oldName });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 }

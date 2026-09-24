@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 会话/群聊重命名 — 集成测试（v2.0.25）
  *
  * 覆盖 PATCH /api/chats/:id/name：
@@ -32,10 +32,12 @@ beforeAll(async () => {
   process.env.LINGXI_DATA_DIR = tmpDir;
   process.env.LINGXI_DB_PATH = path.join(tmpDir, 'test.db');
   // 动态 import，确保 initDB 读到上面的数据目录
-  const { initDB, createChat, addParticipant, getChatById } = await import('../storage/db.js');
+  const { initDB, createChat, addParticipant, getChatById, DB } = await import('../storage/db.js');
   const { registerFriendsChatsRoutes } = await import('../routes/friends-chats.js');
 
-  const db = await initDB(path.join(tmpDir, 'test.db'));
+  await initDB(path.join(tmpDir, 'test.db'));
+      // initDB 返回原始 sql.js 对象，路由 deps.db 需要 DB 类包装（getChatById/updateChatName 等方法挂在 DB 上）
+      const db = new DB();
 
   // 造两个会话：一个私聊、一个群聊
   createChat('chat-private-1', 'private', undefined, '旧私聊名');

@@ -1387,6 +1387,10 @@ export class DB {
     return addParticipant(id, chatId, userId, agentId, role);
   }
   getChatParticipants(chatId: string) { return getChatParticipants(chatId); }
+  /** 按 id 取会话（重命名/详情用） */
+  getChatById(id: string) { return getChatById(id); }
+  /** 更新会话/群聊名称（PATCH /api/chats/:id/name 用） */
+  updateChatName(id: string, name: string | null) { return updateChatName(id, name); }
   /** listParticipants 别名 (兼容旧代码) */
   listParticipants(chatId: string) { return getChatParticipants(chatId); }
   listChats() { return listChats(); }
