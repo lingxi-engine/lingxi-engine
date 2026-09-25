@@ -359,10 +359,13 @@ if (Get-Command ssh -ErrorAction SilentlyContinue) {
             $verUrl2 = "$SiteUrl/public/lingxi-engine-v$LocalVersion.tar.gz"
             $verBytes2 = $wc.DownloadData($verUrl2)
             $verHash2 = ([BitConverter]::ToString($sha.ComputeHash($verBytes2)) -replace "-", "").ToLower()
-            if ($verHash2 -eq ($sha.ToString().ToLower())) {
-                W-OK "versioned archive copy is byte-identical to the release artifact"
+            $refHash = if ($declared) { $declared } elseif ($liveTarHash) { $liveTarHash } else { $null }
+            if (-not $refHash) {
+                W-OK "versioned archive copy is served (no reference hash available to compare)"
+            } elseif ($verHash2 -eq $refHash) {
+                W-OK "versioned archive copy is byte-identical to the release artifact ($($verHash2.Substring(0,16))...)"
             } else {
-                W-Warn "versioned archive copy differs from the release artifact (users would get the wrong build)"
+                W-Warn "versioned archive copy differs from the release artifact (live $($verHash2.Substring(0,12))... vs expected $($refHash.Substring(0,12))...)"
             }
         } catch {
             W-Warn "versioned archive copy not reachable at $SiteUrl/public/lingxi-engine-v$LocalVersion.tar.gz"
