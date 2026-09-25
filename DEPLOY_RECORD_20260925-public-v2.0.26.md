@@ -227,6 +227,54 @@ tarball 与本地新包逐字节一致且包内 install.sh 已走 `run()`；官�
 
 第二轮发布前的线上文件亦已备份：`public/.bak-20260925-v2025/`（第一轮）、
 第二轮覆盖前的版本可由 `git` 检出的 `df4da95^:site/install.sh` 等价重建。
+## 六之三、第三轮重新发布（修复 6：`-manual` 提示文案）
+
+- 触发：实跑 `publish-site.ps1 -Method manual` 核对提示输出时，发现文案与实际不符。
+- 本地 HEAD：`19105f7`（fix(deploy): correct -manual hints）；发布提交 `9208b27`。
+
+### 修复 6：`-manual` 提示两处错误
+
+`-manual` 模式只打印提示不上传，实测发现：
+
+| 问题 | 原文 | 修正后 |
+|---|---|---|
+| 数量不符 | `Copy these two files`（实际列了四条） | `Copy these four files` |
+| 路径缺 `/public/` | `3) ... -> $SiteUrl/install.sh` | `3) ... -> $SiteUrl/public/install.sh` |
+| 路径缺 `/public/` | `4) ... -> $SiteUrl/install.ps1` | `4) ... -> $SiteUrl/public/install.ps1` |
+
+`server.js` 明确只从 `public/` 提供这两个文件，按旧提示放置会落到不被服务的路径。
+
+> 更正上一轮的表述：我在 `publish-site.ps1` 注释里写「FTP 分支与 `-manual` 提示都是对的」，
+> 那是**未经实测的推断且是错的**。第三轮实跑该模式后才发现并修正。
+
+### 第三轮上线产物（SHA256 实测）
+
+| 产物 | 大小 | SHA256 |
+|---|---|---|
+| `public/lingxi-engine.tar.gz` | 1,227,449 B | `b483ca62b26886d768ec0586e950c4771e177086ac35a453bd64d829a7fdb2ba` |
+| `public/install.sh` | 21,719 B | `b070218838fc9967572466f0c55cb286a6178706151578c5b513597994346193`（与第二轮相同，本轮未改动） |
+| `public/install.ps1` | 17,734 B | `76925bcae6fe97f314158a328f734b8c7bef30951581163933a0d90f7c0026dd` |
+| `public/version.txt` | 135 B | 无 BOM，首行 `2.0.26` |
+
+包内 `BUILD-INFO.json` = `2.0.26 / 19105f7`。
+
+### 第三轮独立复核（18 项，全通过）
+
+- `/version.txt`：无 BOM、`2.0.26`
+- `/install.sh`：与本地逐字节一致、CRLF=0、含 `enable-linger`、`loginctl` 走 `run()`、无裸调用、BOM 剔除序列 x2
+- `/install.ps1`：与本地一致
+- tarball：与本地新包逐字节一致；包内 `install.sh` 已走 `run()` 且为 LF；包内 BUILD-INFO = `19105f7`
+- 官网：`/` `/download.html` `/docs` `/install.sh` `/install.ps1` `/version.txt` 全 200；`/chat` `/app` `/platform` 302
+
+### 发布日志关键佐证
+
+```
+[INFO] local version: 2.0.26 (commit 19105f7)
+[INFO] live version: 2.0.26
+[OK] local and live versions match (2.0.26)
+[OK] version.txt is BOM-less (135 bytes)
+[OK] site/install.sh in package
+```
 ## 七、遗留事项
 
 1. **已安装 v2.0.25 及更早版本的 Linux 服务器**，服务仍会随 SSH 断开而停止。
