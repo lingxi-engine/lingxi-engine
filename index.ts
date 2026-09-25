@@ -724,6 +724,9 @@ setSearchManager(searchManagerInstance);
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
   port = await resolveAvailablePort(port, autoPort);
+  // v2.0.29 security hardening: bind address is configurable (default 0.0.0.0 = old behaviour).
+  // Set BIND_ADDR=127.0.0.1 to serve this machine only (kills the LAN no-login entrance).
+  const bindAddr = (process.env.BIND_ADDR || '0.0.0.0').trim() || '0.0.0.0';
 
   // ── v2.0.7: 健康检查端点（置于鉴权/限流之前，供探针与部署脚本使用）──
   // 同时保留旧响应字段 status/agents/time，兼容前端状态栏与冒烟测试
@@ -4725,10 +4728,10 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     },
   }));
 
-  server.listen(port, '0.0.0.0', () => {
+  server.listen(port, bindAddr, () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');
-    console.log(' HTTP: http://localhost:' + port);
+    console.log(' HTTP: http://localhost:' + port + '  [bind ' + bindAddr + ']');
     console.log(' WS: ws://localhost:' + port + '/ws');
     console.log(' 数据目录: ' + dataDir + (getInstanceId() ? ' | 实例: ' + getInstanceId() : ''));
     console.log(' Demo: user-shen | user-wang');

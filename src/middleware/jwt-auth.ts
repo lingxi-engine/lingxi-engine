@@ -38,11 +38,19 @@ export function isTrustedLocalSource(req: Request): boolean {
   const raw = req.socket?.remoteAddress || '';
   const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
   if (!ip) return false; // 无法确定来源时一律不可信（fail-closed）
+  // v2.0.29 security hardening: TRUSTED_LOCAL_MODE = all (default) | loopback | none.
+  // 'loopback' = only this machine skips login; LAN clients must present a token.
+  // 'none'     = every caller must present a token (strictest, for shared hosts).
+  const trustMode = (process.env.TRUSTED_LOCAL_MODE || 'all').trim().toLowerCase();
+  if (trustMode === 'none') return false;
+  const isLoopback = (addr: string): boolean =>
+    addr === '::1' || addr === 'localhost' || addr.startsWith('127.');
   const isLocal = (addr: string): boolean =>
     addr === '::1' || addr === 'localhost' || addr.startsWith('127.') ||
     addr.startsWith('192.168.') || addr.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(addr);
   // v5-P0-C 修复: 反代场景（socket=本机/内网但带 XFF）时按真实客户端 IP 判断，防止公网攻击者经反代被“洗白”成本地免登录
   if (isLocal(ip)) {
+    if (trustMode === 'loopback' && !isLoopback(ip)) return false;
     const xff = req.headers['x-forwarded-for'];
     const trustProxy = req.app?.get?.('trust proxy');
     if (xff && trustProxy) {
