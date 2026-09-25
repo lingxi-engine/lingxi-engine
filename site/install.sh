@@ -307,10 +307,20 @@ if [ "$DRY_RUN" = "0" ] && [ ! -f "$INSTALL_DIR/package.json" ]; then
 fi
 
 # 还原用户数据
+# ⚠️ 必须显式指定目标名。若写成 cp -R /tmp/lingxi-keep-xxx "$INSTALL_DIR/"，
+#    cp 会按【源 basename】落名，产物是 lingxi-keep-xxx 而不是 xxx —— 结果是
+#    .env / data / uploads 全部丢失、.env 还会被随机重新生成（升级即掉配置）。
+#    目录用 "$SRC/." 合并内容，避免目标已存在时被嵌套成 uploads/lingxi-keep-uploads。
 for keep in .env data uploads; do
-    if [ -e "/tmp/lingxi-keep-$keep" ]; then
-        run cp -R "/tmp/lingxi-keep-$keep" "$INSTALL_DIR/"
-        run rm -rf "/tmp/lingxi-keep-$keep"
+    SRC_KEEP="/tmp/lingxi-keep-$keep"
+    if [ -e "$SRC_KEEP" ]; then
+        if [ -d "$SRC_KEEP" ]; then
+            run mkdir -p "$INSTALL_DIR/$keep"
+            run cp -R "$SRC_KEEP/." "$INSTALL_DIR/$keep/"
+        else
+            run cp -R "$SRC_KEEP" "$INSTALL_DIR/$keep"
+        fi
+        run rm -rf "$SRC_KEEP"
     fi
 done
 # 从刚部署的代码里读真实版本号（tar.gz 内容才是权威，覆盖任何初始猜测）

@@ -44,6 +44,24 @@
 
 - `hygiene-check` 的 installer 测试步骤并入 `test-install-version-fallback.sh`，覆盖 +13 项断言。
 
+### 修复 9：`install.sh` 升级还原把 `.env` / `data` / `uploads` 落成脏名 —— **升级即掉配置**
+
+- **`site/install.sh`**：`run cp -R "/tmp/lingxi-keep-$keep" "$INSTALL_DIR/"` 误以为 `cp` 会按
+  「目标目录 + 原名」落文件；实际上 `cp` 按**源 basename** 命名，产物是 `lingxi-keep-.env`、
+  `lingxi-keep-data`、`lingxi-keep-uploads`。三个用户资产**一个都没归位**。
+- **后果链**：`.env` 不在 → 第 333 行 `[ ! -f "$INSTALL_DIR/.env" ]` 成立 → **重新生成随机
+  `JWT_SECRET` / `ADMIN_TOKEN`**。用户表现为「升一次级，API Key 全没了、历史会话打不开」。
+- **实测复现**（Git Bash 自带 GNU coreutils，与 Linux 同语义；非推断）：
+  - 原版逻辑 → `.env` 缺失 ✗、`data/lingxi.db` 缺失 ✗、`uploads/f.txt` 缺失 ✗，脏名残留 3 个
+  - 修复逻辑 → 三者在位 ✅（内容逐字节一致），脏名残留 0
+- 修复要点：目录必须走 `cp -R "$SRC/." "$DEST/"` **合并内容** —— `uploads/` 在 tar 包内本就存在，
+  若改成 `cp -R "$SRC" "$INSTALL_DIR/uploads"` 会被嵌套成 `uploads/lingxi-keep-uploads`；
+  文件（`.env`）走显式目标名 `cp -R "$SRC" "$INSTALL_DIR/.env"`。
+- **真机佐证**：升级日志出现 `✅ 已生成 .env（含随机密钥）` —— 旧 `.env` 本该被还原，
+  轮不到重新生成。这一行就是该缺陷的指纹。
+- 线上 `public/install.sh` 已定点更新并校验：SHA256 `c2476059…`、22915 → 23489 字节、
+  `git ls-files --eol` = `i/lf w/lf attr/text eol=lf`、CR=0；旧版备份为
+  `install.sh.bak-20260925-keepfix`（可一键回滚）。版本号动态读自 `version.txt`，故本次不涉及版本变更。
 ### 题外：发布元数据漂移（非代码缺陷，已清理）
 
 - 发布服务器 `/var/www/lingxi/version.txt` 曾写着 `local HEAD d787b34` —— 该 commit
