@@ -138,3 +138,6 @@ jobs:
           bash scripts/test-install-linger.sh
           bash scripts/test-version-parse.sh
           bash scripts/test-install-version-fallback.sh
+          # 2026-09-25: 覆盖 install.sh 的「Linux 有图形会话自动打开 / 无头打印 SSH 隧道指引」——
+          # 有图形必须真调 xdg-open，无头必须打印可复制命令，dry-run 不得打开浏览器
+          bash scripts/test-install-browser-open.sh
