@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.22</title>
+<title>下载部署 · 灵犀引擎 v2.0.28</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -62,7 +62,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.22</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.28</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -160,7 +160,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.22.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.22</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.28.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.28</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -203,7 +203,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.22","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.28","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -239,7 +239,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </div>
   </details>
 
-  <div class="foot">灵犀引擎 <span class="ver">v2.0.22</span> · <a href="/">返回首页</a></div>
+  <div class="foot">灵犀引擎 <span class="ver">v2.0.28</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
@@ -313,18 +313,30 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   });
 })();
 
-// v2.0.22: 版本动态化 —— 从 /api/health 读取，官网页不再随发版滞后
+// v2.0.28: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
+//          静态回退值同步为当前版本，避免"官网页显示旧版本"的漂移。
 (function () {
-  fetch('/api/health').then(function (r) { return r.json(); }).then(function (h) {
-    if (!h || !h.version) return;
-    var v = 'v' + h.version;
+  function apply(version) {
+    var v = 'v' + version;
     document.title = document.title.replace(/v\d+\.\d+\.\d+/, v);
     document.querySelectorAll('.ver').forEach(function (e) { e.textContent = v; });
     var dl = document.getElementById('dl-src');
-    if (dl) dl.setAttribute('href', '/public/lingxi-engine-' + h.version + '.tar.gz');
+    if (dl) dl.setAttribute('href', '/public/lingxi-engine-' + version + '.tar.gz');
     var hp = document.getElementById('health-pre');
-    if (hp) hp.textContent = hp.textContent.replace(/"version":"\d+\.\d+\.\d+"/, '"version":"' + h.version + '"');
-  }).catch(function () { /* 保持静态回退值 */ });
+    if (hp) hp.textContent = hp.textContent.replace(/"version":"\d+\.\d+\.\d+"/, '"version":"' + version + '"');
+  }
+  fetch('/public/version.txt', { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('no version.txt'); return r.text(); })
+    .then(function (t) {
+      var m = (t || '').trim().split(/\s+/)[0];
+      if (/^\d+\.\d+\.\d+$/.test(m)) { apply(m); } else { throw new Error('bad version.txt'); }
+    })
+    .catch(function () {
+      fetch('/api/health')
+        .then(function (r) { return r.json(); })
+        .then(function (h) { if (h && h.version) apply(h.version); })
+        .catch(function () { /* 保持静态回退值 */ });
+    });
 })();
 </script>
 </body>

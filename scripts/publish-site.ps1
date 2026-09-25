@@ -151,6 +151,20 @@ foreach ($f in @($installSh, $installPs1)) {
 }
 W-OK "install scripts staged: install.sh, install.ps1"
 
+# ---------- 5.6 download page (v2.0.28) ----------
+# WHY: /download.html was never part of the upload set, so it drifted silently - the public
+# download page advertised v2.0.23 while the site already served 2.0.28. The page now reads
+# /public/version.txt at runtime, but its static fallback values must still follow every
+# release, and the page links to /public/lingxi-engine-<ver>.tar.gz.
+# Same class of bug as the orphan version.txt: a file nobody uploads is a file that will lie.
+$downloadHtml = Join-Path $RepoRoot 'web\download.html'
+if (Test-Path $downloadHtml) {
+    W-OK "download page staged: web/download.html"
+} else {
+    $downloadHtml = $null
+    W-Warn "web/download.html not found - the public download page will not be published"
+}
+
 # ---------- 6. upload ----------
 $Host_ = $env:LINGXI_DEPLOY_HOST
 $User_ = $env:LINGXI_DEPLOY_USER
@@ -161,11 +175,13 @@ $Key_  = $env:LINGXI_DEPLOY_KEY
 if ($Method -eq 'manual') {
     # v2.0.26 FIX: said "two files" but lists four. Also listed items 3/4 as $SiteUrl/install.sh,
     # which is the URL users hit, not where the file must live - server.js serves both from public/ ONLY.
-    W-Warn "manual mode: no upload performed. Copy these four files into the server public/ dir:"
+    W-Warn "manual mode: no upload performed. Copy these files into the server public/ dir:"
     Write-Host "  1) $tarball  ->  $SiteUrl/public/lingxi-engine.tar.gz" -ForegroundColor Yellow
-    Write-Host "  2) $verFile  ->  $SiteUrl/public/version.txt" -ForegroundColor Yellow
-    Write-Host "  3) $installSh  ->  $SiteUrl/public/install.sh" -ForegroundColor Yellow
-    Write-Host "  4) $installPs1 ->  $SiteUrl/public/install.ps1" -ForegroundColor Yellow
+    Write-Host "  2) $tarball  ->  $SiteUrl/public/lingxi-engine-v$LocalVersion.tar.gz (versioned copy; download page links here)" -ForegroundColor Yellow
+    Write-Host "  3) $verFile  ->  $SiteUrl/public/version.txt" -ForegroundColor Yellow
+    Write-Host "  4) $installSh  ->  $SiteUrl/public/install.sh" -ForegroundColor Yellow
+    Write-Host "  5) $installPs1 ->  $SiteUrl/public/install.ps1" -ForegroundColor Yellow
+    if ($downloadHtml) { Write-Host "  6) $downloadHtml ->  $SiteUrl/public/download.html" -ForegroundColor Yellow }
     Write-Host ""
     Write-Host "  after upload verify: curl $RemoteVerUrl should return $LocalVersion" -ForegroundColor Yellow
     exit 0
@@ -205,6 +221,21 @@ if ($Method -eq 'scp') {
     & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/install.ps1"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.ps1 upload failed (retry)" }
 
+    # v2.0.28 FIX: publish the download page in the same transaction as the artifacts it
+    # describes. Warn (not fail) so a page-only problem cannot block a code release.
+    if ($downloadHtml) {
+        W-Info "upload web/download.html"
+        & scp @sshArgs $downloadHtml "${User_}@${Host_}:${Path_}/download.html"
+        if ($LASTEXITCODE -ne 0) { W-Warn "download.html upload failed - the public page may show a stale version" }
+    }
+
+    # v2.0.28 FIX: keep a versioned copy of the artifact, because download.html links to
+    # /public/lingxi-engine-<ver>.tar.gz while only the generic name was being uploaded, so the
+    # current release's link 404'd (found: the v2.0.26/27/28 copies were all missing server-side).
+    W-Info "upload versioned archive copy -> lingxi-engine-v$LocalVersion.tar.gz"
+    & scp @sshArgs $tarball "${User_}@${Host_}:${Path_}/lingxi-engine-v$LocalVersion.tar.gz"
+    if ($LASTEXITCODE -ne 0) { W-Warn "versioned archive copy upload failed - download page link may 404" }
+
     # v2.0.27 FIX: refresh the ORPHAN parent-dir copy of version.txt in the same transaction.
     # Nothing serves it (server.js reads public/ only), but it keeps drifting and misleading
     # operators: found stale at 2.0.23, then at "2.0.25 / d787b34" (a commit that does not even
@@ -234,11 +265,13 @@ elseif ($Method -eq 'ftp') {
         "open $Host_"
         "binary"
         "put `"$tarball`" lingxi-engine.tar.gz"
+        "put `"$tarball`" lingxi-engine-v$LocalVersion.tar.gz"
         "put `"$verFile`" version.txt"
         "put `"$installSh`" install.sh"
         "put `"$installPs1`" install.ps1"
-        "bye"
     )
+    if ($downloadHtml) { $cmds += "put `"$downloadHtml`" download.html" }
+    $cmds += "bye"
     [System.IO.File]::WriteAllText($ftpScript, ($cmds -join "`r`n"), [System.Text.Encoding]::ASCII)
     & ftp -s:$ftpScript
     if ($LASTEXITCODE -ne 0) { W-Fail "ftp upload failed" }
@@ -306,6 +339,33 @@ if (Get-Command ssh -ErrorAction SilentlyContinue) {
             }
         } else {
             W-Warn "no SHA256 declared in live version.txt - cannot verify artifact identity"
+        }
+
+        # v2.0.28: the download page and the versioned archive copy were the two objects nobody
+        # checked. Verify them here so a partial upload cannot pass this gate unnoticed again.
+        if ($downloadHtml) {
+            try {
+                $livePage = [System.Text.Encoding]::UTF8.GetString($wc.DownloadData("$SiteUrl/download.html"))
+                if ($livePage -match "v$([regex]::Escape($LocalVersion))") {
+                    W-OK "live download.html advertises v$LocalVersion"
+                } else {
+                    W-Warn "live download.html does not mention v$LocalVersion - page may be stale"
+                }
+            } catch {
+                W-Warn "download.html check skipped: $($_.Exception.Message)"
+            }
+        }
+        try {
+            $verUrl2 = "$SiteUrl/public/lingxi-engine-v$LocalVersion.tar.gz"
+            $verBytes2 = $wc.DownloadData($verUrl2)
+            $verHash2 = ([BitConverter]::ToString($sha.ComputeHash($verBytes2)) -replace "-", "").ToLower()
+            if ($verHash2 -eq ($sha.ToString().ToLower())) {
+                W-OK "versioned archive copy is byte-identical to the release artifact"
+            } else {
+                W-Warn "versioned archive copy differs from the release artifact (users would get the wrong build)"
+            }
+        } catch {
+            W-Warn "versioned archive copy not reachable at $SiteUrl/public/lingxi-engine-v$LocalVersion.tar.gz"
         }
     } catch {
         W-Warn "byte-level gate skipped: $($_.Exception.Message)"
