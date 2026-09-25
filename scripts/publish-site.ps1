@@ -159,11 +159,13 @@ $Path_ = $env:LINGXI_DEPLOY_PATH
 $Key_  = $env:LINGXI_DEPLOY_KEY
 
 if ($Method -eq 'manual') {
-    W-Warn "manual mode: no upload performed. Copy these two files to the server public/ dir:"
+    # v2.0.26 FIX: said "two files" but lists four. Also listed items 3/4 as $SiteUrl/install.sh,
+    # which is the URL users hit, not where the file must live - server.js serves both from public/ ONLY.
+    W-Warn "manual mode: no upload performed. Copy these four files into the server public/ dir:"
     Write-Host "  1) $tarball  ->  $SiteUrl/public/lingxi-engine.tar.gz" -ForegroundColor Yellow
     Write-Host "  2) $verFile  ->  $SiteUrl/public/version.txt" -ForegroundColor Yellow
-    Write-Host "  3) $installSh  ->  $SiteUrl/install.sh" -ForegroundColor Yellow
-    Write-Host "  4) $installPs1 ->  $SiteUrl/install.ps1" -ForegroundColor Yellow
+    Write-Host "  3) $installSh  ->  $SiteUrl/public/install.sh" -ForegroundColor Yellow
+    Write-Host "  4) $installPs1 ->  $SiteUrl/public/install.ps1" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "  after upload verify: curl $RemoteVerUrl should return $LocalVersion" -ForegroundColor Yellow
     exit 0

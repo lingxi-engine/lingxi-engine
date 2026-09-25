@@ -93,6 +93,26 @@ PROBE: loginctl executed with args: enable-linger root  <- 错误：真的执行
 2. **Installer logic tests** —— 跑 `scripts/test-install-linger.sh` 与 `scripts/test-version-parse.sh`。
 
 两个门禁均已本地逐条模拟通过；LF 探测器另做了自检（对 CRLF / 混合 / LF 三种样本判定正确）。
+### 修复 6：`publish-site.ps1` 的 `-manual` 提示文案与实际不符
+
+`-manual` 模式只打印提示不上传，提示里有两处错误（实际运行该模式逐字确认）：
+
+- 标题写 `Copy these two files`，但下面**列了四条**。
+- 第 3/4 条写成 `$SiteUrl/install.sh`，缺 `/public/`，与第 1/2 条（`$SiteUrl/public/...`）不一致；
+  且 `server.js` 明确只从 `public/` 提供这两个文件，按旧提示放置会落到不被服务的路径。
+
+修复后实际输出：
+
+```
+[WARN] manual mode: no upload performed. Copy these four files into the server public/ dir:
+  1) <tarball>      ->  http://47.93.157.83:8080/public/lingxi-engine.tar.gz
+  2) <version.txt>  ->  http://47.93.157.83:8080/public/version.txt
+  3) <install.sh>   ->  http://47.93.157.83:8080/public/install.sh
+  4) <install.ps1>  ->  http://47.93.157.83:8080/public/install.ps1
+```
+
+> 说明：上一轮我在 `publish-site.ps1` 的注释里写「FTP 分支与 -manual 提示都是对的」，
+> 那是**未经实测的推断，且是错的**。本轮实跑 `-Method manual` 后才发现并修正。
 ### 测试
 
 - **`scripts/test-install-linger.sh`**：从真实 `install.sh` 中**抽取**补丁块（而非复制副本，防止测试与实现漂移），
