@@ -111,6 +111,9 @@ if [ "$VERSION" = "unknown" ] && [ "$DRY_RUN" = "1" ]; then
     if [ -z "$VERSION" ]; then VERSION="unknown"; fi
 fi
 
+# v2.0.28: 记录安装前版本，供「部署版本: vX (升级自 vY)」提示，避免 banner 版本被误读成漂移
+VERSION_BEFORE="$VERSION"
+
 banner() {
 echo ""
 echo "  ╔══════════════════════════════════════╗"
@@ -326,7 +329,11 @@ done
 # 从刚部署的代码里读真实版本号（tar.gz 内容才是权威，覆盖任何初始猜测）
 if [ -f "$INSTALL_DIR/version.txt" ]; then
     VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r\357\273\277')"   # 剔除 CR 与 UTF-8 BOM
-    ok "部署版本: v$VERSION"
+    DEPLOY_NOTE=""
+    if [ -n "${VERSION_BEFORE:-}" ] && [ "$VERSION_BEFORE" != "$VERSION" ] && [ "$VERSION_BEFORE" != "unknown" ]; then
+        DEPLOY_NOTE=" (升级自 v$VERSION_BEFORE)"
+    fi
+    ok "部署版本: v$VERSION$DEPLOY_NOTE"
 else
     # 包内缺失时回退站点索引（同批次发布），仍拿不到才报 unknown
     VERSION="$(fetch_site_version)"
@@ -576,6 +583,22 @@ if [ "$HEALTH_OK" = "1" ]; then
     echo "  ═══════════════════════════════════════"
     if [ "$PLATFORM" = "macOS" ]; then
         open "http://localhost:$PORT" 2>/dev/null || true
+    elif [ "$PLATFORM" = "Linux" ]; then
+        # v2.0.28: 有图形会话 (X11/Wayland) 才尝试自动打开；无头环境打印可复制的访问指引。
+        if [ "$DRY_RUN" = "0" ] && { [ -n "${DISPLAY:-}" ] || [ -n "${WAYLAND_DISPLAY:-}" ]; } && command -v xdg-open >/dev/null 2>&1; then
+            xdg-open "http://localhost:$PORT" >/dev/null 2>&1 || true
+            echo "    🌐 已尝试自动打开浏览器"
+        else
+            # 无头环境（云主机 / SSH / 容器）：浏览器不会、也无法自动打开，直接给出可复制的访问方式
+            _HINT_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+            [ -n "$_HINT_IP" ] || _HINT_IP="<这台服务器IP>"
+            echo ""
+            echo "    ℹ️  无图形界面，浏览器不会自动打开（正常行为，非故障）。请任选一种访问方式："
+            echo "       ① SSH 隧道（推荐）: ssh -N -L $PORT:127.0.0.1:$PORT ${USER:-root}@$_HINT_IP"
+            echo "          然后在本地浏览器打开 http://localhost:$PORT"
+            echo "       ② 内网直连: http://$_HINT_IP:$PORT"
+            echo "       ⚠️  引擎监听 0.0.0.0；若放行公网端口，请先确认鉴权与防火墙配置"
+        fi
     fi
 else
     echo "  ⚠️  引擎未在 30s 内就绪，查看日志排查:"
