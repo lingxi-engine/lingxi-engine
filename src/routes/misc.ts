@@ -7,6 +7,7 @@ import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerM
 import { processUserMessage } from '../core/ws-handler.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { randomBytes } from 'crypto';
 import type { ServerContext } from '../server/context.js';
 
 export function createMiscRoutes(ctx: ServerContext): Router {
@@ -55,7 +56,7 @@ export function createMiscRoutes(ctx: ServerContext): Router {
   });
 
   // ── 联邦通信 ──
-  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || 'lingxi-federation-default';
+  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || randomBytes(16).toString('hex'); // no-env fallback: random, avoid weak default
   function federationAuth(req: any, res: any, next: any) {
     const secret = req.headers['x-federation-secret'] || req.body?.secret;
     if (secret !== FEDERATION_SECRET) return res.status(403).json({ error: '联邦通信密钥错误' });
