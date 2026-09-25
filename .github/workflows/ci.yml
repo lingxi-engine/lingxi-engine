@@ -102,3 +102,36 @@ jobs:
           check web/js/app.js 5400
           check src/storage/db.ts 2300
           [ "$FAIL" = "0" ] && echo "line ratchet: all monoliths within caps"
+
+      - name: "Shell scripts - syntax check + LF gate"
+        # 2026-09-25: site/install.sh 会被 pack-release.ps1 打进 tarball，分发给 Linux/macOS 用户。
+        # CRLF 换行会让它直接 "bad interpreter: /bin/bash^M" 或语法错误 —— 安装器全盘失效。
+        # 实测复现：core.autocrlf=true 且仓库无 .gitattributes 时，一次全新检出就把该文件
+        # 变成 542 个 CRLF。.gitattributes 已钉死 eol=lf，此处是第二道防线。
+        run: |
+          set -euo pipefail
+          echo "== bash -n =="
+          FOUND=0
+          for f in $(git ls-files '*.sh'); do
+            FOUND=1
+            echo "-- $f"
+            bash -n "$f"
+          done
+          [ "$FOUND" = "1" ] || { echo "::error::no tracked *.sh found; gate is not actually testing anything"; exit 1; }
+          echo "== LF gate on *.sh =="
+          BAD=0
+          for f in $(git ls-files '*.sh'); do
+            if grep -qU $'\r' "$f"; then
+              echo "::error::$f contains CRLF line endings; shell scripts must be LF (see .gitattributes: *.sh text eol=lf)"
+              BAD=1
+            fi
+          done
+          [ "$BAD" = "0" ] && echo "LF gate: all tracked shell scripts are clean"
+
+      - name: Installer logic tests
+        # 抽取式测试：直接从真实 install.sh 中提取补丁块与 run() 实现，
+        # 因此实现被改坏时测试不会"假装还绿"。
+        run: |
+          set -euo pipefail
+          bash scripts/test-install-linger.sh
+          bash scripts/test-version-parse.sh

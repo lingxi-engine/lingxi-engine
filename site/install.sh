@@ -447,7 +447,8 @@ EOF
         # 关键修复: 用户级 systemd 服务默认绑在登录会话上——SSH 一断开，user manager 被回收，
         # 服务连带被杀，Restart=on-failure 也救不回来。开启 linger 后服务常驻，并随开机自启。
         if command -v loginctl &>/dev/null; then
-            if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+            # 必须走 run()：DRY_RUN=1 时只打印 [dry-run]，不得真改系统状态
+            if run loginctl enable-linger "$(id -un)" 2>/dev/null; then
                 ok "已开启 linger（断开 SSH / 重启机器后仍会自动运行）"
             else
                 warn "开启 linger 失败：服务可能随 SSH 断开而停止。请手动执行 sudo loginctl enable-linger $(id -un)"

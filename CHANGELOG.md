@@ -50,6 +50,49 @@
   **只有 scp 分支写错了**。
 - 修复：scp 目标改为 `$Path_/install.sh` 与 `$Path_/install.ps1`，与 FTP 分支及 `server.js` 路由对齐。
 - 附带修复：发布后自检的版本比对只 `.Trim()` 不剥 BOM，会误报自检失败；已补 `TrimStart([char]0xFEFF)`。
+### 修复 5：`loginctl` 调用未走 `run()`，破坏 `--dry-run` 契约
+
+修复 1 引入时漏了这一点：`install.sh` 里所有会产生副作用的命令都通过 `run()` 包裹
+（`DRY_RUN=1` 时只打印 `[dry-run]` 不执行），上下文 `systemctl` 也都是 `run systemctl ...`，
+唯独新加的 `loginctl enable-linger` 是裸调用。
+
+**在真实 Linux 服务器上实测复现**（`bash install.sh --dry-run`，并用 PATH 探针替换 `loginctl`）：
+
+```
+  [dry-run] systemctl --user daemon-reload              <- 正确：空转
+  [dry-run] systemctl --user enable --now lingxi-engine.service   <- 正确：空转
+PROBE: loginctl executed with args: enable-linger root  <- 错误：真的执行了
+```
+
+即 `--dry-run` 模式下仍会真实改写系统状态。已改为 `run loginctl enable-linger ...`。
+测试同步升级：新增 `dry-run 不得有副作用` 用例（探针写入标记文件，断言标记不存在）；
+`run()` 实现改为从 `install.sh` 中抽取，避免测试与实现漂移。
+
+### 补充：CRLF 致死机制的实测证据（真 Linux）
+
+此前对 CRLF 危害的描述停留在推断。本次在真实 Linux（kernel 6.6.102 / bash 5.2.15）上逐场景实测：
+
+| 场景 | 结果 |
+|---|---|
+| `./install.sh` 直接执行（内核读 shebang） | ❌ `cannot execute: required file not found` |
+| `bash install.sh` | ⚠️ 能跑，但输出带 `\r`（数据被污染） |
+| `curl ... \| bash`（用户真实用法） | ❌ 多行 `if/then/fi` 结构报 `syntax error: unexpected end of file` |
+| 变量比较 `if [ "$V" = "x" ]` | ❌ `syntax error: unexpected end of file` |
+
+结论：`install.sh` 通篇是多行 `if ...; then` 块，因此 CRLF 版本在 `curl | bash` 下**根本无法执行**，
+安装器全盘失效——与修复 2 的判断一致，现已有实证。
+（注意：测试须在真 Linux 上做。Git Bash / MSYS2 会**掩盖**该问题，本地测不出来。）
+
+### CI 加固
+
+`.github/workflows/ci.yml` 的 `hygiene-check` 新增两步：
+
+1. **Shell scripts: syntax check + LF gate** —— 对所有被跟踪的 `*.sh` 跑 `bash -n`，
+   并用 `grep -qU $'\r'` 硬拦 CRLF（第二道防线，防止 `.gitattributes` 被误删或新脚本带 CRLF）。
+   含自检：若 `*.sh` 一个都没找到，直接报错退出，避免门禁退化成空跑。
+2. **Installer logic tests** —— 跑 `scripts/test-install-linger.sh` 与 `scripts/test-version-parse.sh`。
+
+两个门禁均已本地逐条模拟通过；LF 探测器另做了自检（对 CRLF / 混合 / LF 三种样本判定正确）。
 ### 测试
 
 - **`scripts/test-install-linger.sh`**：从真实 `install.sh` 中**抽取**补丁块（而非复制副本，防止测试与实现漂移），
