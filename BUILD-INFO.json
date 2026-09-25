@@ -1,6 +1,6 @@
 {
-    "version":  "2.0.26",
-    "commit":  "19105f7",
-    "buildTime":  "2026-09-25T15:06:09.0956507Z",
+    "version":  "2.0.27",
+    "commit":  "7ac2471",
+    "buildTime":  "2026-09-25T15:18:19.0262010Z",
     "builder":  "pack-release.ps1"
 }

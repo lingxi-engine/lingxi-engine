@@ -77,6 +77,18 @@ warn() { echo "  ⚠️  $*"; }
 die()  { echo "  ❌ $*" >&2; exit 1; }
 run()  { if [ "$DRY_RUN" = "1" ]; then echo "  [dry-run] $*"; else "$@"; fi; }
 
+# 站点索引版本兜底: 发布时 tar 包与站点 version.txt 由 publish-site.ps1 同批次写入（带硬门禁），
+# 所以包内读不到版本时（例如 --dry-run 不真解压）可安全回退站点索引，避免 banner 显示 vunknown。
+fetch_site_version() {
+    local v=""
+    if command -v curl &>/dev/null; then
+        v="$(curl -fsSL --max-time 10 "$BASE_URL/public/version.txt" 2>/dev/null | head -n1 | tr -d '\r\357\273\277')" || v=""
+    elif command -v wget &>/dev/null; then
+        v="$(wget -qO- --timeout=10 "$BASE_URL/public/version.txt" 2>/dev/null | head -n1 | tr -d '\r\357\273\277')" || v=""
+    fi
+    printf '%s' "$v"
+}
+
 # put_file <path>  (内容从 stdin 读入) —— 支持 dry-run
 put_file() {
     if [ "$DRY_RUN" = "1" ]; then
@@ -91,6 +103,12 @@ put_file() {
 # 升级场景：旧安装目录里已有 version.txt，先读出来让 banner 显示真实版本
 if [ "$VERSION" = "unknown" ] && [ -f "$INSTALL_DIR/version.txt" ]; then
     VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r\357\273\277')"   # 剔除 CR 与 UTF-8 BOM
+fi
+
+# dry-run 场景：不真下载解压，改为从站点索引取版本，否则 banner 与下载行会显示 vunknown
+if [ "$VERSION" = "unknown" ] && [ "$DRY_RUN" = "1" ]; then
+    VERSION="$(fetch_site_version)"
+    if [ -z "$VERSION" ]; then VERSION="unknown"; fi
 fi
 
 banner() {
@@ -300,8 +318,14 @@ if [ -f "$INSTALL_DIR/version.txt" ]; then
     VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r\357\273\277')"   # 剔除 CR 与 UTF-8 BOM
     ok "部署版本: v$VERSION"
 else
-    VERSION="unknown"
-    warn "部署包内无 version.txt，无法确认版本"
+    # 包内缺失时回退站点索引（同批次发布），仍拿不到才报 unknown
+    VERSION="$(fetch_site_version)"
+    if [ -n "$VERSION" ]; then
+        warn "部署包内无 version.txt，版本号取自站点索引: v$VERSION"
+    else
+        VERSION="unknown"
+        warn "部署包内无 version.txt，无法确认版本"
+    fi
 fi
 ok "代码部署完成: $INSTALL_DIR"
 

@@ -16,6 +16,8 @@ warn() { echo "  WARN $*"; }
 export -f ok warn
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 绝对路径的 bash：隔离 PATH 的用例不能靠 PATH 找 bash
+BASH_BIN="$(command -v bash)"
 SRC="${1:-$SCRIPT_DIR/../site/install.sh}"
 
 if [ ! -f "$SRC" ]; then echo "FATAL: 找不到 $SRC"; exit 2; fi
@@ -50,7 +52,12 @@ run_case() {
     none) : ;;
   esac
 
-  OUT=$(DRY_RUN="$dry" PATH="$TMPD:$PATH" bash --norc -c "$BLOCK
+  # 2026-09-25 修复: "无 loginctl" 用例必须真正隔离 PATH。此前写成 PATH="$TMPD:$PATH"，
+  # 宿主机自带的 /usr/bin/loginctl 仍会被 command -v 找到 -> 走进成功分支 -> 该用例永远 FAIL。
+  local CASE_PATH
+  if [ "$mode" = "none" ]; then CASE_PATH="$TMPD"; else CASE_PATH="$TMPD:$PATH"; fi
+  # PATH 被隔离时裸 bash 也找不到自己 -> 必须用绝对路径调用（实测 rc=127）
+  OUT=$(DRY_RUN="$dry" PATH="$CASE_PATH" "$BASH_BIN" --norc -c "$BLOCK
 exit 0" 2>&1); RC=$?
   echo "--- case=$name (loginctl=$mode, DRY_RUN=$dry) rc=$RC ---"
   echo "$OUT"
@@ -67,7 +74,11 @@ exit 0" 2>&1); RC=$?
     linger_fail)
       echo "$OUT" | grep -q "开启 linger 失败" && echo "  => PASS" || { echo "  => FAIL: 未见失败提示"; FAIL=1; } ;;
     nologin)
-      echo "$OUT" | grep -q "未找到 loginctl" && echo "  => PASS" || { echo "  => FAIL: 未见缺失 loginctl 提示"; FAIL=1; } ;;
+      if PATH="$TMPD" command -v loginctl >/dev/null 2>&1; then
+        echo "  => FAIL: 隔离失败——PATH 里仍能找到 loginctl，本用例失去意义"; FAIL=1
+      else
+        echo "$OUT" | grep -q "未找到 loginctl" && echo "  => PASS (且 PATH 已真正隔离)" || { echo "  => FAIL: 未见缺失 loginctl 提示"; FAIL=1; }
+      fi ;;
     dryrun_noop)
       # 核心断言：dry-run 下 loginctl 绝不能被真正执行
       if [ -f "$TMPD/CALLED" ]; then

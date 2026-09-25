@@ -2,6 +2,54 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.27] - 2026-09-25
+
+本轮修的是**验证器自己的可信度**：两处「测试在说谎」被实测揪出。前者让验证模式输出错的版本号，
+后者是一个**恒为假失败**的用例——而它一直挂着「4/4 通过」的名头。
+
+### 修复 7：`install.sh --dry-run` 打印 `vunknown`（验证模式给出误导性版本号）
+
+- `--dry-run` 不真下载解压，因而读不到包内 `version.txt`，banner 与「📥 下载灵犀引擎 vX」
+  双双打印 `vunknown`——**一个专门用来做验证的模式，输出却是错的**。
+- 修复：新增 `fetch_site_version()`，包内读不到版本时回退站点索引 `version.txt`
+  （与 tar 包由 `publish-site.ps1` 同批次写入，版本硬门禁保证二者一致）。
+- **诚实性约束**：站点也不可达时输出 `unknown` 并明确告警，**绝不编造版本号**。
+- 真机实测（腾讯云 / 阿里云 Linux）：
+  - 站点可达 → banner `v2.0.26`、下载行 `v2.0.26`
+  - 站点不可达（`LINGXI_BASE_URL=http://127.0.0.1:9`）→ `vunknown` + `部署包内无 version.txt，无法确认版本`
+
+### 修复 8：`test-install-linger.sh` 的「无 loginctl」用例**恒为假失败**
+
+- 该用例想模拟"系统里没有 loginctl"，写法却是 `PATH="$TMPD:$PATH"`——**把真实 PATH 追加了回来**，
+  宿主机自带的 `/usr/bin/loginctl` 依旧被 `command -v` 找到，于是走成功分支，用例**永远 FAIL**。
+- 影响面：CI 的 `Installer logic tests` 步骤在该用例上一直红灯，"4/4 通过"的说法不成立
+  （本轮实测复现：原版 install.sh 上 3/4，报 `FAIL: 未见缺失 loginctl 提示`）。
+- 修复两处：
+  1. `mode=none` 时 PATH **真正隔离**为 `$TMPD`；
+  2. PATH 被隔离后裸 `bash` 找不到自己（实测 `rc=127: bash: command not found`），
+     改用 `$BASH_BIN`（`command -v bash`）绝对路径调用。
+- 新增防退化断言：**隔离不成功直接判 FAIL**，避免该用例哪天又悄悄失去意义。
+- 修复后实测：**4/4 ALL CASES PASS**（原版与新版 install.sh 双向验证均通过）。
+
+### 新增：`scripts/test-install-version-fallback.sh`（13 项，抽取式测试）
+
+从真实 `site/install.sh` 抽取 `fetch_site_version()` 与两处调用点，用**桩 curl** 驱动，**不依赖网络**：
+
+- 静态断言：定义存在 / dry-run 与部署后 else 两处调用存在 / 调用次数恰为 3 /
+  无硬编码 `VERSION="x.y.z"` / LF-only / 无 BOM
+- 行为断言：纯 LF、BOM+CRLF、无尾换行 三种输入均正确解析；
+  **站点不可达 → 空输出（不编造版本号）**；无 curl 且无 wget → 空输出
+
+### CI
+
+- `hygiene-check` 的 installer 测试步骤并入 `test-install-version-fallback.sh`，覆盖 +13 项断言。
+
+### 题外：发布元数据漂移（非代码缺陷，已清理）
+
+- 发布服务器 `/var/www/lingxi/version.txt` 曾写着 `local HEAD d787b34` —— 该 commit
+  **在 main 历史中不存在**，SHA 也对不上任何实际产物；已备份为
+  `version.txt.bak-20260925-stale-d787b34` 并同步为与 `public/version.txt` 一致。
+
 ## [2.0.26] - 2026-09-25
 
 本轮为**安装器可靠性修复**：在真实 Linux 服务器上验证安装流程时，沿调用链挖出三处独立缺陷。

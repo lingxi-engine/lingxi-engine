@@ -133,5 +133,8 @@ jobs:
         # 因此实现被改坏时测试不会"假装还绿"。
         run: |
           set -euo pipefail
+          # 2026-09-25: 覆盖 install.sh 的「站点索引版本兜底」——dry-run 不得再显示 vunknown，
+          # 且站点不可达时必须如实报 unknown（不编造版本号）
           bash scripts/test-install-linger.sh
           bash scripts/test-version-parse.sh
+          bash scripts/test-install-version-fallback.sh

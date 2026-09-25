@@ -204,6 +204,27 @@ if ($Method -eq 'scp') {
     # v2.0.26 FIX: same dead-path bug as install.sh above - server.js reads install.ps1 from public/ too.
     & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/install.ps1"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.ps1 upload failed (retry)" }
+
+    # v2.0.27 FIX: refresh the ORPHAN parent-dir copy of version.txt in the same transaction.
+    # Nothing serves it (server.js reads public/ only), but it keeps drifting and misleading
+    # operators: found stale at 2.0.23, then at "2.0.25 / d787b34" (a commit that does not even
+    # exist in main), then stale AGAIN at 2.0.26. Hand-patching it every release does not scale;
+    # fixing the root cause does. Harmless if it fails, so warn instead of fail.
+    $ParentDir = ($Path_.TrimEnd("/") -replace "/public$", "")
+    if ($ParentDir -and $ParentDir -ne $Path_.TrimEnd("/")) {
+        $ParentVer = "$ParentDir/version.txt"
+        if (Get-Command ssh -ErrorAction SilentlyContinue) {
+            $sshCmdArgs = @()
+            if ($Key_) { $sshCmdArgs += "-i", $Key_ }
+            $sshCmdArgs += "-p", $Port_, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"
+            W-Info "sync orphan copy -> $ParentVer"
+            $cpCmd = "cp -f " + $Path_ + "/version.txt " + $ParentVer + " && cat " + $ParentVer
+            & ssh @sshCmdArgs "${User_}@${Host_}" $cpCmd
+            if ($LASTEXITCODE -ne 0) { W-Warn "orphan version.txt sync failed (harmless: not served over HTTP)" }
+        } else {
+            W-Warn "ssh not found - orphan $ParentVer left stale (harmless: not served)"
+        }
+    }
 }
 elseif ($Method -eq 'ftp') {
     if (-not (Get-Command ftp -ErrorAction SilentlyContinue)) { W-Fail "ftp not found" }
@@ -237,6 +258,58 @@ try {
     }
 } catch {
     W-Warn "self-check failed: $($_.Exception.Message). Manually run: curl $RemoteVerUrl"
+}
+
+# v2.0.27 GATE: byte-level verification. Version strings alone cannot prove users receive the
+# right bits - v2.0.26 shipped a dead-path bug where scp uploaded install.sh into the parent
+# dir, so every version check stayed green while users kept downloading a stale installer.
+# So: fetch what users actually get, and compare SHA256 against the local files.
+if (Get-Command ssh -ErrorAction SilentlyContinue) {
+    try {
+        $wc = New-Object System.Net.WebClient
+        # NOTE: ::Create without () yields a PSMethod, not an instance -> "does not contain a
+        # method named ComputeHash". Needs the call parentheses.
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+
+        # NOTE: $InstallUrl is the POWERSHELL installer (/install.ps1). Comparing it against the
+        # local install.sh produced a bogus "stale installer" warning the first time this gate ran.
+        # Check both installers against their own counterpart, over the URLs users really hit.
+        $pairs = @(
+            @{ Name = "install.sh";  Url = "$SiteUrl/install.sh";  Path = $installSh },
+            @{ Name = "install.ps1"; Url = $InstallUrl;            Path = $installPs1 }
+        )
+        foreach ($pair in $pairs) {
+            $localHash = (Get-FileHash -Path $pair.Path -Algorithm SHA256).Hash.ToLower()
+            $liveBytes = $wc.DownloadData($pair.Url)
+            $liveHash = ([BitConverter]::ToString($sha.ComputeHash($liveBytes)) -replace "-", "").ToLower()
+            if ($liveHash -eq $localHash) {
+                W-OK "live $($pair.Name) is byte-identical to local ($($localHash.Substring(0,16))...)"
+            } else {
+                W-Warn "live $($pair.Name) DIFFERS from local (live $($liveHash.Substring(0,12))... vs local $($localHash.Substring(0,12))...) - users may get a stale installer"
+            }
+        }
+
+        # Does the artifact match the SHA256 that version.txt claims? (the "metadata that lies" bug)
+        $declared = $null
+        if ($chk) {
+            $m = [regex]::Match($chk, "SHA256[ 	]+([0-9A-Fa-f]{64})")
+            if ($m.Success) { $declared = $m.Groups[1].Value.ToLower() }
+        }
+        if ($declared) {
+            $tarUrl = "$SiteUrl/public/lingxi-engine.tar.gz"
+            $liveTarBytes = $wc.DownloadData($tarUrl)
+            $liveTarHash = ([BitConverter]::ToString($sha.ComputeHash($liveTarBytes)) -replace "-", "").ToLower()
+            if ($liveTarHash -eq $declared) {
+                W-OK "live tarball matches the SHA256 declared in version.txt ($($declared.Substring(0,16))...)"
+            } else {
+                W-Warn "live tarball SHA256 $($liveTarHash.Substring(0,12))... does NOT match declared $($declared.Substring(0,12))... - version.txt is lying"
+            }
+        } else {
+            W-Warn "no SHA256 declared in live version.txt - cannot verify artifact identity"
+        }
+    } catch {
+        W-Warn "byte-level gate skipped: $($_.Exception.Message)"
+    }
 }
 
 Write-Host ""
