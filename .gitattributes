@@ -1,0 +1,21 @@
+# ── 换行符治理（v2.0.26）──────────────────────────────────────────────
+#
+# 背景：开发机 core.autocrlf=true（git 默认在 Windows 上如此），
+#       而本仓库此前**没有任何 .gitattributes**，换行符完全靠运气。
+#
+# 后果（已实测复现）：`git checkout-index` 模拟一次全新检出后，
+#       site/install.sh 从 0 个 CRLF 变成 **542 个 CRLF**，首行成了 `#!/bin/bash\r`。
+#       而 site/install.sh 会被 pack-release.ps1 打进 tarball 分发给 Linux 用户 ——
+#       CRLF 的 shell 脚本在 Linux 上直接 "bad interpreter: /bin/bash^M" 或语法错误，
+#       等于安装器全盘失效。macOS 同样中招。
+#
+# 处理：显式钉死关键文件的换行符，不再依赖使用者本地的 git 配置。
+
+# ── POSIX shell：必须 LF ──
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# ── Windows 侧：保持 CRLF ──
+*.ps1           text eol=crlf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf

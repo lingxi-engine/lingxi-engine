@@ -90,7 +90,7 @@ put_file() {
 
 # 升级场景：旧安装目录里已有 version.txt，先读出来让 banner 显示真实版本
 if [ "$VERSION" = "unknown" ] && [ -f "$INSTALL_DIR/version.txt" ]; then
-    VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r')"
+    VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r\357\273\277')"   # 剔除 CR 与 UTF-8 BOM
 fi
 
 banner() {
@@ -297,7 +297,7 @@ for keep in .env data uploads; do
 done
 # 从刚部署的代码里读真实版本号（tar.gz 内容才是权威，覆盖任何初始猜测）
 if [ -f "$INSTALL_DIR/version.txt" ]; then
-    VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r')"
+    VERSION="$(head -n1 "$INSTALL_DIR/version.txt" | tr -d '\r\357\273\277')"   # 剔除 CR 与 UTF-8 BOM
     ok "部署版本: v$VERSION"
 else
     VERSION="unknown"
@@ -444,6 +444,17 @@ EOF
     if [ "$AUTOSTART" = "1" ]; then
         run systemctl --user daemon-reload
         run systemctl --user enable --now "${SERVICE_NAME}.service"
+        # 关键修复: 用户级 systemd 服务默认绑在登录会话上——SSH 一断开，user manager 被回收，
+        # 服务连带被杀，Restart=on-failure 也救不回来。开启 linger 后服务常驻，并随开机自启。
+        if command -v loginctl &>/dev/null; then
+            if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+                ok "已开启 linger（断开 SSH / 重启机器后仍会自动运行）"
+            else
+                warn "开启 linger 失败：服务可能随 SSH 断开而停止。请手动执行 sudo loginctl enable-linger $(id -un)"
+            fi
+        else
+            warn "未找到 loginctl：用户服务可能随会话退出而停止"
+        fi
         ok "systemd 用户服务已启用（登录自启 + 崩溃自动拉起）"
     else
         run systemctl --user daemon-reload

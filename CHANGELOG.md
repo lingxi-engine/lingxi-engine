@@ -2,6 +2,68 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.26] - 2026-09-25
+
+本轮为**安装器可靠性修复**：在真实 Linux 服务器上验证安装流程时，沿调用链挖出三处独立缺陷。
+
+### 修复 1：Linux 用户级 systemd 服务会随 SSH 断开而停止
+
+- **`site/install.sh`**：脚本安装的是 `systemd --user` 服务，而用户级服务的生命周期绑在登录会话上。
+  SSH 一断开，`user@<uid>.service` 被回收，引擎连带被杀，`Restart=on-failure` 无法自救——
+  日志里的「登录自启 + 崩溃自动拉起」实际上只在「有人登录」时成立。
+  - 紧随 `systemctl --user enable --now` 执行 `loginctl enable-linger "$(id -un)"`，
+    使服务常驻，并在机器重启后自动拉起。
+  - 降级策略：`loginctl` 不存在或返回非 0 时输出 `warn` 并给出手动命令，**不中断安装**。
+  - 影响面：所有 Linux + systemd 用户会话环境。**已安装用户**手动执行一次
+    `loginctl enable-linger $USER && systemctl --user restart lingxi-engine` 即可获得同等修复。
+
+### 修复 2：换行符失控 —— `site/install.sh` 检出后会变成 CRLF（潜在致命）
+
+- **新增 `.gitattributes`**：仓库此前**没有任何换行符约束**，而开发机 `core.autocrlf=true`。
+  实测复现：`git checkout-index` 模拟一次全新检出后，`site/install.sh` 由 0 个 CRLF 变成 **542 个 CRLF**，
+  首行成为 `#!/bin/bash\r`。该文件会被 `pack-release.ps1` 打进 tarball 分发给 Linux/macOS 用户，
+  CRLF 的 shell 脚本会直接 `bad interpreter` 或语法错误 —— **安装器全盘失效**。
+  - 现固定 `*.sh text eol=lf`（POSIX shell 必须 LF）、`*.ps1/*.bat/*.cmd text eol=crlf`，
+    不再依赖使用者本地的 git 配置。
+  - 验证：修复后模拟检出 `CRLF=0 / LF=542 / 首行 #!/bin/bash`。
+
+### 修复 3：`version.txt` 的 UTF-8 BOM 让版本漂移检测永久失效
+
+- 线上 `public/version.txt` 头三字节为 `EF BB BF`。根因：`scripts/publish-site.ps1` 用
+  `[System.Text.Encoding]::UTF8` 写文件（该编码器**会输出 BOM**），而 `pack-release.ps1`
+  早已改用 `UTF8Encoding $false` —— 同一个 bug 类**只修了一半**。
+- 危害：`publish-site.ps1` 读回的是 `<BOM>2.0.25`，而 .NET 的 `String.Trim()` **不剥离 U+FEFF**，
+  导致「本地 vs 线上」比较永远不相等，漂移检测退化为恒定告警（狼来了）。
+- 修复 `publish-site.ps1`：改为无 BOM 写出，**并加硬门禁**——生成后立即回读首三字节，
+  出现 BOM 直接 `W-Fail` 中止发布；本地/远端版本号读取均补 `TrimStart([char]0xFEFF)`。
+- 修复 `site/install.sh`：版本号提取由 `tr -d '\r'` 改为 `tr -d '\r\357\273\277'`，
+  同时剔除 CR 与 BOM，避免 banner / 桌面菜单 / systemd `Description` 出现幽灵字符。
+
+### 修复 4：`publish-site.ps1` 的 scp 模式把安装脚本传到了死路径
+
+- `scripts/publish-site.ps1` 的 scp 分支上传目标是 `${Path_}/../install.sh`，
+  即 `/var/www/lingxi/install.sh`。但 `server.js:185-193` 明确**只从 `public/` 读取**
+  `GET /install.sh` 与 `/install.ps1` —— 父目录是不被服务的死路径。
+- 后果：**scp 模式从来没有真正更新过线上安装脚本**，线上 `public/install.sh` 一直是旧版
+  （实测其 SHA256 = `136168a5a8…`，正是打补丁前的原始文件）。用户 `curl … | bash` 拿到的仍是旧逻辑。
+  FTP 分支（把文件 put 到 `$Path_`）与 `-manual` 模式提示（复制到服务器 public/ 目录）都是对的，
+  **只有 scp 分支写错了**。
+- 修复：scp 目标改为 `$Path_/install.sh` 与 `$Path_/install.ps1`，与 FTP 分支及 `server.js` 路由对齐。
+- 附带修复：发布后自检的版本比对只 `.Trim()` 不剥 BOM，会误报自检失败；已补 `TrimStart([char]0xFEFF)`。
+### 测试
+
+- **`scripts/test-install-linger.sh`**：从真实 `install.sh` 中**抽取**补丁块（而非复制副本，防止测试与实现漂移），
+  mock `loginctl` 覆盖「成功 / 失败 / 不存在」三分支 → **3/3 PASS**。
+- **`scripts/test-version-parse.sh`**：覆盖「纯 LF / BOM+LF / BOM+CRLF / CRLF / 无尾换行」5 种形态 → **5/5 PASS**，
+  并附字节级证据（`ef bb bf 32 2e 30 2e 32 36` → `32 2e 30 2e 32 36`）。
+
+### 版本治理
+
+- 版本统一为 **2.0.26**（`package.json` / `package-lock.json` / `version.txt` 三处对齐）。
+- 门禁：`tsc --noEmit` **0 错误**；`vitest run` **100/100 通过**；`bash -n site/install.sh` 通过；
+  `publish-site.ps1` PowerShell 解析 **0 错误**。
+- 安装脚本随 tarball 分发（`pack-release.ps1` 有硬门禁校验 `site/install.sh` 在包内），
+  故本次**必须重新打包**，不能只替换线上单个文件。
 ## [2.0.25] - 2026-09-24
 
 ### 新功能：会话/群聊重命名（新建会话与新建群聊体验对齐）

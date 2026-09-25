@@ -56,7 +56,7 @@ function W-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function W-Fail($m) { Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
 
 # ---------- 0. local version ----------
-$LocalVersion = (Get-Content (Join-Path $RepoRoot 'version.txt') -Raw).Trim()
+$LocalVersion = (Get-Content (Join-Path $RepoRoot 'version.txt') -Raw).Trim().TrimStart([char]0xFEFF)
 $LocalCommit  = (git -C $RepoRoot rev-parse --short HEAD 2>$null)
 if (-not $LocalCommit) { $LocalCommit = 'unknown' }
 W-Info "local version: $LocalVersion (commit $LocalCommit)"
@@ -65,7 +65,7 @@ W-Info "local version: $LocalVersion (commit $LocalCommit)"
 $RemoteVersion = $null
 try {
     $r = Invoke-WebRequest -Uri $RemoteVerUrl -UseBasicParsing -TimeoutSec 15
-    $RemoteVersion = (([System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) -split "`n")[0]).Trim()
+    $RemoteVersion = (([System.Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) -split "`n")[0]).Trim().TrimStart([char]0xFEFF)
     W-Info "live version: $RemoteVersion"
 } catch {
     W-Warn "cannot read live version.txt ($RemoteVerUrl): $($_.Exception.Message)"
@@ -127,7 +127,16 @@ $sha = (Get-FileHash -Algorithm SHA256 $tarball).Hash
 $stamp = Get-Date -Format 'yyyy-MM-dd'
 $verBody = "$LocalVersion`nbuilt: $stamp (v$LocalVersion publish; local HEAD $LocalCommit; SHA256 $sha)"
 $verFile = Join-Path $OutDir 'version.txt'
-[System.IO.File]::WriteAllText($verFile, $verBody, [System.Text.Encoding]::UTF8)
+# v2.0.26 FIX: [System.Text.Encoding]::UTF8 emits a BOM (EF BB BF), which made the
+# remote version.txt read back as "<BOM>2.0.25". String.Trim() does NOT strip U+FEFF,
+# so the drift check below could never report "in sync". Write BOM-less, matching the
+# pack-release.ps1 v6.9 fix for the same bug class.
+[System.IO.File]::WriteAllText($verFile, $verBody, (New-Object System.Text.UTF8Encoding $false))
+$verBytes = [System.IO.File]::ReadAllBytes($verFile)
+if ($verBytes.Length -ge 3 -and $verBytes[0] -eq 0xEF -and $verBytes[1] -eq 0xBB -and $verBytes[2] -eq 0xBF) {
+    W-Fail "version.txt still carries a UTF-8 BOM - aborting publish (BOM breaks the drift check)"
+}
+W-OK "version.txt is BOM-less ($($verBytes.Length) bytes)"
 W-OK "version.txt generated (SHA256 $($sha.Substring(0,16))...)"
 
 # ---------- 5.5 install scripts (version drift root cause fix) ----------
@@ -182,11 +191,16 @@ if ($Method -eq 'scp') {
     if ($LASTEXITCODE -ne 0) { W-Fail "version.txt upload failed (tarball uploaded but version file stale - retry)" }
 
     W-Info "upload install.sh"
-    & scp @sshArgs $installSh "${User_}@${Host_}:${Path_}/../install.sh"
+    # v2.0.26 FIX: was "${Path_}/../install.sh" (i.e. /var/www/lingxi/install.sh), but
+    # server.js serves GET /install.sh from public/ ONLY - the parent dir is a dead path,
+    # so scp mode never actually updated the installer users download. Aligned with the
+    # FTP branch and -manual instructions, which both target public/.
+    & scp @sshArgs $installSh "${User_}@${Host_}:${Path_}/install.sh"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.sh upload failed (tarball+version already live; retry)" }
 
     W-Info "upload install.ps1"
-    & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/../install.ps1"
+    # v2.0.26 FIX: same dead-path bug as install.sh above - server.js reads install.ps1 from public/ too.
+    & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/install.ps1"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.ps1 upload failed (retry)" }
 }
 elseif ($Method -eq 'ftp') {
@@ -212,7 +226,7 @@ W-Info "waiting 3s then verifying live version ..."
 Start-Sleep -Seconds 3
 try {
     $chk = [System.Text.Encoding]::UTF8.GetString((Invoke-WebRequest -Uri $RemoteVerUrl -UseBasicParsing -TimeoutSec 15).RawContentStream.ToArray())
-    $chkVer = ($chk -split "`n")[0].Trim()
+    $chkVer = ($chk -split "`n")[0].Trim().TrimStart([char]0xFEFF)
     if ($chkVer -eq $LocalVersion) {
         W-OK "PUBLISH OK: live version = $chkVer"
         W-OK "now irm $InstallUrl | iex installs the latest build"
