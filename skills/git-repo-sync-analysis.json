@@ -1,0 +1,13 @@
+{
+  "name": "git-repo-sync-analysis",
+  "displayName": "Git仓库同步与修复对比分析",
+  "description": "对比GitHub远程与本地仓库差异，分析修复内容，检测并解决分支冲突，确保版本元数据一致",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求对比GitHub远程仓库与本地仓库的修复差异、同步分支或解决合并冲突时，按以下步骤执行：\n\n1. **基准对齐检查**：使用 `git status`、`git log --oneline -5`、`git branch -a`、`git tag` 检查本地与远程的HEAD、分支、tag是否一致。\n2. **差异分析**：通过 `git fetch` 后执行 `git log origin/main..main` 和 `git log main..origin/main` 对比提交差异；使用 `git diff` 分析具体文件变更。\n3. **版本元数据核查**：重点检查 version.txt、package.json、CHANGELOG.md 等版本文件是否被意外回退或超前，识别「部分回退」提交。\n4. **冲突检测与解决**：若存在合并冲突，先列出冲突文件（`git diff --name-only --diff-filter=U`），逐个读取冲突内容，保留正确变更后解决冲突。\n5. **验证与同步**：确认工作树 clean、本地与远程 commit 一致后，必要时执行 `git push` 完成同步。\n6. **输出报告**：以表格形式清晰呈现本地 vs 远程的对比结果、文件级差异判定和最终同步状态。",
+  "autoCreated": true,
+  "createdAt": 1790092562670
+}

@@ -1,0 +1,11 @@
+{
+  "name": "git-multi-env-sync-check",
+  "displayName": "Git多环境同步对齐检查",
+  "description": "系统性检查并修复本地Git、GitHub远程、本地备份、官网发布四个环境的版本一致性，识别回退/冲突并完成对齐",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "当用户要求检查或修复多个环境（本地Git、GitHub远程、本地备份、打包/官网发布）之间的版本同步时，按以下步骤执行：\n\n1. **本地Git状态检查**：运行 `git status`、`git branch -vv`、`git log --oneline -5`，确认当前分支、HEAD、工作区状态，以及本地与远程的领先/落后关系。\n\n2. **远程GitHub对比**：执行 `git fetch origin`，然后对比本地分支与 `origin/main`（或对应远程分支）的SHA、提交差异（`git log --oneline origin/main..HEAD` 和反向）。\n\n3. **版本元数据核对**：检查关键版本文件（如 `version.txt`、`package.json`、`BUILD-INFO.json`、`CHANGELOG.md`）的版本号是否一致，特别注意是否存在「部分回退」提交（名义上是修复，实际把版本号降级）。\n\n4. **本地备份检查**：检查备份目录（如F盘备份）的文件时间戳、版本号、Git引用是否与主仓库一致。\n\n5. **打包/发布版本检查**：检查官网/发布目录中的版本文件、打包产物版本号是否与Git tag（如v2.0.23）一致。\n\n6. **差异分析与修复**：汇总四项（本地Git、GitHub、备份、发布）的差异，识别根因（如误提交导致版本回退、未推送、备份过期等），制定修复方案（如创建修复提交、强制推送、更新备份、重新打包），并逐项执行对齐。\n\n7. **最终验证**：确认四项环境的SHA、tag、版本号完全一致，输出对齐报告。\n\n注意：遇到合并冲突时，先查看冲突文件内容再批量解决；发现版本回退时，需对比回退前后的具体文件差异。",
+  "autoCreated": true,
+  "createdAt": 1790093826608
+}

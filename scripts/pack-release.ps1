@@ -91,6 +91,11 @@ try {
     # v6.9: PowerShell 'Set-Content -Encoding UTF8' emits a BOM (EF BB BF), which breaks
     # strict JSON parsers on the server. Write UTF8 WITHOUT BOM via .NET instead.
     [System.IO.File]::WriteAllText((Join-Path $StageDir 'BUILD-INFO.json'), $buildInfoJson, (New-Object System.Text.UTF8Encoding $false))
+    # v7.0: also refresh the TRACKED project-root copy. Previously only the staging
+    # copy was written, so the repo-root BUILD-INFO.json stayed frozen at an older
+    # version and reported misleading build metadata. Refresh both, always.
+    [System.IO.File]::WriteAllText((Join-Path $ProjectRoot 'BUILD-INFO.json'), $buildInfoJson, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "  [OK] BUILD-INFO.json refreshed at project root" -ForegroundColor Green
     Write-Host "  [OK] BUILD-INFO.json written (version=$Version commit=$Commit)" -ForegroundColor Green
 
     # Pack from staging root so tarball top-level is ./lingxi-engine/
@@ -290,6 +295,17 @@ try {
             throw "[FAIL] BUILD-INFO version ($($bi.version)) != $Version"
         }
         Write-Host "  [OK] BUILD-INFO commit = $($bi.commit)" -ForegroundColor Green
+        $rootBiPath = Join-Path $ProjectRoot 'BUILD-INFO.json'
+        if (Test-Path $rootBiPath) {
+            $rootBi = Get-Content $rootBiPath -Raw | ConvertFrom-Json
+            if ($rootBi.version -eq $Version) {
+                Write-Host "  [OK] root BUILD-INFO.json in sync ($Version)" -ForegroundColor Green
+            } else {
+                throw "[FAIL] root BUILD-INFO.json version ($($rootBi.version)) != $Version"
+            }
+        } else {
+            throw "[FAIL] root BUILD-INFO.json missing"
+        }
     } else {
         throw '[FAIL] BUILD-INFO.json missing from package'
     }
