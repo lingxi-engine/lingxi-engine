@@ -1,25 +1,38 @@
 #!/usr/bin/env bash
 # ============================================================
-# 灵犀引擎 · 正式官网一键部署脚本
+# 灵犀引擎 · 正式官网部署脚本 v2（腾讯云香港）
 #   用法：sudo bash deploy-official-site.sh
-#   作用：部署 official-v2.html + 多语言词典，可选绑域名 + HTTPS
-#   安全：纯静态站点，不暴露任何 /api/*
+#   变化：默认 80/443（不再是 8088），域名 + HTTPS 一并搞定
+#   前提：DNS 已解析到本机公网 IP
 # ============================================================
 set -euo pipefail
 
-# ---------- 可调参数（一般不用改）----------
-SITE_DIR="/var/www/lingxi-site"
-NGINX_CONF="/etc/nginx/conf.d/lingxi-site.conf"
-SITE_PORT="8088"          # 80 已被服务器上其他项目占用，默认走 8088
-DOMAIN=""                 # 填你的域名，如 lingxi.ai；留空则只按 IP 访问
-USE_HTTPS="no"            # yes = 自动申请 Let's Encrypt 证书
+# ---------- 参数（部署前改这里，或用环境变量覆盖）----------
+SITE_DIR="${SITE_DIR:-/var/www/lingxi-site}"
+NGINX_CONF="${NGINX_CONF:-/etc/nginx/conf.d/lingxi-site.conf}"
+DOMAIN="${DOMAIN:-}"              # 必填！例：yourdomain.com
+USE_HTTPS="${USE_HTTPS:-yes}"      # yes = 申请 Let's Encrypt
+ADMIN_EMAIL="${ADMIN_EMAIL:-}"     # 证书通知邮箱（可留空）
+SITE_PORT="${SITE_PORT:-80}"       # 腾讯香港默认 80 空闲
 
-# ---------- 0. 权限与依赖 ----------
+SRC_DIR="$(cd "$(dirname "$0")" && pwd)/site"
+
+# ---------- 0. 前置检查 ----------
 if [ "$(id -u)" != "0" ]; then
-  echo "[x] 需要 root：sudo bash deploy-official-site.sh"
+  echo "[x] 需要 root：sudo bash deploy-official-site.sh"; exit 1
+fi
+if [ -z "$DOMAIN" ]; then
+  echo "[x] 未设置 DOMAIN。执行时带上：DOMAIN=yourdomain.com sudo -E bash deploy-official-site.sh"
   exit 1
 fi
+if [ ! -d "$SRC_DIR" ]; then
+  echo "[x] 找不到站点文件目录：$SRC_DIR"; exit 1
+fi
+if [ ! -f "$SRC_DIR/index.html" ]; then
+  echo "[x] 缺少 $SRC_DIR/index.html"; exit 1
+fi
 
+# ---------- 1. 依赖 ----------
 if ! command -v nginx >/dev/null 2>&1; then
   echo "[i] 安装 nginx ..."
   if command -v apt-get >/dev/null 2>&1; then
@@ -29,59 +42,52 @@ if ! command -v nginx >/dev/null 2>&1; then
   elif command -v yum >/dev/null 2>&1; then
     yum install -y -q nginx
   else
-    echo "[x] 无法自动安装 nginx，请手动装好再重跑"; exit 1
+    echo "[x] 无法自动安装 nginx，请手动安装"; exit 1
   fi
 fi
 
-# ---------- 1. 备份现有站点 ----------
-BACKUP_DIR="/var/www/_backup_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$BACKUP_DIR"
+# ---------- 2. 端口占用检查（不覆盖别人的服务！）----------
+echo "[i] 检查端口 $SITE_PORT 占用 ..."
+if command -v ss >/dev/null 2>&1; then
+  OCCUPIED=$(ss -ltnp 2>/dev/null | grep -E "[:.]$SITE_PORT\s" || true)
+  if [ -n "$OCCUPIED" ]; then
+    echo "[!] 端口 $SITE_PORT 已被占用："
+    echo "$OCCUPIED"
+    echo "[x] 为避免砸掉现有服务，终止。请先确认占用方，或改用 SITE_PORT=8088。"
+    exit 1
+  fi
+fi
+echo "[ok] 端口 $SITE_PORT 空闲"
+
+# ---------- 3. 备份 ----------
 if [ -d "$SITE_DIR" ] && [ -n "$(ls -A "$SITE_DIR" 2>/dev/null)" ]; then
+  BACKUP_DIR="/var/www/_backup_$(date +%Y%m%d_%H%M%S)"
+  mkdir -p "$BACKUP_DIR"
   cp -a "$SITE_DIR/." "$BACKUP_DIR/" 2>/dev/null || true
   echo "[ok] 已备份 → $BACKUP_DIR"
 else
   echo "[i] 无旧站点，跳过备份"
 fi
 
-# ---------- 2. 放置文件 ----------
-# 源文件由本脚本同目录的 site/ 提供（见 README_DEPLOY_SITE.md）
-SRC_DIR="$(cd "$(dirname "$0")" && pwd)/site"
+# ---------- 4. 放文件 ----------
+mkdir -p "$SITE_DIR/js"
+cp -f "$SRC_DIR/index.html"       "$SITE_DIR/index.html"
+cp -f "$SRC_DIR/js/official-i18n.js" "$SITE_DIR/js/official-i18n.js"
+cp -f "$SRC_DIR/robots.txt"      "$SITE_DIR/robots.txt"
+[ -f "$SRC_DIR/official-v2.html" ] && cp -f "$SRC_DIR/official-v2.html" "$SITE_DIR/official-v2.html"
+for OPT in terms.html privacy.html; do
+  [ -f "$SRC_DIR/$OPT" ] && cp -f "$SRC_DIR/$OPT" "$SITE_DIR/$OPT" && echo "[ok] $OPT" || echo "[i] 暂无 $OPT（收款前必须补）"
+done
+chown -R www-data:www-data "$SITE_DIR" 2>/dev/null || true
+echo "[ok] 文件已放置 → $SITE_DIR"
 
-mkdir -p "$SITE_DIR"
-
-put() {
-  if [ -f "$SRC_DIR/$1" ]; then
-    mkdir -p "$(dirname "$SITE_DIR/$1")"
-    cp -f "$SRC_DIR/$1" "$SITE_DIR/$1"
-    echo "[ok] $1"
-  else
-    echo "[!] 缺文件：$1"
-  fi
-}
-
-put "index.html"          # 由 official-v2.html 改名而来
-put "js/official-i18n.js"
-put "style.css"           # 页面内联样式之外的补充（有就放，没有会跳过）
-put "robots.txt"
-put "favicon.ico"
-
-# 官网入口名统一成 index.html
-if [ -f "$SRC_DIR/official-v2.html" ]; then
-  cp -f "$SRC_DIR/official-v2.html" "$SITE_DIR/index.html"
-  cp -f "$SRC_DIR/official-v2.html" "$SITE_DIR/official-v2.html"
-  echo "[ok] index.html"
-fi
-
-# ---------- 3. 生成 nginx 配置 ----------
-SERVER_NAME="_"
-[ -n "$DOMAIN" ] && SERVER_NAME="$DOMAIN _"
-
+# ---------- 5. nginx 配置 ----------
 cat > "$NGINX_CONF" <<EOF
-# 灵犀引擎官网 · 自动生成于 $(date '+%Y-%m-%d %H:%M:%S')
+# 灵犀引擎官网 · 生成于 $(date '+%Y-%m-%d %H:%M:%S') · 腾讯云香港
 server {
     listen $SITE_PORT;
     listen [::]:$SITE_PORT;
-    server_name $SERVER_NAME;
+    server_name $DOMAIN;
 
     root $SITE_DIR;
     index index.html;
@@ -100,60 +106,54 @@ server {
         try_files \$uri \$uri/ =404;
     }
 
-    # 首页与词典给短缓存，改版即时生效
-    location = /index.html {
-        add_header Cache-Control "no-cache";
-    }
-    location = /official-v2.html {
-        add_header Cache-Control "no-cache";
-    }
-    location = /js/official-i18n.js {
-        add_header Cache-Control "no-cache";
-    }
+    # 首页与词典不缓存，改版即时生效
+    location = /index.html          { add_header Cache-Control "no-cache"; }
+    location = /js/official-i18n.js { add_header Cache-Control "no-cache"; }
 
     # 禁止暴露目录与隐藏文件
-    location ~ /\. { deny all; }
-    location ~ /\.(git|env) { deny all; }
+    location ~ /\.            { deny all; }
+    location ~ /\.(git|env)  { deny all; }
 
     access_log /var/log/nginx/lingxi-site.access.log;
     error_log  /var/log/nginx/lingxi-site.error.log;
 }
 EOF
+echo "[ok] nginx 配置 → $NGINX_CONF"
 
-echo "[ok] nginx 配置已写入 $NGINX_CONF"
-
-# ---------- 4. 校验并重载 ----------
+# ---------- 6. 校验并重载 ----------
 if nginx -t 2>&1 | tail -3; then
   systemctl reload nginx 2>/dev/null || systemctl restart nginx
   echo "[ok] nginx 已重载"
 else
-  echo "[x] nginx 配置有误，未重载；请检查 $NGINX_CONF"
-  exit 1
+  echo "[x] nginx 配置有误，未重载；请检查 $NGINX_CONF"; exit 1
 fi
 
-# ---------- 5. 自检 ----------
+# ---------- 7. 自检 ----------
 sleep 1
-CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$SITE_PORT/" || echo 000)
-echo "[自检] http://127.0.0.1:$SITE_PORT/ → HTTP $CODE"
-if [ "$CODE" = "200" ]; then
+CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$SITE_PORT/" -H "Host: $DOMAIN" || echo 000)
+echo "[自检] http://127.0.0.1:$SITE_PORT/ (Host: $DOMAIN) → HTTP $CODE"
+
+# ---------- 8. HTTPS ----------
+if [ "$USE_HTTPS" = "yes" ]; then
   echo ""
-  echo "=============================================="
-  echo " ✅ 官网部署成功"
-  echo "    访问：http://$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo 'SERVER_IP'):$SITE_PORT/"
-  [ -n "$DOMAIN" ] && echo "    域名：http://$DOMAIN:$SITE_PORT/"
-  echo "=============================================="
+  echo ">>> 申请 HTTPS 证书（需 DNS 已生效、80 端口对外可达）"
+  if ! command -v certbot >/dev/null 2>&1; then
+    command -v apt-get >/dev/null 2>&1 && apt-get install -y -qq certbot python3-certbot-nginx \
+      || dnf install -y -q certbot python3-certbot-nginx
+  fi
+  if [ -n "$ADMIN_EMAIL" ]; then
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$ADMIN_EMAIL"
+  else
+    certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email
+  fi
+  echo "[ok] HTTPS: https://$DOMAIN/"
 else
-  echo "[x] 自检未通过，请查：tail -20 /var/log/nginx/lingxi-site.error.log"
+  echo "[i] 跳过 HTTPS"
 fi
 
-# ---------- 6. 可选：HTTPS ----------
-if [ "$USE_HTTPS" = "yes" ] && [ -n "$DOMAIN" ]; then
-  echo ""
-  echo ">>> 申请 HTTPS 证书"
-  command -v certbot >/dev/null 2>&1 || {
-    if command -v apt-get >/dev/null 2>&1; then apt-get install -y -qq certbot python3-certbot-nginx;
-    elif command -v dnf >/dev/null 2>&1; then dnf install -y -q certbot python3-certbot-nginx; fi
-  }
-  certbot --nginx -d "$DOMAIN" --non-interactive --agree-tos --register-unsafely-without-email
-  echo "[ok] HTTPS 已配置：https://$DOMAIN/"
-fi
+echo ""
+echo "=============================================="
+echo " 官网部署完成"
+echo "   http://$DOMAIN/  |  https://$DOMAIN/"
+echo "=============================================="
+echo "⚠️ 收款前必做：服务协议 + 隐私政策（terms.html / privacy.html）"
