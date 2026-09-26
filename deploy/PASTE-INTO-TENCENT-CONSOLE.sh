@@ -70,6 +70,19 @@ fi
 systemctl enable --now nginx >/dev/null 2>&1
 log "  nginx: $(systemctl is-active nginx 2>/dev/null)"
 
+NGINX_VER_OK=$(nginx -v 2>&1 | sed -n 's|.*nginx/\([0-9][0-9]*\.[0-9][0-9]*\).*|\1|p')
+NGINX_MAJOR=${NGINX_VER%%.*}
+NGINX_MINOR=${NGINX_VER#*.}
+NGINX_MINOR=${NGINX_MINOR%%.*}
+if [ -n "$NGINX_VER" ] && [ "$NGINX_MAJOR" -gt 1 ]; then
+  SUPPORTS_HTTP2_DIRECTIVE=1
+elif [ "$NGINX_MAJOR" -eq 1 ] && [ "$NGINX_MINOR" -ge 25 ]; then
+  SUPPORTS_HTTP2_DIRECTIVE=1
+else
+  SUPPORTS_HTTP2_DIRECTIVE=0
+fi
+log "  nginx version: ${NGINX_VER:-unknown} (http2-directive=${SUPPORTS_HTTP2_DIRECTIVE})"
+
 # ---------- 3. unpack embedded site ----------
 log ""
 log ">>> [3/6] unpacking embedded site payload"
@@ -741,7 +754,10 @@ else
 fi
 
 if [ -f /etc/letsencrypt/live/lingxi-engine.com/fullchain.pem ]; then
-  cat > /etc/nginx/conf.d/lingxi-site.conf <<'NGX2'
+
+  if [ "$SUPPORTS_HTTP2_DIRECTIVE" = "1" ]; then
+    # nginx >= 1.25.1 : standalone http2 directive
+    cat > /etc/nginx/conf.d/lingxi-site.conf <<'NGX2NEW'
 server {
     listen 80;
     listen [::]:80;
@@ -752,8 +768,8 @@ server {
 
 server {
     listen 443 ssl;
-    listen [::]:443 ssl;
     http2 on;
+    listen [::]:443 ssl;
     server_name lingxi-engine.com www.lingxi-engine.com;
 
     ssl_certificate     /etc/letsencrypt/live/lingxi-engine.com/fullchain.pem;
@@ -782,7 +798,52 @@ server {
     access_log /var/log/nginx/lingxi-access.log;
     error_log  /var/log/nginx/lingxi-error.log;
 }
-NGX2
+NGX2NEW
+  else
+    # nginx < 1.25.1 : http2 must be part of the listen directive
+    cat > /etc/nginx/conf.d/lingxi-site.conf <<'NGX2OLD'
+server {
+    listen 80;
+    listen [::]:80;
+    server_name lingxi-engine.com www.lingxi-engine.com;
+    location ^~ /.well-known/acme-challenge/ { root /var/www/html; default_type "text/plain"; allow all; }
+    location / { return 301 https://$host$request_uri; }
+}
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name lingxi-engine.com www.lingxi-engine.com;
+
+    ssl_certificate     /etc/letsencrypt/live/lingxi-engine.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/lingxi-engine.com/privkey.pem;
+    ssl_protocols       TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 14400m;
+
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+
+    location / {
+        root /opt/lingxi-site;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(css|js|svg|png|jpg|webp|woff2?)$ {
+        root /opt/lingxi-site;
+        expires 7d;
+        add_header Cache-Control "public, max-age=604800";
+    }
+
+    access_log /var/log/nginx/lingxi-access.log;
+    error_log  /var/log/nginx/lingxi-error.log;
+}
+NGX2OLD
+  fi
+
   if nginx -t 2>&1 | grep -q "syntax is ok"; then
     systemctl reload nginx 2>/dev/null
     log "OK: switched to HTTPS"
