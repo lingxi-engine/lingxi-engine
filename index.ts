@@ -135,6 +135,7 @@ import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { createMvpMarketRoutes } from './src/routes/mvp-market.js';
+import { PLATFORM_FEE_RATE, roundFeeAmount } from './src/core/mvp-market/service.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
@@ -2007,16 +2008,47 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const price = Number(listing.price) || 0;
       const hireCurrency = listing.currency || 'credits';
       let spendResult: any = null;
+      // 费率与任务市场同源（PLATFORM_FEE_RATE），杜绝两边各写一个 0.9 对不上账
+      const platformFee = roundFeeAmount(hireCurrency, price * PLATFORM_FEE_RATE);
+      const sellerPayout = roundFeeAmount(hireCurrency, price - platformFee);
       if (hireCurrency === 'usd' || hireCurrency === 'cny') {
         spendResult = spendWalletBalance(buyerId, hireCurrency, price, '购买/雇佣: ' + (listing.title || ''));
         if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
-        const sellerPayout = Math.round(price * 0.9 * 100) / 100;
-        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(90%): ' + (listing.title || ''));
+        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(' + Math.round((1 - PLATFORM_FEE_RATE) * 100) + '%): ' + (listing.title || ''));
       } else {
         spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
         if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
-        const sellerPayout = Math.floor(price * 0.9);
         if (typeof addCredits === 'function') addCredits(listing.publisher_id, sellerPayout);
+      }
+      // 平台抽成入账：以前这 10% 直接蒸发了，现在有账可查。
+      // 原子性要求：入账失败必须回滚买卖双方余额，否则会出现
+      // 「卖家收到钱、平台收入没落账」的对不上的账。宁可交易失败，也不能账不平。
+      try {
+        d.run(
+          `INSERT INTO mvp_platform_revenue
+           (id, market, contract_id, settlement_id, payer_id, payee_id,
+            gross, pay, fee, fee_rate, currency, kind, note, created_at)
+           VALUES (?, 'agent_hire', ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'release', ?, ?)`,
+          ['rev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+           listingId, buyerId, listing.publisher_id,
+           roundFeeAmount(hireCurrency, price), sellerPayout, platformFee,
+           PLATFORM_FEE_RATE, hireCurrency, '雇佣: ' + (listing.title || ''), Date.now()],
+        );
+      } catch (e: any) {
+        console.error('[market] 抽成入账失败，回滚本次雇佣:', e?.message || e);
+        // 回滚：addWalletBalance / addCredits 均接受负数，直接反向冲销
+        try {
+          if (hireCurrency === 'usd' || hireCurrency === 'cny') {
+            addWalletBalance(listing.publisher_id, hireCurrency, -sellerPayout, '雇佣失败回滚(分成): ' + (listing.title || ''));
+            addWalletBalance(buyerId, hireCurrency, price, '雇佣失败回滚(退款): ' + (listing.title || ''));
+          } else {
+            if (typeof addCredits === 'function') addCredits(listing.publisher_id, -sellerPayout);
+            if (typeof addCredits === 'function') addCredits(buyerId, price);
+          }
+        } catch (re: any) {
+          console.error('[market] 回滚失败，需人工对账 hire:', listingId, re?.message || re);
+        }
+        return res.status(500).json({ error: '平台抽成入账失败，雇佣已回滚，请稍后重试' });
       }
       
       // 3. 创建工作群组 chat
@@ -2070,7 +2102,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       };
       d.addMessage(welcomeMsg);
       
-      res.json({ ok: true, orderId, hireId, chatId, expiresAt, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
+      res.json({ ok: true, orderId, hireId, chatId, expiresAt, settlement: { gross: price, pay: sellerPayout, fee: platformFee, feeRate: PLATFORM_FEE_RATE, currency: hireCurrency }, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
@@ -2239,8 +2271,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
         ordStmt.free();
         // T5 计费透明：按次计费字段（per_msg_price = price/10 缺省，抽成 10% 给平台）
         const perMsg = Math.max(1, Math.floor(Number(h.price) / 10));
-        const PLATFORM_FEE_RATE = 0.10;
-        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE };
+        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE, fee_rate_source: 'PLATFORM_FEE_RATE' };
       });
       res.json({ ok: true, asBuyer: enrich(asBuyer), asSeller: enrich(asSeller) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }

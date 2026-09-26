@@ -23,6 +23,32 @@ export const DELIVERY_STATUS = ['submitted', 'accepted', 'revision_requested', '
 export const DISPUTE_STATUS = ['open', 'reviewing', 'resolved', 'dismissed'] as const;
 export const SETTLEMENT_KIND = ['release', 'refund', 'partial_refund'] as const;
 
+/**
+ * 平台抽成比例（默认 10%）。
+ * 唯一权威来源：两套市场（/api/mvp 任务市场、/api/market 雇佣市场）都读这里，
+ * 靠环境变量 PLATFORM_FEE_RATE 调整，无需改代码重新构建。
+ * 取值范围锁定 [0, 0.5]——超过一半属于暴利，低于 0 无意义。
+ */
+export const PLATFORM_FEE_RATE = (() => {
+  const raw = process.env.PLATFORM_FEE_RATE;
+  if (raw === undefined || raw === '') return 0.1;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    console.warn('[mvp][fee] PLATFORM_FEE_RATE 不是数字，回退 0.1:', raw);
+    return 0.1;
+  }
+  if (n < 0 || n > 0.5) {
+    console.warn('[mvp][fee] PLATFORM_FEE_RATE 超出 [0, 0.5]，已夹紧:', raw);
+    return Math.min(0.5, Math.max(0, n));
+  }
+  return n;
+})();
+
+/** 按币种精度取整：积分向下取整（不虚增），钱类保留两位小数（不丢分）。 */
+export function roundFeeAmount(currency: string, value: number): number {
+  return currency === 'credits' ? Math.floor(value) : Math.round(value * 100) / 100;
+}
+
 export type TaskStatus = (typeof TASK_STATUS)[number];
 export type QuoteStatus = (typeof QUOTE_STATUS)[number];
 export type ContractStatus = (typeof CONTRACT_STATUS)[number];
@@ -212,6 +238,83 @@ export class MvpMarketService {
     return `${prefix}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
   }
 
+  // ────────────────── 事务（P0-2：资金安全的地基）──────────────────
+
+  /**
+   * 事务包装。sql.js 不支持嵌套事务，内层直接执行即可。
+   * 任何异常都 ROLLBACK，绝不允许「钱动了但账没转」的中间态落盘。
+   */
+  private txDepth = 0;
+
+  private transaction<T>(fn: () => T): T {
+    // 已是事务中（内层调用）→ 不重复 BEGIN，交给最外层提交/回滚
+    if (this.txDepth > 0) {
+      this.txDepth++;
+      try { return fn(); } finally { this.txDepth--; }
+    }
+    const d = this.raw();
+    d.run('BEGIN');
+    this.txDepth = 1;
+    try {
+      const out = fn();
+      d.run('COMMIT');
+      return out;
+    } catch (e) {
+      try { d.run('ROLLBACK'); }
+      catch (re: any) { console.error('[mvp][tx] ROLLBACK 失败:', re?.message || re); }
+      throw e;
+    } finally {
+      this.txDepth = 0;
+    }
+  }
+
+  // ────────────────── 幂等（P1-3：防重复扣款/重复结算）──────────────────
+
+  /** 幂等表不存在则建。生产库由迁移建好，这里兜底保证测试库可用。 */
+  private ensureIdempotencyTable(): void {
+    try {
+      this.raw().run(`CREATE TABLE IF NOT EXISTS mvp_idempotency (
+        key TEXT NOT NULL,
+        scope TEXT NOT NULL DEFAULT '',
+        response TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL)`);
+      // 复合唯一：同一个 key 在不同 scope 下互不干扰
+      this.raw().run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_mvp_idempotency_scope_key
+        ON mvp_idempotency(scope, key)`);
+    } catch { /* ignore */ }
+  }
+
+  /**
+   * 幂等执行：同一个 key 第二次调用直接回放上次结果，绝不重复执行副作用。
+   *
+   * @param key   客户端提供的幂等键（没有就退化成「无幂等」，保持旧行为）
+   * @param scope 命名空间，如 'delivery.accept'
+   * @param fn    真正的业务逻辑
+   */
+  private idempotent<T>(key: string | null | undefined, scope: string, fn: () => T): T {
+    if (!key) return fn();          // 未提供 key → 保持原行为，不阻断
+    this.ensureIdempotencyTable();
+    const k = String(key).slice(0, 128);
+
+    const prev = this.one<{ response: string }>(`SELECT response FROM mvp_idempotency WHERE key = ? AND scope = ?`, [k, scope]);
+    if (prev) {
+      try { return JSON.parse(prev.response) as T; }
+      catch { return fn(); }
+    }
+
+    const result = this.transaction(() => {
+      const out = fn();
+      // 业务成功才登记；失败时上面的 transaction 已 ROLLBACK
+      this.run(
+        `INSERT INTO mvp_idempotency (key, scope, response, created_at) VALUES (?, ?, ?, ?)`,
+        [k, scope, JSON.stringify(out ?? null), this.now()],
+      );
+      return out;
+    });
+
+    return result;
+  }
+
   // ────────────────── 资金层（自包含，走本实例的 sql.js 句柄）──────────────────
 
   /** 幂等创建资金表。生产库由 initDB 建好，测试库只跑 MVP 迁移，这里兜底。 */
@@ -240,6 +343,15 @@ export class MvpMarketService {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, currency TEXT NOT NULL,
         amount REAL NOT NULL, type TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
         balance_after REAL NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+    } catch { /* ignore */ }
+    try {
+      d.run(`CREATE TABLE IF NOT EXISTS mvp_platform_revenue (
+        id TEXT PRIMARY KEY, market TEXT NOT NULL DEFAULT 'task',
+        contract_id TEXT, settlement_id TEXT, payer_id TEXT, payee_id TEXT,
+        gross REAL NOT NULL DEFAULT 0, pay REAL NOT NULL DEFAULT 0,
+        fee REAL NOT NULL DEFAULT 0, fee_rate REAL NOT NULL DEFAULT 0.1,
+        currency TEXT NOT NULL DEFAULT 'credits', kind TEXT NOT NULL DEFAULT 'release',
+        note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`);
     } catch { /* ignore */ }
   }
 
@@ -314,12 +426,93 @@ export class MvpMarketService {
     this.fundMove(userId, currency, amount, note);
   }
 
-  /** 平台抽成 10%，承包方实收 90%。 */
-  private payout(contractorId: string, currency: string, gross: number, note: string): { pay: number; fee: number } {
-    const pay = Math.floor(gross * 0.9);
-    const fee = gross - pay;
+  /**
+   * 分档费率钩子。默认全站统一 PLATFORM_FEE_RATE。
+   * 以后要搞「优质服务商 8% / 新人 12%」或「大额单阶梯抽成」，
+   * 只需改这一个函数，不用碰结算逻辑。
+   */
+  feeRate(_contractorId: string, _gross: number, _currency: string): number {
+    return PLATFORM_FEE_RATE;
+  }
+
+  /**
+   * 平台抽成入账。fee 不再是空气——必须落成一条可对账的账本记录。
+   * 恒等式由 roundFeeAmount + fee = gross - pay 保证：gross === pay + fee。
+   */
+  private recordRevenue(e: {
+    market: string; contractId?: string | null; settlementId?: string | null;
+    payerId?: string | null; payeeId?: string | null;
+    gross: number; pay: number; fee: number; rate: number;
+    currency: string; kind: string; note: string;
+  }): void {
+    if (e.fee <= 0) return;
+    this.ensureFundTables();
+    this.run(
+      `INSERT INTO mvp_platform_revenue
+       (id, market, contract_id, settlement_id, payer_id, payee_id,
+        gross, pay, fee, fee_rate, currency, kind, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [this.id('rev'), e.market, e.contractId ?? null, e.settlementId ?? null,
+       e.payerId ?? null, e.payeeId ?? null,
+       roundFeeAmount(e.currency, e.gross), roundFeeAmount(e.currency, e.pay),
+       roundFeeAmount(e.currency, e.fee), e.rate, e.currency, e.kind, e.note, this.now()],
+    );
+  }
+
+  /** 平台抽成：服务方实收 = gross - fee。抽成自动入账，恒等式守恒。 */
+  private payout(
+    contractorId: string, currency: string, gross: number, note: string,
+    ctx?: { contractId?: string | null; payerId?: string | null; kind?: string },
+  ): { pay: number; fee: number; rate: number } {
+    const rate = this.feeRate(contractorId, gross, currency);
+    const fee = roundFeeAmount(currency, gross * rate);
+    const pay = roundFeeAmount(currency, gross - fee);
     if (pay > 0) this.fundMove(contractorId, currency, pay, note);
-    return { pay, fee };
+    this.recordRevenue({
+      market: 'task', contractId: ctx?.contractId ?? null, settlementId: null,
+      payerId: ctx?.payerId ?? null, payeeId: contractorId,
+      gross, pay, fee, rate, currency, kind: ctx?.kind ?? 'release', note,
+    });
+    return { pay, fee, rate };
+  }
+
+  // ────────────────── 平台抽成查询（对账 / 报表） ──────────────────
+
+  /** 抽成汇总：按币种 + 市场维度，gross/pay/fee 三段式 */
+  platformRevenueSummary(filter?: { market?: string; currency?: string; from?: number; to?: number }): {
+    totalGross: number; totalPay: number; totalFee: number; count: number; feeRate: number;
+  } {
+    this.ensureFundTables();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (filter?.market) { where.push('market = ?'); params.push(filter.market); }
+    if (filter?.currency) { where.push('currency = ?'); params.push(filter.currency); }
+    if (filter?.from) { where.push('created_at >= ?'); params.push(filter.from); }
+    if (filter?.to) { where.push('created_at <= ?'); params.push(filter.to); }
+    const sql = `SELECT COUNT(*) AS c, COALESCE(SUM(gross),0) AS g,
+                        COALESCE(SUM(pay),0) AS p, COALESCE(SUM(fee),0) AS f
+                 FROM mvp_platform_revenue ${where.length ? 'WHERE ' + where.join(' AND ') : ''}`;
+    const row = this.one<{ c: number; g: number; p: number; f: number }>(sql, params);
+    const totalGross = Number(row?.g) || 0;
+    const totalFee = Number(row?.f) || 0;
+    return {
+      totalGross, totalPay: Number(row?.p) || 0, totalFee,
+      count: Number(row?.c) || 0,
+      feeRate: totalGross > 0 ? Math.round((totalFee / totalGross) * 10000) / 10000 : PLATFORM_FEE_RATE,
+    };
+  }
+
+  /** 抽成流水（带分页，按时间倒序） */
+  listPlatformRevenue(limit = 50, offset = 0, filter?: { market?: string; currency?: string }): any[] {
+    this.ensureFundTables();
+    const where: string[] = [];
+    const params: any[] = [];
+    if (filter?.market) { where.push('market = ?'); params.push(filter.market); }
+    if (filter?.currency) { where.push('currency = ?'); params.push(filter.currency); }
+    params.push(Math.max(1, Math.floor(limit)), Math.max(0, Math.floor(offset)));
+    return this.all(
+      `SELECT * FROM mvp_platform_revenue ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY created_at DESC LIMIT ? OFFSET ?`, params);
   }
 
   // ────────────────── 审计日志 ──────────────────
@@ -477,6 +670,7 @@ export class MvpMarketService {
     if (!canTransitionTask(task.status, 'cancelled')) {
       throw new MvpMarketError(409, 'invalid_state', `任务当前状态 ${task.status} 不可取消`);
     }
+    return this.transaction(() => {
     // 取消任务时，连带撤回所有待处理报价
     this.run(`UPDATE mvp_quotes SET status = 'withdrawn', updated_at = ? WHERE task_id = ? AND status = 'pending'`, [this.now(), taskId]);
     this.run(`UPDATE mvp_tasks SET status = 'cancelled', updated_at = ? WHERE id = ?`, [this.now(), taskId]);
@@ -484,6 +678,7 @@ export class MvpMarketService {
     this.refundTo(task.employer_id, task.currency, task.budget, `取消任务 · 退回预算: ${task.id}`);
     this.audit({ actorId, action: 'task.cancel', entityType: 'task', entityId: taskId, detail: { from: task.status } });
     return this.getTask(taskId);
+    });
   }
 
   // ────────────────── 报价 ──────────────────
@@ -565,7 +760,7 @@ export class MvpMarketService {
 
   // ────────────────── 接受报价 → 合同 ──────────────────
 
-  acceptQuote(actorId: string, quoteId: string, terms?: string): ContractRow {
+  acceptQuote(actorId: string, quoteId: string, terms?: string, idempotencyKey?: string | null): ContractRow {
     const quote = this.getQuote(quoteId);
     const task = this.getTask(quote.task_id);
     if (task.employer_id !== actorId) throw new MvpMarketError(403, 'forbidden', '只有任务发布者可以接受报价');
@@ -589,6 +784,7 @@ export class MvpMarketService {
       updated_at: now,
       confirmed_at: null,
     };
+    return this.idempotent(idempotencyKey, 'quote.accept', () => this.transaction(() => {
     this.run(
       `INSERT INTO mvp_contracts (id, task_id, quote_id, employer_id, contractor_id, amount, currency, status, terms, created_at, updated_at, confirmed_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'pending_confirm', ?, ?, ?, NULL)`,
@@ -620,6 +816,7 @@ export class MvpMarketService {
       detail: { quoteId: quote.id, taskId: task.id, amount: contract.amount },
     });
     return contract;
+    }));
   }
 
   getContract(contractId: string): ContractRow {
@@ -718,7 +915,7 @@ export class MvpMarketService {
   }
 
   /** 验收：雇主接受交付物 → 合同 accepted → 生成模拟结算 */
-  acceptDelivery(actorId: string, deliveryId: string): { delivery: DeliveryRow; contract: ContractRow; settlement: any } {
+  acceptDelivery(actorId: string, deliveryId: string, idempotencyKey?: string | null): { delivery: DeliveryRow; contract: ContractRow; settlement: any; replayed?: boolean } {
     const delivery = this.getDelivery(deliveryId);
     const contract = this.getContract(delivery.contract_id);
     if (contract.employer_id !== actorId) throw new MvpMarketError(403, 'forbidden', '只有雇主可以验收交付物');
@@ -728,13 +925,19 @@ export class MvpMarketService {
     if (contract.status !== 'delivered') {
       throw new MvpMarketError(409, 'invalid_state', `合同当前状态 ${contract.status} 不可验收`);
     }
+    return this.idempotent(idempotencyKey, 'delivery.accept', () => this.transaction(() => {
     const now = this.now();
     this.run(`UPDATE mvp_deliveries SET status = 'accepted', reviewed_at = ? WHERE id = ?`, [now, deliveryId]);
     this.run(`UPDATE mvp_contracts SET status = 'accepted', updated_at = ? WHERE id = ?`, [now, contract.id]);
     this.run(`UPDATE mvp_tasks SET status = 'completed', updated_at = ? WHERE id = ?`, [now, contract.task_id]);
 
     // 真实资金：预算已在 createTask 扣留，此处只做分账（不重复扣雇主）
-    const { pay, fee } = this.payout(contract.contractor_id, contract.currency, contract.amount, `任务收入(90%): ${contract.id}`);
+    const rate = this.feeRate(contract.contractor_id, contract.amount, contract.currency);
+    const { pay, fee } = this.payout(
+      contract.contractor_id, contract.currency, contract.amount,
+      `任务收入(${Math.round((1 - rate) * 100)}%): ${contract.id}`,
+      { contractId: contract.id, payerId: contract.employer_id, kind: 'release' },
+    );
 
     const settlement = this.createSettlement({
       contractId: contract.id,
@@ -754,9 +957,10 @@ export class MvpMarketService {
       entityType: 'delivery',
       entityId: deliveryId,
       targetUserId: contract.contractor_id,
-      detail: { contractId: contract.id, settlementId: settlement.id, amount: contract.amount },
+      detail: { contractId: contract.id, settlementId: settlement.id, amount: contract.amount, pay, fee, feeRate: rate },
     });
     return { delivery: this.getDelivery(deliveryId), contract: this.getContract(contract.id), settlement };
+    }));
   }
 
   /** 要求修改：雇主退回交付物，合同回到 active 允许再次提交 */
@@ -907,7 +1111,8 @@ export class MvpMarketService {
     decision: 'release' | 'refund' | 'partial';
     resolution: string;
     refundAmount?: number;
-  }): { dispute: DisputeRow; contract: ContractRow; settlement: any } {
+    idempotencyKey?: string | null;
+  }): { dispute: DisputeRow; contract: ContractRow; settlement: any; replayed?: boolean } {
     const dispute = this.getDispute(input.disputeId);
     if (dispute.status !== 'open' && dispute.status !== 'reviewing') {
       throw new MvpMarketError(409, 'invalid_state', `争议当前状态 ${dispute.status} 不可处理`);
@@ -938,6 +1143,7 @@ export class MvpMarketService {
       kind = 'partial_refund';
     }
 
+    return this.idempotent(input.idempotencyKey, 'dispute.resolve', () => this.transaction(() => {
     this.run(
       `UPDATE mvp_disputes SET status = 'resolved', resolution = ?, resolver_id = ?, refund_amount = ?, resolved_at = ? WHERE id = ?`,
       [resolution.slice(0, 5000), input.adminId, refund, now, dispute.id],
@@ -953,10 +1159,12 @@ export class MvpMarketService {
     } else if (kind === 'partial_refund') {
       // 部分退雇主，剩余部分 90% 付承包方
       this.refundTo(contract.employer_id, contract.currency, refund, `争议部分退款: ${contract.id}`);
-      this.payout(contract.contractor_id, contract.currency, contract.amount - refund, `争议后收入(90%): ${contract.id}`);
+      this.payout(contract.contractor_id, contract.currency, contract.amount - refund,
+        `争议后收入: ${contract.id}`, { contractId: contract.id, payerId: contract.employer_id, kind: 'partial_refund' });
     } else {
       // release：全额付承包方 90%
-      this.payout(contract.contractor_id, contract.currency, contract.amount, `争议后收入(90%): ${contract.id}`);
+      this.payout(contract.contractor_id, contract.currency, contract.amount,
+        `争议后收入: ${contract.id}`, { contractId: contract.id, payerId: contract.employer_id, kind: 'release' });
     }
 
     const settlement = this.createSettlement({
@@ -983,6 +1191,7 @@ export class MvpMarketService {
       detail: { contractId: contract.id, decision: input.decision, refund, settlementId: settlement.id },
     });
     return { dispute: this.getDispute(dispute.id), contract: this.getContract(contract.id), settlement };
+    }));
   }
 
   // ────────────────── 模拟结算 ──────────────────

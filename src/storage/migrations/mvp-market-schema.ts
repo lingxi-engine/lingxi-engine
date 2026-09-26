@@ -165,6 +165,31 @@ export const MVP_MARKET_MIGRATION: Migration = {
     db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_settlements_contract ON mvp_settlements(contract_id, created_at DESC)`);
     db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_settlements_user ON mvp_settlements(payer_id, created_at DESC)`);
 
+    // ── 平台抽成账本（v2.0.29：抽成不再是空气，必须有地方落账） ──
+    // 结算三段式：gross 成交总额 / pay 服务方实收 / fee 平台抽成
+    // 恒等式：gross === pay + fee，由 mvp-market 服务的 payout 写入
+    db.run(`
+      CREATE TABLE IF NOT EXISTS mvp_platform_revenue (
+        id            TEXT PRIMARY KEY,
+        market        TEXT NOT NULL DEFAULT 'task',
+        contract_id   TEXT,
+        settlement_id TEXT,
+        payer_id      TEXT,
+        payee_id      TEXT,
+        gross         REAL NOT NULL DEFAULT 0,
+        pay           REAL NOT NULL DEFAULT 0,
+        fee           REAL NOT NULL DEFAULT 0,
+        fee_rate      REAL NOT NULL DEFAULT 0.1,
+        currency      TEXT NOT NULL DEFAULT 'credits',
+        kind          TEXT NOT NULL DEFAULT 'release',
+        note          TEXT NOT NULL DEFAULT '',
+        created_at    INTEGER NOT NULL
+      )
+    `);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_rev_created ON mvp_platform_revenue(created_at DESC)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_rev_contract ON mvp_platform_revenue(contract_id)`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_rev_market ON mvp_platform_revenue(market, currency, created_at DESC)`);
+
     // ── 通知（收件箱） ──
     db.run(`
       CREATE TABLE IF NOT EXISTS mvp_notifications (
@@ -228,6 +253,18 @@ export const MVP_MARKET_MIGRATION: Migration = {
         status        TEXT NOT NULL DEFAULT 'new',
         created_at    INTEGER NOT NULL
       )
+    `);
+    db.run(`
+      CREATE TABLE IF NOT EXISTS mvp_idempotency (
+        key        TEXT NOT NULL,
+        scope      TEXT NOT NULL DEFAULT '',
+        response   TEXT NOT NULL DEFAULT '{}',
+        created_at INTEGER NOT NULL
+      )
+    `);
+    db.run(`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mvp_idempotency_scope_key
+        ON mvp_idempotency(scope, key)
     `);
     db.run(`CREATE INDEX IF NOT EXISTS idx_mvp_sugg_agent ON mvp_agent_task_suggestions(agent_id, created_at DESC)`);
   },
