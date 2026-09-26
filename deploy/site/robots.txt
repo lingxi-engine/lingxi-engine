@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /chat
+Disallow: /platform
+Disallow: /admin
+
+# 灵犀引擎官网 · 搜索引擎收录白名单
+# 网页版引擎 UI 与管理端不参与收录
