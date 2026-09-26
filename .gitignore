@@ -298,3 +298,8 @@ data-smoke-2022/
 data-preflight-tmp/
 bench/out/
 bench/results/selftest-tmp/
+
+# one-off dev/deploy scripts (local only, contain dev secrets)
+_*.mjs
+_*.py
+_*.cjs
