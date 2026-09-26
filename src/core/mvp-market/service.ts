@@ -212,6 +212,116 @@ export class MvpMarketService {
     return `${prefix}-${Date.now().toString(36)}-${randomUUID().slice(0, 8)}`;
   }
 
+  // ────────────────── 资金层（自包含，走本实例的 sql.js 句柄）──────────────────
+
+  /** 幂等创建资金表。生产库由 initDB 建好，测试库只跑 MVP 迁移，这里兜底。 */
+  private ensureFundTables(): void {
+    const d = this.raw();
+    try {
+      d.run(`CREATE TABLE IF NOT EXISTS user_credits (
+        user_id TEXT PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 1000,
+        total_earned INTEGER NOT NULL DEFAULT 0, total_spent INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL DEFAULT 0)`);
+    } catch { /* ignore */ }
+    try {
+      d.run(`CREATE TABLE IF NOT EXISTS credit_log (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL,
+        reason TEXT NOT NULL DEFAULT '', balance_after INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL)`);
+    } catch { /* ignore */ }
+    try {
+      d.run(`CREATE TABLE IF NOT EXISTS wallets (
+        user_id TEXT PRIMARY KEY, balance_usd REAL NOT NULL DEFAULT 0,
+        balance_cny REAL NOT NULL DEFAULT 0, frozen_usd REAL NOT NULL DEFAULT 0,
+        frozen_cny REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)`);
+    } catch { /* ignore */ }
+    try {
+      d.run(`CREATE TABLE IF NOT EXISTS wallet_tx (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, currency TEXT NOT NULL,
+        amount REAL NOT NULL, type TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+        balance_after REAL NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+    } catch { /* ignore */ }
+  }
+
+  /** 查余额；未开户则按默认值开户后返回。 */
+  private fundBalance(userId: string, currency: string): number {
+    this.ensureFundTables();
+    if (currency === 'credits') {
+      const row = this.one<{ credits: number }>(`SELECT credits FROM user_credits WHERE user_id = ?`, [userId]);
+      if (!row) {
+        this.run(`INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, 1000, 0, 0, ?)`,
+          [userId, this.now()]);
+        return 1000;
+      }
+      return Number(row.credits) || 0;
+    }
+    const col = currency === 'cny' ? 'cny' : 'usd';
+    const row = this.one<Record<string, number>>(`SELECT balance_${col} AS bal FROM wallets WHERE user_id = ?`, [userId]);
+    if (!row) {
+      this.run(`INSERT INTO wallets (user_id, balance_usd, balance_cny, frozen_usd, frozen_cny, updated_at) VALUES (?, 0, 0, 0, 0, ?)`,
+        [userId, this.now()]);
+      return 0;
+    }
+    return Number(row.bal) || 0;
+  }
+
+  /** 记账：正数入账 / 负数出账，自动写流水。 */
+  private fundMove(userId: string, currency: string, delta: number, reason: string): number {
+    this.ensureFundTables();
+    const cur = this.fundBalance(userId, currency);
+    if (currency === 'credits') {
+      const next = cur + delta;
+      this.run(`UPDATE user_credits SET credits = ?, total_earned = total_earned + ?, total_spent = total_spent + ?, updated_at = ? WHERE user_id = ?`,
+        [next, delta > 0 ? delta : 0, delta < 0 ? -delta : 0, this.now(), userId]);
+      try {
+        this.run(`INSERT INTO credit_log (id, user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+          [this.id('clog'), userId, delta, reason, next, this.now()]);
+      } catch { /* ignore */ }
+      return next;
+    }
+    const col = currency === 'cny' ? 'cny' : 'usd';
+    const next = cur + delta;
+    this.run(`UPDATE wallets SET balance_${col} = ?, updated_at = ? WHERE user_id = ?`, [next, this.now(), userId]);
+    try {
+      this.run(`INSERT INTO wallet_tx (id, user_id, currency, amount, type, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [this.id('wtx'), userId, col, delta, delta >= 0 ? 'income' : 'expense', reason, next, this.now()]);
+    } catch { /* ignore */ }
+    return next;
+  }
+
+  /** 扣款：余额不足返回 false，绝不扣成负数。 */
+  private fundTrySpend(userId: string, currency: string, amount: number, reason: string): { ok: boolean; balance: number; error?: string } {
+    const cur = this.fundBalance(userId, currency);
+    if (cur < amount) {
+      const label = currency === 'credits' ? '积分' : currency.toUpperCase() + ' 余额';
+      return { ok: false, balance: cur, error: label + '不足：需要 ' + amount + '，当前 ' + cur };
+    }
+    return { ok: true, balance: this.fundMove(userId, currency, -amount, reason) };
+  }
+
+  /** 雇主下任务：扣留预算。 */
+  private holdBudget(userId: string, currency: string, amount: number, note: string): void {
+    if (amount <= 0) return;
+    const r = this.fundTrySpend(userId, currency, amount, note);
+    if (!r.ok) {
+      throw new MvpMarketError(400, currency === 'credits' ? 'insufficient_credits' : 'insufficient_balance', r.error || '余额不足，无法冻结预算');
+    }
+  }
+
+  /** 退预算（取消任务 / 全额退款）。 */
+  private refundTo(userId: string, currency: string, amount: number, note: string): void {
+    if (amount <= 0) return;
+    this.fundMove(userId, currency, amount, note);
+  }
+
+  /** 平台抽成 10%，承包方实收 90%。 */
+  private payout(contractorId: string, currency: string, gross: number, note: string): { pay: number; fee: number } {
+    const pay = Math.floor(gross * 0.9);
+    const fee = gross - pay;
+    if (pay > 0) this.fundMove(contractorId, currency, pay, note);
+    return { pay, fee };
+  }
+
   // ────────────────── 审计日志 ──────────────────
 
   /** 写入审计日志。任何重要业务操作都必须调用。 */
@@ -322,6 +432,9 @@ export class MvpMarketService {
       created_at: now,
       updated_at: now,
     };
+    // 真实资金：扣留雇主预算
+    this.holdBudget(task.employer_id, task.currency, task.budget, `任务预算扣留: ${task.id}`);
+
     this.run(
       `INSERT INTO mvp_tasks (id, employer_id, title, description, category, budget, currency, status,
         accepted_quote_id, contract_id, deadline_at, created_at, updated_at)
@@ -367,6 +480,8 @@ export class MvpMarketService {
     // 取消任务时，连带撤回所有待处理报价
     this.run(`UPDATE mvp_quotes SET status = 'withdrawn', updated_at = ? WHERE task_id = ? AND status = 'pending'`, [this.now(), taskId]);
     this.run(`UPDATE mvp_tasks SET status = 'cancelled', updated_at = ? WHERE id = ?`, [this.now(), taskId]);
+    // 真实资金：取消任务 · 退回预算
+    this.refundTo(task.employer_id, task.currency, task.budget, `取消任务 · 退回预算: ${task.id}`);
     this.audit({ actorId, action: 'task.cancel', entityType: 'task', entityId: taskId, detail: { from: task.status } });
     return this.getTask(taskId);
   }
@@ -484,6 +599,15 @@ export class MvpMarketService {
     this.run(`UPDATE mvp_quotes SET status = 'rejected', updated_at = ? WHERE task_id = ? AND id != ? AND status = 'pending'`, [now, task.id, quote.id]);
     this.run(`UPDATE mvp_tasks SET status = 'contracted', accepted_quote_id = ?, contract_id = ?, updated_at = ? WHERE id = ?`,
       [quote.id, contract.id, now, task.id]);
+
+    // 真实资金：退回未成交的预算差额（预算在 createTask 已全额扣留）
+    // 合同金额可能低于预算，差额若不退会永久蒸发，破坏资金守恒
+    if (task.currency === contract.currency) {
+      const diff = Math.floor(Number(task.budget) || 0) - Math.floor(Number(contract.amount) || 0);
+      if (diff > 0) {
+        this.refundTo(task.employer_id, contract.currency, diff, `退回未成交预算差额: ${task.id}`);
+      }
+    }
 
     this.notify(quote.bidder_id, 'contract.created', '报价被接受，合同待确认',
       `任务「${task.title}」的报价已被接受，请确认合同 ${contract.id}`, 'contract', contract.id);
@@ -609,6 +733,9 @@ export class MvpMarketService {
     this.run(`UPDATE mvp_contracts SET status = 'accepted', updated_at = ? WHERE id = ?`, [now, contract.id]);
     this.run(`UPDATE mvp_tasks SET status = 'completed', updated_at = ? WHERE id = ?`, [now, contract.task_id]);
 
+    // 真实资金：预算已在 createTask 扣留，此处只做分账（不重复扣雇主）
+    const { pay, fee } = this.payout(contract.contractor_id, contract.currency, contract.amount, `任务收入(90%): ${contract.id}`);
+
     const settlement = this.createSettlement({
       contractId: contract.id,
       payerId: contract.employer_id,
@@ -616,7 +743,7 @@ export class MvpMarketService {
       amount: contract.amount,
       currency: contract.currency,
       kind: 'release',
-      note: `验收通过，合同 ${contract.id} 结算`,
+      note: `验收通过，合同 ${contract.id} 结算（实付 ${pay}，平台抽成 ${fee}）`,
     });
 
     this.notify(contract.contractor_id, 'delivery.accepted', '交付物已验收',
@@ -818,6 +945,19 @@ export class MvpMarketService {
     this.run(`UPDATE mvp_contracts SET status = ?, updated_at = ? WHERE id = ?`, [nextContractStatus, now, contract.id]);
     this.run(`UPDATE mvp_tasks SET status = ?, updated_at = ? WHERE id = ?`,
       [nextContractStatus === 'cancelled' ? 'cancelled' : 'completed', now, contract.task_id]);
+
+    // 争议仲裁 · 真实资金处理（金额已在 createTask 扣留）
+    if (kind === 'refund') {
+      // 全额退给雇主
+      this.refundTo(contract.employer_id, contract.currency, contract.amount, `争议全额退款: ${contract.id}`);
+    } else if (kind === 'partial_refund') {
+      // 部分退雇主，剩余部分 90% 付承包方
+      this.refundTo(contract.employer_id, contract.currency, refund, `争议部分退款: ${contract.id}`);
+      this.payout(contract.contractor_id, contract.currency, contract.amount - refund, `争议后收入(90%): ${contract.id}`);
+    } else {
+      // release：全额付承包方 90%
+      this.payout(contract.contractor_id, contract.currency, contract.amount, `争议后收入(90%): ${contract.id}`);
+    }
 
     const settlement = this.createSettlement({
       contractId: contract.id,

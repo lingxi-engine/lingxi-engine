@@ -40,6 +40,71 @@ afterAll(() => {
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
+// ────────────────────── 资金辅助（任务市场现在真实扣款，测试需要充值） ──────────────────────
+
+/** 幂等创建资金表，与 service 的兜底保持一致 */
+function fundEnsure(d: any): void {
+  d.run(`CREATE TABLE IF NOT EXISTS user_credits (
+    user_id TEXT PRIMARY KEY, credits INTEGER NOT NULL DEFAULT 1000,
+    total_earned INTEGER NOT NULL DEFAULT 0, total_spent INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL DEFAULT 0)`);
+  d.run(`CREATE TABLE IF NOT EXISTS credit_log (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, amount INTEGER NOT NULL,
+    reason TEXT NOT NULL DEFAULT '', balance_after INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL)`);
+  d.run(`CREATE TABLE IF NOT EXISTS wallets (
+    user_id TEXT PRIMARY KEY, balance_usd REAL NOT NULL DEFAULT 0,
+    balance_cny REAL NOT NULL DEFAULT 0, frozen_usd REAL NOT NULL DEFAULT 0,
+    frozen_cny REAL NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL DEFAULT 0)`);
+  d.run(`CREATE TABLE IF NOT EXISTS wallet_tx (
+    id TEXT PRIMARY KEY, user_id TEXT NOT NULL, currency TEXT NOT NULL,
+    amount REAL NOT NULL, type TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '',
+    balance_after REAL NOT NULL DEFAULT 0, created_at INTEGER NOT NULL)`);
+}
+
+/** 给用户充值积分 */
+function fundCredits(userId: string, amount: number): number {
+  fundEnsure(db);
+  const row: any = db.exec(`SELECT credits FROM user_credits WHERE user_id = '${userId}'`);
+  if (!row.length) {
+    db.run(`INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, ?, 0, 0, ?)`,
+      [userId, amount, Date.now()]);
+    return amount;
+  }
+  const next = Number(row[0].values[0][0]) + amount;
+  db.run(`UPDATE user_credits SET credits = ?, updated_at = ? WHERE user_id = ?`, [next, Date.now(), userId]);
+  return next;
+}
+
+/** 给用户充钱包余额（usd / cny） */
+function fundWallet(userId: string, currency: string, amount: number): number {
+  fundEnsure(db);
+  const col = currency === 'cny' ? 'cny' : 'usd';
+  const exists: any = db.exec(`SELECT 1 FROM wallets WHERE user_id = '${userId}'`);
+  if (!exists.length) {
+    db.run(`INSERT INTO wallets (user_id, balance_usd, balance_cny, frozen_usd, frozen_cny, updated_at) VALUES (?, 0, 0, 0, 0, ?)`,
+      [userId, Date.now()]);
+  }
+  db.run(`UPDATE wallets SET balance_${col} = balance_${col} + ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
+  const r: any = db.exec(`SELECT balance_${col} FROM wallets WHERE user_id = '${userId}'`);
+  return Number(r[0].values[0][0]);
+}
+
+/** 查用户积分余额 */
+function creditsOf(userId: string): number {
+  fundEnsure(db);
+  const r: any = db.exec(`SELECT credits FROM user_credits WHERE user_id = '${userId}'`);
+  return r.length ? Number(r[0].values[0][0]) : 0;
+}
+
+/** 查用户钱包余额 */
+function walletOf(userId: string, currency: string): number {
+  fundEnsure(db);
+  const col = currency === 'cny' ? 'cny' : 'usd';
+  const r: any = db.exec(`SELECT balance_${col} FROM wallets WHERE user_id = '${userId}'`);
+  return r.length ? Number(r[0].values[0][0]) : 0;
+}
+
 // ────────────────────── 状态机单元测试 ──────────────────────
 
 describe('状态机 — 合法/非法迁移', () => {
@@ -232,6 +297,12 @@ describe('MVP 闭环 — 争议与管理员处理', () => {
   const admin = 'admin-disp';
   let contractId: string;
   let deliveryId: string;
+
+  // 争议块 · 雇主充值（任务市场现在真实扣预算，测试需有足够余额）
+  beforeAll(() => {
+    fundCredits(employer, 100000);
+    fundCredits(contractor, 100000);
+  });
 
   it('准备：走完合同+交付', () => {
     const t = svc.createTask({ employerId: employer, title: '争议测试任务', budget: 1000 });
@@ -524,5 +595,181 @@ describe('HTTP 层 — 鉴权强制与身份伪造防护', () => {
     svc.setAgentBudget({ agentId: 'http-agent', ownerId: 'http-owner-a', totalBudget: 100 });
     const r = await request(app).get('/api/mvp/agents/http-agent/budget').set('x-test-user', 'http-owner-b');
     expect(r.status).toBe(403);
+  });
+});
+
+// ────────────────────── 资金真实闭环（验证钱包/积分真的动） ──────────────────────
+
+describe('资金真实闭环 — 积分/钱包实际增减', () => {
+  const emp = 'user-emp-money';
+  const con = 'user-con-money';
+
+  beforeAll(() => {
+    fundCredits(emp, 100000);
+    fundCredits(con, 100000);
+  });
+
+  it('积分：下任务扣预算，验收后承包方收到 90%', () => {
+    const empBefore = creditsOf(emp);
+    const conBefore = creditsOf(con);
+
+    const t = svc.createTask({ employerId: emp, title: '资金闭环任务', budget: 1000 });
+    // 预算被扣留
+    expect(creditsOf(emp)).toBe(empBefore - 1000);
+
+    const q = svc.submitQuote({ taskId: t.id, bidderId: con, amount: 800 });
+    const c = svc.acceptQuote(emp, q.id);
+    svc.confirmContract(con, c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: con, content: 'ok' });
+    svc.acceptDelivery(emp, d.id);
+
+    // 承包方拿到 800 * 0.9 = 720
+    expect(creditsOf(con)).toBe(conBefore + 720);
+    // 雇主：扣预算 1000，成交时退回差额 200，净扣 800（无二次扣款）
+    expect(creditsOf(emp)).toBe(empBefore - 800);
+  });
+
+  it('积分：取消任务全额退回预算', () => {
+    const before = creditsOf(emp);
+    const t = svc.createTask({ employerId: emp, title: '待取消任务', budget: 600 });
+    expect(creditsOf(emp)).toBe(before - 600);
+    svc.cancelTask(emp, t.id);
+    expect(creditsOf(emp)).toBe(before);
+  });
+
+  it('积分：余额不足时拒绝创建任务，不产生负余额', () => {
+    // 造一个只有 10 积分的账号
+    db.run(`DELETE FROM user_credits WHERE user_id = 'user-broke'`);
+    db.run(`INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at)
+      VALUES ('user-broke', 10, 0, 0, 0)`);
+    expect(() => svc.createTask({ employerId: 'user-broke', title: '没钱任务', budget: 5000 }))
+      .toThrow(MvpMarketError);
+    // 扣款失败不得留下负余额
+    expect(creditsOf('user-broke')).toBe(10);
+  });
+
+  it('钱包 usd：扣预算 → 验收分账 90%', () => {
+    const emp = 'user-emp-usd';
+    const con = 'user-con-usd';
+    fundWallet(emp, 'usd', 10000);
+    const conBefore = walletOf(con, 'usd');
+
+    const t = svc.createTask({ employerId: emp, title: 'USD 任务', budget: 200, currency: 'usd' });
+    expect(walletOf(emp, 'usd')).toBe(9800);
+
+    const q = svc.submitQuote({ taskId: t.id, bidderId: con, amount: 150 });
+    const c = svc.acceptQuote(emp, q.id);
+    svc.confirmContract(con, c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: con, content: 'ok' });
+    svc.acceptDelivery(emp, d.id);
+
+    // 150 * 0.9 = 135
+    expect(walletOf(con, 'usd')).toBe(conBefore + 135);
+    // 雇主：扣预算 200，成交退回差额 50，净扣 150（无二次扣款）
+    expect(walletOf(emp, 'usd')).toBe(9850);
+  });
+
+  it('争议 release：全额付承包方 90%', () => {
+    const emp = 'user-emp-rel';
+    const con = 'user-con-rel';
+    fundCredits(emp, 100000);
+    fundCredits(con, 100000);
+    const conBefore = creditsOf(con);
+
+    const t = svc.createTask({ employerId: emp, title: '争议 release', budget: 1000 });
+    const q = svc.submitQuote({ taskId: t.id, bidderId: con, amount: 900 });
+    const c = svc.acceptQuote(emp, q.id);
+    svc.confirmContract(con, c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: con, content: 'x' });
+    const disp = svc.openDispute({ contractId: c.id, initiatorId: emp, reason: '有争议', deliveryId: d.id });
+    svc.resolveDispute({ adminId: 'admin-x', disputeId: disp.id, decision: 'release', resolution: '承包方合格' });
+
+    expect(creditsOf(con)).toBe(conBefore + 810);
+  });
+
+  it('争议 refund：全额退回雇主', () => {
+    const emp = 'user-emp-ref';
+    const con = 'user-con-ref';
+    fundCredits(emp, 100000);
+    fundCredits(con, 100000);
+    const empBefore = creditsOf(emp);
+
+    const t = svc.createTask({ employerId: emp, title: '争议 refund', budget: 1000 });
+    const q = svc.submitQuote({ taskId: t.id, bidderId: con, amount: 900 });
+    const c = svc.acceptQuote(emp, q.id);
+    svc.confirmContract(con, c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: con, content: 'x' });
+    const disp = svc.openDispute({ contractId: c.id, initiatorId: emp, reason: '完全不符' });
+    svc.resolveDispute({ adminId: 'admin-x', disputeId: disp.id, decision: 'refund', resolution: '全退' });
+
+    expect(creditsOf(emp)).toBe(empBefore);
+  });
+
+  it('争议 partial：部分退雇主，剩余 90% 付承包方', () => {
+    const emp = 'user-emp-par';
+    const con = 'user-con-par';
+    fundCredits(emp, 100000);
+    fundCredits(con, 100000);
+    const empBefore = creditsOf(emp);
+    const conBefore = creditsOf(con);
+
+    const t = svc.createTask({ employerId: emp, title: '争议 partial', budget: 1000 });
+    const q = svc.submitQuote({ taskId: t.id, bidderId: con, amount: 900 });
+    const c = svc.acceptQuote(emp, q.id);
+    svc.confirmContract(con, c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: con, content: 'x' });
+    const disp = svc.openDispute({ contractId: c.id, initiatorId: emp, reason: '部分问题' });
+    svc.resolveDispute({ adminId: 'admin-x', disputeId: disp.id, decision: 'partial', resolution: '各让一步', refundAmount: 150 });
+
+    // 雇主：扣预算 1000，成交退差额 100，争议再退 150 → 净扣 750
+    expect(creditsOf(emp)).toBe(empBefore - 750);
+    // 承包方拿 (900-150)*0.9 = 675
+    expect(creditsOf(con)).toBe(conBefore + 675);
+  });
+});
+
+describe('资金守恒 — 全场景总额不凭空增减', () => {
+  const uids = ['emp-g', 'con-g'];
+
+  function total(): number {
+    fundEnsure(db);
+    let sum = 0;
+    for (const u of uids) sum += creditsOf(u);
+    return sum;
+  }
+
+  // 守恒测试 · 重置两个账号并各充 10000 积分
+  beforeAll(() => {
+    fundEnsure(db);
+    for (const u of uids) {
+      db.run(`DELETE FROM user_credits WHERE user_id = '${u}'`);
+      db.run(`INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at)
+        VALUES ('${u}', 10000, 0, 0, 0)`);
+    }
+  });
+
+  it('成交额 < 预算 时，只有平台抽成被扣除，雇主拿回差额', () => {
+    const before = total();
+    const t = svc.createTask({ employerId: 'emp-g', title: '守恒任务', budget: 1000 });
+    svc.submitQuote({ taskId: t.id, bidderId: 'con-g', amount: 800 });
+    expect(total()).toBe(before - 1000); // 下任务全扣
+
+    const q = svc.listQuotesByTask(t.id)[0];
+    const c = svc.acceptQuote('emp-g', q.id);
+    // 退差额 200 → 总额 -800
+    expect(total()).toBe(before - 800);
+    svc.confirmContract('con-g', c.id);
+    const d = svc.submitDelivery({ contractId: c.id, submitterId: 'con-g', content: 'ok' });
+    svc.acceptDelivery('emp-g', d.id);
+    // 结算 800：付 720 给承包方，平台抽 80
+    expect(total()).toBe(before - 800 + 720);
+  });
+
+  it('取消任务：总额完全回到原样（零抽成）', () => {
+    const before = total();
+    const t = svc.createTask({ employerId: 'emp-g', title: '守恒取消', budget: 700 });
+    expect(total()).toBe(before - 700);
+    svc.cancelTask('emp-g', t.id);
+    expect(total()).toBe(before);
   });
 });
