@@ -70,7 +70,7 @@ Lighthouse 使用**独立的「防火墙」页面**，与 CVM 的「安全组」
 
 ### 路径 A：控制台粘贴（推荐，无需 SSH）
 
-1. 将 `deploy/PASTE-INTO-TENCENT-CONSOLE.sh`（53,668 字节）内容复制
+1. 将 `deploy/PASTE-INTO-TENCENT-CONSOLE.sh`（55,658 字节）内容复制
 2. 腾讯云控制台 → 实例 → **登录**（网页终端 / VNC）
 3. 粘贴并回车（文件较大，粘贴需 10–20 秒）
 4. 如提示权限，用 TAT 执行器运行：
@@ -110,9 +110,9 @@ ssh -i C:\Users\Administrator\Downloads\lingxi.pem root@43.161.216.80
 
 | 文件 | 大小 | 说明 |
 |---|---|---|
-| `deploy/PASTE-INTO-TENCENT-CONSOLE.sh` | 53,668 B | 自包含粘贴安装器（含站点） |
+| `deploy/PASTE-INTO-TENCENT-CONSOLE.sh` | 55,658 B | 自包含粘贴安装器（含站点） |
 | `deploy/unlock-and-deploy.sh` | 8,068 B | 需先上传站点包到 `/tmp/` |
-| `deploy/site/index.html` | 28,146 B | 官网首页（中英双语） |
+| `deploy/site/index.html` | 56,937 B | 官网首页（中英双语） |
 | `deploy/site/js/official-i18n.js` | 28,816 B | i18n 词典，133 个 key |
 | `deploy/site/terms.html` | 8,949 B | 服务协议（模拟支付声明） |
 | `deploy/site/privacy.html` | 7,996 B | 隐私政策 |
@@ -125,6 +125,10 @@ ssh -i C:\Users\Administrator\Downloads\lingxi.pem root@43.161.216.80
 | 检查 | 结果 |
 |---|---|
 | `bash -n` 语法校验 | ✅ SYNTAX_OK |
+| http2 版本兼容分支 | ✅ 探测 nginx 版本，≥1.25.1 用独立指令，否则用传统 listen 写法 |
+| nginx 配置结构校验 | ✅ 3 份配置括号平衡、无 shell 语法泄漏、变量未误转义 |
+| 端到端演练（7 阶段） | ✅ 载荷/解包/配置/分支/certbot/幂等 全通过 |
+| 载荷与磁盘一致性 | ✅ 5/5 文件 SHA256 逐字节匹配 |
 | base64 字符集纯净 | ✅ |
 | 解码后字节数 | ✅ 33,825 B（45,100 → 33,825） |
 | tar 包有效性 | ✅ 6 个条目 |
