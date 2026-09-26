@@ -22,6 +22,8 @@
  *   GET    /api/mvp/disputes                   争议列表（管理员全部 / 用户自己的）
  *   POST   /api/mvp/disputes/:id/resolve       处理争议（管理员）
  *   GET    /api/mvp/settlements                结算记录
+ *   GET    /api/mvp/admin/revenue              平台抽成汇总（管理员）
+ *   GET    /api/mvp/admin/revenue/list         平台抽成流水（管理员）
  *   GET    /api/mvp/notifications              通知列表
  *   POST   /api/mvp/notifications/read         标记已读
  *   GET    /api/mvp/audit-logs                 审计日志
@@ -39,7 +41,7 @@
  */
 
 import { Router } from 'express';
-import { MvpMarketService, MvpMarketError } from '../core/mvp-market/service.js';
+import { MvpMarketService, MvpMarketError, PLATFORM_FEE_RATE } from '../core/mvp-market/service.js';
 
 interface Ctx {
   db: any;
@@ -250,6 +252,34 @@ export function createMvpMarketRoutes(ctx: Ctx): Router {
         userId: isAdmin(req) ? (req.query.userId as string | undefined) : uid(req),
         contractId: req.query.contractId as string | undefined,
       }),
+    });
+  }));
+
+  // ══════════════════ 平台抽成（对账 / 报表，仅管理员） ══════════════════
+
+  /** 抽成汇总：gross / pay / fee 三段式 + 实际费率 */
+  router.get('/admin/revenue', requireAuth, adminAuth, wrap((req, res) => {
+    res.json({
+      ok: true,
+      currentFeeRate: PLATFORM_FEE_RATE,
+      summary: svc.platformRevenueSummary({
+        market: req.query.market as string | undefined,
+        currency: req.query.currency as string | undefined,
+        from: req.query.from ? Number(req.query.from) : undefined,
+        to: req.query.to ? Number(req.query.to) : undefined,
+      }),
+    });
+  }));
+
+  /** 抽成流水：支持 market / currency 过滤 + 分页 */
+  router.get('/admin/revenue/list', requireAuth, adminAuth, wrap((req, res) => {
+    res.json({
+      ok: true,
+      revenue: svc.listPlatformRevenue(
+        Number(req.query.limit) || 50,
+        Number(req.query.offset) || 0,
+        { market: req.query.market as string | undefined, currency: req.query.currency as string | undefined },
+      ),
     });
   }));
 
