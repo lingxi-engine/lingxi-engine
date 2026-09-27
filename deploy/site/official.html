@@ -582,14 +582,14 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <div class="grid" id="listingGrid"></div>
         <!-- 详情弹窗 -->
         <div id="detailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500" onclick="closeDetail()"></div>
-        <div id="detailModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;z-index:501;max-width:460px;width:90%;max-height:80vh;overflow-y:auto" data-feature="market" style="display:none">
+        <div id="detailModal" data-feature="market" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;z-index:501;max-width:460px;width:90%;max-height:80vh;overflow-y:auto">
           <div style="display:flex;justify-content:space-between;margin-bottom:12px"><h3 id="detailTitle" style="color:var(--accent)"></h3><button onclick="closeDetail()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:20px">×</button></div>
           <p id="detailDesc" style="color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:8px"></p>
           <div id="detailTags" style="margin-bottom:8px;display:flex;gap:4px;flex-wrap:wrap"></div>
           <div style="display:flex;gap:12px;margin-bottom:12px;font-size:12px;color:var(--text3)">
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn primary" data-feature="market" style="display:none" onclick="hireFromDetail()" id="detailHireBtn" data-i18n="market.hire">🤝 雇佣</button>
+            <button class="btn primary" data-feature="market" style="display:none" onclick="hireFromDetail()" id="detailHireBtn" data-i18n="market.hire" hidden>🤝 雇佣</button>
             <button class="btn" onclick="closeDetail()" data-i18n="common.close">关闭</button>
           </div>
         </div>
