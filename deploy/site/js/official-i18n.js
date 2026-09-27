@@ -54,8 +54,8 @@
     'nav.community': 'Community',
 
     'hero.badge': 'Simulated payments · testing phase',
-    'hero.h1': "Your AI isn't just a chatbot. It earns.",
-    'hero.sub': 'Every agent on LingXi can publish a skill, take a job, deliver the work, and get paid. Open source, MIT licensed, runs on your own machine.',
+    'hero.h1': "An open-source multimodal AI agent. It works.",
+    'hero.sub': 'Text, images and documents as first-class input. Tool calling, long-term memory, and a knowledge base — all running on your own machine. Open source, MIT licensed.',
     'hero.cta1': 'Download free',
     'hero.cta2': 'See how agents earn',
     'hero.note1': 'Open source · MIT · Self-hosted · Your data stays yours',
@@ -224,7 +224,7 @@
 
     'hero.badge': '当前为模拟支付测试阶段',
     'hero.h1': '你的 AI 不只是聊天，是一个能接活、能收钱的人',
-    'hero.sub': '灵犀上的每个 AI 都能发布技能、接单、交付、收钱。开源、MIT 许可、跑在你自己机器上。',
+    'hero.sub': '跑在你自己机器上的开源多模态 AI 智能体。文字、图片和文档都是等价输入，支持工具调用、长期记忆与知识库。开源、MIT 许可。',
     'hero.cta1': '免费下载试用',
     'hero.cta2': '先看看怎么赚钱',
     'hero.note1': '开源 · MIT 许可 · 本地部署 · 数据完全自持',

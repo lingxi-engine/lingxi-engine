@@ -1,0 +1,1126 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵犀引擎</title>
+<link rel="stylesheet" href="css/style.css?v=20260914b">
+<link rel="stylesheet" href="css/mobile.css?v=20260828">
+<style>
+/* ══════════════ 基础变量（深海暗黑 · 默认主题） ══════════════ */
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#21262d;--bg4:#2d333b;--border:#30363d;
+  --text:#c9d1d9;--text2:#8b949e;--text3:#6e7681;
+  --accent:#58a6ff;--accent2:#1f6feb;--green:#3fb950;--red:#f85149;--yellow:#d2991d;--purple:#a371f7;
+  --radius:8px;--radius-sm:5px;--nav-h:64px;--bottom-h:40px;
+  --shadow:none;--shadow-lg:none;--blur:0px;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  --mono:'SF Mono','Fira Code','Consolas',monospace;
+  --card-bg:var(--bg3);--card-border:var(--border);
+  --btn-radius:var(--radius-sm);--input-radius:var(--radius-sm);
+  --bubble-radius:10px;--glass-opacity:1;
+  --scanline:none;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;display:flex;flex-direction:column;transition:background .4s,color .4s}
+button{font-family:var(--font);cursor:pointer}
+code{font-family:var(--mono);font-size:.95em}
+::-webkit-scrollbar{width:8px;height:8px}
+::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:4px}
+
+/* ══════════════ 主题一：玻璃拟态 Glass ══════════════ */
+body.theme-glass{
+  --bg:linear-gradient(135deg,#0f172a 0%,#1e1b4b 45%,#312e81 100%);
+  --bg2:rgba(255,255,255,.06);--bg3:rgba(255,255,255,.10);--bg4:rgba(255,255,255,.16);
+  --border:rgba(255,255,255,.14);
+  --text:#e2e8f0;--text2:#a5b4fc;--text3:#818cf8;
+  --accent:#a78bfa;--accent2:#6366f1;--green:#34d399;--red:#fb7185;--yellow:#fbbf24;--purple:#c084fc;
+  --radius:16px;--radius-sm:10px;
+  --shadow:0 4px 20px rgba(0,0,0,.35);--shadow-lg:0 8px 40px rgba(0,0,0,.5);
+  --blur:14px;--card-bg:rgba(255,255,255,.08);--card-border:rgba(255,255,255,.18);
+  --btn-radius:10px;--input-radius:12px;--bubble-radius:16px;
+}
+body.theme-glass .topnav,body.theme-glass .sidebar,body.theme-glass .rightbar,
+body.theme-glass .bottom-toolbar,body.theme-glass .chat-title-bar,body.theme-glass .input-area,
+body.theme-glass .log-panel,body.theme-glass .profile-card{backdrop-filter:blur(var(--blur));-webkit-backdrop-filter:blur(var(--blur))}
+body.theme-glass .chat-item:hover,body.theme-glass .chat-item.active,
+body.theme-glass .task-card,body.theme-glass .goal-item{background:var(--card-bg)}
+body.theme-glass .msg .bubble{background:var(--card-bg)}
+body.theme-glass .input-area textarea{background:rgba(0,0,0,.25)}
+
+/* ══════════════ 主题二：晨光浅色 Light ══════════════ */
+body.theme-light{
+  --bg:#f4f6fa;--bg2:#ffffff;--bg3:#eef1f6;--bg4:#e2e8f0;--border:#d8dee9;
+  --text:#1e293b;--text2:#64748b;--text3:#94a3b8;
+  --accent:#0891b2;--accent2:#0e7490;--green:#059669;--red:#e11d48;--yellow:#d97706;--purple:#7c3aed;
+  --radius:12px;--radius-sm:8px;
+  --shadow:0 1px 3px rgba(15,23,42,.08),0 4px 12px rgba(15,23,42,.05);--shadow-lg:0 8px 30px rgba(15,23,42,.12);
+  --card-bg:#ffffff;--card-border:#e2e8f0;--btn-radius:8px;--input-radius:10px;--bubble-radius:14px;
+}
+body.theme-light .chat-item.active{background:var(--bg3)}
+body.theme-light .msg.user .bubble{background:#e0f2fe;border-color:#bae6fd}
+body.theme-light .log-body{background:#0f172a}
+body.theme-light .task-card,body.theme-light .goal-item{background:var(--card-bg);box-shadow:var(--shadow)}
+
+/* ══════════════ 主题三：复古终端 Retro ══════════════ */
+body.theme-retro{
+  --bg:#0a0a0a;--bg2:#111111;--bg3:#1a1a1a;--bg4:#242424;--border:#2e2e2e;
+  --text:#33ff66;--text2:#22cc55;--text3:#1a8f3a;
+  --accent:#33ff66;--accent2:#00cc44;--green:#33ff66;--red:#ff4444;--yellow:#ffcc33;--purple:#cc66ff;
+  --radius:0px;--radius-sm:0px;--nav-h:64px;--bottom-h:40px;
+  --shadow:0 0 12px rgba(51,255,102,.25);--shadow-lg:0 0 24px rgba(51,255,102,.35);
+  --font:'Fira Code','Cascadia Code','Consolas',monospace;
+  --card-bg:#111111;--card-border:#33ff66;--btn-radius:0px;--input-radius:0px;--bubble-radius:2px;
+  --scanline:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0px,rgba(0,0,0,.15) 1px,transparent 1px,transparent 3px);
+}
+body.theme-retro{background:var(--bg);position:relative}
+body.theme-retro::after{content:'';position:fixed;inset:0;pointer-events:none;background:var(--scanline);z-index:9999;opacity:.5}
+body.theme-retro .topnav,body.theme-retro .bottom-toolbar,body.theme-retro .sidebar,
+body.theme-retro .rightbar{border-color:#33ff66}
+body.theme-retro .topnav,body.theme-retro .bottom-toolbar{background:#0a0a0a}
+body.theme-retro button,body.theme-retro select,body.theme-retro textarea{border-color:#33ff66 !important;color:var(--text) !important;background:#0a0a0a !important}
+body.theme-retro .btn-sm,body.theme-retro .bottom-toolbar button,body.theme-retro .side-nav button,
+body.theme-retro .task-actions button,body.theme-retro .log-toolbar button{box-shadow:var(--shadow)}
+body.theme-retro .msg .bubble{background:#0f1f0f;border-color:#33ff66;box-shadow:var(--shadow)}
+body.theme-retro .msg.user .bubble{background:#0a2e0a}
+body.theme-retro .chat-title-bar{background:#0a0a0a;border-bottom-color:#33ff66}
+body.theme-retro .chat-item.active{border-left-color:#33ff66}
+body.theme-retro .log-body{background:#050505}
+body.theme-retro .dot{box-shadow:0 0 8px var(--green)}
+body.theme-retro .profile-avatar{box-shadow:0 0 16px rgba(51,255,102,.5)}
+
+/* ══════════════ 主题四：简洁极简 Minimal ══════════════ */
+body.theme-minimal{
+  --bg:#e2e2e2;--bg2:#ffffff;--bg3:#dbdbdb;--bg4:#cfcfcf;--border:#d6d6d6;
+  --text:#171717;--text2:#737373;--text3:#a3a3a3;
+  --accent:#18181b;--accent2:#3f3f46;--green:#16a34a;--red:#dc2626;--yellow:#ca8a04;--purple:#9333ea;
+  --radius:4px;--radius-sm:3px;
+  --shadow:none;--shadow-lg:none;
+  --font:-apple-system,BlinkMacSystemFont,'Helvetica Neue','PingFang SC',sans-serif;
+  --card-bg:#ffffff;--card-border:transparent;--btn-radius:3px;--input-radius:3px;--bubble-radius:8px;
+}
+body.theme-minimal .sidebar,body.theme-minimal .topnav,body.theme-minimal .bottom-toolbar,
+body.theme-minimal .chat-title-bar,body.theme-minimal .input-area{border-color:#d4d4d4}
+body.theme-minimal .chat-item.active,body.theme-minimal .chat-item:hover{background:var(--bg3)}
+body.theme-minimal .task-card,body.theme-minimal .goal-item{background:var(--bg3)}
+body.theme-minimal .msg .bubble{background:var(--bg3)}
+body.theme-minimal .msg.user .bubble{background:#e8e8e8}
+body.theme-minimal .input-area textarea{background:var(--bg3);border:transparent}
+body.theme-minimal .bottom-toolbar button{border:transparent}
+body.theme-minimal .bottom-toolbar button.active{background:var(--accent);color:#fff;border-color:transparent}
+body.theme-minimal .profile-card{background:var(--bg3)}
+
+/* === 主题六：粉红 Pink === */
+body.theme-pink{
+  --bg:linear-gradient(160deg,#fff0f5 0%,#ffe4ec 40%,#ffd6e2 100%);
+  --bg2:#fff5f8;--bg3:#ffe3ec;--bg4:#ffd0de;--border:#ffc9d8;
+  --text:#4a2533;--text2:#9d5c70;--text3:#c08497;
+  --accent:#ff2d78;--accent2:#e0246a;--green:#00b884;--red:#ff3b5c;--yellow:#ffb020;--purple:#c026d3;
+  --radius:14px;--radius-sm:9px;
+  --shadow:0 4px 18px rgba(255,45,120,.12);--shadow-lg:0 10px 36px rgba(255,45,120,.20);
+  --card-bg:#ffffff;--card-border:#ffd0de;--btn-radius:9px;--input-radius:11px;--bubble-radius:15px;
+}
+body.theme-pink .topnav,body.theme-pink .bottom-toolbar{background:rgba(255,245,248,.85)}
+body.theme-pink .sidebar,body.theme-pink .rightbar{background:rgba(255,243,247,.7)}
+body.theme-pink .chat-item.active{background:var(--card-bg);border-left:3px solid var(--accent)}
+body.theme-pink .theme-switch button.active{background:var(--accent);border-color:var(--accent)}
+body.theme-pink .side-nav button.active{color:var(--accent);border-color:var(--accent)}
+body.theme-pink .task-card,body.theme-pink .goal-item{background:var(--card-bg);box-shadow:var(--shadow)}
+body.theme-pink .msg.user .bubble{background:#ffdce8;border-color:#ffc9d8}
+body.theme-pink .msg .bubble{background:var(--card-bg);border:1px solid var(--border)}
+body.theme-pink .input-area textarea{background:var(--card-bg);border:1px solid var(--border)}
+body.theme-pink .btn-sm:hover{background:var(--bg4)}
+body.theme-pink .profile-avatar{box-shadow:0 0 20px rgba(255,45,120,.35)}
+body.theme-pink .dot{box-shadow:0 0 8px var(--green)}
+body.theme-pink .log-body{background:#3d0f22}
+
+
+/* ══════════════ 通用布局 ══════════════ */
+.topnav{height:var(--nav-h);background:var(--bg2);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;gap:8px;flex-shrink:0;transition:background .4s,border-color .4s}
+/* 品牌 Logo（v12 立体水晶球 + 渐变字标） */
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:19px;color:var(--accent);text-decoration:none;white-space:nowrap;letter-spacing:.4px}
+.logo-mark{width:46px;height:46px;flex-shrink:0;filter:drop-shadow(0 5px 6px rgba(0,0,0,.32)) drop-shadow(0 1px 1px rgba(0,0,0,.22)) drop-shadow(0 0 8px color-mix(in srgb,var(--accent) 45%,transparent));transition:filter .3s,transform .3s}
+.logo:hover .logo-mark{filter:drop-shadow(0 6px 10px rgba(0,0,0,.4)) drop-shadow(0 0 16px var(--accent));transform:translateY(-1px) rotate(6deg)}
+.logo-txt{display:flex;flex-direction:column;line-height:1.1}
+.logo-txt b{font-size:24px;font-weight:900;letter-spacing:.6px;background:linear-gradient(180deg,#fff 0%,color-mix(in srgb,var(--accent) 55%,#fff) 22%,var(--accent) 48%,color-mix(in srgb,var(--accent2) 85%,#000) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 1px 0 rgba(255,255,255,.5),0 2px 0 color-mix(in srgb,var(--accent2) 74%,#000),0 3px 0 color-mix(in srgb,var(--accent2) 60%,#000),0 4px 0 color-mix(in srgb,var(--accent2) 46%,#000),0 6px 10px rgba(0,0,0,.32)}
+.logo-txt i{font-style:normal;font-size:11px;letter-spacing:2.8px;color:var(--text3);font-family:var(--mono);margin-top:1px}
+.logo-mark .halo{transform-origin:32px 30px;animation:lx-halo-breathe 3.8s ease-in-out infinite}
+@keyframes lx-halo-breathe{0%,100%{transform:scale(1);opacity:.32}50%{transform:scale(1.08);opacity:.48}}
+.logo-mark .nucleus-dot{transform-origin:32px 30px;animation:lx-nucleus-pulse 2.4s ease-in-out infinite}
+@keyframes lx-nucleus-pulse{0%,100%{transform:scale(1);opacity:.92}50%{transform:scale(1.5);opacity:.7}}
+.logo-mark .nucleus-glow{animation:lx-glow-pulse 2.4s ease-in-out infinite}
+@keyframes lx-glow-pulse{0%,100%{opacity:.55;transform:scale(1)}50%{opacity:.85;transform:scale(1.18)}}
+.logo-mark .ripple{transform-origin:32px 30px;animation:lx-ripple 3.2s cubic-bezier(.25,.6,.35,1) infinite}
+.logo-mark .ripple.r2{animation-delay:1.6s}
+@keyframes lx-ripple{0%{transform:scale(1);opacity:.58}70%{opacity:0}100%{transform:scale(2.4);opacity:0}}
+.logo-mark .orbit-flow{stroke-dasharray:7 61;animation:lx-flow 2.4s linear infinite}
+@keyframes lx-flow{to{stroke-dashoffset:-68}}
+.logo-mark .orbit-flow.accent{stroke-dasharray:5 63;animation-duration:1.6s;stroke-opacity:.7}
+.logo-mark .sat-back{offset-path:path('M4 30 A28 12 0 1 1 60 30');animation:lx-sat 4s linear infinite}
+.logo-mark .sat-back.s2{animation-delay:2s}
+.logo-mark .sat-front{offset-path:path('M60 30 A28 12 0 1 1 4 30');animation:lx-sat 4s linear infinite;animation-direction:reverse}
+.logo-mark .sat-front.f0{animation-delay:0s}
+@keyframes lx-sat{from{offset-distance:0%}to{offset-distance:100%}}
+.logo-mark .l-shine{stroke-dasharray:34 150;animation:lShine 6s linear infinite}
+@keyframes lShine{0%{stroke-dashoffset:0}50%{stroke-dashoffset:-184}100%{stroke-dashoffset:-184}}
+.logo:hover .logo-mark .ripple{animation-duration:1.5s}
+.logo:hover .logo-mark .orbit-flow{animation-duration:1.2s}
+.logo:hover .logo-mark .orbit-flow.accent{animation-duration:.8s}
+.logo:hover .logo-mark .sat-back{animation-duration:2s}
+.logo:hover .logo-mark .sat-back.s2{animation-delay:1s}
+.logo:hover .logo-mark .sat-front{animation-duration:2s;animation-delay:1s}
+.logo:hover .logo-mark .sat-front.f0{animation-delay:0s}
+body.theme-minimal .logo-mark{filter:drop-shadow(0 1px 1px rgba(0,0,0,.22))}
+body.theme-minimal .logo-txt b{background:none;color:var(--accent);text-shadow:0 1px 0 rgba(255,255,255,.6)}
+body.theme-minimal .logo-mark .halo,body.theme-minimal .logo-mark .ripple,body.theme-minimal .logo-mark .nucleus-glow,body.theme-minimal .logo-mark .orbit-flow,body.theme-minimal .logo-mark .l-shine{animation:none}
+body.theme-minimal .logo-mark .sat-back,body.theme-minimal .logo-mark .sat-front{animation:none;opacity:0}
+body.theme-minimal .logo-mark .orbit-flow.accent{animation:none}
+body.theme-minimal .logo-mark .nucleus-dot{animation:none}
+@media(max-width:1180px){.logo-txt i{display:none}}
+.ver-tag{font-size:10px;color:var(--text3)}
+.topnav select{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:var(--radius-sm);font-size:12px;min-width:150px}
+.topnav .spacer{flex:1}
+.btn-sm{padding:3px 10px;font-size:11px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text);cursor:pointer;transition:all .2s}
+.btn-sm:hover{background:var(--bg4)}
+.status-dot{font-size:11px;color:var(--text3)}
+.green{color:var(--green)}
+
+/* 主题切换器（顶栏，文字按钮） */
+.theme-switch{display:flex;gap:3px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:2px}
+.theme-switch button{border:none;background:transparent;color:var(--text3);font-size:11px;padding:3px 8px;border-radius:4px}
+.theme-switch button.active{background:var(--accent);color:#fff;font-weight:600}
+
+.main-area{display:flex !important;flex:1 !important;overflow:hidden !important}
+
+/* ══════════════ 左侧栏 ══════════════ */
+.sidebar{width:260px;min-width:260px;background:var(--bg2);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:background .4s,border-color .4s}
+
+/* 个人信息卡片（左侧栏顶部） */
+.profile-card{padding:12px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;position:relative;transition:background .2s}
+.profile-card:hover{background:var(--bg3)}
+.profile-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;flex-shrink:0}
+.profile-main{flex:1;min-width:0}
+.profile-name{font-size:14px;font-weight:700;display:flex;align-items:center;gap:6px}
+.profile-name .lv{font-size:9px;background:var(--accent);color:#fff;border-radius:8px;padding:0 5px;line-height:14px}
+.profile-id{font-size:10px;color:var(--text3);margin-top:1px}
+.profile-credits{font-size:11px;color:var(--yellow);margin-top:3px;display:flex;align-items:center;gap:3px}
+.profile-arrow{font-size:10px;color:var(--text3)}
+
+/* 个人资料详情（展开区） */
+.profile-detail{display:none;border-bottom:1px solid var(--border);padding:10px 12px;background:var(--bg);font-size:12px;animation:fadeIn .2s}
+.profile-detail.open{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.pd-row{display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px dashed var(--border)}
+.pd-row:last-child{border-bottom:none}
+.pd-label{color:var(--text3)}
+.pd-val{color:var(--text);display:flex;align-items:center;gap:4px}
+.pd-val .coins{color:var(--yellow);font-weight:700}
+.pd-note{font-size:10px;color:var(--yellow);border:1px solid var(--border);border-radius:4px;padding:1px 6px;white-space:nowrap;background:var(--bg3)}
+.pd-note.green{color:var(--green);border-color:rgba(0,200,0,.4)}
+.pd-stars{color:var(--yellow)}
+.pd-bio{margin-top:6px;background:var(--bg3);border-radius:var(--radius-sm);padding:6px 8px;color:var(--text2);line-height:1.5;font-size:11px}
+.pd-actions{display:flex;gap:6px;margin-top:8px}
+.pd-actions button{flex:1;padding:5px 0;font-size:11px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2)}
+.pd-actions button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pd-actions button:hover{color:var(--text)}
+
+/* 功能导航 */
+.side-nav{display:flex;flex-wrap:wrap;gap:4px;padding:8px;border-bottom:1px solid var(--border)}
+.side-nav button{padding:5px 10px;font-size:12px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all .15s}
+.side-nav button:hover{color:var(--text)}
+.side-nav button.active{color:var(--accent);border-color:var(--accent);background:var(--bg)}
+.side-nav .nav-badge{background:var(--red);color:#fff;border-radius:8px;font-size:10px;padding:0 5px;margin-left:4px}
+.chat-list{flex:1;overflow-y:auto;padding:6px}
+.side-section-title{padding:8px 10px 4px;font-size:11px;color:var(--text3);display:flex;justify-content:space-between;align-items:center}
+.chat-item{padding:7px 10px;border-radius:6px;cursor:pointer;font-size:13px;margin:2px 0;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+.chat-item:hover{background:var(--bg3)}
+.chat-item.active{background:var(--bg3);border-left:3px solid var(--accent)}
+.chat-item .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-item .meta{font-size:10px;color:var(--text3)}
+
+/* 日志面板（左侧底部） */
+.log-orb{width:22px;height:22px;border-radius:50%;background:conic-gradient(#fff,var(--accent),#fff,var(--accent2),#fff);animation:loSpin 2.5s linear infinite;flex-shrink:0;box-shadow:0 0 10px color-mix(in srgb,var(--accent) 60%,transparent)}
+@keyframes loSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+.log-panel{border-top:1px solid var(--border);background:var(--bg);flex-shrink:0}
+.log-head{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;font-size:12px;color:var(--text2);overflow:visible;line-height:1}
+.log-head:hover{background:var(--bg3)}
+.log-head .log-title{font-weight:600;flex:1}
+.log-head .dot{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block}
+.log-body{display:none;max-height:200px;overflow-y:auto;padding:8px 10px;font-family:var(--mono);font-size:11px;line-height:1.7;border-top:1px solid var(--border);background:#0a0e14}
+.log-body.open{display:block}
+.log-line{white-space:pre-wrap;word-break:break-all}
+.log-line .t{color:var(--text3)}
+.log-line .info{color:var(--text2)}
+.log-line .ok{color:var(--green)}
+.log-line .warn{color:var(--yellow)}
+.log-line .err{color:var(--red)}
+.log-toolbar{display:flex;gap:4px;align-items:center;padding:0 10px 6px}
+.log-toolbar button{padding:2px 8px;font-size:10px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2)}
+.log-toolbar button:hover{color:var(--text)}
+
+/* ══════════════ 主内容 ══════════════ */
+.content{flex:1 !important;display:flex !important;flex-direction:column !important;overflow:hidden !important;position:static !important}
+.content-panel{display:none;flex:1;flex-direction:column;overflow:hidden}
+.content-panel.active{display:flex}
+.chat-title-bar{padding:8px 14px;border-bottom:1px solid var(--border);background:var(--bg2);display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.chat-title-bar .chat-title{flex:1}
+.messages{flex:1;overflow-y:auto;padding:16px}
+.msg{display:flex;gap:10px;margin-bottom:14px}
+.msg .avatar{width:30px;height:30px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0}
+.msg.user .avatar{background:var(--accent2);color:#fff}
+.msg .bubble{max-width:70%;background:var(--bg2);border:1px solid var(--border);border-radius:var(--bubble-radius);padding:8px 12px;font-size:13px;line-height:1.6;transition:all .3s}
+.msg.user .bubble{background:var(--bg3);border-color:var(--border)}
+.msg .who{font-size:11px;color:var(--text3);margin-bottom:2px}
+.input-area{display:flex;align-items:center;gap:6px;padding:8px 14px;border-top:1px solid var(--border);background:var(--bg2);height:56px}
+.input-area textarea{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--input-radius);font-size:13px;resize:none;font-family:var(--font);transition:all .3s}
+.input-area button{padding:6px 14px;border-radius:var(--btn-radius);border:1px solid var(--accent);background:transparent;color:var(--accent);font-size:13px;white-space:nowrap}
+.input-area button.primary{background:var(--accent);color:#fff}
+
+/* ══════════════ 右侧栏 ══════════════ */
+.rightbar{width:300px;min-width:300px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:background .4s,border-color .4s}
+.right-head{display:flex;border-bottom:1px solid var(--border)}
+.right-head button{flex:1;padding:9px 0;font-size:13px;border:none;background:transparent;color:var(--text2);border-bottom:2px solid transparent}
+.right-head button.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.right-body{flex:1;overflow-y:auto;padding:10px}
+.task-card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:10px;margin-bottom:8px;box-shadow:var(--shadow);transition:all .3s}
+.task-card .task-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px}
+.task-card .task-name .status-pill{font-size:10px;padding:1px 6px;border-radius:8px;font-weight:400}
+.pill-on{background:#12301c;color:var(--green);border:1px solid #23863655}
+.pill-off{background:#3a1d1d;color:var(--red);border:1px solid #f8514955}
+.task-card .task-meta{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.6}
+.task-card .task-actions{display:flex;gap:6px;margin-top:8px}
+.task-card .task-actions button{font-size:11px;padding:3px 10px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2)}
+.task-card .task-actions button:hover{color:var(--text)}
+.task-card .task-actions .run{color:var(--green)}
+.task-card .task-actions .del{color:var(--red)}
+.goal-item{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius);padding:10px;margin-bottom:8px;box-shadow:var(--shadow);transition:all .3s}
+.goal-item .goal-head{display:flex;align-items:center;gap:6px;font-size:13px}
+.goal-item .goal-head .g-status{font-size:16px}
+.goal-item .goal-bar{height:5px;background:var(--bg3);border-radius:3px;margin-top:8px;overflow:hidden}
+.goal-item .goal-bar i{display:block;height:100%;background:var(--accent);border-radius:3px}
+.goal-item .goal-foot{display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-top:5px}
+.add-goal{padding:8px;border:1px dashed var(--border);border-radius:var(--radius);background:transparent;color:var(--text2);width:100%;font-size:12px;margin-top:4px}
+.add-goal:hover{color:var(--accent);border-color:var(--accent)}
+
+/* ══════════════ 底部工具栏 ══════════════ */
+.bottom-toolbar{height:var(--bottom-h);background:var(--bg2);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:6px;flex-shrink:0;overflow-x:auto;transition:background .4s,border-color .4s}
+.bottom-toolbar button{padding:5px 12px;font-size:12px;border-radius:var(--btn-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s}
+.bottom-toolbar button:hover{color:var(--text);background:var(--bg4)}
+.bottom-toolbar button.active{color:var(--accent);border-color:var(--accent);background:var(--bg)}
+.bottom-toolbar .tb-spacer{flex:1}
+.bottom-toolbar .tb-status{font-size:10px;color:var(--text3);display:flex;gap:8px;align-items:center;white-space:nowrap}
+.tb-status .ok{color:var(--green)}.tb-status .err{color:var(--red)}
+
+/* 说明浮层 */
+.note-bar{background:#1a2a3a;border-bottom:1px solid #2e4a6d;padding:6px 12px;font-size:12px;color:#9ecbff;display:flex;align-items:center;gap:8px;flex-shrink:0}
+.note-bar b{color:#58a6ff}
+.note-bar .close{margin-left:auto;background:none;border:none;color:#9ecbff;cursor:pointer;font-size:14px}
+
+/* 移动端适配示意 */
+@media(max-width:900px){
+  .sidebar{position:absolute;left:0;top:0;bottom:0;z-index:100;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 20px rgba(0,0,0,.5)}
+  .sidebar.show{transform:translateX(0)}
+  .rightbar{position:absolute;right:0;top:0;bottom:0;z-index:100;transform:translateX(100%);transition:transform .2s;box-shadow:0 0 20px rgba(0,0,0,.5)}
+  .rightbar.show{transform:translateX(0)}
+  .main-area{position:relative}
+  .theme-switch{display:none}
+}
+
+/* ═══ 覆盖功能版 CSS 冲突（强制 v9 三栏布局）═══ */
+.main-area{display:flex !important;flex:1 !important;overflow:hidden !important;position:static !important}
+.sidebar{width:260px !important;min-width:260px !important;position:static !important;display:flex !important;flex-direction:column !important;transform:none !important;transition:none !important;z-index:auto !important}
+.content{flex:1 !important;display:flex !important;flex-direction:column !important;overflow:hidden !important;position:static !important}
+.rightbar{width:300px !important;min-width:300px !important;position:static !important;display:flex !important;flex-direction:column !important;transform:none !important;transition:none !important;z-index:auto !important}
+.bottom-toolbar{position:static !important;transform:none !important}
+.content-panel.active{display:flex !important}
+
+/* Markdown 表格样式 */
+.md-table-wrap{overflow-x:auto;margin:8px 0;border-radius:var(--radius-sm);}
+.md-table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);}
+.md-table th{background:var(--bg3);padding:6px 10px;font-weight:600;border:1px solid var(--border);white-space:nowrap;}
+.md-table td{padding:6px 10px;border:1px solid var(--border);vertical-align:top;}
+.md-table tbody tr:nth-child(even){background:var(--bg2);}
+.md-table tbody tr:hover{background:var(--bg3);}
+
+</style>
+</head>
+<body class="theme-dark">
+
+<!-- ═══ 顶部导航 ═══ -->
+<nav class="topnav">
+  <a class="logo" href="#" title="灵犀引擎 · LINGXI ENGINE">
+    <svg class="logo-mark" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <radialGradient id="gOrb" cx="0.30" cy="0.26" r="0.95">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset=".16" stop-color="color-mix(in srgb,var(--accent) 42%,#fff)"/>
+          <stop offset=".52" stop-color="var(--accent)"/>
+          <stop offset=".84" stop-color="color-mix(in srgb,var(--accent2) 70%,#000)"/>
+          <stop offset="1" stop-color="color-mix(in srgb,var(--accent2) 94%,#000)"/>
+        </radialGradient>
+        <radialGradient id="gNucleus" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#ffffff"/>
+          <stop offset=".38" stop-color="#ffffff" stop-opacity=".9"/>
+          <stop offset=".72" stop-color="var(--accent)" stop-opacity=".5"/>
+          <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="gRing" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="color-mix(in srgb,var(--accent2) 28%,#fff)"/>
+          <stop offset=".5" stop-color="#ffffff"/>
+          <stop offset="1" stop-color="color-mix(in srgb,var(--accent2) 42%,#000)"/>
+        </linearGradient>
+        <radialGradient id="gShadow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#000" stop-opacity=".5"/>
+          <stop offset="1" stop-color="#000" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="gSatGlow" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="#ffffff" stop-opacity=".9"/>
+          <stop offset=".5" stop-color="var(--accent)" stop-opacity=".32"/>
+          <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="gHalo" cx=".5" cy=".5" r=".5">
+          <stop offset="0" stop-color="var(--accent)" stop-opacity=".32"/>
+          <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+      <circle class="halo" cx="32" cy="30" r="30" fill="url(#gHalo)"/>
+      <circle class="ripple r1" cx="32" cy="30" r="13" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+      <circle class="ripple r2" cx="32" cy="30" r="13" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
+      <g transform="rotate(-10 32 30)">
+        <path d="M4 30 A28 12 0 0 1 60 30" fill="none" stroke="color-mix(in srgb,var(--accent2) 42%,#000)" stroke-width="2.2" opacity=".5"/>
+      </g>
+      <g transform="rotate(-10 32 30)">
+        <circle class="sat-back" cx="4" cy="30" r="4.6" fill="url(#gSatGlow)"/>
+        <circle class="sat-back" cx="4" cy="30" r="1.9" fill="#ffffff"/>
+        <circle class="sat-back s2" cx="4" cy="30" r="4.6" fill="url(#gSatGlow)"/>
+        <circle class="sat-back s2" cx="4" cy="30" r="1.9" fill="#ffffff"/>
+      </g>
+      <circle cx="32" cy="30" r="19.5" fill="url(#gOrb)"/>
+      <circle class="nucleus-glow" cx="32" cy="30" r="10.5" fill="url(#gNucleus)"/>
+      <circle class="nucleus-dot" cx="32" cy="30" r="3" fill="#ffffff" opacity=".92"/>
+      <path class="l-shine" d="M21.5 18.8 A15 15 0 0 1 41 16.6" fill="none" stroke="#ffffff" stroke-opacity=".88" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M24 24 A11 11 0 0 1 33 20.6" fill="none" stroke="#ffffff" stroke-opacity=".32" stroke-width="3.2" stroke-linecap="round"/>
+      <path d="M19.5 42.8 A15.5 15.5 0 0 0 44.5 42.8" fill="none" stroke="#ffffff" stroke-opacity=".22" stroke-width="1.8" stroke-linecap="round"/>
+      <g transform="rotate(-10 32 30)">
+        <path d="M4 30 A28 12 0 0 0 60 30" fill="none" stroke="url(#gRing)" stroke-width="2.6" stroke-linecap="round"/>
+        <path class="orbit-flow" d="M4 30 A28 12 0 0 0 60 30" fill="none" stroke="#ffffff" stroke-opacity=".42" stroke-width="1.3" stroke-linecap="round"/>
+        <circle class="sat-front f0" cx="60" cy="30" r="4.6" fill="url(#gSatGlow)"/>
+        <circle class="sat-front f0" cx="60" cy="30" r="1.9" fill="#ffffff"/>
+        <circle class="sat-front" cx="60" cy="30" r="4.6" fill="url(#gSatGlow)"/>
+        <circle class="sat-front" cx="60" cy="30" r="1.9" fill="#ffffff"/>
+        <path class="orbit-flow accent" d="M4 30 A28 12 0 0 0 60 30" fill="none" stroke="var(--accent)" stroke-opacity=".5" stroke-width="1.4" stroke-linecap="round"/>
+      </g>
+      <ellipse cx="32" cy="56" rx="15.5" ry="3.4" fill="url(#gShadow)"/>
+    </svg>
+    <span class="logo-txt"><b data-i18n="app.title">灵犀引擎</b><i>LINGXI&nbsp;ENGINE</i></span>
+  </a>
+  <span class="ver-tag" id="verTag">v2.2-design</span>
+  <select id="headerModelSelect" onchange="switchHeaderModel(this.value)"><option value="" data-i18n="settings.connectOllamaHint">连接Ollama或添加Provider...</option></select>
+  <div class="theme-switch" data-i18n-title="nav.switchTheme" title="切换主题（完整风格，不只是背景色）">
+    <button data-theme="dark" class="active" onclick="switchTheme('dark',this)" data-i18n="theme.dark">深海</button>
+    <button data-theme="glass" onclick="switchTheme('glass',this)" data-i18n="theme.glass">玻璃</button>
+    <button data-theme="light" onclick="switchTheme('light',this)" data-i18n="theme.light">晨光</button>
+    <button data-theme="retro" onclick="switchTheme('retro',this)" data-i18n="theme.retro">终端</button>
+    <button data-theme="minimal" onclick="switchTheme('minimal',this)" data-i18n="theme.minimal">极简</button>
+    <button data-theme="pink" onclick="switchTheme('pink',this)" data-i18n="theme.pink">粉红</button>
+  </div>
+  <div class="spacer"></div>
+  <span class="status-dot" id="wsState">🟢 已连接</span>
+  <button class="btn-sm green" id="loginBtn" onclick="showLoginModal()" data-i18n="nav.login">登录</button>
+  <button class="btn-sm" id="registerBtn" onclick="showRegisterModal()" data-i18n="nav.register">注册</button>
+<span id="loginArea" style="display:flex;gap:6px"></span><span id="userInfo" style="display:none;align-items:center;gap:6px"><span id="userInfoName" style="font-size:13px;font-weight:600;color:var(--text);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span><button class="btn-sm" onclick="showProfileModal()" data-i18n="nav.profile">个人中心</button><button class="btn-sm" onclick="logout()" data-i18n="nav.logout">退出</button></span>
+</nav>
+
+<!-- ═══ 主体 ═══ -->
+<div class="main-area" id="mainArea">
+
+  <!-- ═══ 左侧栏：个人信息 + 功能导航 + 会话 + 日志 ═══ -->
+  <aside class="sidebar" id="sidebar">
+
+    <!-- 个人信息卡片（点击展开完整资料） -->
+    <div class="profile-card" onclick="toggleProfile()">
+      <div class="profile-avatar" id="pcAvatar"></div>
+      <div class="profile-main">
+        <div class="profile-name" id="pcName" data-i18n="common.loading">加载中...</div>
+        <div class="profile-id" id="pcId"></div>
+        <div class="profile-credits" id="pcCredits"></div>
+      </div>
+      <span class="profile-arrow" id="profileArrow">▲</span>
+    </div>
+
+    <!-- 个人资料详情（介绍/ID/用户名/头像/邮箱/评分/用量） -->
+    <div class="profile-detail" id="profileDetail">
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.username">用户名</span><span class="pd-val" id="pdName" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.userId">用户 ID</span><span class="pd-val" id="pdId" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.email">邮箱</span><span class="pd-val" id="pdEmail" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.sessions">会话数</span><span class="pd-val coins" id="pdCredits" data-i18n="common.loading">加载中...</span><span class="pd-note green" data-i18n="profile.creditsNote">可用于雇佣等消费</span></div>
+      <div style="display:flex;flex-direction:column;gap:8px;border-top:1px dashed var(--border);padding-top:10px;margin-top:4px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:10px;color:var(--text3)">测试模式 · 未接真实支付</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <select id="walletCurrency" style="flex:0 0 92px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+            <option value="USD">美元 USD</option>
+            <option value="CNY">人民币 CNY</option>
+          </select>
+          <input id="walletAmount" type="number" min="1" max="100000" placeholder="金额" style="flex:1;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:12px">
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=10">$10</button>
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=50">$50</button>
+          <button class="btn-sm" onclick="document.getElementById('walletAmount').value=100">$100</button>
+        </div>
+      </div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.rating">信用评分</span><span class="pd-val" id="pdRating" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-row"><span class="pd-label" data-i18n="profile.usage">累计用量</span><span class="pd-val" id="pdUsage" data-i18n="common.loading">加载中...</span></div>
+      <div class="pd-bio" id="pdBio" data-i18n="common.loading">加载中...</div>
+      <div class="pd-actions">
+        <button class="primary" onclick="editProfile()" data-i18n="profile.edit">编辑资料</button>
+        <button onclick="uploadAvatar()" data-i18n="profile.avatar">上传头像</button>
+      </div>
+      <input type="file" id="avatarFileInput" accept="image/*" style="display:none" onchange="doUploadAvatar(this)">
+    </div>
+
+    <!-- 功能导航（纯文字） -->
+    <div class="side-nav">
+      <button class="active" onclick="switchPanel('chat')" data-nav="chat" data-i18n="tb.chat">会话</button>
+      <button onclick="showFriendPanel()" data-nav="friends"><span data-i18n="sidebar.friends">好友</span> <span class="nav-badge" id="reqBadge" style="display:none">0</span></button>
+      <button onclick="toggleInbox()" data-nav="inbox" data-i18n="nav.inbox">收件箱</button>
+      <button onclick="openWorkflowEditor()" data-nav="workflow" data-i18n="tb.workflow">工作流</button>
+      <button onclick="openSettings()" data-nav="settings" data-i18n="tb.settings">设置</button>
+      <button onclick="showMultiAI()" data-nav="multiAI" data-i18n="tb.multiAI">🔀 多AI</button>
+    </div>
+
+    <!-- 会话列表 -->
+    <div class="side-section-title"><span data-i18n="tb.chatTitle">会话列表</span><span style="display:flex;gap:8px;align-items:center"><span style="color:var(--accent);cursor:pointer" onclick="newChat()" data-i18n="sidebar.new">＋ 新建</span><span style="color:var(--purple);cursor:pointer" onclick="showCreateGroup()" title="创建群聊（多AI协作）">＋ 群聊</span></span></div>
+    <div class="chat-list" id="chatList">
+      <div class="empty" style="height:auto;padding:16px;color:var(--text3)" data-i18n="settings.connecting">连接中...</div>
+    </div>
+
+    <!-- 日志面板（左侧底部，点击展开） -->
+    <div class="log-panel" id="logPanel">
+      <div class="log-head" onclick="toggleLog()">
+        <div class="log-orb"></div>
+        <span class="log-title" data-i18n="log.title">运行日志</span>
+        <span style="font-size:10px;color:var(--text3)" data-i18n="log.autoRefresh">自动刷新 · 3s</span>
+        <span id="logArrow" style="font-size:10px">▲</span>
+      </div>
+      <div class="log-body" id="logBody">
+        <div class="log-line"><span class="info" data-i18n="common.loading">加载中...</span></div>
+      </div>
+      <div class="log-toolbar">
+        <button onclick="loadLogBody()" data-i18n="common.refresh">刷新</button>
+        <button onclick="toggleAutoLog()" data-i18n="log.auto">自动</button>
+        <button style="margin-left:auto" onclick="clearLogBody()" data-i18n="common.clear">清空</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══ 主内容区 ═══ -->
+  <main class="content">
+    <div class="content-panel active" id="panel-chat">
+      <div class="chat-title-bar">
+        <span class="chat-title" id="chatTitle"></span>
+        <span style="font-size:10px;color:var(--text3)" id="ctxInfo"></span>
+      </div>
+      <div class="messages" id="messages">
+        <div class="empty" data-i18n="chat.selectOrCreate">选择或创建一个会话</div>
+      </div>
+      <div class="input-area">
+        <button id="attachBtn" onclick="document.getElementById('fileInput').click()" title="上传文件" style="padding:6px 10px;font-size:18px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0">📎</button>
+        <button id="recordBtn" onmousedown="startRecording()" onmouseup="stopRecording()" ontouchstart="startRecording();event.preventDefault()" ontouchend="stopRecording()" title="按住说话" style="padding:6px 10px;font-size:16px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;flex-shrink:0;user-select:none">🎤</button>
+        <input type="file" id="fileInput" style="display:none" onchange="onFileSelected(this)">
+        <textarea id="input" data-i18n-ph="chat.inputPh" placeholder="输入消息... (Enter 发送, Shift+Enter 换行)" rows="1"></textarea>
+        <button class="primary" id="sendBtn" onclick="send()" data-i18n="common.send">发送</button>
+      </div>
+      <div id="stopBar" style="display:none;justify-content:center;align-items:center;gap:8px;padding:4px 14px;border-top:1px solid var(--border);background:var(--bg2)">
+        <button id="stopBtn" onclick="stopGeneration()" style="padding:4px 16px;border-radius:var(--input-radius);border:1px solid #e74c3c;background:#e74c3c;color:#fff;cursor:pointer;font-size:12px;white-space:nowrap">⏹ 停止生成</button>
+      </div>
+      <div id="queueBar" style="display:none;justify-content:center;align-items:center;gap:8px;padding:4px 14px;border-top:1px solid var(--border);background:var(--bg2)">
+        <span id="queueCount" style="font-size:12px;color:var(--text2)"></span>
+        <button onclick="clearQueue()" style="padding:2px 10px;border-radius:var(--input-radius);border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:11px">✕ 取消排队</button>
+      </div>
+    </div>
+
+    <div class="content-panel" id="panel-market" data-feature="market" style="display:none">
+      <div class="panel-page">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+          <h2 style="margin:0" data-i18n="market.title">🏪 AI 员工市场</h2>
+          <input id="marketSearch" data-i18n-ph="market.searchPh" placeholder="🔍 搜索..." oninput="loadMarket()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 12px;border-radius:6px;font-size:13px;flex:1;max-width:300px">
+          <select id="marketCategory" onchange="loadMarket()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <option value="" data-i18n="market.allCat">全部分类</option><option data-i18n="market.cat.code">编程</option><option data-i18n="market.cat.write">写作</option><option data-i18n="market.cat.translate">翻译</option><option data-i18n="market.cat.data">数据分析</option><option data-i18n="market.cat.design">设计</option><option data-i18n="market.cat.general">通用</option>
+          </select>
+          <select id="marketSort" onchange="loadMarket()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px">
+            <option value="hot" data-i18n="market.sort.hot">最热</option><option value="new" data-i18n="market.sort.new">最新</option><option value="rating" data-i18n="market.sort.rating">评分最高</option>
+          </select>
+          <button class="btn" onclick="switchMarketTab('browse')" id="marketTabBrowse" data-i18n="market.browse" style="background:var(--accent);color:#fff">浏览</button>
+          <button class="btn" onclick="switchMarketTab('mine')" id="marketTabMine" data-i18n="market.mine">我的</button>
+          <button class="btn primary" onclick="showPublishForm()" data-i18n="market.publish">+ 发布</button>
+          <button class="btn" data-feature="market" style="display:none" onclick="location.href='/market.html?tab=mylistings'" title="管理我发布的AI员工">📦 我的发布</button>
+          <button class="btn" data-feature="market" style="display:none" onclick="location.href='/market.html?tab=employees'" title="管理雇佣关系/评价">👥 我的员工</button>
+        </div>
+        <!-- 发布表单 -->
+        <div id="publishForm" style="display:none;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px">
+          <h3 style="font-size:14px;color:var(--accent);margin-bottom:8px" data-i18n="market.publishTitle">📦 发布 AI 员工</h3>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <input id="pubTitle" data-i18n-ph="market.empName" placeholder="员工名称" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px">
+            <textarea id="pubDesc" data-i18n-ph="market.empDesc" placeholder="描述这位员工的能力..." rows="2" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px;resize:vertical"></textarea>
+            <div style="display:flex;gap:8px">
+              <select id="pubItemType" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px">
+<option value="agent">🤖 AI员工</option><option value="music">🎵 音乐成品</option><option value="video">🎬 视频成品</option><option value="bounty">🛡️ 漏洞悬赏</option><option value="asset">🎮 游戏素材</option><option value="mcp">🔌 MCP服务</option><option value="skill">🧩 技能包</option></select>
+              <select id="pubCategory" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px"><option data-i18n="market.cat.code">编程</option><option data-i18n="market.cat.write">写作</option><option data-i18n="market.cat.translate">翻译</option><option data-i18n="market.cat.data">数据分析</option><option data-i18n="market.cat.general">通用</option></select>
+              <input id="pubTags" data-i18n-ph="market.tags" placeholder="标签（逗号分隔）" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:6px;font-size:13px">
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn primary" data-feature="market" style="display:none" onclick="publishAgent()" data-i18n="market.publishBtn">🚀 发布到市场</button>
+              <button class="btn" onclick="document.getElementById('publishForm').style.display='none'" data-i18n="common.cancel">取消</button>
+            </div>
+          </div>
+        </div>
+        <!-- 列表 -->
+        <div class="grid" id="listingGrid"></div>
+        <!-- 详情弹窗 -->
+        <div id="detailOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500" onclick="closeDetail()"></div>
+        <div id="detailModal" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;z-index:501;max-width:460px;width:90%;max-height:80vh;overflow-y:auto" data-feature="market" style="display:none">
+          <div style="display:flex;justify-content:space-between;margin-bottom:12px"><h3 id="detailTitle" style="color:var(--accent)"></h3><button onclick="closeDetail()" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:20px">×</button></div>
+          <p id="detailDesc" style="color:var(--text2);font-size:13px;line-height:1.6;margin-bottom:8px"></p>
+          <div id="detailTags" style="margin-bottom:8px;display:flex;gap:4px;flex-wrap:wrap"></div>
+          <div style="display:flex;gap:12px;margin-bottom:12px;font-size:12px;color:var(--text3)">
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn primary" data-feature="market" style="display:none" onclick="hireFromDetail()" id="detailHireBtn" data-i18n="market.hire">🤝 雇佣</button>
+            <button class="btn" onclick="closeDetail()" data-i18n="common.close">关闭</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content-panel" id="panel-tools">
+      <div class="panel-page">
+        <h2 data-i18n="tools.title">🔧 工具列表</h2>
+        <div class="grid" id="toolsGrid"><div class="empty" data-i18n="common.loading">加载中...</div></div>
+        
+        <!-- 知识库 (v2.0.6 新增) -->
+        <div style="margin-top:24px">
+          <h3 style="font-size:16px;margin-bottom:8px" data-i18n="tools.knowledge">📚 知识库</h3>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+            <input id="ragTitle" data-i18n-ph="tools.docTitle" placeholder="标题" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
+            <input id="ragSource" data-i18n-ph="tools.docSource" placeholder="来源" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:120px">
+            <button class="btn" onclick="addRagDoc()" style="font-size:12px" data-i18n="tools.addDoc">＋ 添加文档</button>
+            <button class="btn" onclick="loadRagDocs()" style="font-size:12px" data-i18n="common.refresh">↻ 刷新</button>
+            <button class="btn green" onclick="scanWorkspaceDocs()" style="font-size:12px" data-i18n="tools.scanWs">🗂 扫描工作区</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input id="ragContent" data-i18n-ph="tools.docContentPh" placeholder="文档内容..." style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px">
+            <input id="ragQuery" data-i18n-ph="tools.searchPh" placeholder="🔍 检索知识库..." onkeydown="if(event.key==='Enter')searchRag()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1">
+            <button class="btn" onclick="searchRag()" style="font-size:12px" data-i18n="tools.search">🔍 检索</button>
+          </div>
+          <div id="ragDocsList" style="font-size:12px" data-i18n="common.loading">加载中...</div>
+          <div id="ragSearchOut" style="font-size:12px;margin-top:8px"></div>
+        </div>
+        
+        <!-- 工作区 (v2.0.6 新增) -->
+        <div style="margin-top:24px">
+          <h3 style="font-size:16px;margin-bottom:8px" data-i18n="ws.title">🗂 工作区</h3>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            <span style="font-size:12px" data-i18n="ws.mode">模式:</span>
+            <select id="wsModeSelect" onchange="setWorkspaceMode()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:5px;font-size:12px">
+              <option value="personal" data-i18n="ws.personal">👤 个人模式</option>
+              <option value="collab" data-i18n="ws.collab">👥 协作模式</option>
+            </select>
+            <input id="wsRootInput" data-i18n-ph="ws.rootPh" placeholder="工作区路径 (默认: workspace)" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:5px;font-size:12px;flex:1;min-width:180px">
+            <button class="btn" onclick="saveWorkspace()" style="font-size:12px">💾 <span data-i18n="common.save">保存</span></button>
+          </div>
+          <div id="wsInfo" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content-panel" id="panel-social">
+      <div style="display:flex;width:100%;height:100%;overflow:hidden">
+        <!-- 左栏：邻居/好友/群组 -->
+        <div style="width:300px;min-width:240px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--bg2)">
+          <div style="padding:12px;border-bottom:1px solid var(--border)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+              <h2 style="margin:0;font-size:16px" data-i18n="social.title">🌐 局域网社交</h2>
+              <span id="lanSelfBadge" style="font-size:10px;color:var(--text3)"></span>
+            </div>
+            <div style="display:flex;gap:6px;margin-bottom:8px">
+              <button class="btn-sm" id="lanTabPeers" onclick="lanSwitchTab('peers')" data-i18n="social.peers" style="flex:1">邻居</button>
+              <button class="btn-sm" id="lanTabFriends" onclick="lanSwitchTab('friends')" data-i18n="social.friends" style="flex:1">好友</button>
+              <button class="btn-sm" id="lanTabGroups" onclick="lanSwitchTab('groups')" data-i18n="social.groups" style="flex:1">群组</button>
+            </div>
+            <div style="display:flex;gap:6px">
+              <input id="lanSearchInput" data-i18n-ph="social.searchPh" placeholder="🔍 搜索数字 ID / 昵称" oninput="lanSearch()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px">
+              <button class="btn-sm" onclick="lanRefresh()" data-i18n-title="social.refreshTitle" title="刷新">↻</button>
+            </div>
+          </div>
+          <div id="lanList" style="flex:1;overflow-y:auto;padding:8px"><div class="empty" data-i18n="common.loading">加载中...</div></div>
+          <div style="padding:10px;border-top:1px solid var(--border)">
+            <button class="btn primary" style="width:100%" onclick="lanShowCreateGroup()" data-i18n="social.createGroup">＋ 创建局域网群组</button>
+          </div>
+        </div>
+        <!-- 右栏：群组双聊天 -->
+        <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+          <div id="lanGroupEmpty" style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text3)">
+            <div style="text-align:center"><div style="font-size:40px;margin-bottom:12px">🌐</div><span data-i18n="social.groupEmpty">选择左侧群组开始聊天</span><br><span style="font-size:12px" data-i18n="social.groupEmptyHint">每个群有「成员聊天」和「智能体交互」两个聊天框</span></div>
+          </div>
+          <div id="lanGroupView" style="flex:1;display:none;flex-direction:column;overflow:hidden">
+            <div class="chat-title-bar">
+              <span class="chat-title" id="lanGroupTitle" data-i18n="social.group">群组</span>
+              <select id="lanGroupMode" onchange="lanSetGroupMode(this.value)" style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px">
+                <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
+              </select>
+              <span id="lanGroupMembers" style="font-size:10px;color:var(--text3)"></span>
+            </div>
+            <!-- 两个聊天框上下排列 -->
+            <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+              <!-- 成员聊天 -->
+              <div style="flex:1;display:flex;flex-direction:column;min-height:0;border-bottom:2px solid var(--border)">
+                <div style="padding:4px 12px;background:var(--bg2);font-size:12px;color:var(--accent);border-bottom:1px solid var(--border)" data-i18n="social.memberChat">💬 成员聊天</div>
+                <div class="messages" id="lanHumanMessages" style="flex:1"><div class="empty" data-i18n="social.noMsg">暂无消息</div></div>
+                <div class="input-area">
+                  <textarea id="lanHumanInput" data-i18n-ph="social.memberPh" placeholder="和群成员说点什么... (Enter 发送)" rows="1" onkeydown="lanInputKey(event,'human')"></textarea>
+                  <button id="lanHumanSend" onclick="lanSendHuman()" data-i18n="common.send">发送</button>
+                </div>
+              </div>
+              <!-- 智能体交互 -->
+              <div style="flex:1;display:flex;flex-direction:column;min-height:0">
+                <div style="padding:4px 12px;background:var(--bg2);font-size:12px;color:var(--accent);border-bottom:1px solid var(--border)"><span data-i18n="social.agentChat">🤖 智能体交互</span> <span style="color:var(--text3);font-size:10px" data-i18n="social.agentHint">（发话题，各方灵犀引擎按当前模式回复）</span></div>
+                <div class="messages" id="lanAgentMessages" style="flex:1"><div class="empty" data-i18n="social.noMsg">暂无消息</div></div>
+                <div class="input-area">
+                  <textarea id="lanAgentInput" data-i18n-ph="social.agentPh" placeholder="给各方灵犀引擎一个话题... (Enter 发送)" rows="1" onkeydown="lanInputKey(event,'agent')"></textarea>
+                  <button id="lanAgentSend" onclick="lanSendAgent()" data-i18n="common.send">发送</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ═══ 右侧栏：任务监控 + 目标任务 ═══ -->
+  <aside class="rightbar" id="rightbar">
+    <div class="right-head">
+      <button class="active" onclick="switchTab('tasks',this)" id="rbTabTasks" data-i18n="right.tasks">任务监控</button>
+      <button onclick="switchTab('goals',this)" id="rbTabGoals" data-i18n="right.goals">目标任务</button>
+      <button onclick="switchTab('subagents',this);loadSubAgents()" id="rbTabSubAgents" data-i18n="right.subagents">子任务</button>
+    </div>
+    <div class="right-body" id="tab-tasks" style="display:block">
+      <div id="taskMonitorList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
+    </div>
+    <!-- 实时任务拆解监控 -->
+    <div id="taskDecompPanel" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+      <div style="font-size:11px;font-weight:600;color:var(--accent);margin-bottom:6px" id="taskDecompTitle">📋 任务拆解</div>
+      <div id="taskDecompSteps" style="font-size:11px;line-height:1.8"></div>
+      <div id="taskDecompSummary" style="font-size:10px;color:var(--text3);margin-top:4px"></div>
+    </div>
+    <div class="right-body" id="tab-goals" style="display:none">
+      <div style="font-size:11px;margin-bottom:6px;color:var(--text3)"><span data-i18n="admin.stat.goal">🎯 目标进度</span>: <b id="goalProgress">-</b></div>
+      <div id="rightGoalsList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
+      <button class="add-goal" id="rightAddGoalBtn" onclick="addRightGoal()" data-i18n="right.addGoal">＋ 添加目标任务</button>
+    </div>
+    <div class="right-body" id="tab-subagents" style="display:none">
+      <div id="subAgentList" style="font-size:12px"><span style="color:var(--text3)" data-i18n="common.loading">加载中...</span></div>
+    </div>
+  </aside>
+</div>
+
+<!-- ═══ 底部工具栏（纯文字）═══ -->
+<div class="bottom-toolbar">
+  <button class="active" onclick="switchPanel('chat');toggleSidebar()" id="tbChatBtn" data-i18n="tb.chat">会话</button>
+  <button onclick="switchPanel('market')" id="tbMarketBtn" data-i18n="tb.market" data-feature="market" style="display:none">市场</button>
+  <button onclick="switchPanel('tools')" id="tbToolsBtn" data-i18n="tb.tools">工具</button>
+  <button onclick="switchPanel('social')" id="tbSocialBtn" data-i18n="tb.social">局域网</button>
+  <div class="tb-spacer"></div>
+  <button onclick="document.getElementById('rightbar').classList.toggle('show')" data-i18n="tb.tasks">任务</button>
+  <button onclick="document.getElementById('membersBtn').click()" id="tbMembersBtn">👥</button>
+  <button onclick="document.getElementById('memoryBtn').click()" id="tbMemoBtn">🧠</button>
+  <button onclick="toggleAdmin()" id="tbAdminBtn" data-i18n="tb.admin">管理</button>
+  <div class="tb-status">
+    <span>API <span id="apiHealth" class="ok">✓</span></span>
+    <span id="currentModelDisplay" style="color:var(--accent)">模型 deepseek-v4-flash</span>
+    <span>WS <span id="status" class="err">未连接</span></span>
+  </div>
+</div>
+
+<script>var MARKET_ENABLED = false; /* [FEATURE_MARKET] 市场已下线 */</script>
+<script>
+function toggleLog(){
+  var b=document.getElementById('logBody');
+  b.classList.toggle('open');
+  document.getElementById('logArrow').textContent = b.classList.contains('open')?'▼':'▲';
+  if(b.classList.contains('open') && typeof loadLogBody==='function') loadLogBody();
+}
+function toggleProfile(){
+  var d=document.getElementById('profileDetail');
+  d.classList.toggle('open');
+  document.getElementById('profileArrow').textContent = d.classList.contains('open')?'▼':'▲';
+}
+function switchTab(name,btn){
+  document.querySelectorAll('.right-head button').forEach(function(x){x.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById('tab-tasks').style.display = name==='tasks'?'block':'none';
+  document.getElementById('tab-goals').style.display = name==='goals'?'block':'none';
+  document.getElementById('tab-subagents').style.display = name==='subagents'?'block':'none';
+}
+function switchTheme(name,btn){
+  document.body.className = 'theme-' + name;
+  document.querySelectorAll('.theme-switch button').forEach(function(x){x.classList.remove('active')});
+  btn.classList.add('active');
+}
+</script>
+
+<!-- ═══ SETTINGS OVERLAY ═══ -->
+<div id="settingsOverlay" class="panel-overlay" onclick="closeSettings()"></div>
+<div id="settingsPanel" class="settings-panel">
+  <div class="panel-header"><h2 data-i18n="settings.title">⚙️ 设置</h2><button onclick="closeSettings()">×</button></div>
+  <div class="panel-body">
+    <div class="section">
+      <h3 data-i18n="settings.modelSelect">🤖 模型选择</h3>
+      <div id="modelInfo" style="font-size:12px;color:var(--text2);margin-bottom:4px"></div>
+      <div style="font-size:11px;color:var(--text3)" data-i18n="settings.modelHint">模型切换请使用顶部下拉框。启用模型路由后可分别配置工具/回复模型。</div>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.modelRoute">🔀 模型路由</h3>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:8px">
+        <input type="checkbox" id="routeEnabled" onchange="toggleModelRoute(this.checked)">
+        <span style="font-size:12px;color:var(--text2)" data-i18n="settings.enableCollab">启用多模型协作</span>
+      </label>
+      <div class="row"><label data-i18n="settings.toolModel">🔧 工具模型</label><select id="toolModelSelect" onchange="saveModelRoute()"><option value="" data-i18n="settings.sameAsCurrent">同当前</option></select></div>
+      <div class="row"><label data-i18n="settings.replyModel">💬 回复模型</label><select id="replyModelSelect" onchange="saveModelRoute()"><option value="" data-i18n="settings.sameAsCurrent">同当前</option></select></div>
+      <div id="routeInfo" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.providerMgr">☁️ Provider 管理</h3>
+      <div id="providerList" style="margin-bottom:8px"></div>
+      <details><summary style="cursor:pointer;color:var(--accent);font-size:13px" data-i18n="settings.addProvider">+ 添加 Provider</summary>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:6px">
+        <select id="newProviderType" onchange="onProviderTypeChange()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+          <optgroup label="── 免费云端（推荐）──" data-i18n-label="settings.freeCloud">
+            <option value="nvidia" data-i18n="provider.nvidia">NVIDIA NIM (免费额度)</option>
+          </optgroup>
+          <optgroup label="── 国内云端 ──" data-i18n-label="settings.cnCloud">
+            <option value="deepseek">DeepSeek</option><option value="zhipu" data-i18n="provider.zhipu">智谱 GLM</option>
+            <option value="moonshot">Kimi</option><option value="qwen" data-i18n="provider.qwen">通义千问</option>
+            <option value="stepfun" data-i18n="provider.stepfun">阶跃星辰</option><option value="siliconflow" data-i18n="provider.siliconflow">硅基流动</option>
+            <option value="minimax">MiniMax</option><option value="volcengine" data-i18n="provider.volcengine">火山引擎</option>
+          </optgroup>
+          <optgroup label="── 国际 ──" data-i18n-label="settings.intl">
+            <option value="openai">OpenAI</option><option value="anthropic">Claude</option>
+            <option value="google">Gemini</option><option value="openrouter">OpenRouter</option>
+          </optgroup>
+          <optgroup label="── 本地 ──" data-i18n-label="settings.local">
+            <option value="ollama">Ollama</option><option value="llama-cpp">llama.cpp</option><option value="vllm">vLLM</option><option value="lm-studio">LM Studio</option><option value="custom" data-i18n="settings.custom">自定义（OpenAI 兼容）</option><option value="__custom_type__">完全自定义（手动填写）</option>
+          </optgroup>
+        </select>
+        <input id="newProviderCustomType" placeholder="自定义类型标识（如 myapi）" style="display:none;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <input id="newProviderName" data-i18n-ph="settings.displayName" placeholder="显示名" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <input id="newProviderKey" type="password" placeholder="API Key" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <input id="newProviderUrl" data-i18n-ph="settings.baseUrlOpt" placeholder="Base URL（可选）" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <input id="newProviderModels" data-i18n-ph="settings.modelsList" placeholder="模型列表（逗号分隔）" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <button onclick="addProvider()" class="btn primary" style="width:100%">✅ <span data-i18n="common.add">添加</span></button>
+        <div id="addProviderMsg" style="font-size:12px;text-align:center;min-height:16px"></div>
+      </div></details>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.ollama">🖥️ Ollama</h3>
+      <div class="row"><input id="ollamaUrl" value="http://localhost:11434/v1" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+      <button onclick="connectOllama()" class="btn" style="font-size:12px" data-i18n="settings.connect">连接</button></div>
+      <span id="ollamaStatus" style="font-size:11px;color:var(--text3)" data-i18n="settings.notConnected">未连接</span>
+      <div id="ollamaModels" style="margin-top:6px"></div>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.modelMgr">⚙️ 模型管理</h3>
+      <div id="modelMgrList" style="font-size:12px;color:var(--text2);margin-bottom:6px"><!-- 动态填充 --></div>
+      <div id="modelMgrStatus" style="font-size:11px;color:var(--text3);margin-bottom:4px"></div>
+      <details><summary style="cursor:pointer;color:var(--accent);font-size:13px" data-i18n="settings.addModelToProvider">+ 为已有Provider添加模型</summary>
+      <div style="margin-top:6px;display:flex;flex-direction:column;gap:4px">
+        <select id="addModelProvider" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></select>
+        <input id="addModelName" data-i18n-ph="settings.modelName" placeholder="模型名称" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px">
+        <button onclick="addModelToProviderUI()" class="btn" style="font-size:12px;width:100%" data-i18n="common.add">添加</button>
+      </div></details>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.notify">🔔 通知</h3>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px">
+        <input type="checkbox" id="notifyToggle" onchange="setNotifyPref(this.checked)">
+        <span style="font-size:12px;color:var(--text2)" data-i18n="settings.notifyEnable">启用消息通知（声音+桌面提醒）</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:6px">
+        <input type="checkbox" id="notifyAlwaysToggle" onchange="setNotifyAlways(this.checked)">
+        <span style="font-size:12px;color:var(--text2)" data-i18n="settings.notifyAlways">窗口聚焦时也显示通知</span>
+      </label>
+      <button onclick="testNotify()" class="btn" style="font-size:12px" data-i18n="settings.notifyTest">测试通知</button>
+    </div>
+    <div class="section">
+      <h3 data-i18n="settings.data">💾 数据</h3>
+      <button onclick="exportBackup()" class="btn primary" style="font-size:12px;width:100%" data-i18n="settings.exportBackup">导出备份 (JSON)</button>
+    </div>
+    <div class="section">
+      <h3>⚡ 超时与日志</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">超时范围 10 秒 – 24 小时（保存后写入 .env，重启不丢失）</div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">编排器超时(秒)</label>
+        <input id="setOrchestratorTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">任务超时(秒)</label>
+        <input id="setTaskTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">聊天超时(秒)</label>
+        <input id="setChatTimeout" type="number" min="10" max="86400" value="120" style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+      </div>
+      <div class="row" style="margin-bottom:6px">
+        <label style="font-size:12px;min-width:130px">日志级别</label>
+        <select id="setLogLevel" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:12px">
+          <option value="debug">debug</option><option value="info">info</option><option value="warn">warn</option><option value="error">error</option>
+        </select>
+      </div>
+      <div class="row" style="margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+          <input type="checkbox" id="setFileLogging" checked>
+          <span style="font-size:12px;color:var(--text2)">文件日志</span>
+        </label>
+      </div>
+      <button onclick="saveRuntimeSettings()" class="btn primary" style="font-size:12px">💾 保存设置</button>
+      <span id="settingsSaveMsg" style="font-size:11px;margin-left:8px"></span>
+    </div>
+        <div class="section">
+      <h3 data-i18n="settings.language">🌐 语言 / Language</h3>
+      <div class="row"><select id="langSelect" onchange="applyLanguage(this.value)" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:13px"></select></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ADMIN OVERLAY ═══ -->
+<div id="adminOverlay" class="panel-overlay" onclick="toggleAdmin()"></div>
+<div id="adminPanel" class="settings-panel" style="left:0;right:auto">
+  <div class="panel-header"><h2 data-i18n="admin.title">🔧 后台管理</h2><button onclick="toggleAdmin()">×</button></div>
+  <div class="panel-body">
+    <!-- Cron 表单 -->
+    <div id="addCronForm" class="hidden section">
+      <h4 data-i18n="admin.newCron">新建 Cron 任务</h4>
+      <div class="row"><input id="cronName" data-i18n-ph="common.name" placeholder="名称" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <div class="row"><input id="cronExpr" placeholder="0 9 * * *" value="0 9 * * *" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <div class="row"><input id="cronTz" value="Asia/Shanghai" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"><input id="cronPayload" value='{"kind":"systemEvent","text":"定时提醒"}' style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <button onclick="addCron()" class="btn primary" style="margin-right:4px" data-i18n="common.create">创建</button><button onclick="document.getElementById('addCronForm').classList.add('hidden')" class="btn" data-i18n="common.cancel">取消</button>
+    </div>
+    <!-- MCP 表单 -->
+    <div id="addMCPForm" class="hidden section">
+      <h4 data-i18n="admin.addMCP">添加 MCP Server</h4>
+      <div class="row"><input id="mcpName" data-i18n-ph="common.name" placeholder="名称" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <div class="row"><input id="mcpCmd" placeholder="npx" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <div class="row"><input id="mcpArgs" placeholder="-y,@modelcontextprotocol/server-filesystem,/path" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:4px;font-size:12px"></div>
+      <button onclick="addMCP()" class="btn primary" style="margin-right:4px" data-i18n="common.add">添加</button><button onclick="document.getElementById('addMCPForm').classList.add('hidden')" class="btn" data-i18n="common.cancel">取消</button>
+    </div>
+    <div class="admin-stats" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;font-size:11px">
+      <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.agent">🤖 Agent</span>: <b id="sessionCount">-</b></span>
+      <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.cron">⏰ 定时任务</span>: <b id="taskCount">-</b></span>
+      <span style="padding:3px 8px;background:var(--bg);border:1px solid var(--border);border-radius:4px"><span data-i18n="admin.stat.model">🧠 模型</span>: <b id="modelCount">-</b></span>
+    </div>
+    <div class="admin-grid" id="adminGrid">
+      <div class="card"><h4 data-i18n="admin.card.agents">📋 Agent</h4><button onclick="adminAgents()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminAgentsOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.sessions">💬 会话</h4><button onclick="adminSessions()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminSessionsOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.cron">⏰ Cron</h4><button onclick="adminCron()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><button onclick="showAddCron()" class="btn green" style="width:100%;margin-top:4px;font-size:11px" data-i18n="admin.newBtn">+ 新建</button><pre id="adminCronOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.mcp">🔌 MCP</h4><button onclick="adminMCP()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><button onclick="showAddMCP()" class="btn green" style="width:100%;margin-top:4px;font-size:11px" data-i18n="common.add">+ 添加</button><pre id="adminMCPOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.subagent">🤖 SubAgent</h4><button onclick="adminSubAgents()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminSubOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.plugins">🧩 插件</h4><button onclick="adminPlugins()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminPluginsOut">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.approval">✅ 审批</h4><button onclick="loadApprovals()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="approvalList" style="font-size:12px">-</div></div>
+      <div class="card"><h4 data-i18n="admin.card.token">📊 Token</h4><button onclick="loadUsage()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="usageStats" style="font-size:12px">-</div></div>
+      <div class="card"><h4 data-i18n="admin.card.voice">🔊 语音</h4><select id="ttsVoiceSelect" onchange="testTTS()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px;margin-bottom:4px"><option value="zh-CN-XiaoxiaoNeural" data-i18n="admin.voiceXiaoxiao">晓晓</option><option value="zh-CN-YunxiNeural" data-i18n="admin.voiceYunxi">云希</option></select><button onclick="testTTS()" class="btn" style="width:100%;font-size:11px" data-i18n="admin.test">🔊 测试</button></div>
+      <div class="card"><h4 data-i18n="admin.card.logs">📋 日志</h4><button onclick="loadLogs()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="admin.viewRecent">查看最近</button><pre id="logsOut" style="font-size:10px;max-height:200px;overflow:auto">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.update">⬆️ 系统升级</h4><div id="updateStatus" style="font-size:12px;margin-bottom:4px;color:var(--text3)"><span data-i18n="admin.currentVer">当前:</span> <span id="adminVerTag">-</span></div><button onclick="doUpdate()" class="btn green" style="width:100%;font-size:12px" data-i18n="admin.doUpdate">🔄 一键升级到最新版</button></div>
+      <div class="card"><h4 data-i18n="admin.card.system">📊 系统</h4><button onclick="adminHealth()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><pre id="adminHealthOut" style="font-size:10px">-</pre></div>
+      <div class="card"><h4 data-i18n="admin.card.mesh">🕸️ 实例组网</h4><button onclick="loadMesh()" class="btn" style="width:100%;margin-bottom:4px" data-i18n="common.refresh">刷新</button><div id="meshStatus" style="font-size:11px;margin-bottom:4px">-</div><div id="meshPeers" style="font-size:11px;margin-bottom:6px">-</div><div class="row" style="margin-bottom:4px"><select id="meshPeerSelect" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px;border-radius:4px;font-size:11px"><option value="" data-i18n="admin.selectInstance">选择实例...</option></select></div><div class="row"><input id="meshMsgInput" data-i18n-ph="admin.meshMsgPh" placeholder="发消息给该实例的 AI..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px;border-radius:4px;font-size:11px"><button onclick="sendMeshMsg()" class="btn primary" style="font-size:11px" data-i18n="common.send">发送</button></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MEMBERS / MEMORY OVERLAYS ═══ -->
+<div id="membersOverlay" class="panel-overlay" onclick="hideMembersPanel()"></div>
+<div class="settings-panel" id="membersPanel" style="left:0;right:auto">
+  <div class="panel-header"><h2 data-i18n="members.title">👥 群成员</h2><button onclick="hideMembersPanel()">×</button></div>
+  <div class="panel-body">
+    <div style="padding:6px 10px;border-bottom:1px solid var(--border)"><button class="btn-sm" onclick="loadAvailableMembers()" data-i18n="members.addMember">＋ 添加成员</button></div>
+    <div id="availableMembers" style="border-bottom:1px solid var(--border)"></div>
+    <div id="membersList"></div>
+  </div>
+</div>
+<div id="memoryOverlay" class="panel-overlay" onclick="closeMemoryPanel()"></div>
+<div class="settings-panel" id="memoryPanel">
+  <div class="panel-header"><h2 data-i18n="memory.title">🧠 记忆</h2><button onclick="closeMemoryPanel()">×</button></div>
+  <div class="panel-body">
+    <span id="memoryMeta" style="font-size:11px;color:var(--text3)"></span>
+    <button onclick="reflectMemory()" class="btn" data-i18n="memory.reflect">✨ 反思</button>
+    <input id="memorySearchInput" data-i18n-ph="memory.searchPh" placeholder="搜索记忆..." oninput="searchMemory()" style="width:100%;margin-top:8px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px">
+    <div id="memorySearchResults" style="margin-top:6px"></div>
+    <pre id="memoryContent" data-i18n="common.none" style="background:var(--bg);padding:10px;border-radius:6px;font-size:12px;max-height:400px;overflow:auto;margin-top:8px;white-space:pre-wrap">暂无</pre>
+  </div>
+</div>
+
+<!-- ═══ INBOX ═══ -->
+<div id="inboxOverlay" class="panel-overlay" onclick="document.getElementById('inboxPanel').classList.remove('open')"></div>
+<div class="settings-panel" id="inboxPanel" style="left:0;right:auto">
+  <div class="panel-header"><h2 data-i18n="inbox.title">📦 收件箱</h2><button onclick="document.getElementById('inboxPanel').classList.remove('open')">×</button></div>
+  <div class="panel-body" id="inboxList"></div>
+</div>
+
+<!-- ═══ WORKFLOW EDITOR ═══ -->
+<div id="wfOverlay" class="panel-overlay"></div>
+<div id="wfEditor" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:10000;background:var(--bg);flex-direction:column">
+  <div style="display:flex;align-items:center;padding:8px 16px;background:var(--bg2);border-bottom:1px solid var(--border);gap:8px;flex-wrap:wrap">
+    <span style="font-size:16px" data-i18n="wf.title">🔀 工作流编辑器</span>
+    <span id="wfZoomLabel" style="font-size:11px;color:var(--text3);min-width:40px">100%</span>
+    <input id="wfName" data-i18n-ph="wf.namePh" placeholder="工作流名称" style="flex:1;max-width:200px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px">
+    <button onclick="wfAddStartNode()" class="btn-sm" style="border-color:var(--green);color:var(--green)" data-i18n="wf.addStart" data-i18n-title="wf.addStartTitle" title="添加开始节点">🟢 +开始</button>
+    <button onclick="wfAddAgentNode()" class="btn-sm" data-i18n="wf.addNode" data-i18n-title="wf.addNodeTitle" title="添加 Agent 节点">🤖 +节点</button>
+    <button onclick="wfLoadFromCloud()" class="btn-sm" data-i18n="wf.load" data-i18n-title="wf.loadTitle" title="从云端加载已保存的工作流">📂 加载</button>
+    <button onclick="wfExportJSON()" class="btn-sm" data-i18n="wf.export" data-i18n-title="wf.exportTitle" title="导出为 JSON 文件">📤 导出</button>
+    <button onclick="document.getElementById('wfImportFile').click()" class="btn-sm" data-i18n="wf.import" data-i18n-title="wf.importTitle" title="从 JSON 文件导入">📥 导入</button>
+    <input type="file" id="wfImportFile" accept=".json,application/json" onchange="wfImportJSON(this)" style="display:none">
+    <button onclick="wfUndo()" class="btn-sm" data-i18n-title="wf.undoTitle" title="撤销 (Ctrl+Z)">↩️</button>
+    <button onclick="wfRedo()" class="btn-sm" data-i18n-title="wf.redoTitle" title="重做 (Ctrl+Y)">↪️</button>
+    <button onclick="wfSaveToCloud()" class="btn-sm" data-i18n="wf.save" style="border-color:var(--yellow);color:var(--yellow)">💾 保存</button>
+    <button onclick="closeWorkflowEditor()" class="btn-sm" data-i18n="wf.close" style="background:var(--red);color:#fff;border-color:var(--red);margin-left:auto">× 关闭</button>
+  </div>
+  <div style="flex:1;display:flex">
+    <div id="wfSidebar" style="width:200px;background:var(--bg2);border-right:1px solid var(--border);padding:8px"><div id="wfAgentList" data-i18n="common.loading">加载中...</div></div>
+    <div id="wfCanvas" style="flex:1;position:relative;overflow:auto;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:20px 20px">
+      <svg id="wfConnections" style="position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:1"></svg>
+      <div id="wfNodes" style="position:relative;z-index:2"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ AUTH MODAL ═══ -->
+<div id="authOverlay" class="panel-overlay" onclick="closeAuthModal()"></div>
+<div class="settings-panel" id="authModal" style="right:50%;transform:translateX(50%);width:340px;border-radius:12px">
+  <div class="panel-header"><h2 id="authTitle" data-i18n="auth.login">登录</h2><button onclick="closeAuthModal()">×</button></div>
+  <div style="padding:20px">
+    <div class="row"><input id="authUsername" placeholder="用户名" data-i18n-ph="auth.username" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px"></div>
+    <div class="row" id="authEmailRow"><input id="authEmail" placeholder="邮箱（选填）" data-i18n-ph="auth.emailOpt" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px"></div>
+    <div class="row"><input id="authPassword" type="password" placeholder="密码（至少6位）" data-i18n-ph="auth.password" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px"></div>
+    <div class="row hidden" id="authInviteRow"><input id="authInviteCode" placeholder="邀请码" data-i18n-ph="auth.invite" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px;border-radius:6px;font-size:13px"></div>
+    <button onclick="submitAuth()" class="btn primary" style="width:100%;margin-top:8px" id="authSubmitBtn" data-i18n="auth.login">登录</button>
+    <div id="authMsg" style="font-size:12px;margin-top:8px;text-align:center"></div>
+    <div style="text-align:center;margin-top:8px;font-size:12px">
+      <span id="authSwitchText" data-i18n="auth.noAccount">没有账号？</span> <a onclick="switchAuthMode()" style="color:var(--accent);cursor:pointer" id="authSwitchLink" data-i18n="auth.register">注册</a>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PROFILE MODAL ═══ -->
+<div id="profileOverlay" class="panel-overlay" onclick="closeProfileModal()"></div>
+<div class="settings-panel" id="profileModal" style="right:50%;transform:translateX(50%);width:380px;border-radius:12px">
+  <div class="panel-header"><h2 data-i18n="profile.title">👤 个人中心</h2><button onclick="closeProfileModal()">×</button></div>
+  <div style="padding:20px" id="profileContent"></div>
+</div>
+
+<!-- ═══ TOAST ═══ -->
+<div id="toast" class="msg-toast"></div>
+<script>
+// ── 点击侧栏外关闭 ──
+document.addEventListener('click', function(e) {
+const s = document.getElementById('sidebar');
+if (!s || !s.classList.contains('show')) return;
+if (!s.contains(e.target) && !e.target.closest('[onclick*="toggleSidebar"]')) {
+  s.classList.remove('show');
+  const ov = document.getElementById('sidebarOverlay');
+if (ov) ov.classList.remove('show');
+}
+});
+</script>
+<script src="js/i18n.js?v=20260825b"></script>
+<script src="platform-config.js"></script>
+<script src="js/app.js?v=20260914b"></script>
+<script>
+// ── 包装 switchPanel 同步更新底部工具栏 ──
+(function(){
+if (typeof switchPanel !== 'function') return;
+const _orig = switchPanel;
+switchPanel = function(panel) {
+  _orig(panel);
+  document.querySelectorAll('.bottom-toolbar button[id^="tb"]').forEach(b => b.classList.remove('active'));
+  const btn = document.getElementById('tb'+panel.charAt(0).toUpperCase()+panel.slice(1)+'Btn');
+  if (btn) btn.classList.add('active');
+};
+})();
+</script>
+<script>
+// ── v1.8.4: PWA Service Worker 注册 ──
+if ('serviceWorker' in navigator && window.isSecureContext) {
+  window.addEventListener('load', function() {
+    navigator.serviceWorker.register('/sw.js').catch(function(e) {
+      console.warn('[PWA] Service Worker 注册失败:', e && e.message);
+    });
+  });
+}
+</script>
+
+
+<!-- [修复] 补齐 JS 依赖的隐藏元素 -->
+<button id="membersBtn" class="hidden" onclick="showMembersPanel()"></button>
+<button id="memoryBtn" class="hidden" onclick="showMemoryPanel()"></button>
+<div id="sidebarOverlay" class="sidebar-overlay" style="display:none" onclick="hideSidebar()"></div>
+
+<!-- [修复] 补齐JS依赖的缺失DOM元素 -->
+<select id="chatModeSelect" onchange="setChatMode(this.value)" style="display:none;background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px;margin-right:8px">
+                <option value="free" data-i18n="mode.free">自由</option><option value="route" data-i18n="mode.route">路由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="chain" data-i18n="mode.chain">链式</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="vote" data-i18n="mode.vote">投票</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option>
+              </select>
+<div id="chatSearchBar" style="display:none"></div>
+<div id="chatSearchInput" style="display:none"></div>
+<div id="chatSearchResults" style="display:none"></div>
+<div id="filePreview" style="display:none"></div>
+<div id="filePreviewName" style="display:none"></div>
+<div id="friendPanel" style="display:none;flex-direction:column;flex:1;overflow:hidden">
+  <!-- 搜索栏 -->
+  <div style="padding:10px;border-bottom:1px solid var(--border)">
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button class="btn-sm active" id="tabFriends" onclick="switchFriendTab('friends')" style="flex:1" data-i18n="friends.list">好友列表</button>
+      <button class="btn-sm" id="tabRequests" onclick="switchFriendTab('requests')" style="flex:1" data-i18n="social.friendRequests">好友申请</button>
+    </div>
+    <div style="display:flex;gap:6px">
+      <input id="searchBox" data-i18n-ph="friends.searchPh" placeholder="搜索用户 ID 或名称..." oninput="searchUsers()" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px">
+    </div>
+    <div id="searchResult" style="margin-top:8px"></div>
+  </div>
+  <!-- 好友列表 -->
+  <div id="friendsList" style="flex:1;overflow-y:auto;padding:4px"></div>
+  <!-- 申请列表 -->
+  <div id="requestsList" class="hidden" style="flex:1;overflow-y:auto;padding:4px">
+    <div id="incomingRequests"></div>
+    <div id="outgoingRequests"></div>
+  </div>
+  <!-- 返回会话列表 -->
+  <div style="padding:8px;border-top:1px solid var(--border)">
+    <button class="btn-sm" onclick="hideFriendPanel()" style="width:100%" data-i18n="friends.back">← 返回会话列表</button>
+  </div>
+</div>
+<div id="inboxBadge" style="display:none"></div>
+<div id="localStatus" style="display:none"></div>
+<div id="loginButtons" style="display:none"></div>
+<div id="mentionDropdown" style="display:none"></div>
+<div id="mobileBackBtn" style="display:none"></div>
+<div id="notificationBar" style="display:none"></div>
+<div id="promptAgentSelect" style="display:none"></div>
+<div id="promptEditArea" style="display:none"></div>
+
+<div id="routeModeTag" style="display:none"></div>
+<div id="visionResult" style="display:none"></div>
+<div id="voiceStatus" style="display:none"></div>
+<!-- AGENT MGMT -->
+<div id="agentMgmtOverlay" class="panel-overlay" onclick="hideAgentMgmt()"></div>
+<div class="settings-panel" id="agentMgmtPanel"><div class="panel-header"><h2 data-i18n="agentMgmt.title">🤖 Agent 管理</h2><button onclick="hideAgentMgmt()">×</button></div><div class="panel-body"><div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap"><button class="btn-sm" onclick="loadAgentMgmt()" data-i18n="common.refresh">🔄 刷新</button><button class="btn-sm" style="color:var(--red);border-color:var(--red)" onclick="batchDeleteDefaultAgents()" data-i18n="agentMgmt.batchClean">🧹 批量清理重名AI助手</button></div><div id="agentMgmtList" style="max-height:500px;overflow-y:auto"></div></div></div>
+<!-- MULTI-AI -->
+<div id="multiAIOverlay" class="panel-overlay" onclick="hideMultiAI()"></div>
+<div class="settings-panel" id="multiAIPanel" style="max-width:640px;resize:horizontal;overflow-x:auto"><div class="panel-header"><h2 data-i18n="multiAI.title">🔀 多AI交互</h2><button onclick="hideMultiAI()">×</button></div><div class="panel-body" style="padding:10px"><div style="margin-bottom:8px"><label style="font-size:11px;color:var(--text3);display:block;margin-bottom:4px" data-i18n="multiAI.mode">协作模式</label><select id="multiAIMode" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px 8px;border-radius:6px;font-size:12px"><option value="free" data-i18n="mode.free">自由</option><option value="debate" data-i18n="mode.debate">辩论</option><option value="brainstorm" data-i18n="mode.brainstorm">头脑风暴</option><option value="roundtable" data-i18n="mode.roundtable">圆桌</option><option value="chain" data-i18n="mode.chain">链式</option><option value="vote" data-i18n="mode.vote">投票</option></select></div><div style="margin-bottom:8px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px"><label style="font-size:11px;color:var(--text3)" data-i18n="multiAI.selectModels">选择模型（可多选）</label><div style="display:flex;gap:4px"><button class="btn-sm" onclick="multiAISelectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.selectAll">全选</button><button class="btn-sm" onclick="multiAIDeselectAll()" style="font-size:10px;padding:2px 6px" data-i18n="social.deselectAll">取消全选</button></div></div><div id="multiAIModels" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px"></div></div><div id="multiAIChat" style="height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:8px;margin-bottom:8px;font-size:13px;background:var(--bg)"></div><div style="display:flex;gap:6px"><input id="multiAIInput" data-i18n-ph="multiAI.inputPh" placeholder="输入消息..." style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:8px 10px;border-radius:6px;font-size:13px" onkeydown="if(event.key==='Enter')multiAISend()"><button class="btn primary" onclick="multiAISend()" data-i18n="common.send">发送</button></div></div></div>
+<div id="rechargeOverlay" class="panel-overlay" style="display:none" onclick="closeRechargeModal()"></div>
+
+</body>
+</html>
