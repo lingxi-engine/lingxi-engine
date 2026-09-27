@@ -27,12 +27,28 @@ let _currentAskGoalId = null;  // 当前反问的目标ID，供多选表单按�
 function saveUnreadCounts() {
   try { localStorage.setItem('lingxi-unread', JSON.stringify(unreadCounts)); } catch(e) {}
 }
+// [FEATURE_MARKET] 以后 FEATURE_MARKET=true 时会自动恢复市场入口
+async function applyFeatureFlags() {
+  try {
+    const r = await fetch('/api/features', { headers: { 'accept': 'application/json' } });
+    if (!r.ok) return;
+    const f = await r.json();
+    if (f.market) {
+      MARKET_ENABLED = true;
+      document.querySelectorAll('[data-feature="market"]').forEach(el => { el.style.display = ''; });
+    }
+  } catch (e) {}
+}
+
 function restoreUnreadCounts() {
   try { unreadCounts = JSON.parse(localStorage.getItem('lingxi-unread') || '{}'); } catch(e) { unreadCounts = {}; }
 }
 
 // ══。Panel Switching ══。
+// [FEATURE_MARKET] 市场已下线：命中即回退到会话，避免停留在空面板
+let MARKET_ENABLED = false;
 function switchPanel(name) {
+  if (name === 'market' && !MARKET_ENABLED) name = 'chat';
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name));
   document.querySelectorAll('.content-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
   if (name === 'market') loadMarket();
@@ -52,9 +68,10 @@ function switchMarketTab(tab) {
   loadMarket();
 }
 
-function showPublishForm() { document.getElementById('publishForm').style.display = 'block'; }
+function showPublishForm() { if (!MARKET_ENABLED) return; document.getElementById('publishForm').style.display = 'block'; }
 
 async function loadMarket() {
+  if (!MARKET_ENABLED) return;
   const search = document.getElementById('marketSearch')?.value?.toLowerCase() || '';
   const cat = document.getElementById('marketCategory')?.value || '';
   const sort = document.getElementById('marketSort')?.value || 'hot';
@@ -121,6 +138,7 @@ function hireFromDetail() {
 }
 
 async function publishAgent() {
+  if (!MARKET_ENABLED) return;
   if (!clientId) return toast(t('toast.connectFirst'));
   const title = document.getElementById('pubTitle').value.trim();
   const desc = document.getElementById('pubDesc').value.trim();
@@ -139,6 +157,7 @@ async function publishAgent() {
 }
 
 async function hireAgent(listingId) {
+  if (!MARKET_ENABLED) return;
   if (!clientId) return toast(t('toast.connectFirst'));
   if (!confirm(t('market.confirmHire'))) return;
   try {
@@ -611,6 +630,8 @@ window.addEventListener('load', function() {
   } catch(_i18nErr) { console.error('[i18n init]', _i18nErr); }
   // 恢复通知开。UI 状。
   try { restoreNotifyUI(); } catch(_notifyErr) { /* 静默 */ }
+  // [FEATURE_MARKET] 拉取后端能力开关（市场关闭时保持入口隐藏）
+  try { applyFeatureFlags(); } catch(_featErr) { /* 静默 */ }
   setTimeout(function() {
     connectIntended = true;
     connect();

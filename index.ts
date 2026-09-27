@@ -721,6 +721,31 @@ setSearchManager(searchManagerInstance);
 
     next();
   });
+
+  // ══════════════════════════════════════════════════════════════
+  // [FEATURE_MARKET] 雇佣市场总开关 —— 暂时下线商业化功能，只保留多模态智能体
+  // 关闭时：/market.html、/market、/api/market/*、/api/mvp/* 一律 404
+  // 代码全部保留，改 FEATURE_MARKET=true 或删掉 env 即可完整恢复
+  // ══════════════════════════════════════════════════════════════
+  // 默认下线：必须显式 FEATURE_MARKET=true 才恢复雇佣市场
+  const FEATURE_MARKET = (process.env.FEATURE_MARKET || '').trim().toLowerCase() === 'true';
+  if (!FEATURE_MARKET) {
+    console.log('[FEATURE] 雇佣市场已下线（FEATURE_MARKET=false）');
+    app.use('/market.html', (_req, res) => res.status(404).send('Not Found'));
+    app.use('/market', (_req, res) => res.status(404).send('Not Found'));
+    app.use('/api/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
+    app.use('/api/mvp', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
+    // 附带下线：技能市场与雇佣/订单类商业化入口
+    app.use('/api/skills/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
+    app.use('/api/hire', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
+    // 前端能力开关（公开、无需鉴权）：市场关闭时前端隐藏入口
+    app.get('/api/features', (_req, res) => res.json({
+      market: false,
+      mode: 'multimodal-agent',
+      notice: '属于无金融功能，已暂时下线',
+    }));
+  }
+
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
@@ -1918,6 +1943,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try { res.json({ ok: true, tools: toolRegistry.listTools(), skills: toolRegistry.listSkills() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+
 
   // ── AI 员工市场 + 雇佣系统 API ──
   app.get('/api/market/list', optAuth, (req, res) => {

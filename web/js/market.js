@@ -1,3 +1,5 @@
+/* [FEATURE_MARKET] 市场功能已暂时下线：所有市场接口已 404，脚本整体短路 */
+if (true) { try { location.replace('/app/'); } catch (e) {} throw new Error('market disabled'); }
 // market.js - 灵犀市场 v2.3.1 多品类版
 // 品类: AI员工 / 音乐成品 / 视频成品 / 漏洞悬赏 / 游戏素材 / MCP服务 / 技能包
 
