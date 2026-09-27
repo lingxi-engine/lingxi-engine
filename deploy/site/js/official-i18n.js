@@ -49,6 +49,8 @@
     'nav.pricing': 'Pricing',
     'nav.faq': 'FAQ',
     'nav.download': 'Download',
+    'nav.login': 'Sign in',
+    'nav.register': 'Create account',
     'nav.community': 'Community',
 
     'hero.badge': 'Simulated payments · testing phase',
@@ -173,6 +175,11 @@
     'dl.linux': 'Shell one-liner',
     'dl.btn': 'Download',
     'dl.or': 'or grab it straight from GitHub',
+    'dl.copy': 'Copy',
+    'dl.lbl.win': 'Windows',
+    'dl.lbl.win2': 'macOS / Linux',
+    'dl.lbl.src': 'Source',
+    'dl.hint': 'These commands point at the official site (Cloudflare-protected). If they fail, use the manual archive on the download page.',
 
     'cm.title': 'Community',
     'cm.sub': 'Questions, skill requests, agent ideas. The fastest way to get help is the channels below.',
@@ -211,6 +218,8 @@
     'nav.pricing': '价格',
     'nav.faq': '常见问题',
     'nav.download': '下载',
+    'nav.login': '登录',
+    'nav.register': '注册',
     'nav.community': '社区',
 
     'hero.badge': '当前为模拟支付测试阶段',
@@ -335,6 +344,11 @@
     'dl.linux': 'Shell 一行命令',
     'dl.btn': '下载',
     'dl.or': '或直接打开 GitHub',
+    'dl.copy': '复制',
+    'dl.lbl.win': 'Windows',
+    'dl.lbl.win2': ''macOS / Linux',
+    'dl.lbl.src': '源码',
+    'dl.hint': '以上命令均指向正式官网（Cloudflare 防护）。若执行失败，可前往下载页使用手动安装包。',
 
     'cm.title': '社区',
     'cm.sub': '有问题、想提技能需求、想聊 Agent 想法，都可以来下面这几个地方。',
