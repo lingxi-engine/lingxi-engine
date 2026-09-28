@@ -24,7 +24,13 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:deploy": "node scripts/verify-deploy.cjs"
+    "verify:deploy": "node scripts/verify-deploy.cjs",
+    "bench": "tsx bench/run-all.mts",
+    "bench:fast": "tsx bench/run-all.mts --tier1-only",
+    "bench:contract": "tsx bench/tier1-contract.mts",
+    "bench:safety": "tsx bench/tier1-safety.mts",
+    "bench:agentic": "tsx bench/tier2-agentic.mts",
+    "bench:dry": "tsx bench/tier2-agentic.mts --dry"
   },
   "bin": {
     "lingxi": "././src/cli/chat.ts"

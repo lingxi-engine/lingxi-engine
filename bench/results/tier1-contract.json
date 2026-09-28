@@ -1,0 +1,326 @@
+{
+  "schema": "lingxi-bench/1",
+  "generatedAt": "2026-09-28T13:56:29.772Z",
+  "durationMs": 36,
+  "overall": 100,
+  "passed": 55,
+  "cases": 55,
+  "meta": {
+    "node": "v24.18.1",
+    "platform": "win32",
+    "engineVersion": "2.0.28",
+    "pkgVersion": "2.0.28",
+    "license": "MIT",
+    "commit": "acf86ce",
+    "defaultModel": "qwen3.8:27b-32k",
+    "taskTimeoutSec": 7200,
+    "toolCount": 56,
+    "tier": 1,
+    "llmUsed": false,
+    "suite": "contract"
+  },
+  "suites": [
+    {
+      "id": "tools.contract",
+      "title": "Tool definition schema validity",
+      "score": 100,
+      "passed": 12,
+      "total": 12,
+      "cases": [
+        {
+          "name": "builtin.ts loads",
+          "pass": true,
+          "detail": "56 entries"
+        },
+        {
+          "name": "tool count >= 50",
+          "pass": true,
+          "detail": "count=56"
+        },
+        {
+          "name": "no duplicate tool names",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "all tools have description",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "all tools have parameters object",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "all required fields are arrays",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "all tools have handler or instance",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "all param properties typed",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "no dangling skill->tool refs",
+          "pass": true,
+          "detail": "got=0 want=0"
+        },
+        {
+          "name": "skill catalog present",
+          "pass": true,
+          "detail": "skills=5"
+        },
+        {
+          "name": "getWorkspaceRoot returns a string",
+          "pass": true,
+          "detail": "C:\\Users\\Administrator\\lingxi-engine\\workspace"
+        },
+        {
+          "name": "isSandboxEnabled returns boolean",
+          "pass": true,
+          "detail": "value=false"
+        }
+      ]
+    },
+    {
+      "id": "longtask.constants",
+      "title": "Long-task budget constants",
+      "score": 100,
+      "passed": 17,
+      "total": 17,
+      "cases": [
+        {
+          "name": "TASK_TIMEOUT_SECONDS set",
+          "pass": true,
+          "detail": "value=7200"
+        },
+        {
+          "name": "task timeout >= 3600s",
+          "pass": true,
+          "detail": "value=7200"
+        },
+        {
+          "name": "ORCHESTRATOR_TIMEOUT_SECONDS set",
+          "pass": true,
+          "detail": "value=1800"
+        },
+        {
+          "name": "CHAT_TIMEOUT_SECONDS set",
+          "pass": true,
+          "detail": "value=1200"
+        },
+        {
+          "name": "model strictness flag documented",
+          "pass": true,
+          "detail": "value=false"
+        },
+        {
+          "name": "executor maxIterations defined",
+          "pass": true,
+          "detail": "value=50"
+        },
+        {
+          "name": "maxIterations >= 25",
+          "pass": true,
+          "detail": "value=50"
+        },
+        {
+          "name": "maxIterations has hard cap",
+          "pass": true,
+          "detail": "value=50"
+        },
+        {
+          "name": "stopReason 'idle_stop' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "stopReason 'max_iterations' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "stopReason 'tool_failures' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "stopReason 'ai_errors' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "stopReason 'repeat_tool' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "stopReason 'aborted' implemented",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "compaction threshold defined",
+          "pass": true,
+          "detail": "maxTokens=30000"
+        },
+        {
+          "name": "compaction keepRecent defined",
+          "pass": true,
+          "detail": "keepRecent=10"
+        },
+        {
+          "name": "compaction has degraded fallback",
+          "pass": true,
+          "detail": "must survive summarizer failure"
+        }
+      ]
+    },
+    {
+      "id": "modules.presence",
+      "title": "Long-horizon subsystem presence",
+      "score": 100,
+      "passed": 26,
+      "total": 26,
+      "cases": [
+        {
+          "name": "memory search exists",
+          "pass": true,
+          "detail": "7904B"
+        },
+        {
+          "name": "memory search non-trivial (>1KB)",
+          "pass": true,
+          "detail": "7904B"
+        },
+        {
+          "name": "memory reflection exists",
+          "pass": true,
+          "detail": "5844B"
+        },
+        {
+          "name": "memory reflection non-trivial (>1KB)",
+          "pass": true,
+          "detail": "5844B"
+        },
+        {
+          "name": "memory decay exists",
+          "pass": true,
+          "detail": "4348B"
+        },
+        {
+          "name": "memory decay non-trivial (>1KB)",
+          "pass": true,
+          "detail": "4348B"
+        },
+        {
+          "name": "goal tracking exists",
+          "pass": true,
+          "detail": "8653B"
+        },
+        {
+          "name": "goal tracking non-trivial (>1KB)",
+          "pass": true,
+          "detail": "8653B"
+        },
+        {
+          "name": "goal execution exists",
+          "pass": true,
+          "detail": "26616B"
+        },
+        {
+          "name": "goal execution non-trivial (>1KB)",
+          "pass": true,
+          "detail": "26616B"
+        },
+        {
+          "name": "subagent orchestration exists",
+          "pass": true,
+          "detail": "34895B"
+        },
+        {
+          "name": "subagent orchestration non-trivial (>1KB)",
+          "pass": true,
+          "detail": "34895B"
+        },
+        {
+          "name": "orchestrator exists",
+          "pass": true,
+          "detail": "7418B"
+        },
+        {
+          "name": "orchestrator non-trivial (>1KB)",
+          "pass": true,
+          "detail": "7418B"
+        },
+        {
+          "name": "context rolling exists",
+          "pass": true,
+          "detail": "3316B"
+        },
+        {
+          "name": "context rolling non-trivial (>1KB)",
+          "pass": true,
+          "detail": "3316B"
+        },
+        {
+          "name": "watchdog exists",
+          "pass": true,
+          "detail": "4982B"
+        },
+        {
+          "name": "watchdog non-trivial (>1KB)",
+          "pass": true,
+          "detail": "4982B"
+        },
+        {
+          "name": "evaluator exists",
+          "pass": true,
+          "detail": "6083B"
+        },
+        {
+          "name": "evaluator non-trivial (>1KB)",
+          "pass": true,
+          "detail": "6083B"
+        },
+        {
+          "name": "team management exists",
+          "pass": true,
+          "detail": "7774B"
+        },
+        {
+          "name": "team management non-trivial (>1KB)",
+          "pass": true,
+          "detail": "7774B"
+        },
+        {
+          "name": "RAG engine exists",
+          "pass": true,
+          "detail": "15409B"
+        },
+        {
+          "name": "RAG engine non-trivial (>1KB)",
+          "pass": true,
+          "detail": "15409B"
+        },
+        {
+          "name": "multi-channel adapters (>=8)",
+          "pass": true,
+          "detail": "count=10: discord.ts,feishu.ts,imessage.ts,manager.ts,qqbot.ts,signal.ts,slack.ts,telegram.ts,wechat.ts,whatsapp.ts"
+        },
+        {
+          "name": "model provider layer present",
+          "pass": true,
+          "detail": "count=4: custom-providers.ts,hub.ts,provider-registry.ts,vision.ts"
+        }
+      ]
+    }
+  ]
+}

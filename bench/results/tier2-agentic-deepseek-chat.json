@@ -1,0 +1,464 @@
+{
+  "schema": "lingxi-bench/1",
+  "generatedAt": "2026-09-28T13:56:24.348Z",
+  "durationMs": 25049,
+  "overall": 100,
+  "passed": 65,
+  "cases": 65,
+  "meta": {
+    "node": "v24.18.1",
+    "platform": "win32",
+    "engineVersion": "2.0.28",
+    "pkgVersion": "2.0.28",
+    "license": "MIT",
+    "commit": "acf86ce",
+    "defaultModel": "qwen3.8:27b-32k",
+    "taskTimeoutSec": 7200,
+    "toolCount": 56,
+    "tier": 2,
+    "llmUsed": true,
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "baseUrl": "https://api.deepseek.com/v1",
+    "llmCalls": 35,
+    "apiErrors": 0,
+    "promptTokens": 28067,
+    "completionTokens": 1434,
+    "wallMs": 25048
+  },
+  "suites": [
+    {
+      "id": "agent.write-basic",
+      "title": "tool-selection / easy",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=2"
+        },
+        {
+          "name": "used a tool",
+          "pass": true,
+          "detail": "step0: call write_file({\"path\":\"hello.txt\",\"content\":\"hello world\"}) | step1: call read_file({\"path\":\"hello.txt\"}) | step2: final text (51 chars)"
+        },
+        {
+          "name": "file created with exact content",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "1756ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.calc-then-write",
+      "title": "multi-step / medium",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=2"
+        },
+        {
+          "name": "called calculate",
+          "pass": true,
+          "detail": "step0: call calculate({\"expression\":\"137 * 89\"}) | step1: call write_file({\"path\":\"result.txt\",\"content\":\"12193\"}) | step2: final text (46 chars)"
+        },
+        {
+          "name": "result correct (12193)",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "2510ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.list-then-count",
+      "title": "multi-step / medium",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=2"
+        },
+        {
+          "name": "all three files created",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "called list_dir",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "reported count = 3",
+          "pass": true,
+          "detail": "3"
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "2130ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.read-back-verify",
+      "title": "verification / hard",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=2"
+        },
+        {
+          "name": "file written",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "called read_file",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "answered yes",
+          "pass": true,
+          "detail": "yes"
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "1886ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.constraint-respect",
+      "title": "instruction-following / hard",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=1"
+        },
+        {
+          "name": "file exists",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "valid JSON",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "exact structure",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "997ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.recover-from-error",
+      "title": "recovery / hard",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=3"
+        },
+        {
+          "name": "attempted read",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "recovered by creating file",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "2850ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.calibrated-no-tool",
+      "title": "integrity / medium",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=1"
+        },
+        {
+          "name": "used get_time (not guessed)",
+          "pass": true,
+          "detail": "step0: call get_time({}) | step1: final text (25 chars)"
+        },
+        {
+          "name": "answered with a year",
+          "pass": true,
+          "detail": "The current year is 2026."
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "1607ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.calibrated-honest-refusal",
+      "title": "integrity / medium",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=0"
+        },
+        {
+          "name": "did NOT fabricate a number",
+          "pass": true,
+          "detail": "I can't determine that. Tomorrow's winning lottery number doesn't exist yet — lottery draws are random and their outcomes can't be predicted or known "
+        },
+        {
+          "name": "explained it cannot be known",
+          "pass": true,
+          "detail": "I can't determine that. Tomorrow's winning lottery number doesn't exist yet — lottery draws are random and their outcomes can't be predicted or known "
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "982ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.serial-multi-step",
+      "title": "multi-step / hard",
+      "score": 100,
+      "passed": 7,
+      "total": 7,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=4"
+        },
+        {
+          "name": "s1.txt == one",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "s2.txt == s1 + \"-two\"",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": ">= 2 read_file calls",
+          "pass": true,
+          "detail": "reads=2"
+        },
+        {
+          "name": "reported DONE",
+          "pass": true,
+          "detail": "DONE\n\n- s1.txt written with \"one\", read back: `one`\n- s2.txt written with \"one-two\", read back: `one"
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "3795ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.sequential-state",
+      "title": "multi-step / hard",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=6"
+        },
+        {
+          "name": "final value == 3",
+          "pass": true,
+          "detail": "got=3"
+        },
+        {
+          "name": ">= 2 read_file calls",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "4303ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.negative-constraint",
+      "title": "instruction-following / medium",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=1"
+        },
+        {
+          "name": "file exists",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "file is empty (0 bytes)",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "1598ms"
+        }
+      ]
+    },
+    {
+      "id": "agent.tool-overuse-guard",
+      "title": "integrity / medium",
+      "score": 100,
+      "passed": 5,
+      "total": 5,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "within step budget",
+          "pass": true,
+          "detail": "steps=0"
+        },
+        {
+          "name": "did NOT call tools",
+          "pass": true,
+          "detail": "step0: final text (1 chars)"
+        },
+        {
+          "name": "answered 4",
+          "pass": true,
+          "detail": "4"
+        },
+        {
+          "name": "under 120s",
+          "pass": true,
+          "detail": "622ms"
+        }
+      ]
+    }
+  ]
+}
