@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 
 # Build output
@@ -299,7 +299,22 @@ data-preflight-tmp/
 bench/out/
 bench/results/selftest-tmp/
 
-# one-off dev/deploy scripts (local only, contain dev secrets)
-_*.mjs
-_*.py
-_*.cjs
+# ---- 2026-09-28 hygiene: artifacts that kept polluting git status ----
+# base64-encoded release archives (site.tar.gz.b64 is not matched by *.tar.gz)
+*.tar.gz.b64
+*.tar.bz2
+*.tgz
+
+# one-off network/SSL diagnostics from ad-hoc debugging
+ssl.json;
+*.htm.tmp
+tlprobe*.htm
+
+# ad-hoc scratch scripts at repo root (prefixed with a single underscore,
+# and not part of a tracked tool directory)
+/_*.mjs
+/_*.cjs
+
+# skill packs generated at runtime by the engine itself
+/skills/_generated/
+/_skills_runtime/
