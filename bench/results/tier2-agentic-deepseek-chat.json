@@ -1,7 +1,7 @@
 {
   "schema": "lingxi-bench/1",
-  "generatedAt": "2026-09-28T13:56:24.348Z",
-  "durationMs": 25049,
+  "generatedAt": "2026-09-28T14:00:29.606Z",
+  "durationMs": 26264,
   "overall": 100,
   "passed": 65,
   "cases": 65,
@@ -11,10 +11,9 @@
     "engineVersion": "2.0.28",
     "pkgVersion": "2.0.28",
     "license": "MIT",
-    "commit": "acf86ce",
+    "commit": "b0c4117",
     "defaultModel": "qwen3.8:27b-32k",
     "taskTimeoutSec": 7200,
-    "toolCount": 56,
     "tier": 2,
     "llmUsed": true,
     "provider": "deepseek",
@@ -23,8 +22,8 @@
     "llmCalls": 35,
     "apiErrors": 0,
     "promptTokens": 28067,
-    "completionTokens": 1434,
-    "wallMs": 25048
+    "completionTokens": 1438,
+    "wallMs": 26262
   },
   "suites": [
     {
@@ -57,7 +56,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "1756ms"
+          "detail": "2615ms"
         }
       ]
     },
@@ -91,7 +90,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "2510ms"
+          "detail": "2634ms"
         }
       ]
     },
@@ -130,7 +129,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "2130ms"
+          "detail": "2585ms"
         }
       ]
     },
@@ -169,7 +168,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "1886ms"
+          "detail": "2071ms"
         }
       ]
     },
@@ -208,7 +207,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "997ms"
+          "detail": "1264ms"
         }
       ]
     },
@@ -242,7 +241,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "2850ms"
+          "detail": "3102ms"
         }
       ]
     },
@@ -276,7 +275,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "1607ms"
+          "detail": "1398ms"
         }
       ]
     },
@@ -310,7 +309,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "982ms"
+          "detail": "1161ms"
         }
       ]
     },
@@ -354,7 +353,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "3795ms"
+          "detail": "3253ms"
         }
       ]
     },
@@ -388,7 +387,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "4303ms"
+          "detail": "4070ms"
         }
       ]
     },
@@ -422,7 +421,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "1598ms"
+          "detail": "1487ms"
         }
       ]
     },
@@ -456,7 +455,7 @@
         {
           "name": "under 120s",
           "pass": true,
-          "detail": "622ms"
+          "detail": "613ms"
         }
       ]
     }
