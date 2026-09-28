@@ -1,0 +1,342 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>下载部署 · 灵犀引擎 v2.0.28</title>
+<style>
+  :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text);line-height:1.7;min-height:100vh}
+  .wrap{max-width:860px;margin:0 auto;padding:48px 24px}
+  a{color:var(--brand2);text-decoration:none}
+  .back{display:inline-block;color:var(--muted);font-size:14px;margin-bottom:28px}
+  .back:hover{color:var(--text)}
+  h1{font-size:30px;font-weight:800;margin-bottom:8px}
+  .sub{color:var(--muted);margin-bottom:20px}
+  .detect{display:inline-flex;align-items:center;gap:8px;background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.3);color:var(--green);font-size:13px;padding:6px 14px;border-radius:999px;margin-bottom:32px}
+  .detect .dot{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .tabs{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .tab{flex:1;min-width:140px;text-align:center;padding:12px 10px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--muted);font-size:14px;font-weight:600;cursor:pointer;transition:.2s;user-select:none}
+  .tab:hover{color:var(--text);border-color:var(--brand2)}
+  .tab.active{background:linear-gradient(90deg,rgba(124,92,252,.25),rgba(74,158,255,.25));border-color:var(--brand2);color:var(--text);font-weight:700}
+  .tab .ic{font-size:20px;display:block;margin-bottom:2px}
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;padding:26px;margin-bottom:20px}
+  .card h2{font-size:18px;margin-bottom:6px}
+  .card p{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .cmdbox{position:relative;margin-bottom:14px}
+  .cmdbox .label{font-size:12.5px;color:var(--muted);margin-bottom:6px}
+  code.cmd{display:block;background:#0d1424;border:1px solid var(--line);border-radius:9px;padding:12px 52px 12px 14px;font-family:Consolas,Menlo,monospace;font-size:12.5px;color:#7ee787;word-break:break-all}
+  .copy{position:absolute;right:8px;top:34px;padding:5px 10px;border-radius:7px;border:1px solid var(--line);background:#1a2338;color:var(--muted);font-size:12px;cursor:pointer;transition:.15s}
+  .copy:hover{color:var(--text);border-color:var(--brand2)}
+  .copy.done{color:var(--green);border-color:var(--green)}
+  .btn{display:inline-block;padding:13px 26px;border-radius:10px;font-weight:700;font-size:14px;transition:.2s}
+  .btn-primary{background:linear-gradient(90deg,var(--brand),var(--brand2));color:#fff}
+  .btn-primary:hover{transform:translateY(-2px)}
+  .btn-ghost{background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--text);margin-left:10px}
+  .btn-ghost:hover{background:rgba(255,255,255,.1)}
+  .ver{display:inline-block;background:rgba(74,222,128,.12);color:var(--green);font-size:12px;padding:3px 10px;border-radius:999px;margin-left:10px;vertical-align:middle}
+  .tips{font-size:12.5px;color:var(--muted);background:rgba(74,158,255,.06);border:1px solid var(--line);border-radius:9px;padding:10px 14px;margin-top:4px}
+  .tips b{color:var(--text)}
+  .ic{display:inline;background:#0d1424;border:1px solid var(--line);border-radius:5px;padding:1px 7px;font-size:12px;font-family:Consolas,Menlo,monospace;color:#7ee787}
+  details{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;margin-bottom:14px;overflow:hidden}
+  summary{cursor:pointer;padding:18px 26px;font-size:15.5px;font-weight:700;list-style:none;display:flex;align-items:center;gap:10px}
+  summary::-webkit-details-marker{display:none}
+  summary::after{content:"▸";margin-left:auto;color:var(--muted);transition:.2s}
+  details[open] summary::after{transform:rotate(90deg)}
+  .dbody{padding:0 26px 22px;font-size:13.5px;color:#c9d1d9}
+  .dbody h3{font-size:14px;color:var(--brand2);margin:16px 0 8px}
+  .dbody p{margin-bottom:10px}
+  .dbody ul,.dbody ol{padding-left:22px;margin-bottom:10px}
+  .dbody li{margin-bottom:6px}
+  .dbody pre{background:#0d1424;border:1px solid var(--line);border-radius:9px;padding:12px 14px;font-family:Consolas,Menlo,monospace;font-size:12.5px;color:#7ee787;overflow-x:auto;margin:8px 0 14px;white-space:pre}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:rgba(74,158,255,.08);color:var(--text)}
+  .foot{text-align:center;color:#5b6577;font-size:12px;margin-top:32px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">← 返回首页</a>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.28</span></h1>
+  <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署</p>
+
+  <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
+
+  <div class="tabs" id="tabs">
+    <div class="tab" data-p="mac"><span class="tabic">🍎</span>macOS</div>
+    <div class="tab" data-p="linux"><span class="tabic">🐧</span>Linux</div>
+    <div class="tab" data-p="win"><span class="tabic">🖥️</span>Windows</div>
+    <div class="tab" data-p="android"><span class="tabic">🤖</span>Android</div>
+    <div class="tab" data-p="ios"><span class="tabic">📱</span>iOS</div>
+  </div>
+
+  <!-- ============ macOS ============ -->
+  <div class="panel" id="panel-mac">
+    <div class="card">
+      <h2>🍎 macOS 一行命令部署</h2>
+      <p>自动识别 Apple Silicon / Intel 芯片，自动安装 Homebrew 与 Node.js，配置 LaunchAgent 开机自启，装完自动打开 <b>http://localhost:3456</b>。</p>
+      <div class="cmdbox">
+        <div class="label">打开「终端」（Terminal），粘贴执行：</div>
+        <code class="cmd" id="cmd-mac">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <button class="copy" data-target="cmd-mac">复制</button>
+      </div>
+      <div class="tips">
+        💡 <b>常用子命令</b>（管道执行时参数跟在 <span class="ic">bash -s --</span> 后面）：<br>
+        · 解除 dmg 应用拦截：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</b><br>
+        · 卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b><br>
+        · 关闭开机自启：加 <b>--no-autostart</b>；先演练不实际安装：加 <b>--dry-run</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Linux ============ -->
+  <div class="panel" id="panel-linux">
+    <div class="card">
+      <h2>🐧 Linux 桌面 / 服务器一行命令部署</h2>
+      <p>支持 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9，自动安装 Node.js 20 与全部依赖。DGX（DGX OS 即 Ubuntu）同样适用，桌面端自动配置应用菜单 + systemd 用户服务自启。</p>
+      <div class="cmdbox">
+        <div class="label">桌面端 / DGX 安装（用户态，自动配置桌面入口与自启）：</div>
+        <code class="cmd" id="cmd-linux">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <button class="copy" data-target="cmd-linux">复制</button>
+      </div>
+      <div class="cmdbox">
+        <div class="label">云服务器部署（/opt 目录 + PM2 托管，对外服务用这个）：</div>
+        <code class="cmd" id="cmd-deploy">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <button class="copy" data-target="cmd-deploy">复制</button>
+      </div>
+      <div class="tips">
+        💡 装完桌面端会得到：<b>~/.local/bin/lingxi</b> 命令行入口 + 应用菜单图标 + 开机自启（无 systemd 自动降级 XDG autostart）。<br>
+        卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Windows ============ -->
+  <div class="panel" id="panel-win">
+    <div class="card">
+      <h2>🖥️ Windows 桌面便携版</h2>
+      <p>支持 Windows 10 1809+ / Windows 11，便携版开箱即用，集成 15 种 AI 模型，无需命令行。</p>
+      <a class="btn btn-primary" href="/lingxi-engine-desktop-1.1.0-portable.exe" download="lingxi-engine-desktop-1.1.0-portable.exe">⬇ 下载 灵犀引擎.exe</a>
+      <a class="btn btn-ghost" href="/install.ps1" download>⬇ PowerShell 安装脚本</a>
+      <div class="cmdbox" style="margin-top:18px">
+        <div class="label">或用 PowerShell 一行命令（管理员）：</div>
+        <code class="cmd" id="cmd-win">irm https://lingxi-engine.com/install.ps1 | iex</code>
+        <button class="copy" data-target="cmd-win">复制</button>
+      </div>
+      <div class="tips">💡 安装完成后运行 <b>start.bat</b>，浏览器打开 <b>http://localhost:3456</b>。</div>
+    </div>
+  </div>
+
+  </div>
+
+  <!-- ============ Android ============ -->
+  <div class="panel" id="panel-android">
+    <div class="card">
+      <h2>🤖 灵犀引擎 Android 版 <span class="ver">v1.0.1</span></h2>
+      <p>官方手机版 App（约 0.05MB，Android 7.0+）。安装后直连灵犀云端引擎，聊天、智能体、工作流、技能市场全功能同步，无需配置。</p>
+      <a class="btn btn-primary" href="/lingxi-app-v1.0.1.apk" download>⬇️ 下载 APK 安装包</a>
+      <a class="btn btn-ghost" href="/lingxi-app.apk" download>🔗 通用链接（永远最新）</a>
+      <div class="tips" style="margin-top:16px">📌 <b>安装提示：</b>浏览器下载后打开 APK，如提示「未知来源应用」，在弹窗里选择「允许本次安装」即可（系统签名测试包，属正常提示）。安装后桌面出现「灵犀引擎」紫色星形图标。</div>
+      <div class="tips" style="margin-top:10px">💡 不想装 App？用手机浏览器直接打开 <b>https://lingxi-engine.com/m/</b> 也能完整使用（已做移动端适配）。</div>
+    </div>
+  </div>
+
+  <!-- ============ iOS ============ -->
+  <div class="panel" id="panel-ios">
+    <div class="card">
+      <h2>📱 iPhone / iPad</h2>
+      <p>iOS 版正在通过 TestFlight 内测通道准备中。现在即可用 Safari 直接访问，体验与 App 几乎一致：</p>
+      <a class="btn btn-primary" href="https://lingxi-engine.com/m/" rel="noopener">🌐 用 Safari 打开灵犀引擎</a>
+      <div class="tips" style="margin-top:16px">⭐ <b>加到主屏幕：</b>在 /m/ 页面打开后点底栏「分享」→「添加到主屏幕」，即可获得 App 级全屏体验（独立图标 + 无地址栏）。</div>
+    </div>
+  </div>
+
+  <!-- ============ 源码包（全平台通用） ============ -->
+  <div class="card">
+    <h2>🐍 源码包（全平台通用）</h2>
+    <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
+    <a class="btn btn-primary" id="dl-src" href="/lingxi-engine-v2.0.28.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.28</span></a>
+    <a class="btn btn-ghost" href="/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
+  </div>
+
+  <!-- ============ 部署文档 ============ -->
+  <details>
+    <summary>📖 多平台部署文档（展开查看）</summary>
+    <div class="dbody">
+      <h3>系统要求与部署命令总览</h3>
+      <table>
+        <tr><th>平台</th><th>要求</th><th>部署命令</th></tr>
+        <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm https://lingxi-engine.com/install.ps1 | iex</span></td></tr>
+        <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>CentOS 7</td><td>❌ 不支持（glibc 2.17 过旧）</td><td>—</td></tr>
+      </table>
+
+      <h3>安装脚本会自动做什么</h3>
+      <ol>
+        <li>识别操作系统与芯片架构（x86_64 / arm64）</li>
+        <li>安装 Node.js 运行时（apt / dnf / yum / Homebrew 自动分支）</li>
+        <li>下载引擎分发包（约 2.65MB）并解压到安装目录</li>
+        <li>生成 .env 配置（含随机 JWT 密钥）并安装 npm 依赖</li>
+        <li>配置开机自启（macOS LaunchAgent / Linux systemd 用户服务或 XDG autostart）</li>
+        <li>启动引擎并打开 <b>http://localhost:3456</b></li>
+      </ol>
+
+      <h3>DGX / GPU 服务器追加步骤（本地大模型推理）</h3>
+      <p>引擎装好后，如需接本地 GPU 模型：</p>
+      <pre>curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:14b          # 按显存选模型
+cat &gt;&gt; /opt/lingxi-engine/.env &lt;&lt;'EOF'
+OPENAI_BASE_URL=http://localhost:11434/v1
+OPENAI_API_KEY=ollama
+MODEL_NAME=qwen2.5:14b
+EOF
+pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
+      <p>DGX OS 自带 CUDA，Ollama 直接识别 GPU，无需额外装驱动；端口对外需 <span class="ic">sudo ufw allow 3456</span>。</p>
+
+      <h3>安装后验证</h3>
+      <pre id="health-pre">curl http://localhost:3456/api/health
+# 期望返回 {"ok":true,"version":"2.0.28","agents":11,...}</pre>
+
+      <h3>手动部署（不用脚本）</h3>
+      <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
+      <p>📖 更完整的图文部署指南（含离线部署、PM2 托管、常见排障）见 <a href="/docs/">站内文档</a>。</p>
+    </div>
+  </details>
+
+  <!-- ============ FAQ ============ -->
+  <details>
+    <summary>❓ 常见问题 FAQ（展开查看）</summary>
+    <div class="dbody">
+      <h3>安装类</h3>
+      <p><b>Q：curl 命令执行后没反应 / 卡住？</b><br>
+      A：检查网络能否访问 <span class="ic">https://lingxi-engine.com</span>（公司内网可能拦截非常用端口）；macOS 用户确认用的是「终端」而非 IDE 内置受限终端。</p>
+      <p><b>Q：macOS 上 dmg 应用被系统拦截？</b><br>
+      A：执行 <span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</span> 一键解除 Gatekeeper 拦截。</p>
+      <p><b>Q：Linux 提示 glibc too old？</b><br>
+      A：系统过旧（如 CentOS 7），请升级到 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8+。</p>
+      <p><b>Q：npm 安装很慢或超时？</b><br>
+      A：切换国内镜像 <span class="ic">npm config set registry https://registry.npmmirror.com</span> 后重跑脚本。</p>
+
+      <h3>运行类</h3>
+      <p><b>Q：端口 3456 被占用？</b><br>
+      A：编辑 .env 修改 <span class="ic">PORT</span> 后重启；或用 <span class="ic">ss -tlnp | grep 3456</span>（Linux）/ <span class="ic">lsof -i :3456</span>（macOS）找到占用进程。</p>
+      <p><b>Q：怎么验证装好了？</b><br>
+      A：浏览器打开 <span class="ic">http://localhost:3456</span>，或终端执行 <span class="ic">curl http://localhost:3456/api/health</span>，返回 ok 即成功。</p>
+      <p><b>Q：开机没有自启？</b><br>
+      A：macOS 检查「系统设置 → 通用 → 登录项」；Linux 检查 <span class="ic">systemctl --user status lingxi-engine</span>；重跑安装脚本可修复。</p>
+      <p><b>Q：怎么彻底卸载？</b><br>
+      A：<span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</span>，会清理程序文件、自启配置和菜单图标（保留用户数据）。</p>
+      <p><b>Q：WSL 里能跑吗？</b><br>
+      A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
+    </div>
+  </details>
+
+  <div class="foot">灵犀引擎 <span class="ver">v2.0.28</span> · <a href="/">返回首页</a></div>
+
+<script>
+(function() {
+  var UA = navigator.userAgent;
+
+  function detectOS() {
+    if (/Windows/i.test(UA)) return 'win';
+    if (/iPhone|iPad|iPod/i.test(UA)) return 'ios';
+    if (/Macintosh|Mac OS X/i.test(UA)) return 'mac';
+    if (/Android/i.test(UA)) return 'android';
+    if (/Linux|X11|Ubuntu|Fedora|CrOS/i.test(UA)) return 'linux';
+    return 'unknown';
+  }
+
+  var os = detectOS();
+  var names = { win: 'Windows', mac: 'macOS', linux: 'Linux', android: 'Android', ios: 'iOS', unknown: '' };
+  var icons = { win: '🪟', mac: '💻', linux: '🐧', android: '🤖', ios: '📱', unknown: '🔍' };
+  var bar = document.getElementById('detectBar');
+  var txt = document.getElementById('detectText');
+
+  if (os !== 'unknown') {
+    txt.innerHTML = '已识别你的系统：<b>' + icons[os] + ' ' + names[os] + '</b>，已为你展示对应命令';
+  } else {
+    txt.innerHTML = '未能识别系统类型，请从下方手动选择你的操作系统';
+    bar.style.background = 'rgba(251,191,36,.1)';
+    bar.style.borderColor = 'rgba(251,191,36,.3)';
+  }
+
+  function showPanel(p) {
+    var tabs = document.querySelectorAll('.tab');
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.toggle('active', tabs[i].getAttribute('data-p') === p);
+    for (var j = 0; j < panels.length; j++) panels[j].classList.toggle('active', panels[j].id === 'panel-' + p);
+  }
+
+  // 默认展示检测到的系统；识别失败默认 macOS（脚本双端通用）
+  showPanel(os !== 'unknown' ? os : 'mac');
+
+  // 手动切换
+  document.getElementById('tabs').addEventListener('click', function(e) {
+    var t = e.target.closest('.tab');
+    if (t) showPanel(t.getAttribute('data-p'));
+  });
+
+  // 复制按钮
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('.copy');
+    if (!btn) return;
+    var code = document.getElementById(btn.getAttribute('data-target'));
+    if (!code) return;
+    var text = code.textContent.trim();
+    function ok() {
+      btn.textContent = '✓ 已复制';
+      btn.classList.add('done');
+      setTimeout(function() { btn.textContent = '复制'; btn.classList.remove('done'); }, 1800);
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); ok(); } catch (err) {}
+      document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(ok).catch(fallback);
+    } else { fallback(); }
+  });
+})();
+
+// v2.0.28: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
+//          静态回退值同步为当前版本，避免"官网页显示旧版本"的漂移。
+(function () {
+  function apply(version) {
+    var v = 'v' + version;
+    document.title = document.title.replace(/v\d+\.\d+\.\d+/, v);
+    document.querySelectorAll('.ver').forEach(function (e) { e.textContent = v; });
+    var dl = document.getElementById('dl-src');
+    if (dl) dl.setAttribute('href', '/public/lingxi-engine-' + version + '.tar.gz');
+    var hp = document.getElementById('health-pre');
+    if (hp) hp.textContent = hp.textContent.replace(/"version":"\d+\.\d+\.\d+"/, '"version":"' + version + '"');
+  }
+  fetch('/public/version.txt', { cache: 'no-store' })
+    .then(function (r) { if (!r.ok) throw new Error('no version.txt'); return r.text(); })
+    .then(function (t) {
+      var m = (t || '').trim().split(/\s+/)[0];
+      if (/^\d+\.\d+\.\d+$/.test(m)) { apply(m); } else { throw new Error('bad version.txt'); }
+    })
+    .catch(function () {
+      fetch('/api/health')
+        .then(function (r) { return r.json(); })
+        .then(function (h) { if (h && h.version) apply(h.version); })
+        .catch(function () { /* 保持静态回退值 */ });
+    });
+})();
+</script>
+</body>
+</html>
