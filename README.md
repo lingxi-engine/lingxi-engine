@@ -95,6 +95,8 @@ npm run bench:agentic   # 仅 Tier-2
 
 详见 [bench/README.md](bench/README.md) 与 [bench/results/REPORT.md](bench/results/REPORT.md)。
 
+想横向对比 Manus / Dify / Coze，见 [docs/COMPARISON.md](docs/COMPARISON.md)（含数据可信度分级）。
+
 ## 🏗 架构
 
 ```
