@@ -1,7 +1,7 @@
 # LingXi Engine — Benchmark Report
 
-- engine: `2.0.28` (commit `acf86ce`)
-- generated: 2026-09-28T13:56:29.971Z
+- engine: `2.0.28` (commit `b0c4117`)
+- generated: 2026-09-28T14:02:00.976Z
 - built-in tools: **56**
 
 ## Headline
@@ -9,7 +9,7 @@
 | Tier | What it measures | Result | Cost |
 |---|---|---|---|
 | Tier 1 | tool contracts, SSRF policy, long-task budgets, subsystem presence | **100%** (150/150) | free |
-| Tier 2 | agentic execution with a live LLM (`deepseek-chat`) | **100%** (65/65) | 28067 in / 1434 out |
+| Tier 2 | agentic execution with a live LLM (`deepseek-chat`) | **100%** (65/65) | 28067 in / 1438 out |
 
 > Tier 1 is deterministic and free, so it can gate every commit.
 > Tier 2 spends tokens; the numbers below come from a real run against a live API.
@@ -31,7 +31,7 @@
 | `agent.negative-constraint` | instruction-following / medium | 100% (5/5) |
 | `agent.tool-overuse-guard` | integrity / medium | 100% (5/5) |
 
-Wall time 25.0s across 65 cases, 35 LLM calls, 0 errors.
+Wall time 26.3s across 65 cases, 35 LLM calls, 0 errors.
 
 ## Tier 1 — suites
 

@@ -316,7 +316,6 @@ for (const c of selected) {
   console.log(`  ${c.id.padEnd(26)} ${String(suite.score).padStart(5)}%  ${String(ms).padStart(6)}ms  ${res.steps} steps`);
 }
 
-meta.toolCount = 56;
 meta.tier = 2;
 meta.llmUsed = true;
 meta.provider = PROVIDER;

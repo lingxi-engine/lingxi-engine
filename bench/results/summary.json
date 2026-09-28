@@ -1,9 +1,9 @@
 {
   "schema": "lingxi-bench-summary/1",
-  "generatedAt": "2026-09-28T13:56:29.971Z",
+  "generatedAt": "2026-09-28T14:02:00.976Z",
   "engine": {
     "version": "2.0.28",
-    "commit": "acf86ce",
+    "commit": "b0c4117",
     "toolCount": 56
   },
   "tier1": {
@@ -18,10 +18,10 @@
     "score": 100,
     "model": "deepseek-chat",
     "provider": "deepseek",
-    "wallMs": 25048,
+    "wallMs": 26262,
     "tokens": {
       "in": 28067,
-      "out": 1434
+      "out": 1438
     }
   }
 }
