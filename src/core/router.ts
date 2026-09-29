@@ -22,6 +22,7 @@ import { Critic } from "./critic.js";
 import { Clarifier } from "./clarifier.js";
 import { Evaluator, type EvaluationSummary, type EvaluationRecord } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
+import { decideAutoResume, inferRemainingWork } from "./autonomy.js";
 
 /**
  * 判断用户输入是否为"任务类"（需要持续执行直到完成，而非一问一答）
@@ -483,12 +484,12 @@ export class MessageRouter {
       // 而是像 GoalExecutor 一样注入断点上下文自动开下一轮（用户主动停止除外）。
       // 续跑轮数上限由 TASK_RESUME_ROUNDS 控制（默认 2），每轮重新计时。
       if (isTaskMode && !signal?.aborted) {
-        const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '2', 10);
+        const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '6', 10);
         let resumeRounds = 0;
         while (
           resumeRounds < MAX_RESUME_ROUNDS &&
           !signal?.aborted &&
-          (result.stopReason === 'aborted' || result.stopReason === 'max_iterations')
+          decideAutoResume(result.stopReason, result.finalContent || '').shouldResume
         ) {
           resumeRounds++;
           const reasonText = result.stopReason === 'aborted' ? '超出时限' : '达到迭代上限';
@@ -497,7 +498,10 @@ export class MessageRouter {
             ...(result.messages as ChatMessage[]),
             {
               role: 'user',
-              content: '系统通知：上一轮任务执行因' + reasonText + '被中断，但已完成的进度保留在上方上下文中。请从断点继续，完成剩余未做完的工作——不要重复已完成的部分，不要询问用户，自主判断并持续执行。全部做完后，在回复结尾输出"任务完成"（之后不要再写后续计划）。',
+              content: '系统通知：上一轮任务执行因' + reasonText + '被中断，但已完成的进度保留在上方上下文中。'
+                + '请从断点继续，完成剩余未做完的工作——不要重复已完成的部分，不要询问用户，自主判断并持续执行。'
+                + '全部做完后，在回复结尾输出"任务完成"（之后不要再写后续计划）。'
+                + inferRemainingWork(result.finalContent || ''),
             },
           ];
           const resumeController = new AbortController();

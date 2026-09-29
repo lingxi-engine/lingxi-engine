@@ -134,8 +134,6 @@ import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
-import { createMvpMarketRoutes } from './src/routes/mvp-market.js';
-import { PLATFORM_FEE_RATE, roundFeeAmount } from './src/core/mvp-market/service.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
@@ -721,37 +719,36 @@ setSearchManager(searchManagerInstance);
 
     next();
   });
-
-  // ══════════════════════════════════════════════════════════════
-  // [FEATURE_MARKET] 雇佣市场总开关 —— 暂时下线商业化功能，只保留多模态智能体
-  // 关闭时：/market.html、/market、/api/market/*、/api/mvp/* 一律 404
-  // 代码全部保留，改 FEATURE_MARKET=true 或删掉 env 即可完整恢复
-  // ══════════════════════════════════════════════════════════════
-  // 默认下线：必须显式 FEATURE_MARKET=true 才恢复雇佣市场
+  // ==============================================================
+  // [FEATURE_MARKET] hire-market master switch -- commercial features offline,
+  // multimodal agent only. When off: /market.html, /market, /api/market/*,
+  // /api/mvp/* all return 404. Code fully retained; set FEATURE_MARKET=true
+  // or delete the env var to restore.
+  // ==============================================================
+  // Default OFF: FEATURE_MARKET=true must be set explicitly to restore market
   const FEATURE_MARKET = (process.env.FEATURE_MARKET || '').trim().toLowerCase() === 'true';
   if (!FEATURE_MARKET) {
-    console.log('[FEATURE] 雇佣市场已下线（FEATURE_MARKET=false）');
+    console.log('[FEATURE] hire market offline (FEATURE_MARKET=false)');
     app.use('/market.html', (_req, res) => res.status(404).send('Not Found'));
     app.use('/market', (_req, res) => res.status(404).send('Not Found'));
     app.use('/api/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
     app.use('/api/mvp', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    // 附带下线：技能市场与雇佣/订单类商业化入口
+    // Collateral shutdown: skill market + hire/order commercial entries
     app.use('/api/skills/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
     app.use('/api/hire', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    // 前端能力开关（公开、无需鉴权）：市场关闭时前端隐藏入口
+    // Frontend capability flag (public, no auth): hide market entries when off
     app.get('/api/features', (_req, res) => res.json({
       market: false,
       mode: 'multimodal-agent',
-      notice: '属于无金融功能，已暂时下线',
+      notice: 'no financial features, temporarily offline',
     }));
   }
-
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
   port = await resolveAvailablePort(port, autoPort);
-  // v2.0.29 security hardening: bind address is configurable (default 0.0.0.0 = old behaviour).
-  // Set BIND_ADDR=127.0.0.1 to serve this machine only (kills the LAN no-login entrance).
+  // Security: bind address configurable (default 0.0.0.0 = legacy).
+  // Set BIND_ADDR=127.0.0.1 to serve this machine only (kills LAN no-login entry).
   const bindAddr = (process.env.BIND_ADDR || '0.0.0.0').trim() || '0.0.0.0';
 
   // ── v2.0.7: 健康检查端点（置于鉴权/限流之前，供探针与部署脚本使用）──
@@ -1944,7 +1941,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-
   // ── AI 员工市场 + 雇佣系统 API ──
   app.get('/api/market/list', optAuth, (req, res) => {
     try {
@@ -2034,47 +2030,16 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const price = Number(listing.price) || 0;
       const hireCurrency = listing.currency || 'credits';
       let spendResult: any = null;
-      // 费率与任务市场同源（PLATFORM_FEE_RATE），杜绝两边各写一个 0.9 对不上账
-      const platformFee = roundFeeAmount(hireCurrency, price * PLATFORM_FEE_RATE);
-      const sellerPayout = roundFeeAmount(hireCurrency, price - platformFee);
       if (hireCurrency === 'usd' || hireCurrency === 'cny') {
         spendResult = spendWalletBalance(buyerId, hireCurrency, price, '购买/雇佣: ' + (listing.title || ''));
         if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
-        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(' + Math.round((1 - PLATFORM_FEE_RATE) * 100) + '%): ' + (listing.title || ''));
+        const sellerPayout = Math.round(price * 0.9 * 100) / 100;
+        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(90%): ' + (listing.title || ''));
       } else {
         spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
         if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
+        const sellerPayout = Math.floor(price * 0.9);
         if (typeof addCredits === 'function') addCredits(listing.publisher_id, sellerPayout);
-      }
-      // 平台抽成入账：以前这 10% 直接蒸发了，现在有账可查。
-      // 原子性要求：入账失败必须回滚买卖双方余额，否则会出现
-      // 「卖家收到钱、平台收入没落账」的对不上的账。宁可交易失败，也不能账不平。
-      try {
-        d.run(
-          `INSERT INTO mvp_platform_revenue
-           (id, market, contract_id, settlement_id, payer_id, payee_id,
-            gross, pay, fee, fee_rate, currency, kind, note, created_at)
-           VALUES (?, 'agent_hire', ?, NULL, ?, ?, ?, ?, ?, ?, ?, 'release', ?, ?)`,
-          ['rev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-           listingId, buyerId, listing.publisher_id,
-           roundFeeAmount(hireCurrency, price), sellerPayout, platformFee,
-           PLATFORM_FEE_RATE, hireCurrency, '雇佣: ' + (listing.title || ''), Date.now()],
-        );
-      } catch (e: any) {
-        console.error('[market] 抽成入账失败，回滚本次雇佣:', e?.message || e);
-        // 回滚：addWalletBalance / addCredits 均接受负数，直接反向冲销
-        try {
-          if (hireCurrency === 'usd' || hireCurrency === 'cny') {
-            addWalletBalance(listing.publisher_id, hireCurrency, -sellerPayout, '雇佣失败回滚(分成): ' + (listing.title || ''));
-            addWalletBalance(buyerId, hireCurrency, price, '雇佣失败回滚(退款): ' + (listing.title || ''));
-          } else {
-            if (typeof addCredits === 'function') addCredits(listing.publisher_id, -sellerPayout);
-            if (typeof addCredits === 'function') addCredits(buyerId, price);
-          }
-        } catch (re: any) {
-          console.error('[market] 回滚失败，需人工对账 hire:', listingId, re?.message || re);
-        }
-        return res.status(500).json({ error: '平台抽成入账失败，雇佣已回滚，请稍后重试' });
       }
       
       // 3. 创建工作群组 chat
@@ -2128,7 +2093,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       };
       d.addMessage(welcomeMsg);
       
-      res.json({ ok: true, orderId, hireId, chatId, expiresAt, settlement: { gross: price, pay: sellerPayout, fee: platformFee, feeRate: PLATFORM_FEE_RATE, currency: hireCurrency }, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
+      res.json({ ok: true, orderId, hireId, chatId, expiresAt, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
   /** 查看积分余额 */
@@ -2297,7 +2262,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
         ordStmt.free();
         // T5 计费透明：按次计费字段（per_msg_price = price/10 缺省，抽成 10% 给平台）
         const perMsg = Math.max(1, Math.floor(Number(h.price) / 10));
-        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE, fee_rate_source: 'PLATFORM_FEE_RATE' };
+        const PLATFORM_FEE_RATE = 0.10;
+        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE };
       });
       res.json({ ok: true, asBuyer: enrich(asBuyer), asSeller: enrich(asSeller) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -3010,8 +2976,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   app.use('/api', authIfMatch(/^\/(goals|outcomes)(\/|$)/), createGoalOutcomeRoutes({ outcomeTracker, db, broadcast, router } as any));
   app.use('/api', authIfMatch(/^\/evaluations(\/|$)/), createEvaluationRoutes({ router, db } as any));  // AGI: 评测体系
   // ── 灵犀 MVP 闭环（任务/报价/合同/交付/争议/结算/通知/审计/智能体预算）──
-  app.use('/api/mvp', createMvpMarketRoutes({ db, requireAuth, optAuth, adminAuth } as any));
-
   // ── 好友/会话路由（含 PATCH /api/chats/:id/name 会话重命名）──
   // v2.0.25: 此前该模块仅被测试引用，主入口从未注册 → 生产环境改名端点 404
   registerFriendsChatsRoutes(app, { db, requireAuth, broadcast } as any);

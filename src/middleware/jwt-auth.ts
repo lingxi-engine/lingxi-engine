@@ -33,33 +33,42 @@ export interface AuthedRequest extends Request {
  */
 let lastPublicWarn = 0; // 公网无凭证拒绝日志限频：每 60s 最多一条，防日志洪水
 export function isTrustedLocalSource(req: Request): boolean {
-  // 显式开启公网免登录（不推荐，仅向后兼容）
+  // Explicit opt-in for public no-login (not recommended, kept for legacy compat)
   if (process.env.ALLOW_PUBLIC_ADMIN_AUTO === '1' || process.env.ALLOW_PUBLIC_ADMIN_AUTO === 'true') return true;
   const raw = req.socket?.remoteAddress || '';
   const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-  if (!ip) return false; // 无法确定来源时一律不可信（fail-closed）
-  // v2.0.29 security hardening: TRUSTED_LOCAL_MODE = all (default) | loopback | none.
-  // 'loopback' = only this machine skips login; LAN clients must present a token.
-  // 'none'     = every caller must present a token (strictest, for shared hosts).
-  const trustMode = (process.env.TRUSTED_LOCAL_MODE || 'all').trim().toLowerCase();
-  if (trustMode === 'none') return false;
+  if (!ip) return false; // fail-closed when the source cannot be determined
+
+  // v2.0.29 TRUSTED_LOCAL_MODE switch:
+  //   all      (default) trust loopback + RFC1918 LAN
+  //   loopback            trust 127.0.0.0/8 and ::1 only
+  //   none                trust nobody (credentials always required)
+  const mode = String(process.env.TRUSTED_LOCAL_MODE || 'all').trim().toLowerCase();
   const isLoopback = (addr: string): boolean =>
     addr === '::1' || addr === 'localhost' || addr.startsWith('127.');
-  const isLocal = (addr: string): boolean =>
-    addr === '::1' || addr === 'localhost' || addr.startsWith('127.') ||
+  const isPrivate = (addr: string): boolean =>
     addr.startsWith('192.168.') || addr.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(addr);
-  // v5-P0-C 修复: 反代场景（socket=本机/内网但带 XFF）时按真实客户端 IP 判断，防止公网攻击者经反代被“洗白”成本地免登录
-  if (isLocal(ip)) {
-    if (trustMode === 'loopback' && !isLoopback(ip)) return false;
-    const xff = req.headers['x-forwarded-for'];
-    const trustProxy = req.app?.get?.('trust proxy');
-    if (xff && trustProxy) {
-      const clientIp = String(xff).split(',')[0].trim().replace(/^::ffff:/, '');
-      if (clientIp && !isLocal(clientIp)) return false; // 真实客户端来自公网 → 不视为可信本地来源
-    }
-    return true;
+  const inScope = (addr: string): boolean => {
+    if (mode === 'none') return false;
+    if (mode === 'loopback') return isLoopback(addr);
+    if (mode === 'all') return isLoopback(addr) || isPrivate(addr);
+    // Unknown value: fail-closed so a typo never silently opens the door.
+    console.warn('[Auth] TRUSTED_LOCAL_MODE invalid value=' + mode + ', treated as none (fail-closed)');
+    return false;
+  };
+
+  if (!inScope(ip)) return false;
+
+  // v5-P0-C: behind a reverse proxy the socket is loopback/LAN, so judge by the
+  // real client IP from XFF instead; otherwise a public attacker gets laundered
+  // into a trusted local source.
+  const xff = req.headers['x-forwarded-for'];
+  const trustProxy = req.app?.get?.('trust proxy');
+  if (xff && trustProxy) {
+    const clientIp = String(xff).split(',')[0].trim().replace(/^::ffff:/, '');
+    if (clientIp && !inScope(clientIp)) return false;
   }
-  return false;
+  return true;
 }
 
 export function jwtAuth(options: AuthOptions = {}) {

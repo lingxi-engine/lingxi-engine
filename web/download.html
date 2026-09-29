@@ -82,13 +82,13 @@
       <p>自动识别 Apple Silicon / Intel 芯片，自动安装 Homebrew 与 Node.js，配置 LaunchAgent 开机自启，装完自动打开 <b>http://localhost:3456</b>。</p>
       <div class="cmdbox">
         <div class="label">打开「终端」（Terminal），粘贴执行：</div>
-        <code class="cmd" id="cmd-mac">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-mac">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</code>
         <button class="copy" data-target="cmd-mac">复制</button>
       </div>
       <div class="tips">
         💡 <b>常用子命令</b>（管道执行时参数跟在 <span class="ic">bash -s --</span> 后面）：<br>
-        · 解除 dmg 应用拦截：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</b><br>
-        · 卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b><br>
+        · 解除 dmg 应用拦截：<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</b><br>
+        · 卸载：<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b><br>
         · 关闭开机自启：加 <b>--no-autostart</b>；先演练不实际安装：加 <b>--dry-run</b>
       </div>
     </div>
@@ -101,17 +101,17 @@
       <p>支持 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9，自动安装 Node.js 20 与全部依赖。DGX（DGX OS 即 Ubuntu）同样适用，桌面端自动配置应用菜单 + systemd 用户服务自启。</p>
       <div class="cmdbox">
         <div class="label">桌面端 / DGX 安装（用户态，自动配置桌面入口与自启）：</div>
-        <code class="cmd" id="cmd-linux">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-linux">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</code>
         <button class="copy" data-target="cmd-linux">复制</button>
       </div>
       <div class="cmdbox">
         <div class="label">云服务器部署（/opt 目录 + PM2 托管，对外服务用这个）：</div>
-        <code class="cmd" id="cmd-deploy">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-deploy">curl -fsSL http://47.93.157.83:8080/install.sh | bash</code>
         <button class="copy" data-target="cmd-deploy">复制</button>
       </div>
       <div class="tips">
         💡 装完桌面端会得到：<b>~/.local/bin/lingxi</b> 命令行入口 + 应用菜单图标 + 开机自启（无 systemd 自动降级 XDG autostart）。<br>
-        卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b>
+        卸载：<b>curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</b>
       </div>
     </div>
   </div>
@@ -125,7 +125,7 @@
       <a class="btn btn-ghost" href="/public/install.ps1" download>⬇ PowerShell 安装脚本</a>
       <div class="cmdbox" style="margin-top:18px">
         <div class="label">或用 PowerShell 一行命令（管理员）：</div>
-        <code class="cmd" id="cmd-win">irm https://lingxi-engine.com/install.ps1 | iex</code>
+        <code class="cmd" id="cmd-win">irm http://47.93.157.83:8080/install.ps1 | iex</code>
         <button class="copy" data-target="cmd-win">复制</button>
       </div>
       <div class="tips">💡 安装完成后运行 <b>start.bat</b>，浏览器打开 <b>http://localhost:3456</b>。</div>
@@ -142,7 +142,7 @@
       <a class="btn btn-primary" href="/public/lingxi-app-v1.0.1.apk" download>⬇️ 下载 APK 安装包</a>
       <a class="btn btn-ghost" href="/public/lingxi-app.apk" download>🔗 通用链接（永远最新）</a>
       <div class="tips" style="margin-top:16px">📌 <b>安装提示：</b>浏览器下载后打开 APK，如提示「未知来源应用」，在弹窗里选择「允许本次安装」即可（系统签名测试包，属正常提示）。安装后桌面出现「灵犀引擎」紫色星形图标。</div>
-      <div class="tips" style="margin-top:10px">💡 不想装 App？用手机浏览器直接打开 <b>https://lingxi-engine.com/m/</b> 也能完整使用（已做移动端适配）。</div>
+      <div class="tips" style="margin-top:10px">💡 不想装 App？用手机浏览器直接打开 <b>http://47.93.157.83/m/</b> 也能完整使用（已做移动端适配）。</div>
     </div>
   </div>
 
@@ -151,7 +151,7 @@
     <div class="card">
       <h2>📱 iPhone / iPad</h2>
       <p>iOS 版正在通过 TestFlight 内测通道准备中。现在即可用 Safari 直接访问，体验与 App 几乎一致：</p>
-      <a class="btn btn-primary" href="https://lingxi-engine.com/m/" rel="noopener">🌐 用 Safari 打开灵犀引擎</a>
+      <a class="btn btn-primary" href="http://47.93.157.83/m/" rel="noopener">🌐 用 Safari 打开灵犀引擎</a>
       <div class="tips" style="margin-top:16px">⭐ <b>加到主屏幕：</b>在 /m/ 页面打开后点底栏「分享」→「添加到主屏幕」，即可获得 App 级全屏体验（独立图标 + 无地址栏）。</div>
     </div>
   </div>
@@ -171,11 +171,11 @@
       <h3>系统要求与部署命令总览</h3>
       <table>
         <tr><th>平台</th><th>要求</th><th>部署命令</th></tr>
-        <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm https://lingxi-engine.com/install.ps1 | iex</span></td></tr>
-        <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm http://47.93.157.83:8080/install.ps1 | iex</span></td></tr>
+        <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
+        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL http://47.93.157.83:8080/install.sh | bash</span></td></tr>
         <tr><td>CentOS 7</td><td>❌ 不支持（glibc 2.17 过旧）</td><td>—</td></tr>
       </table>
 
@@ -217,9 +217,9 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     <div class="dbody">
       <h3>安装类</h3>
       <p><b>Q：curl 命令执行后没反应 / 卡住？</b><br>
-      A：检查网络能否访问 <span class="ic">https://lingxi-engine.com</span>（公司内网可能拦截非常用端口）；macOS 用户确认用的是「终端」而非 IDE 内置受限终端。</p>
+      A：检查网络能否访问 <span class="ic">http://47.93.157.83:8080</span>（公司内网可能拦截非常用端口）；macOS 用户确认用的是「终端」而非 IDE 内置受限终端。</p>
       <p><b>Q：macOS 上 dmg 应用被系统拦截？</b><br>
-      A：执行 <span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</span> 一键解除 Gatekeeper 拦截。</p>
+      A：执行 <span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --fix-app</span> 一键解除 Gatekeeper 拦截。</p>
       <p><b>Q：Linux 提示 glibc too old？</b><br>
       A：系统过旧（如 CentOS 7），请升级到 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8+。</p>
       <p><b>Q：npm 安装很慢或超时？</b><br>
@@ -233,7 +233,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       <p><b>Q：开机没有自启？</b><br>
       A：macOS 检查「系统设置 → 通用 → 登录项」；Linux 检查 <span class="ic">systemctl --user status lingxi-engine</span>；重跑安装脚本可修复。</p>
       <p><b>Q：怎么彻底卸载？</b><br>
-      A：<span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</span>，会清理程序文件、自启配置和菜单图标（保留用户数据）。</p>
+      A：<span class="ic">curl -fsSL http://47.93.157.83:8080/public/install.sh | bash -s -- --uninstall</span>，会清理程序文件、自启配置和菜单图标（保留用户数据）。</p>
       <p><b>Q：WSL 里能跑吗？</b><br>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>

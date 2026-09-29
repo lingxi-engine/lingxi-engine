@@ -4,8 +4,6 @@
  */
 import initSqlJs from "sql.js";
 import bcrypt from 'bcryptjs';
-import { MVP_MARKET_MIGRATION } from './migrations/mvp-market-schema.js';
-
 let _db: any = null;
 let _dbPath: string = "";
 let _saveTimer: ReturnType<typeof setInterval> | null = null;
@@ -2160,11 +2158,6 @@ const MIGRATIONS: Migration[] = [
     id: '20260918_004_lan_groups_owner_user_id',
     description: 'lan_groups 增加 owner_user_id（代码声明列；真实库缺失）',
     up: (db) => { addColumnIfMissing(db, 'lan_groups', 'owner_user_id', 'TEXT'); },
-  },
-  {
-    id: MVP_MARKET_MIGRATION.id,
-    description: MVP_MARKET_MIGRATION.description,
-    up: MVP_MARKET_MIGRATION.up,
   },
 ];
 
