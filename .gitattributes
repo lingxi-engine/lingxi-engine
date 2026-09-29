@@ -19,3 +19,20 @@
 *.ps1           text eol=crlf
 *.bat           text eol=crlf
 *.cmd           text eol=crlf
+
+# [FEATURE_MARKET] exclude marketplace from generated archives / tarballs
+src/routes/market.ts            export-ignore
+src/routes/mvp-market.ts        export-ignore
+src/routes/wallet.ts            export-ignore
+src/core/mvp-market/**          export-ignore
+src/storage/migrations/mvp-market-schema.ts export-ignore
+src/tests/mvp-*.test.ts         export-ignore
+web/market.html                 export-ignore
+web/market.js                   export-ignore
+web/market.css                  export-ignore
+web/js/market.js                export-ignore
+web/css/market.css              export-ignore
+skills/ai-market-integration.json   export-ignore
+skills/existing-repo-mvp-execution.json export-ignore
+skills/marketplace-payment-*.json    export-ignore
+src/skills/ai-market-integration.json export-ignore

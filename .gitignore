@@ -1,4 +1,4 @@
-# Dependencies
+﻿# Dependencies
 node_modules/
 
 # Build output
@@ -299,22 +299,25 @@ data-preflight-tmp/
 bench/out/
 bench/results/selftest-tmp/
 
-# ---- 2026-09-28 hygiene: artifacts that kept polluting git status ----
-# base64-encoded release archives (site.tar.gz.b64 is not matched by *.tar.gz)
-*.tar.gz.b64
-*.tar.bz2
-*.tgz
+# [FEATURE_MARKET] marketplace — OFFLINE, excluded from the open-source build.
+# Source archived at stage/market-archive-0930/ (local only, never committed).
+# Revive with: restore files + set FEATURE_MARKET=true
+src/routes/market.ts
+src/routes/mvp-market.ts
+src/routes/wallet.ts
+src/core/mvp-market/
+src/storage/migrations/mvp-market-schema.ts
+src/tests/mvp-*.test.ts
+web/market.html
+web/market.js
+web/market.css
+web/js/market.js
+web/css/market.css
+skills/ai-market-integration.json
+skills/existing-repo-mvp-execution.json
+skills/marketplace-payment-*.json
+src/skills/ai-market-integration.json
 
-# one-off network/SSL diagnostics from ad-hoc debugging
-ssl.json;
-*.htm.tmp
-tlprobe*.htm
-
-# ad-hoc scratch scripts at repo root (prefixed with a single underscore,
-# and not part of a tracked tool directory)
-/_*.mjs
-/_*.cjs
-
-# skill packs generated at runtime by the engine itself
-/skills/_generated/
-/_skills_runtime/
+# local backup / staging archives (marketplace source, rollback snapshots) - never commit
+stage/
+_stage/

@@ -25,6 +25,9 @@
     "src/router.ts",
     "src/index.ts",
     "src/tests",
-    "_*.ts"
+    "_*.ts",
+    "stage",
+    "mobile-app",
+    "app"
   ]
 }

@@ -200,6 +200,14 @@ const ATTEMPT_WINDOW = 5 * 60 * 1000;
 // ── v1.7 RBAC 角色控制（使用 src/server/rbac.ts 修复版）──
 import { rbac, getParticipantRole, type Role } from './src/server/rbac.js';
 
+// ── [FEATURE_MARKET] Hire marketplace master switch ────────────────────────
+// The marketplace is OFFLINE. Its source has been removed from the open-source
+// build (see .gitignore / .gitattributes); the tables stay for admin ops only.
+// Everything below returns 404 unless FEATURE_MARKET is explicitly set to true,
+// which is also the single switch required to revive the feature later.
+const FEATURE_MARKET = process.env.FEATURE_MARKET === 'true';
+
+
 async function main() {
   // ═══ 启动检测 ═══
   const nodeVer = process.versions.node.split('.').map(Number);
@@ -623,6 +631,17 @@ setSearchManager(searchManagerInstance);
   app.set('trust proxy', 1); // v5-P0-C: 反代部署时 req.ip 取 X-Forwarded-For 真实客户端
   app.disable('x-powered-by');
   app.use(express.json({ limit: '10mb' }));
+// [FEATURE_MARKET] hard 404 before static serving
+if (!FEATURE_MARKET) {
+  app.use(['/market.html', '/market', '/market.js', '/market.css',
+           '/api/market', '/api/market/*', '/api/mvp', '/api/mvp/*',
+           '/api/hire', '/api/hire/*', '/js/market.js', '/css/market.css'],
+    (_req, res) => { res.status(404).json({ error: 'not_found', feature: 'market' }); });
+  app.get('/api/features', (_req, res) => {
+    res.json({ market: false, credits: false, wallet: false, hire: false });
+  });
+}
+
   // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
   app.use((req: any, res: any, next: any) => {
     if (/\.bak\.|\.bak-|^\/\.(env|git)|\.sql$|\.db$|\.log$/i.test(req.path)) {
@@ -719,30 +738,6 @@ setSearchManager(searchManagerInstance);
 
     next();
   });
-  // ==============================================================
-  // [FEATURE_MARKET] hire-market master switch -- commercial features offline,
-  // multimodal agent only. When off: /market.html, /market, /api/market/*,
-  // /api/mvp/* all return 404. Code fully retained; set FEATURE_MARKET=true
-  // or delete the env var to restore.
-  // ==============================================================
-  // Default OFF: FEATURE_MARKET=true must be set explicitly to restore market
-  const FEATURE_MARKET = (process.env.FEATURE_MARKET || '').trim().toLowerCase() === 'true';
-  if (!FEATURE_MARKET) {
-    console.log('[FEATURE] hire market offline (FEATURE_MARKET=false)');
-    app.use('/market.html', (_req, res) => res.status(404).send('Not Found'));
-    app.use('/market', (_req, res) => res.status(404).send('Not Found'));
-    app.use('/api/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    app.use('/api/mvp', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    // Collateral shutdown: skill market + hire/order commercial entries
-    app.use('/api/skills/market', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    app.use('/api/hire', (_req, res) => res.status(404).json({ error: 'marketplace temporarily disabled' }));
-    // Frontend capability flag (public, no auth): hide market entries when off
-    app.get('/api/features', (_req, res) => res.json({
-      market: false,
-      mode: 'multimodal-agent',
-      notice: 'no financial features, temporarily offline',
-    }));
-  }
   app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
@@ -1941,487 +1936,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── AI 员工市场 + 雇佣系统 API ──
-  app.get('/api/market/list', optAuth, (req, res) => {
-    try {
-      const type = (req.query.type as string) || '';
-      const stmt = getDB().prepare("SELECT * FROM agent_market WHERE status = ? AND (? = '' OR item_type = ?) ORDER BY rating DESC, hire_count DESC");
-      stmt.bind(['active', type, type]);
-      const rows: any[] = [];
-      while (stmt.step()) rows.push(stmt.getAsObject());
-      stmt.free();
-      const BARE_NOTICE = '该商品为裸引擎（无独占知识/记忆资产）：公共模型人人可接，自行配置同款 API 可能更便宜。';
-      // T6 评测背书：有记录亮成绩，无记录不编造
-      for (const row of rows) {
-        try {
-          const ev = router.getEvaluationSummary({ agentId: String(row.agent_id) });
-          (row as any).evaluation = ev && ev.total > 0
-            ? { total: ev.total, avgScore: ev.avgScore, passRate: ev.passRate, label: `平台评测 ${ev.total} 次 · 平均分 ${ev.avgScore} · 通过率 ${Math.round(ev.passRate * 100)}%` }
-            : { label: '暂无平台评测记录' };
-        } catch { (row as any).evaluation = { label: '暂无平台评测记录' }; }
-      }
-      for (const row of rows) { if (row.item_type === 'bare_agent') (row as any).notice = BARE_NOTICE; }
-      res.json({ ok: true, listings: rows });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  app.post('/api/market/publish', optAuth, (req, res) => {
-    try {
-      const { agentId, publisherId, title, description, category, price, currency, tags, duration, durationUnit, itemType, previewUrl, fileUrl, license, coverUrl } = req.body || {};
-      const currencyOk = ['credits','usd','cny'].includes(currency) ? currency : 'credits';
-      if (!agentId || !publisherId || !title) return res.status(400).json({ error: 'agentId/publisherId/title 必填' });
-      // v2.0.12 B1/B2: 价格校验（最低10积分避免抽成取整后卖方到账0，上限100000）
-      const rawPrice = Number(price) || 0;
-      let priceNum = currencyOk === 'usd' ? Math.round(rawPrice * 100) / 100 : currencyOk === 'cny' ? Math.round(rawPrice * 100) / 100 : Math.floor(rawPrice);
-      const minPrice = currencyOk === 'usd' ? 0.1 : currencyOk === 'cny' ? 1 : 10;
-      const maxPrice = currencyOk === 'usd' ? 100000 : currencyOk === 'cny' ? 500000 : 100000;
-      if (priceNum < minPrice) return res.status(400).json({ error: '发布价格最低 ' + minPrice + (currencyOk === 'credits' ? ' 积分' : '') });
-      if (priceNum > maxPrice) return res.status(400).json({ error: '价格不能超过 ' + maxPrice + (currencyOk === 'credits' ? ' 积分' : '') });
-      // v2.0.12: 自定义时长（0=永久买断）
-      const durNum = Math.max(0, Math.floor(Number(duration) || 0));
-      const unitOk = ['minute', 'hour', 'day'].includes(durationUnit) ? durationUnit : 'hour';
-      const unit = durNum > 0 ? unitOk : 'permanent';
-      const d = getDB();
-      const id = 'ml-' + Date.now().toString(36);
-            const typeOk = ['agent','bare_agent','music','video','bounty','asset','mcp','skill'].includes(itemType) ? itemType : 'agent';
-      // P0 所有权校验（T2）：只能发布自己的 Agent
-      const ag = getAgent(agentId);
-      if (!ag) return res.status(404).json({ error: 'Agent 不存在' });
-      if (String(ag.user_id) !== String(publisherId)) return res.status(403).json({ error: '只能发布自己的 Agent' });
-
-      // T2 资产盘点：发布时自动生成资产摘要（替代空 description）
-      const ragCount = Number((getDB().queryObjects('SELECT COUNT(*) AS c FROM rag_documents')[0] as any)?.c ?? 0);
-      const memCount = Number((getDB().queryObjects('SELECT COUNT(*) AS c FROM chat_memories WHERE agent_id = ?', [agentId])[0] as any)?.c ?? 0);
-      let desc = description || '';
-      if (!desc) {
-        desc = `[自动生成] 引擎知识库 ${ragCount} 份文档；该 AI 员工记忆条目 ${memCount} 条。` +
-          (ragCount > 0 || memCount > 0 ? '含独占知识/记忆资产。' : '无独占资产，买家可自行接入同款模型 API 复刻。');
-      }
-
-      // T2 bare_agent 限价：裸引擎（无知识库/记忆资产）默认上限 10 积分
-      const BARE_AGENT_PRICE_CAP = 10;
-      const isBare = !(ragCount > 0 || memCount > 0);
-      if (isBare && currencyOk === 'credits' && priceNum > BARE_AGENT_PRICE_CAP) {
-        return res.status(400).json({ error: `裸引擎（无知识库/记忆资产）最高定价 ${BARE_AGENT_PRICE_CAP} 积分——公共模型人人可接，建议买家自行配置同款 API` });
-      }
-      const finalType = isBare ? 'bare_agent' : typeOk;
-      d.run('INSERT INTO agent_market (id,agent_id,publisher_id,title,description,category,price,currency,tags,created_at,duration,duration_unit,item_type,preview_url,file_url,license,cover_url) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-        [id, agentId, publisherId, title, desc, category||'通用', priceNum, currencyOk, JSON.stringify(tags||[]), Date.now(), durNum, unit, finalType, previewUrl||'', fileUrl||'', license||'', coverUrl||'']);
-      // T3 draft：无演示对话不上架（previewUrl 为空 → draft，不出现在市场列表）
-      if (!previewUrl) d.run("UPDATE agent_market SET status = 'draft' WHERE id = ?", [id]);
-      const status = previewUrl ? 'active' : 'draft';
-      res.json({ ok: true, id, status });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 雇佣AI员工：扣积分 → 创建工作群 → 双方agent入群 → 记录雇佣关系 */
-  app.post('/api/market/hire', optAuth, (req, res) => {
-    try {
-      const { listingId, buyerId } = req.body || {};
-      if (!listingId || !buyerId) return res.status(400).json({ error: 'listingId/buyerId 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT * FROM agent_market WHERE id = ?');
-      stmt.bind([listingId]);
-      const listing = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!listing) return res.status(404).json({ error: '商品不存在' });
-      // v2.0.12 B3: 禁止自雇 + 检查上架状态
-      if (listing.status !== 'active') return res.status(400).json({ error: '该商品已下架或不可雇佣' });
-      if (String(listing.publisher_id) === String(buyerId)) return res.status(400).json({ error: '不能雇佣自己发布的员工' });
-      // 1. 结算（按币种：credits 积分 / usd 美元 / cny 人民币），90% 给卖家，10% 平台税
-      const price = Number(listing.price) || 0;
-      const hireCurrency = listing.currency || 'credits';
-      let spendResult: any = null;
-      if (hireCurrency === 'usd' || hireCurrency === 'cny') {
-        spendResult = spendWalletBalance(buyerId, hireCurrency, price, '购买/雇佣: ' + (listing.title || ''));
-        if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: spendResult.balance });
-        const sellerPayout = Math.round(price * 0.9 * 100) / 100;
-        addWalletBalance(listing.publisher_id, hireCurrency, sellerPayout, '出售分成(90%): ' + (listing.title || ''));
-      } else {
-        spendResult = !spendCredits ? {ok:false, error:'no fn'} : spendCredits(buyerId, price);
-        if (typeof spendResult === 'object' && !spendResult.ok) return res.status(400).json({ error: spendResult.error, balance: (spendResult as { balance?: number }).balance });
-        const sellerPayout = Math.floor(price * 0.9);
-        if (typeof addCredits === 'function') addCredits(listing.publisher_id, sellerPayout);
-      }
-      
-      // 3. 创建工作群组 chat
-      const chatId = 'chat-hire-' + Date.now().toString(36);
-      if (typeof createChat === 'function') createChat(chatId, 'group');
-      
-      // 4. 双方agent入群
-      const buyerAgent = typeof getAgentByUserId === 'function' ? getAgentByUserId(buyerId) : null;
-      const sellerAgent = typeof getAgentByUserId === 'function' ? getAgentByUserId(listing.publisher_id) : null;
-      const boughtAgent = listing.agent_id ? d.getAgent(listing.agent_id) : null;
-      
-      const buyerAgentId = buyerAgent?.id || '';
-      const usedAgentId = listing.agent_id || boughtAgent?.id || sellerAgent?.id || '';
-      
-      if (typeof addParticipant === 'function') {
-        addParticipant('hp-' + Date.now().toString(36) + '-1', chatId, buyerId, undefined, 'member');
-        addParticipant('hp-' + Date.now().toString(36) + '-2', chatId, undefined, buyerAgentId, 'agent');
-        addParticipant('hp-' + Date.now().toString(36) + '-3', chatId, listing.publisher_id, undefined, 'member');
-        addParticipant('hp-' + Date.now().toString(36) + '-4', chatId, undefined, usedAgentId, 'agent');
-      }
-      
-      // 5. v2.0.12: 计算到期时间（发布者自定义时长，0=永久买断）
-      const durMs: Record<string, number> = { minute: 60000, hour: 3600000, day: 86400000 };
-      const dur = Number(listing.duration) || 0;
-      const expiresAt = dur > 0 ? Date.now() + dur * (durMs[String(listing.duration_unit)] || 3600000) : 0;
-
-      // 6. 记录雇佣关系
-      const hireId = 'hire-' + Date.now().toString(36);
-      if (typeof createHire === 'function') {
-        createHire({
-          id: hireId, listingId, buyerId,
-          sellerId: listing.publisher_id,
-          agentId: usedAgentId,
-          title: listing.title || "AI雇佣",
-          chatId, price, expiresAt,
-        });
-      }
-
-      // 7. 记订单（关联hireId）+ 增hire计数
-      const orderId = 'mo-' + Date.now().toString(36);
-      d.run('INSERT INTO market_orders (id,listing_id,buyer_id,hire_id,created_at) VALUES (?,?,?,?,?)', [orderId, listingId, buyerId, hireId, Date.now()]);
-      d.run('UPDATE agent_market SET hire_count = hire_count + 1 WHERE id = ?', [listingId]);
-      
-      // 8. 发欢迎消息
-      const welcomeMsg = {
-        id: 'msg-' + Date.now().toString(36),
-        chatId, senderType: 'user',
-        senderId: buyerId,
-        content: '🎉 雇佣成功！欢迎AI员工加入团队。你可以在这个工作群中分配任务。',
-        type: 'text', timestamp: Date.now(),
-      };
-      d.addMessage(welcomeMsg);
-      
-      res.json({ ok: true, orderId, hireId, chatId, expiresAt, balance: typeof spendResult === 'object' ? ((spendResult as { balance?: number }).balance || 0) : 0 });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 查看积分余额 */
-  app.get('/api/credits/balance', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const balance = typeof getUserCredits === 'function' ? getUserCredits(userId) : { credits: 1000, totalEarned: 0, totalSpent: 0 };
-      res.json({ ok: true, ...balance });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 积分变动历史 */
-  app.get('/api/credits/history', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const history = typeof getCreditHistory === 'function' ? getCreditHistory(userId, 50) : [];
-      res.json({ ok: true, history });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 管理员加积分 */
-  app.post('/api/credits/grant', adminAuth, (req, res) => {
-    try {
-      const { userId, amount } = req.body || {};
-      if (!userId || !amount) return res.status(400).json({ error: 'userId/amount 必填' });
-      const newBal = typeof addCredits === 'function' ? addCredits(userId, Math.abs(amount)) : 0;
-      res.json({ ok: true, balance: newBal });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 钱包：查询余额 + 流水（USD / CNY） */
-  app.get('/api/wallet', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const wallet = getWallet(userId);
-      const tx = listWalletTx(userId, 50);
-      res.json({ ok: true, ...wallet, tx });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 钱包：模拟充值（演示模式，未接真实支付） */
-  app.post('/api/wallet/recharge', optAuth, (req, res) => {
-    try {
-      const { userId, currency, amount } = req.body || {};
-      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
-      const cur = String(currency).toLowerCase();
-      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
-      const amt = Math.round(Number(amount) * 100) / 100;
-      if (!(amt > 0)) return res.status(400).json({ error: '金额必须大于 0' });
-      const bal = addWalletBalance(userId, cur as 'usd' | 'cny', amt, '模拟充值（未接真实支付）');
-      res.json({ ok: true, currency: cur, balance: bal, message: '模拟充值成功（演示模式，未产生真实扣款）' });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 钱包：转账给他人 */
-  app.post('/api/wallet/pay', optAuth, (req, res) => {
-    try {
-      const { fromUserId, toUserId, currency, amount, reason } = req.body || {};
-      if (!fromUserId || !toUserId || !currency || !amount) return res.status(400).json({ error: 'fromUserId/toUserId/currency/amount 必填' });
-      const cur = String(currency).toLowerCase();
-      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
-      const amt = Math.round(Number(amount) * 100) / 100;
-      if (!(amt > 0)) return res.status(400).json({ error: '金额必须大于 0' });
-      const spend = spendWalletBalance(fromUserId, cur as 'usd' | 'cny', amt, reason || '转账给 ' + toUserId);
-      if (!spend.ok) return res.status(400).json({ error: spend.error, balance: spend.balance });
-      addWalletBalance(toUserId, cur as 'usd' | 'cny', amt, reason || '来自 ' + fromUserId + ' 的转账');
-      res.json({ ok: true, currency: cur, amount: amt, message: '转账成功' });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // v2.4.0: 冻结（发布商品/下单时调用）
-  app.post('/api/wallet/freeze', optAuth, (req, res) => {
-    try {
-      const { userId, currency, amount, refType, refId, note } = req.body || {};
-      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
-      const cur = String(currency).toLowerCase();
-      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
-      const amt = Number(amount);
-      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
-      ensureWallet(userId);
-      const w = getWallet(userId);
-      const bal = cur === 'usd' ? w.balanceUsd : w.balanceCny;
-      if (bal < amt) return res.status(400).json({ error: '可用余额不足，无法冻结' });
-      // 冻结：从可用扣减，frozen 增加（用 spend + 专门字段）
-      getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} - ?, frozen_${cur} = frozen_${cur} + ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), userId]);
-      const nw = getWallet(userId);
-      const nb = cur === 'usd' ? nw.balanceUsd : nw.balanceCny;
-      _walletTx(userId, cur, -amt, 'freeze', note || '冻结: ' + (refType || '') + (refId || ''), nb);
-      res.json({ ok: true, wallet: nw, frozen: cur === 'usd' ? nw.frozenUsd : nw.frozenCny });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // v2.4.0: 解冻（取消订单/下架时退回冻结额）
-  app.post('/api/wallet/unfreeze', optAuth, (req, res) => {
-    try {
-      const { userId, currency, amount, refType, refId, note } = req.body || {};
-      if (!userId || !currency || !amount) return res.status(400).json({ error: 'userId/currency/amount 必填' });
-      const cur = String(currency).toLowerCase();
-      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
-      const amt = Number(amount);
-      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
-      ensureWallet(userId);
-      const w = getWallet(userId);
-      const frozen = cur === 'usd' ? w.frozenUsd : w.frozenCny;
-      if (frozen < amt) return res.status(400).json({ error: '冻结金额不足，无法解冻' });
-      getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} + ?, frozen_${cur} = frozen_${cur} - ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), userId]);
-      const nw = getWallet(userId);
-      const nb = cur === 'usd' ? nw.balanceUsd : nw.balanceCny;
-      _walletTx(userId, cur, amt, 'unfreeze', note || '解冻: ' + (refType || '') + (refId || ''), nb);
-      res.json({ ok: true, wallet: nw });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  // v2.4.0: 结算（交易完成：买家冻结额→卖家可用，占位模式直接转账）
-  app.post('/api/wallet/settle', optAuth, (req, res) => {
-    try {
-      const { buyerId, sellerId, currency, amount, refId, note } = req.body || {};
-      if (!buyerId || !sellerId || !currency || !amount) return res.status(400).json({ error: 'buyerId/sellerId/currency/amount 必填' });
-      const cur = String(currency).toLowerCase();
-      if (!['usd', 'cny'].includes(cur)) return res.status(400).json({ error: 'currency 只支持 usd / cny' });
-      const amt = Number(amount);
-      if (!amt || amt <= 0) return res.status(400).json({ error: '金额必须大于 0' });
-      // 买家解冻（若不足则直接从可用扣）
-      ensureWallet(buyerId); ensureWallet(sellerId);
-      const bw = getWallet(buyerId);
-      const bFrozen = cur === 'usd' ? bw.frozenUsd : bw.frozenCny;
-      if (bFrozen >= amt) {
-        getDB().run(`UPDATE wallets SET balance_${cur} = balance_${cur} + ?, frozen_${cur} = frozen_${cur} - ?, updated_at = ? WHERE user_id = ?`, [amt, amt, Date.now(), buyerId]);
-        const nb = cur === 'usd' ? getWallet(buyerId).balanceUsd : getWallet(buyerId).balanceCny;
-        _walletTx(buyerId, cur, amt, 'unfreeze', note || '交易完成解冻: ' + (refId || ''), nb);
-      } else {
-        const spend = spendWalletBalance(buyerId, cur as 'usd' | 'cny', amt, note || '交易结算扣款: ' + (refId || ''));
-        if (!spend.ok) return res.status(400).json({ error: spend.error, balance: spend.balance });
-      }
-      // 卖家入账（占位模式：100% 到账；真实模式接支付通道后按抽成规则）
-      addWalletBalance(sellerId, cur as 'usd' | 'cny', amt, note || '交易结算收入: ' + (refId || ''));
-      res.json({ ok: true, buyer: getWallet(buyerId), seller: getWallet(sellerId), placeholder: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 雇佣到期惰性检查——超过 expires_at 则标记 expired 并把被雇 agent 移出工作群（保留聊天记录） */
-  function checkHireExpired(hire: any): boolean {
-    if (!hire || hire.status !== 'active') return false;
-    const exp = Number(hire.expires_at) || 0;
-    if (exp <= 0 || Date.now() < exp) return false;
-    getDB().run("UPDATE hires SET status = 'expired', fired_at = ? WHERE id = ?", [Date.now(), hire.id]);
-    if (hire.chat_id && hire.agent_id && typeof removeParticipant === 'function') {
-      removeParticipant(hire.chat_id, '', hire.agent_id);
-    }
-    return true;
-  }
-  /** 查看员工的雇佣关系 */
-  app.get('/api/employees', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const asBuyer = typeof listHiresByBuyer === 'function' ? listHiresByBuyer(userId) : [];
-      const asSeller = typeof listHiresBySeller === 'function' ? listHiresBySeller(userId) : [];
-      // 补充listing信息（并先做到期检查）+ 关联订单（供评价）
-      const enrich = (hires: any[]) => hires.map((h0: any) => {
-        const h = checkHireExpired(h0) && typeof getHire === 'function' ? (getHire(h0.id) || h0) : h0;
-        const lst = getDB().prepare('SELECT * FROM agent_market WHERE id = ?');
-        lst.bind([h.listing_id]);
-        const listing = lst.step() ? lst.getAsObject() : null;
-        lst.free();
-        const ordStmt = getDB().prepare('SELECT id, rating FROM market_orders WHERE hire_id = ?');
-        ordStmt.bind([h.id]);
-        const order = ordStmt.step() ? ordStmt.getAsObject() : null;
-        ordStmt.free();
-        // T5 计费透明：按次计费字段（per_msg_price = price/10 缺省，抽成 10% 给平台）
-        const perMsg = Math.max(1, Math.floor(Number(h.price) / 10));
-        const PLATFORM_FEE_RATE = 0.10;
-        return { ...h, listing, orderId: order?.id || null, rated: !!(order && Number(order.rating) > 0), per_msg_price: perMsg, platform_fee_rate: PLATFORM_FEE_RATE, seller_share_rate: 1 - PLATFORM_FEE_RATE };
-      });
-      res.json({ ok: true, asBuyer: enrich(asBuyer), asSeller: enrich(asSeller) });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 解雇员工 */
-  app.post('/api/employees/fire', optAuth, (req, res) => {
-    try {
-      const { hireId } = req.body || {};
-      if (!hireId) return res.status(400).json({ error: 'hireId 必填' });
-      const ok = typeof fireHire === 'function' ? fireHire(hireId) : false;
-      if (!ok) return res.status(404).json({ error: '未找到该雇佣关系或已解雇' });
-      // 清理工作群参与者（保留聊天记录）—— v2.0.12: 移除被雇 agent（原 buyer_agent_id/seller_agent_id 字段不存在导致从未生效）
-      const hire = typeof getHire === 'function' ? getHire(hireId) : null;
-      if (hire && hire.chat_id && hire.agent_id && typeof removeParticipant === 'function') {
-        removeParticipant(hire.chat_id, '', hire.agent_id);
-      }
-      res.json({ ok: true, message: '已解雇' });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** 我的市场发布 */
-  app.get('/api/market/my-listings', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const rows = getDB().queryObjects('SELECT * FROM agent_market WHERE publisher_id = ? ORDER BY created_at DESC', [userId]);
-      res.json({ ok: true, listings: rows });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 下架商品 */
-  app.post('/api/market/unpublish', optAuth, (req, res) => {
-    try {
-      const { listingId, userId } = req.body || {};
-      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
-      stmt.bind([listingId]);
-      const row = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!row) return res.status(404).json({ error: '商品不存在' });
-      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能下架自己的商品' });
-      d.run("UPDATE agent_market SET status = 'paused' WHERE id = ?", [listingId]);
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 重新上架 */
-  app.post('/api/market/republish', optAuth, (req, res) => {
-    try {
-      const { listingId, userId } = req.body || {};
-      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT publisher_id, preview_url FROM agent_market WHERE id = ?');
-      stmt.bind([listingId]);
-      const row = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!row) return res.status(404).json({ error: '商品不存在' });
-      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能上架自己的商品' });
-      if (!row.preview_url) return res.status(400).json({ error: 'T3: 无演示对话（preview_url）不能上架——先通过编辑端点补充演示对话' });
-      d.run("UPDATE agent_market SET status = 'active' WHERE id = ?", [listingId]);
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 编辑商品 */
-  app.put('/api/market/:id', optAuth, (req, res) => {
-    try {
-      const { userId, title, description, category, price, tags, duration, durationUnit, itemType, previewUrl, fileUrl, license, coverUrl } = req.body || {};
-      const listingId = req.params.id;
-      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
-      stmt.bind([listingId]);
-      const row = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!row) return res.status(404).json({ error: '商品不存在' });
-      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能编辑自己的商品' });
-      const sets: string[] = [];
-      const vals: any[] = [];
-      if (title !== undefined) { sets.push('title = ?'); vals.push(title); }
-      if (description !== undefined) { sets.push('description = ?'); vals.push(description); }
-      if (category !== undefined) { sets.push('category = ?'); vals.push(category); }
-      if (price !== undefined) {
-        const p = Math.floor(Number(price) || 0);
-        if (p < 10) return res.status(400).json({ error: '发布价格最低 10 积分' });
-        if (p > 100000) return res.status(400).json({ error: '价格不能超过 100000 积分' });
-        sets.push('price = ?'); vals.push(p);
-      }
-      if (tags !== undefined) { sets.push('tags = ?'); vals.push(JSON.stringify(tags)); }
-      if (itemType !== undefined) { sets.push('item_type = ?'); vals.push(itemType); }
-      if (previewUrl !== undefined) { sets.push('preview_url = ?'); vals.push(previewUrl); if (previewUrl) { sets.push("status = 'active'"); vals.push('active'); } } // T3 draft：补上演示对话自动上架
-      if (fileUrl !== undefined) { sets.push('file_url = ?'); vals.push(fileUrl); }
-      if (license !== undefined) { sets.push('license = ?'); vals.push(license); }
-      if (coverUrl !== undefined) { sets.push('cover_url = ?'); vals.push(coverUrl); }
-      if (duration !== undefined) { sets.push('duration = ?'); vals.push(Math.max(0, Math.floor(Number(duration) || 0))); }
-      if (durationUnit !== undefined && ['minute', 'hour', 'day', 'permanent'].includes(durationUnit)) { sets.push('duration_unit = ?'); vals.push(durationUnit); }
-      if (sets.length === 0) return res.json({ ok: true, message: '无需更新' });
-      vals.push(listingId);
-      d.run(`UPDATE agent_market SET ${sets.join(', ')} WHERE id = ?`, vals);
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 删除商品 */
-  app.delete('/api/market/:id', optAuth, (req, res) => {
-    try {
-      const userId = req.body?.userId || req.query.userId;
-      const listingId = req.params.id;
-      if (!listingId || !userId) return res.status(400).json({ error: 'listingId/userId 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT publisher_id FROM agent_market WHERE id = ?');
-      stmt.bind([listingId]);
-      const row = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!row) return res.status(404).json({ error: '商品不存在' });
-      if (row.publisher_id !== userId) return res.status(403).json({ error: '只能删除自己的商品' });
-      d.run('DELETE FROM agent_market WHERE id = ?', [listingId]);
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 评价雇佣 + rating 回写 listing */
-  app.post('/api/market/rate', optAuth, (req, res) => {
-    try {
-      const { orderId, rating, review, userId } = req.body || {};
-      const r = Math.floor(Number(rating) || 0);
-      if (!orderId || !userId || r < 1 || r > 5) return res.status(400).json({ error: 'orderId/userId/rating(1-5) 必填' });
-      const d = getDB();
-      const stmt = d.prepare('SELECT * FROM market_orders WHERE id = ?');
-      stmt.bind([orderId]);
-      const order = stmt.step() ? stmt.getAsObject() : null;
-      stmt.free();
-      if (!order) return res.status(404).json({ error: '订单不存在' });
-      if (order.buyer_id !== userId) return res.status(403).json({ error: '只能评价自己的订单' });
-      d.run('UPDATE market_orders SET rating = ?, review = ?, completed_at = ?, status = ? WHERE id = ?',
-        [r, review || '', Date.now(), 'completed', orderId]);
-      // rating 回写：listing 评分 = 该商品所有订单评分的平均值
-      const avgStmt = d.prepare('SELECT AVG(rating) AS avg_r FROM market_orders WHERE listing_id = ? AND rating IS NOT NULL AND rating > 0');
-      avgStmt.bind([order.listing_id]);
-      if (avgStmt.step()) {
-        const avgRow: any = avgStmt.getAsObject();
-        d.run('UPDATE agent_market SET rating = ? WHERE id = ?', [Math.round((Number(avgRow.avg_r) || 0) * 10) / 10, order.listing_id]);
-      }
-      avgStmt.free();
-      res.json({ ok: true });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-  /** v2.0.12: 我的订单 */
-  app.get('/api/market/my-orders', optAuth, (req, res) => {
-    try {
-      const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
-      const rows: any[] = getDB().queryObjects('SELECT * FROM market_orders WHERE buyer_id = ? ORDER BY created_at DESC', [userId]);
-      const orders = rows.map((o: any) => {
-        const lst = getDB().prepare('SELECT title, category FROM agent_market WHERE id = ?');
-        lst.bind([o.listing_id]);
-        const listing = lst.step() ? lst.getAsObject() : null;
-        lst.free();
-        return { ...o, listing };
-      });
-      res.json({ ok: true, orders });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
 
   // ── P2-3: Provider 管理 API ──
   // 模型管理前端调用的别名（/api/ai/* → /api/providers/*）
@@ -3283,21 +2797,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  app.get('/api/skills/market', requireAuth, async (_req, res) => {
-    try {
-      const items = await skillManager.browseMarket();
-      res.json({ ok: true, items });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
 
-  app.post('/api/skills/install', requireAuth, async (req, res) => {
-    try {
-      const { name } = req.body;
-      if (!name) return res.status(400).json({ error: 'name 必填' });
-      const ok = await skillManager.installFromMarket(name);
-      res.json({ ok });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
 
   // ── V5 P6: 自定义 Provider API ──
   app.get('/api/custom-providers/backends', requireAuth, (_req, res) => {
@@ -4449,7 +3949,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
                 status: pu.status || 'active',
                 created_at: pu.created_at,
               },
-              credits: pu.points || 0,
+
               totalEarned: 0,
               totalSpent: 0,
               usage: usage.total,
@@ -4466,10 +3966,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       if (!user) {
         return res.status(404).json({ ok: false, error: '用户不存在' });
       }
-      const credits = getDB().prepare('SELECT * FROM user_credits WHERE user_id = ?');
-      credits.bind([user.id]);
-      const creditRow = credits.step() ? credits.getAsObject() : null;
-      credits.free();
+
       const usage = UsageTracker.getStats();
       const ratingStmt = getDB().prepare('SELECT COUNT(*) as count, AVG(rating) as avg FROM message_ratings WHERE user_id = ?');
       ratingStmt.bind([user.id]);
@@ -4485,54 +3982,10 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           status: user.status,
           created_at: user.created_at,
         },
-        credits: creditRow ? Number(creditRow.credits) : 1000,
-        totalEarned: creditRow?.total_earned || 0,
-        totalSpent: creditRow?.total_spent || 0,
+
         usage: usage.total,
         ratings: { count: ratingRow.count || 0, avgRating: ratingRow.avg || 0 },
       });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/credits/deduct', requireAuth, (req, res) => {
-    try {
-      const { userId, amount, reason } = req.body || {};
-      const amt = Number(amount);
-      if (!userId || !Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'userId/amount 必填且 amount 必须为正数' });
-      const now = Date.now();
-      const stmt = getDB().prepare('UPDATE user_credits SET credits = credits - ?, total_spent = total_spent + ?, updated_at = ? WHERE user_id = ? AND credits >= ?');
-      stmt.bind([amt, amt, now, userId, amt]);
-      stmt.step();
-      const changes = getDB().getRowsModified();
-      stmt.free();
-      if (changes === 0) {
-        const checkStmt = getDB().prepare('SELECT credits FROM user_credits WHERE user_id = ?');
-        checkStmt.bind([userId]);
-        const row = checkStmt.step() ? checkStmt.getAsObject() : null;
-        checkStmt.free();
-        return res.status(400).json({ error: '积分不足', current: row?.credits || 0 });
-      }
-      const balStmt = getDB().prepare('SELECT credits FROM user_credits WHERE user_id = ?');
-      balStmt.bind([userId]);
-      const balRow = balStmt.step() ? balStmt.getAsObject() : null;
-      balStmt.free();
-      res.json({ ok: true, balance: balRow?.credits || 0 });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.post('/api/credits/award', requireAuth, (req, res) => {
-    // P1-3 修复: 积分发放仅管理员可用
-    const roles = (req as any).user?.roles || [];
-    if (!roles.includes('admin')) return res.status(403).json({ error: '仅管理员可发放积分' });
-    try {
-      const { userId, amount, reason } = req.body || {};
-      const amt = Number(amount);
-      if (!userId || !Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'userId/amount 必填且 amount 必须为正数' });
-      const now = Date.now();
-      const stmt = getDB().prepare(`INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, ?, ?, 0, ?) ON CONFLICT(user_id) DO UPDATE SET credits = credits + ?, total_earned = total_earned + ?, updated_at = ?`);
-      stmt.bind([userId, 1000 + amt, amt, now, amt, amt, now]);
-      stmt.step(); stmt.free();
-      res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
