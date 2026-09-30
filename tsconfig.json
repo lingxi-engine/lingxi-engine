@@ -28,6 +28,15 @@
     "_*.ts",
     "stage",
     "mobile-app",
-    "app"
+    "app",
+    "stages",
+    "backup*",
+    "backups",
+    "rollback_*",
+    "archive*",
+    "archives",
+    "backup_pre_*",
+    "backup_sync_*",
+    "*.bak*"
   ]
 }
