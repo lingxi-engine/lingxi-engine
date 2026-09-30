@@ -136,13 +136,6 @@ export function createProfileRoutes(ctx: ServerContext): Router {
       const user = await findUser(db, userId, bearerToken(req));
       if (!user) return res.status(404).json({ error: '用户不存在' });
 
-      // 查询积分
-      let credits = 0;
-      try {
-        const creditsRow = db.raw.prepare('SELECT credits FROM user_credits WHERE user_id = ?').bind([user.id]);
-        if (creditsRow.step()) { credits = creditsRow.get()[0] || 0; }
-        creditsRow.free();
-      } catch {}
 
       // 查询评分
       let avgRating = 0;
@@ -179,7 +172,6 @@ export function createProfileRoutes(ctx: ServerContext): Router {
           displayName: user.display_name || '',
           avatarUrl: user.avatar_url || '',
         },
-        credits,
         ratings: { avgRating, count: ratingCount },
         usage: { totalTokens, calls },
       });

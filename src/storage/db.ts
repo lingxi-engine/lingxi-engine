@@ -124,6 +124,153 @@ export function trimMemoryText(text: string, maxLen: number = 2000): string {
   return text.slice(0, headLen) + '\n…\n' + text.slice(-(maxLen - headLen));
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════
+ * 记忆作废机制 (Revocation) — P0-1
+ *
+ * 背景：原实现 appendMemorySummary 只有 "+" 没有 "-"（纯 append），
+ *       说「市场不用了」只能在旧文案下面追加一行，加不出「市场已作废」，
+ *       加上 trimMemoryText 的 25%/75% 首尾截断会把中段的新指令腰斩，
+ *       于是每次都要重说一遍。
+ *
+ * 方案：不物理删除（不可追溯），而是「软作废 + 留痕」—— 写入 revoked_memory，
+ *       调取时把命中作废主题的旧行剔除。这与业界共识一致（见
+ *       docs/记忆冲突与部署隔离-根治方案.md）：Mem0 的 DELETE 动作、
+ *       Zep/Graphiti 的 invalid_at、LangGraph 的 namespace 分层。
+ * ═══════════════════════════════════════════════════════════════════════
+ */
+
+/** 否定/作废触发词 —— 命中即视为「用户在纠正系统」 */
+const REVOKE_TRIGGERS = [
+  '作废', '不用了', '不需要', '不要', '别再', '别做', '禁止', '下线', '取消', '关闭',
+  '移除', '删除', '去掉', '停用', '废弃', '不再', '撤销', '失效', '不用',
+  '搞错了', '说错了', '更正', '纠正', '搞错',
+];
+
+/**
+ * 从一段文本中提取「被作废的主题」候选词。
+ * 取否定触发词前面的名词短语（最多 12 字）作为 pattern。
+ * 例：「市场不用了」→ 「市场」；「AI员工市场取消」→ 「AI员工市场」
+ */
+/**
+ * 前导停止词/动词 —— 抽取主题时要剥掉，否则「以后都」会被当成主题词。
+ * 按长度降序剥离，避免「以后」被先剥掉而留下「都」。
+ */
+const REVOKE_STOPWORDS = [
+  // 按长度降序排列：必须先剥长词，否则「以后都」会先被「以后」剥掉而留下「都」
+  '从今以后', '从现在', '以后都', '以后别', '以后不', '以后再', '以后', '今后',
+  '帮我把', '请把', '别再', '别做', '别搞', '不要', '不用', '不再', '不能', '不准',
+  '麻烦', '帮我', '请', '把', '将', '这个', '那个', '这些', '那些',
+  '我要', '我想', '我', '咱', '都', '再', '又', '也', '还', '和', '跟', '给',
+];
+
+/**
+ * 从一段文本中提取「被作废的主题」候选词。
+ * 取否定触发词前面的名词短语（最多 14 字）作为 pattern，再剥掉前导停止词。
+ * 例：「市场不用了」→ 「市场」；「以后都不要搞市场了」→ 「市场」
+ */
+export function extractRevocationPatterns(text: string): string[] {
+  if (!text) return [];
+  const out: string[] = [];
+  for (const trig of REVOKE_TRIGGERS) {
+    let idx = text.indexOf(trig);
+    while (idx >= 0) {
+      const before = text.slice(Math.max(0, idx - 14), idx);
+      const m = before.match(/([\u4e00-\u9fa5A-Za-z0-9_]{2,14})$/);
+      if (m && m[1].length >= 2) {
+        let w = m[1];
+        // 反复剥离前导停止词，直到剥不动
+        let changed = true;
+        while (changed) {
+          changed = false;
+          for (const sw of REVOKE_STOPWORDS) {
+            if (w.length > sw.length + 1 && w.startsWith(sw)) {
+              w = w.slice(sw.length);
+              changed = true;
+              break;
+            }
+          }
+        }
+        // 「市场这个功能」这类宾语+指示词，截到指示词为止
+        const cut = w.search(/[这那]/);
+        if (cut >= 2) w = w.slice(0, cut);
+        if (w.length >= 2) out.push(w);
+      }
+      idx = text.indexOf(trig, idx + 1);
+    }
+  }
+  return Array.from(new Set(out));
+}
+
+/** 判断文本是否是一条「作废/纠正」指令 */
+export function isRevocationText(text: string): boolean {
+  if (!text) return false;
+  return REVOKE_TRIGGERS.some(t => text.includes(t));
+}
+
+/** revoked_memory 主键 */
+function revokedId(): string {
+  return 'rev-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+/**
+ * 记录一条作废（软删除）。旧数据不物理删除，留痕可审计。
+ */
+export function revokeMemoryPattern(
+  chatId: string | null,
+  agentId: string,
+  pattern: string,
+  reason: string,
+  supersededBy?: string,
+): void {
+  if (!pattern) return;
+  try {
+    _db.run(
+      `INSERT INTO revoked_memory (id, chat_id, agent_id, pattern, reason, revoked_at, superseded_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [revokedId(), chatId, agentId, pattern, reason, Date.now(), supersededBy || null],
+    );
+    markDirty();
+  } catch (e) {
+    console.warn('[db] revokeMemoryPattern failed:', (e as Error).message);
+  }
+}
+
+/** 取出某作用域下所有作废模式 */
+export function listRevokedPatterns(chatId: string | null, agentId: string): string[] {
+  try {
+    const rows = chatId
+      ? _db.exec(
+          `SELECT pattern FROM revoked_memory
+           WHERE agent_id = ? AND (chat_id = ? OR chat_id IS NULL)`,
+          [agentId, chatId])
+      : _db.exec(
+          `SELECT pattern FROM revoked_memory
+           WHERE agent_id = ? AND chat_id IS NULL`,
+          [agentId]);
+    const out: string[] = [];
+    for (const r of rows) for (const v of r.values) out.push(String(v));
+    return out;
+  } catch { return []; }
+}
+
+/**
+ * 从文本中剔除已被作废的旧内容。
+ * 命中的整行会被删除。
+ */
+export function applyRevocations(text: string, patterns: string[]): string {
+  if (!text || patterns.length === 0) return text;
+  let out = text;
+  for (const p of patterns) {
+    if (!p || p.length < 2) continue;
+    out = out
+      .split('\n')
+      .filter(line => !line.includes(p))
+      .join('\n');
+  }
+  return out.trim();
+}
+
 /** P1-4: 标记数据库有变更，下次自动保存时写入磁盘 */
 export function markDirty() { _dirty = true; }
 
@@ -242,6 +389,16 @@ function _dbInit(db: any) {
       UNIQUE(chat_id, agent_id)
     );
     CREATE INDEX IF NOT EXISTS idx_chat_memories_chat ON chat_memories(chat_id);
+    CREATE TABLE IF NOT EXISTS revoked_memory (
+      id TEXT PRIMARY KEY,
+      chat_id TEXT,
+      agent_id TEXT,
+      pattern TEXT NOT NULL,        -- 被作废的主题/关键词
+      reason TEXT,                  -- 作废原因（用户原话）
+      revoked_at INTEGER NOT NULL,
+      superseded_by TEXT            -- 新事实标识
+    );
+    CREATE INDEX IF NOT EXISTS idx_revoked_memory_scope ON revoked_memory(chat_id, agent_id);
     CREATE TABLE IF NOT EXISTS friendships (
       id TEXT PRIMARY KEY,
       from_user_id TEXT NOT NULL,
@@ -332,13 +489,6 @@ function _dbInit(db: any) {
     CREATE INDEX IF NOT EXISTS idx_entities_chat ON entities(chat_id, agent_id);
 
     -- 用户积分
-    CREATE TABLE IF NOT EXISTS user_credits (
-      user_id TEXT PRIMARY KEY REFERENCES users(id),
-      credits INTEGER DEFAULT 1000,
-      total_earned INTEGER DEFAULT 0,
-      total_spent INTEGER DEFAULT 0,
-      updated_at INTEGER
-    );
 
     -- 消息评价（星级）
     CREATE TABLE IF NOT EXISTS message_ratings (
@@ -432,21 +582,6 @@ function _dbInit(db: any) {
     );
 
     -- 雇佣关系表
-    CREATE TABLE IF NOT EXISTS hires (
-      id TEXT PRIMARY KEY,
-      listing_id TEXT NOT NULL,
-      buyer_id TEXT NOT NULL,
-      seller_id TEXT NOT NULL,
-      agent_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      price INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'active',
-      chat_id TEXT,
-      hired_at INTEGER NOT NULL,
-      fired_at INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_hires_buyer ON hires(buyer_id, status);
-    CREATE INDEX IF NOT EXISTS idx_hires_seller ON hires(seller_id, status);
     -- 团队协作 (TeamManager 持久化)
     CREATE TABLE IF NOT EXISTS team_groups (
       id TEXT PRIMARY KEY,
@@ -673,17 +808,6 @@ function _dbInit(db: any) {
       frozen_cny REAL NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL DEFAULT 0
     )`);
-    db.run(`CREATE TABLE IF NOT EXISTS wallet_tx (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      currency TEXT NOT NULL,
-      amount REAL NOT NULL,
-      type TEXT NOT NULL,
-      reason TEXT DEFAULT '',
-      balance_after REAL NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL
-    )`);
-    try { db.run(`CREATE INDEX IF NOT EXISTS idx_wallet_tx_user ON wallet_tx(user_id, created_at DESC)`); } catch (_e) {}
     const mkCols3 = db.exec(`PRAGMA table_info(agent_market)`)[0]?.values?.map((r: any) => r[1]) || [];
     if (!mkCols3.includes('currency')) { db.run(`ALTER TABLE agent_market ADD COLUMN currency TEXT NOT NULL DEFAULT 'credits'`); console.log('[DB] v2.4.0 migration: added currency to agent_market'); }
     console.log('[DB] v2.4.0 migration: wallets ready');
@@ -851,11 +975,39 @@ export function appendMemorySummary(agentId: string, newContent: string) {
   const agent = getAgent(agentId);
   if (!agent) return;
   const existing = agent.memory_summary || '';
-  const safeContent = sanitizeMemoryInput(newContent); // P0-1: 写入侧过滤指令性内容
-  const updated = existing ? existing + '\n' + safeContent : safeContent;
-  // P1-3: 首尾兼顾截断（原 slice(-2000) 会丢失最早的核心记忆）
+  const safeContent = sanitizeMemoryInput(newContent); // 写入侧过滤指令性内容
+  if (!safeContent) return;
+
+  // ═══ P0-2: 作废检测 —— 让最新的纠正指令拥有「覆盖权」 ═══
+  //
+  // 原实现只有 "+"（纯 append），导致：
+  //   「市场不用了」只能在旧文案下面再追加一行，加不出「市场已作废」，
+  //   两者并存 → 模型看到市场文案就手痒。
+  //
+  // 现在：识别出否定/作废指令时，抽出被作废的主题词，
+  //       写入 revoked_memory 留痕，并把命中主题的旧行从摘要中剔除。
+  const isRevoke = isRevocationText(safeContent);
+  let revokedPatterns: string[] = [];
+  if (isRevoke) {
+    revokedPatterns = extractRevocationPatterns(safeContent);
+    for (const pat of revokedPatterns) {
+      revokeMemoryPattern(null, agentId, pat, safeContent);
+    }
+  }
+
+  // 先剔除已被作废的旧内容（历史作废记录也要生效）
+  const known = listRevokedPatterns(null, agentId);
+  const allPatterns = Array.from(new Set([...known, ...revokedPatterns]));
+  let base = allPatterns.length > 0 ? applyRevocations(existing, allPatterns) : existing;
+
+  // 避免重复追加完全相同的内容
+  if (base.includes(safeContent)) return;
+
+  const updated = base ? base + '\n' + safeContent : safeContent;
+  // 首尾兼顾截断（保留最早的摘要 + 最近的增量）
   const trimmed = trimMemoryText(updated, 2000);
   _db.run("UPDATE agents SET memory_summary = ? WHERE id = ?", [trimmed, agentId]);
+  markDirty();
 }
 
 // ———— Chats ————
@@ -1199,160 +1351,10 @@ export function ensureUserCredits(userId: string): void {
   }
 }
 
-export function getUserCredits(userId: string): { credits: number; totalEarned: number; totalSpent: number } {
-  ensureUserCredits(userId);
-  const row = queryOne("SELECT credits, total_earned, total_spent FROM user_credits WHERE user_id = ?", [userId]);
-  return {
-    credits: row ? Number(row[0]) : 1000,
-    totalEarned: row ? Number(row[1]) : 0,
-    totalSpent: row ? Number(row[2]) : 0,
-  };
-}
+/* [FEATURE_MARKET] credits / wallet / hire data layer retired.
+   user_credits / wallet_tx / hires are no longer created by any migration.
+   Tombstone kept so a future revival must be a deliberate act. */
 
-export function addCredits(userId: string, amount: number, note?: string): number {
-  ensureUserCredits(userId);
-  _db.run(
-    "UPDATE user_credits SET credits = credits + ?, total_earned = total_earned + ?, updated_at = ? WHERE user_id = ?",
-    [amount, amount, Date.now(), userId]
-  );
-  const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
-  const balance = row ? Number(row[0]) : 0;
-  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, Math.abs(amount), note || '系统奖励', balance, Date.now()]); } catch {}
-  return balance;
-}
-
-export function spendCredits(userId: string, amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
-  ensureUserCredits(userId);
-  const row = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
-  const balance = row ? Number(row[0]) : 1000;
-  if (balance < amount) {
-    return { ok: false, balance, error: '积分不足，需要 ' + amount + '，当前 ' + balance };
-  }
-  _db.run(
-    "UPDATE user_credits SET credits = credits - ?, total_spent = total_spent + ?, updated_at = ? WHERE user_id = ?",
-    [amount, amount, Date.now(), userId]
-  );
-  const newRow = queryOne("SELECT credits FROM user_credits WHERE user_id = ?", [userId]);
-  const newBal = newRow ? Number(newRow[0]) : 0;
-  try { _db.run("INSERT INTO credit_log (user_id, amount, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?)", [userId, -Math.abs(amount), note || '消费支出', newBal, Date.now()]); } catch {}
-  return { ok: true, balance: newBal };
-}
-
-// 获取积分变动历史
-export function getCreditHistory(userId: string, limit: number = 50): any[] {
-  try {
-    const stmt = _db.prepare("SELECT id, user_id, amount, reason, balance_after, created_at FROM credit_log WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
-    stmt.bind([userId, limit]);
-    const rows: any[] = [];
-    while (stmt.step()) {
-      const r = stmt.getAsObject();
-      rows.push({ id: r.id, userId: r.user_id, amount: r.amount, reason: r.reason, balanceAfter: r.balance_after, created_at: r.created_at });
-    }
-    stmt.free();
-    return rows;
-  } catch { return []; }
-}
-
-// ———— 钱包（USD / CNY 双币种，模拟结算，未接真实支付）————
-export function ensureWallet(userId: string): void {
-  try {
-    _db.run("INSERT OR IGNORE INTO wallets (user_id, balance_usd, balance_cny, frozen_usd, frozen_cny, updated_at) VALUES (?, 0, 0, 0, 0, ?)", [userId, Date.now()]);
-  } catch (e: any) { console.warn('[Wallet] ensure failed:', e.message); }
-}
-
-export function getWallet(userId: string): { balanceUsd: number; balanceCny: number; frozenUsd: number; frozenCny: number } {
-  try {
-    ensureWallet(userId);
-    const row = queryOne("SELECT balance_usd, balance_cny, frozen_usd, frozen_cny FROM wallets WHERE user_id = ?", [userId]);
-    return {
-      balanceUsd: row ? Number(row[0]) || 0 : 0,
-      balanceCny: row ? Number(row[1]) || 0 : 0,
-      frozenUsd: row ? Number(row[2]) || 0 : 0,
-      frozenCny: row ? Number(row[3]) || 0 : 0,
-    };
-  } catch { return { balanceUsd: 0, balanceCny: 0, frozenUsd: 0, frozenCny: 0 }; }
-}
-
-export function _walletTx(userId: string, currency: string, amount: number, type: string, reason: string, balanceAfter: number): void {
-  try {
-    const id = 'wtx_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
-    _db.run("INSERT INTO wallet_tx (id, user_id, currency, amount, type, reason, balance_after, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, userId, currency, amount, type, reason || '', balanceAfter, Date.now()]);
-  } catch {}
-}
-
-export function addWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): number {
-  if (!['usd', 'cny'].includes(currency) || amount <= 0) return 0;
-  ensureWallet(userId);
-  _db.run(`UPDATE wallets SET balance_${currency} = balance_${currency} + ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
-  const w = getWallet(userId);
-  const bal = currency === 'usd' ? w.balanceUsd : w.balanceCny;
-  _walletTx(userId, currency, amount, 'income', note || '钱包入账', bal);
-  return bal;
-}
-
-export function spendWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string): { ok: boolean; balance: number; error?: string } {
-  if (!['usd', 'cny'].includes(currency) || amount <= 0) return { ok: false, balance: 0, error: '不支持的币种或金额' };
-  ensureWallet(userId);
-  const w = getWallet(userId);
-  const bal = currency === 'usd' ? w.balanceUsd : w.balanceCny;
-  if (bal < amount) return { ok: false, balance: bal, error: (currency === 'usd' ? '美元' : '人民币') + '余额不足，需要 ' + amount + '，当前 ' + bal };
-  _db.run(`UPDATE wallets SET balance_${currency} = balance_${currency} - ?, updated_at = ? WHERE user_id = ?`, [amount, Date.now(), userId]);
-  const newW = getWallet(userId);
-  const newBal = currency === 'usd' ? newW.balanceUsd : newW.balanceCny;
-  _walletTx(userId, currency, -amount, 'expense', note || '钱包支出', newBal);
-  return { ok: true, balance: newBal };
-}
-
-export function listWalletTx(userId: string, limit: number = 50): any[] {
-  try {
-    const stmt = _db.prepare("SELECT id, user_id, currency, amount, type, reason, balance_after, created_at FROM wallet_tx WHERE user_id = ? ORDER BY created_at DESC LIMIT ?");
-    stmt.bind([userId, limit]);
-    const rows: any[] = [];
-    while (stmt.step()) {
-      const r = stmt.getAsObject();
-      rows.push({ id: r.id, currency: r.currency, amount: r.amount, type: r.type, reason: r.reason, balanceAfter: r.balance_after, createdAt: r.created_at });
-    }
-    stmt.free();
-    return rows;
-  } catch { return []; }
-}
-
-// ———— 雇佣 CRUD ————
-
-export function createHire(params: {
-  id: string; listingId: string; buyerId: string; sellerId: string;
-  agentId: string; title: string; price: number; chatId?: string; expiresAt?: number;
-}): void {
-  const now = Date.now();
-  _db.run(
-    "INSERT INTO hires (id, listing_id, buyer_id, seller_id, agent_id, title, price, status, chat_id, hired_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)",
-    [params.id, params.listingId, params.buyerId, params.sellerId,
-     params.agentId, params.title, params.price, params.chatId || null, now, params.expiresAt || 0]
-  );
-}
-
-export function getHire(id: string): any {
-  return queryObjects("SELECT * FROM hires WHERE id = ?", [id])[0] || null;
-}
-
-export function listHiresByBuyer(userId: string, status?: string): any[] {
-  if (status) {
-    return queryObjects("SELECT * FROM hires WHERE buyer_id = ? AND status = ? ORDER BY hired_at DESC", [userId, status]);
-  }
-  return queryObjects("SELECT * FROM hires WHERE buyer_id = ? ORDER BY hired_at DESC", [userId]);
-}
-
-export function listHiresBySeller(userId: string, status?: string): any[] {
-  if (status) {
-    return queryObjects("SELECT * FROM hires WHERE seller_id = ? AND status = ? ORDER BY hired_at DESC", [userId, status]);
-  }
-  return queryObjects("SELECT * FROM hires WHERE seller_id = ? ORDER BY hired_at DESC", [userId]);
-}
-
-export function fireHire(hireId: string): void {
-  _db.run("UPDATE hires SET status = 'fired', fired_at = ? WHERE id = ?", [Date.now(), hireId]);
-}
 
 export class DB {
   public raw: any;
@@ -1467,21 +1469,8 @@ export class DB {
   addLanGroupMember(params: Parameters<typeof addLanGroupMember>[0]) { return addLanGroupMember(params); }
   getLanGroupMembers(groupId: string) { return getLanGroupMembers(groupId); }
   // ———— 积分 ————
-  getUserCredits(userId: string) { return getUserCredits(userId); }
-  addCredits(userId: string, amount: number, note?: string) { return addCredits(userId, amount, note); }
-  spendCredits(userId: string, amount: number) { return spendCredits(userId, amount); }
-  getCreditHistory(userId: string, limit?: number) { return getCreditHistory(userId, limit); }
-  // ———— 钱包 ————
-  getWallet(userId: string) { return getWallet(userId); }
-  addWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string) { return addWalletBalance(userId, currency, amount, note); }
-  spendWalletBalance(userId: string, currency: 'usd' | 'cny', amount: number, note?: string) { return spendWalletBalance(userId, currency, amount, note); }
-  listWalletTx(userId: string, limit?: number) { return listWalletTx(userId, limit); }
-  // ———— 雇佣 ————
-  createHire(params: Parameters<typeof createHire>[0]) { return createHire(params); }
-  getHire(id: string) { return getHire(id); }
-  listHiresByBuyer(userId: string, status?: string) { return listHiresByBuyer(userId, status); }
-  listHiresBySeller(userId: string, status?: string) { return listHiresBySeller(userId, status); }
-  fireHire(hireId: string) { return fireHire(hireId); }
+    // ———— 钱包 ————
+    // ———— 雇佣 ————
 
 }
 

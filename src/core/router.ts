@@ -22,7 +22,7 @@ import { Critic } from "./critic.js";
 import { Clarifier } from "./clarifier.js";
 import { Evaluator, type EvaluationSummary, type EvaluationRecord } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
-import { decideAutoResume, inferRemainingWork } from "./autonomy.js";
+import { decideAutoResume, backoffDelayMs, inferRemainingWork } from "./autonomy.js";
 
 /**
  * 判断用户输入是否为"任务类"（需要持续执行直到完成，而非一问一答）
@@ -483,16 +483,29 @@ export class MessageRouter {
       // ⭐ v2.1 中断自动续跑：超时/迭代上限终止时，不是直接吐文字等用户，
       // 而是像 GoalExecutor 一样注入断点上下文自动开下一轮（用户主动停止除外）。
       // 续跑轮数上限由 TASK_RESUME_ROUNDS 控制（默认 2），每轮重新计时。
+      // v2.3.0: 自动续跑轮数需在块外的收尾文案里引用，先在外层声明
+      let autoResumeRounds = 0;
+
       if (isTaskMode && !signal?.aborted) {
         const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '6', 10);
-        let resumeRounds = 0;
+        let resumeRounds = autoResumeRounds;
         while (
           resumeRounds < MAX_RESUME_ROUNDS &&
           !signal?.aborted &&
           decideAutoResume(result.stopReason, result.finalContent || '').shouldResume
         ) {
           resumeRounds++;
-          const reasonText = result.stopReason === 'aborted' ? '超出时限' : '达到迭代上限';
+          // v2.3.0: 续跑话术交给 autonomy 统一决策（按 stopReason 给不同指引）
+          // 关键：ai_errors 要告诉模型「只是被限流、不是任务做不下去」，
+          // 否则模型看到报错会误判失败而直接放弃
+          const decision = decideAutoResume(result.stopReason, result.finalContent || '');
+          const reasonText = decision.label || result.stopReason || '未知原因';
+          // 限流类中断先退避再续跑，避免立刻重踩 429 换来更长封禁
+          if (result.stopReason === 'ai_errors') {
+            const coolMs = Math.min(backoffDelayMs(resumeRounds + 1, 2000, 15000), 15000);
+            console.log(`[Router] AI 服务限流/不可用，${coolMs}ms 后自动续跑（无需用户操作）`);
+            await new Promise<void>((r) => setTimeout(r, coolMs));
+          }
           console.log(`[Router] 任务中断（${reasonText}），自动续跑第 ${resumeRounds}/${MAX_RESUME_ROUNDS} 轮 (agent=${agentId})`);
           const resumeMessages: ChatMessage[] = [
             ...(result.messages as ChatMessage[]),
@@ -501,7 +514,7 @@ export class MessageRouter {
               content: '系统通知：上一轮任务执行因' + reasonText + '被中断，但已完成的进度保留在上方上下文中。'
                 + '请从断点继续，完成剩余未做完的工作——不要重复已完成的部分，不要询问用户，自主判断并持续执行。'
                 + '全部做完后，在回复结尾输出"任务完成"（之后不要再写后续计划）。'
-                + inferRemainingWork(result.finalContent || ''),
+                + (decision.hint || ''),
             },
           ];
           const resumeController = new AbortController();
@@ -555,9 +568,17 @@ export class MessageRouter {
             idle_stop: '多轮未检测到明确完成信号',
             tool_failures: '工具连续失败',
             repeat_tool: '重复调用已收敛',
-            ai_errors: 'AI 调用连续失败',
+            ai_errors: 'AI 服务限流或暂时不可用',
           };
-          finalContent += '\n\n⚠️ 任务已中断（' + (reasonMap[result.stopReason] || result.stopReason) + '），进度已保留。输入「继续」可从断点恢复执行。';
+          const why = reasonMap[result.stopReason] || result.stopReason || '未知原因';
+          // v2.3.0：已自动续跑过的，不再叫用户点「继续」——那是把问题甩回给人
+          if (autoResumeRounds > 0) {
+            finalContent += '\n\n⚠️ 任务仍未做完：已自动续跑 ' + autoResumeRounds + ' 轮，仍因「' + why + '」中断。' +
+              '\n已完成的所有进度都保留在上下文里，不需要从头重做。' +
+              '\n若是限流，等几分钟后输入「继续」即可从断点接着干；若是配置问题，请检查 API Key / 模型名 / 网络。';
+          } else {
+            finalContent += '\n\n⚠️ 任务已中断（' + why + '），进度已保留。输入「继续」可从断点恢复执行。';
+          }
         }
         // ⭐ 多模型协作：工具循环用 toolClient 完成后，用 replyClient 重新生成最终回复
         // 这样 TOOL_MODEL 管工具调用，REPLY_MODEL 管最终回复质量，真正实现多模型协作

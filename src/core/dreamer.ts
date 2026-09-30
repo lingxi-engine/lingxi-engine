@@ -15,6 +15,7 @@ export interface DreamReport {
   agentId: string;
   timestamp: number;
   mergedFacts: number;        // 合并的重复事实
+  revokedFacts?: string[];      // 本次被作废/移除的旧事实 key
   newInsights: string[];       // 新洞察
   updatedPreferences: Record<string, string>;  // 更新的偏好
 }
@@ -122,11 +123,15 @@ export class Dreamer {
       try { insights = JSON.parse((mem as any).insights || '[]'); } catch {}
 
       // AI Dreaming
-      const prompt = `你是一个记忆整理助手。请审视以下 AI 的记忆，完成三件事：
+      const prompt = `你是一个记忆整理助手。请审视以下 AI 的记忆，完成四件事：
 
 1. 合并重复的事实（如果多条事实说同一件事，合并为一条）
 2. 发现隐藏的模式或洞察（例如"用户连续三次提到性能问题，可能优先级很高"）
 3. 更新用户偏好（如果发现新偏好，记录下来）
+4. **作废与纠正（最重要）**：如果记忆摘要或事实中出现用户后来明确否定、作废、取消、更正的内容
+   （例如"市场不用了""XX 功能下线了""之前说的作废""别再提 XX"），
+   必须把对应的旧事实标记为作废并从结果中移除，**绝对不允许新旧两条并存**。
+   作废 = 用新事实覆盖旧事实，而不是在旧事实旁边再追加一条新的。
 
 当前记忆摘要：
 ${mem.memory_summary}
@@ -140,6 +145,7 @@ ${insights.join('\n')}
 请以 JSON 格式输出（不要有其他内容）：
 {
   "mergedFacts": { "key": "value", ... },   // 合并后的事实（更新已有的）
+  "revokedFacts": ["被作废的旧事实的key", ...], // 必须被移除的旧事实 key（没有就填 []）
   "newInsights": ["洞察1", "洞察2", ...],    // 新发现的模式
   "summaryUpdate": "优化后的记忆摘要"        // 如果摘要需要更新
 }`;
@@ -164,7 +170,18 @@ ${insights.join('\n')}
       const mergedCount = Object.keys(result.mergedFacts || {}).length;
 
       // 更新记忆
-      const updatedFacts = { ...facts, ...(result.mergedFacts || {}) };
+      // 更新记忆：合并 + **真正移除被作废的旧事实**
+      // 原实现是纯展开 { ...facts, ...mergedFacts }，没有任何删除通道，
+      // 导致被否定的旧事实永远残留、与新事实并存（"市场已屏蔽"与"AI员工市场"同时存在）。
+      // 这里按 key 显式 delete，把"否决"从模型的隐式推断变成代码里的确定行为。
+      const updatedFacts: Record<string, string> = { ...facts, ...(result.mergedFacts || {}) };
+      const revokedKeys: string[] = Array.isArray(result.revokedFacts) ? result.revokedFacts : [];
+      for (const k of revokedKeys) {
+        if (k) delete updatedFacts[k];
+      }
+      if (revokedKeys.length > 0) {
+        logger.audit('Dreamer', 'revoke', `${chatId}/${agentId}: revoked=${revokedKeys.join(',')}`);
+      }
       const newSummary = result.summaryUpdate || mem.memory_summary;
       const allInsights = [...new Set([...insights, ...(result.newInsights || [])])].slice(-20); // 最多 20 条
 
@@ -191,6 +208,7 @@ ${insights.join('\n')}
         chatId, agentId,
         timestamp: Date.now(),
         mergedFacts: mergedCount,
+        revokedFacts: revokedKeys,
         newInsights: result.newInsights || [],
         updatedPreferences: result.mergedFacts || {},
       };

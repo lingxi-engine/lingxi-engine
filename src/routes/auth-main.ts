@@ -15,7 +15,7 @@ import * as auth from '../auth/index.js';
 import { jwtAuth } from '../middleware/jwt-auth.js';
 import { adminAuth } from '../middleware/admin-auth.js';
 import { authRateLimit } from '../middleware/rate-limit.js';
-import { createInviteCode, listInviteCodes, listUsers, getUserCredits, nextNumericId, syncAgentToPrivateChats, getDB, saveToDisk, type DB } from '../storage/db.js';
+import { createInviteCode, listInviteCodes, listUsers, nextNumericId, syncAgentToPrivateChats, getDB, saveToDisk, type DB } from '../storage/db.js';
 import { UsageTracker } from '../core/usage-tracker.js';
 import type { AgentManager } from '../agents/manager.js';
 import { getInstanceId } from '../core/instance-mesh.js';
@@ -312,12 +312,7 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
   app.get('/api/admin/dashboard', (_req, res) => {
     try {
       const users = listUsers().map((u: any) => {
-        let credits = 0, totalEarned = 0, totalSpent = 0;
-        try {
-          const c = getUserCredits(String(u.id));
-          credits = c.credits; totalEarned = c.totalEarned; totalSpent = c.totalSpent;
-        } catch {}
-        return { ...u, credits, total_earned: totalEarned, total_spent: totalSpent };
+        return u;
       });
       const raw: any = getDB();
       const count = (sql: string, params: any[] = []) => {

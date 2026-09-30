@@ -402,44 +402,12 @@ export function createAdminRoutes(ctx: ServerContext): Router {
       const userId = (req.query.userId as string) || '';
       const user = ctx.db.getUserByEmail(userId) || ctx.db.getUser(userId);
       if (!user) return res.status(404).json({ error: '用户不存在' });
-      const credits = getDB().prepare('SELECT * FROM user_credits WHERE user_id = ?');
-      credits.bind([user.id]);
-      const creditRow = credits.step() ? credits.getAsObject() : null;
-      credits.free();
       const usage = UsageTracker.getStats();
       const ratingStmt = getDB().prepare('SELECT COUNT(*) as count, AVG(rating) as avg FROM message_ratings WHERE user_id = ?');
       ratingStmt.bind([user.id]);
       const ratingRow = ratingStmt.step() ? ratingStmt.getAsObject() : { count: 0, avg: 0 };
       ratingStmt.free();
-      res.json({ ok: true, profile: { id: user.id, numeric_id: user.numeric_id, display_name: user.display_name, email: user.email, status: user.status, created_at: user.created_at }, credits: creditRow?.credits || 1000, totalEarned: creditRow?.total_earned || 0, totalSpent: creditRow?.total_spent || 0, usage: usage.total, ratings: { count: ratingRow.count || 0, avgRating: ratingRow.avg || 0 } });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  router.post('/credits/deduct', (req, res) => {
-    try {
-      const { userId, amount } = req.body || {};
-      if (!userId || !amount) return res.status(400).json({ error: 'userId/amount 必填' });
-      const now = Date.now();
-      const stmt = getDB().prepare('UPDATE user_credits SET credits = credits - ?, total_spent = total_spent + ?, updated_at = ? WHERE user_id = ? AND credits >= ?');
-      stmt.bind([amount, amount, now, userId, amount]);
-      stmt.step();
-      const changes = getDB().getRowsModified();
-      stmt.free();
-      if (changes === 0) { const checkStmt = getDB().prepare('SELECT credits FROM user_credits WHERE user_id = ?'); checkStmt.bind([userId]); const row = checkStmt.step() ? checkStmt.getAsObject() : null; checkStmt.free(); return res.status(400).json({ error: '积分不足', current: row?.credits || 0 }); }
-      const balStmt = getDB().prepare('SELECT credits FROM user_credits WHERE user_id = ?'); balStmt.bind([userId]); const balRow = balStmt.step() ? balStmt.getAsObject() : null; balStmt.free();
-      res.json({ ok: true, balance: balRow?.credits || 0 });
-    } catch (err: any) { res.status(500).json({ error: err.message }); }
-  });
-
-  router.post('/credits/award', (req, res) => {
-    try {
-      const { userId, amount } = req.body || {};
-      if (!userId || !amount) return res.status(400).json({ error: 'userId/amount 必填' });
-      const now = Date.now();
-      const stmt = getDB().prepare('INSERT INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, ?, ?, 0, ?) ON CONFLICT(user_id) DO UPDATE SET credits = credits + ?, total_earned = total_earned + ?, updated_at = ?');
-      stmt.bind([userId, 1000 + amount, amount, now, amount, amount, now]);
-      stmt.step(); stmt.free();
-      res.json({ ok: true });
+      res.json({ ok: true, profile: { id: user.id, numeric_id: user.numeric_id, display_name: user.display_name, email: user.email, status: user.status, created_at: user.created_at }, usage: usage.total, ratings: { count: ratingRow.count || 0, avgRating: ratingRow.avg || 0 } });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
