@@ -108,7 +108,7 @@ try {
     & cmd /c "tar -xzf `"$tar`" -O ./lingxi-engine/BUILD-INFO.json > `"$biFile`"" 2>$null
     if (-not (Test-Path $biFile)) { BAD "BUILD-INFO.json missing from tarball" }
     else {
-        $bi = Get-Content $biFile -Raw | ConvertFrom-Json
+        $bi = Get-Content $biFile -Raw -Encoding UTF8 | ConvertFrom-Json
         Write-Host "     BUILD-INFO: version=$($bi.version) commit=$($bi.commit)"
         if ($bi.version -eq $siteVer) { OK "BUILD-INFO version == site version" }
         else { BAD "BUILD-INFO version '$($bi.version)' != site version '$siteVer'" }
@@ -119,7 +119,7 @@ try {
     & cmd /c "tar -xzf `"$tar`" -O ./lingxi-engine/package.json > `"$pkgFile`"" 2>$null
     if (-not (Test-Path $pkgFile)) { BAD "package.json missing from tarball" }
     else {
-        $pkg = Get-Content $pkgFile -Raw | ConvertFrom-Json
+        $pkg = Get-Content $pkgFile -Raw -Encoding UTF8 | ConvertFrom-Json
         Write-Host "     package.json version = $($pkg.version)"
         if ($pkg.version -eq $siteVer) { OK "package.json version == site version" }
         else { BAD "package.json version '$($pkg.version)' != site version '$siteVer'" }
@@ -128,7 +128,7 @@ try {
     $page = Join-Path $tmp 'download.html'
     try {
         (New-Object System.Net.WebClient).DownloadFile("$SiteUrl/download.html", $page)
-        $html = Get-Content $page -Raw
+        $html = Get-Content $page -Raw -Encoding UTF8
         $pageVers = [regex]::Matches($html, 'v(\d+\.\d+\.\d+)') |
                     ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
         Write-Host "     versions mentioned on the page: $($pageVers -join ', ')"
@@ -164,7 +164,7 @@ try {
         (New-Object System.Net.WebClient).DownloadFile("$SiteUrl/install.ps1", $ps1)
         $ps1sz = (Get-Item $ps1).Length
         Write-Host "     /install.ps1 $ps1sz bytes"
-        $ps1txt = Get-Content $ps1 -Raw
+        $ps1txt = Get-Content $ps1 -Raw -Encoding UTF8
         if ($ps1txt -match 'lingxi-engine\.tar\.gz') { OK "install.ps1 points at the generic tarball" }
         else { BAD "install.ps1 does not reference lingxi-engine.tar.gz" }
     } catch {

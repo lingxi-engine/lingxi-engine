@@ -20,7 +20,7 @@ $StageDir = Join-Path $StageRoot "lingxi-engine"
 if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
-$excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2')
+$excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2','stage')
 $excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_'
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
 
@@ -81,13 +81,34 @@ try {
     Remove-JunkFiles $StageDir
 
     # v2.0.22: 鍐欏叆鏋勫缓淇℃伅锛堢増鏈?+ commit锛夛紝渚涚嚎涓?/api/health 姣斿
+    # v6.9 (2026-10-01): 保留人工字段。
+    #   原实现用四字段整体覆写，把 highlights / quality / commitMeaning 冲掉，
+    #   于是每次打包都会静默丢失发布说明（对外解释「这版改了什么」的唯一来源）。
+    #   现在：version / commit / buildTime / builder 由脚本权威写入，
+    #   其余人工字段从既有 BUILD-INFO.json 继承。
     $buildInfo = [ordered]@{
         version   = $Version
         commit    = $Commit
         buildTime = (Get-Date).ToUniversalTime().ToString('o')
         builder   = 'pack-release.ps1'
     }
-    $buildInfoJson = $buildInfo | ConvertTo-Json
+    $rootBiExisting = Join-Path $ProjectRoot 'BUILD-INFO.json'
+    if (Test-Path $rootBiExisting) {
+        try {
+            # 必须显式 -Encoding UTF8。Windows PowerShell 5.1 的 Get-Content 默认按
+            # 系统 ANSI 代码页读文件，而本文件是【无 BOM 的 UTF-8】——
+            # highlights 全是中文，按 ANSI 读进来即乱码，ConvertFrom-Json 直接抛错，
+            # 于是落进 catch，人工字段被静默丢弃。日志里的
+            # "[WARN] 既有 BUILD-INFO.json 解析失败" 就是它的指纹。
+            $prev = Get-Content $rootBiExisting -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($k in @('highlights','quality','commitMeaning')) {
+                if ($prev.PSObject.Properties.Name -contains $k) { $buildInfo[$k] = $prev.$k }
+            }
+        } catch {
+            Write-Host "  [WARN] 既有 BUILD-INFO.json 解析失败，仅写入基础字段" -ForegroundColor Yellow
+        }
+    }
+    $buildInfoJson = $buildInfo | ConvertTo-Json -Depth 6
     # v6.9: PowerShell 'Set-Content -Encoding UTF8' emits a BOM (EF BB BF), which breaks
     # strict JSON parsers on the server. Write UTF8 WITHOUT BOM via .NET instead.
     [System.IO.File]::WriteAllText((Join-Path $StageDir 'BUILD-INFO.json'), $buildInfoJson, (New-Object System.Text.UTF8Encoding $false))
@@ -255,10 +276,19 @@ try {
         throw "[FAIL] sw.js CACHE_NAME not bumped to v20"
     }
     $indexSrc = tar -xzf $OutFile -O './lingxi-engine/index.ts' 2>$null
-    if ($indexSrc -match 'credits: creditRow \? Number\(creditRow\.credits\) : 1000') {
-        Write-Host "  [OK] credits ||-bug fixed (ternary guards real 0)" -ForegroundColor Green
+    # v6.9 (2026-10-01): 自适应断言。
+    #   历史背景：credits/wallet 功能已随 marketplace 下线（969b385）整段移除，
+    #   原断言仍在检查那段代码的实现细节，于是永久失败并阻断发布。
+    #   现在按功能存废分流；若 credits 功能回归，守卫检查会自动重新生效
+    #   （真实 0 被 || 1000 吞掉是个真 bug，必须挡住）。
+    if ($indexSrc -match 'creditRow') {
+        if ($indexSrc -match 'credits: creditRow \? Number\(creditRow\.credits\) : 1000') {
+            Write-Host "  [OK] credits ||-bug fixed (ternary guards real 0)" -ForegroundColor Green
+        } else {
+            throw "[FAIL] credits feature present but ||-bug guard missing from index.ts"
+        }
     } else {
-        throw "[FAIL] credits ||-bug fix missing from index.ts"
+        Write-Host "  [SKIP] credits/wallet 已随 marketplace 下线（969b385），对应的 ||-bug 守卫断言不适用" -ForegroundColor DarkGray
     }
     # scan CODE lines only: the fix comment itself mentions require('zlib') and would false-positive
     $indexCodeOnly = ( ($indexSrc -split "`n") | Where-Object { $_ -notmatch '^\s*(//|\*|/\*)' } ) -join "`n"
@@ -287,6 +317,8 @@ try {
     Write-Host ""
     Write-Host "Verify BUILD-INFO.json..." -ForegroundColor Yellow
     $buildInfoInPkg = tar -xzf $OutFile -O './lingxi-engine/BUILD-INFO.json' 2>$null
+    # tar -O 走系统 stdout 管道，PowerShell 侧可能按 ANSI 解码，
+    # 中文会变乱码导致后续 ConvertFrom-Json 不可靠。中文字段不参与断言，此处仅取 version/commit。
     if ($buildInfoInPkg) {
         $bi = $buildInfoInPkg | ConvertFrom-Json
         if ($bi.version -eq $Version) {
@@ -297,7 +329,7 @@ try {
         Write-Host "  [OK] BUILD-INFO commit = $($bi.commit)" -ForegroundColor Green
         $rootBiPath = Join-Path $ProjectRoot 'BUILD-INFO.json'
         if (Test-Path $rootBiPath) {
-            $rootBi = Get-Content $rootBiPath -Raw | ConvertFrom-Json
+            $rootBi = Get-Content $rootBiPath -Raw -Encoding UTF8 | ConvertFrom-Json
             if ($rootBi.version -eq $Version) {
                 Write-Host "  [OK] root BUILD-INFO.json in sync ($Version)" -ForegroundColor Green
             } else {
