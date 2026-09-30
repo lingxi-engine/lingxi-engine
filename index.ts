@@ -77,7 +77,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { join } from 'path';
 import multer from 'multer';
-import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, getUserCredits, addCredits, spendCredits, getCreditHistory, getWallet, addWalletBalance, spendWalletBalance, listWalletTx, ensureWallet, _walletTx, createHire, fireHire, listHiresByBuyer, listHiresBySeller, getHire, createChat, addParticipant, removeParticipant, getAgent, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
+import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, createChat, addParticipant, removeParticipant, getAgent, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
