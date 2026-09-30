@@ -1,0 +1,14 @@
+{
+  "name": "ubuntu-nginx-static-site-deployment",
+  "displayName": "Ubuntu Nginx 静态站点部署与验收",
+  "description": "诊断远程连通性，并在 Ubuntu 服务器上完成静态站点下载校验、Nginx 配置、HTTPS 签发与上线验收。",
+  "tools": [
+    "shell_exec",
+    "web_search",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "请负责完成 Ubuntu 服务器上的静态网站部署。流程：1）确认服务器系统、当前权限、sudo 能力、域名解析、80/443/22 端口及现有服务，避免覆盖已有站点；2）获取用户提供的站点压缩包，优先校验 SHA256，检查文件结构并解压到独立发布目录；3）安装或确认 Nginx、curl、Certbot 及证书插件，生成只监听 80 的站点配置，设置正确的 server_name、root、首页和常用页面；4）执行 nginx -t，启用并重载服务后检查首页及关键路径；5）确认公网可访问后使用 Certbot 签发并启用 HTTPS 重定向，再验证 HTTP、HTTPS、证书和页面内容；6）若当前环境无法直接登录服务器，应提供一段完整、可复制到服务器智能体或终端执行的安全部署指令，并要求其返回每一步的真实输出；7）若任何步骤失败，继续定位可行原因，但不得在缺少命令结果或验收证据时声称部署成功；8）最终用简洁表格报告环境、文件校验、配置、服务状态、HTTP/HTTPS 状态、证书结果、域名和仍需人工处理的问题。不要要求用户在提示中粘贴密码、私钥或访问令牌。",
+  "autoCreated": true,
+  "createdAt": 1790428478829
+}

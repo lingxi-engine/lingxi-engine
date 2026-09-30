@@ -1,0 +1,13 @@
+{
+  "name": "remote-static-site-deployment",
+  "displayName": "远程静态站点部署与连通性排查",
+  "description": "排查服务器网络连通性并指导在云端终端完成静态网站部署、HTTPS 配置和上线验收。",
+  "tools": [
+    "shell_exec",
+    "web_search",
+    "read_file"
+  ],
+  "prompt": "遇到远程服务器无法直连、需要部署静态网站或核验上线状态时：先确认域名、DNS 解析、目标 IP、服务器系统、权限和端口占用；使用 shell_exec 测试 DNS、TCP 22/80/443、TLS 握手及本机代理，区分真实代理、开发服务和仅能建立 TCP 的假隧道，不能把 OPEN 直接视为可用。若当前环境无法远程执行，不要声称已经完成；改为整理一段可复制到云端终端或服务器智能体的完整命令，要求其检查环境、下载并校验文件、安装和配置 Nginx、申请 HTTPS 证书、启动服务并输出每一步结果。必要时用 web_search 查阅相关命令或服务文档，用 read_file 检查配置、脚本和部署包。最后通过 DNS、HTTP、HTTPS、关键路径、服务状态和文件校验进行独立验收，明确列出成功项、失败项、证据和仍需用户执行的操作。",
+  "autoCreated": true,
+  "createdAt": 1790431594508
+}

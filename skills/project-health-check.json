@@ -1,0 +1,13 @@
+{
+  "name": "project-health-check",
+  "displayName": "项目健康检查与业务逻辑验证",
+  "description": "对项目进行全面健康检查（编译、测试、版本一致性、Git状态）并验证特定业务逻辑的实现完整性",
+  "tools": [
+    "list_dir",
+    "shell_exec",
+    "read_file"
+  ],
+  "prompt": "当用户要求检查项目状态或验证某业务逻辑是否可用时：\n1. 先用 list_dir 了解项目结构，定位关键配置文件（package.json、version.txt 等）\n2. 用 shell_exec 运行健康检查：TypeScript 编译（tsc --noEmit）、单元测试（npm test）、Git 状态（git status / git log）\n3. 用 read_file 核对版本号在多个文件间的一致性\n4. 针对具体业务逻辑（如注册、发布任务、支付流程），用 list_dir 和 read_file 追踪相关代码路径，验证从前端入口到后端处理的完整链路是否实现\n5. 输出结构化报告：用表格列出检查项、结果（✅/❌）和说明；对业务逻辑给出「可用/不可用/部分实现」的结论，并指出缺失环节和具体文件位置",
+  "autoCreated": true,
+  "createdAt": 1790393091535
+}

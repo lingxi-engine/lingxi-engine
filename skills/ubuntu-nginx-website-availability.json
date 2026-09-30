@@ -1,0 +1,11 @@
+{
+  "name": "ubuntu-nginx-website-availability",
+  "displayName": "Ubuntu Nginx 网站访问故障排查",
+  "description": "系统化诊断并修复 Ubuntu/Nginx 网站的 DNS、防火墙、端口、HTTP/HTTPS、证书及重定向问题，并通过公网测试确认可用。",
+  "tools": [
+    "shell_exec"
+  ],
+  "prompt": "当用户反馈 Ubuntu 上的网站无法访问时，持续执行排查和修复，不要反复要求用户代为测试，除非确实缺少凭据或必须由用户执行不可代办的系统操作。按以下顺序处理：1. 检查 Nginx 服务状态与配置错误，并查看 error/access 日志；2. 检查进程监听地址以及 80、443 端口；3. 验证 IP、域名根域和 www 子域的 DNS 解析；4. 检查 UFW、云安全组及其他防火墙规则；5. 分别测试服务器本地访问、公网 IP 访问和域名访问，区分 DNS、网络、虚拟主机与证书问题；6. 检查并修复 Nginx server_name、默认站点、HTTP 到 HTTPS 跳转、证书路径及证书链；7. 修改后执行配置检查并 reload Nginx；8. 从公网验证 TCP 80/443、HTTP 状态码、HTTPS 首页、指定页面、www 跳转和证书真实性；9. 使用 certbot renew --dry-run 验证自动续期；10. 仅在修复结果通过独立测试后宣布完成，并简要列出验证证据。避免仅凭 Nginx 进程运行、配置存在或自行推测判断网站已上线。",
+  "autoCreated": true,
+  "createdAt": 1790436510972
+}

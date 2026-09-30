@@ -1,0 +1,290 @@
+{
+  "schema": "lingxi-bench/1",
+  "generatedAt": "2026-09-28T14:29:29.092Z",
+  "durationMs": 23800,
+  "overall": 96.7,
+  "passed": 29,
+  "cases": 30,
+  "meta": {
+    "node": "v24.18.1",
+    "platform": "win32",
+    "engineVersion": "2.0.28",
+    "pkgVersion": "2.0.28",
+    "license": "MIT",
+    "commit": "9cd4401",
+    "defaultModel": "qwen3.8:27b-32k",
+    "taskTimeoutSec": 7200,
+    "tier": 3,
+    "llmUsed": true,
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "scale": "full",
+    "llmCalls": 34,
+    "apiErrors": 0,
+    "promptTokens": 31244,
+    "completionTokens": 1948,
+    "wallMs": 23798,
+    "endurance": {
+      "avgStepLatencyMs": 121,
+      "p50StepLatencyMs": 105,
+      "p95StepLatencyMs": 177,
+      "firstHalfAvgMs": 116,
+      "secondHalfAvgMs": 127,
+      "latencyDriftPct": 9,
+      "maxContextTokens": 1238,
+      "completedTasks": 5,
+      "totalTasks": 5,
+      "totalGoalSteps": 33,
+      "totalDuplicateLoops": 2,
+      "tasks": [
+        {
+          "id": "build-5-files",
+          "goalSteps": 5,
+          "completed": true,
+          "done": true,
+          "dupes": 0,
+          "toolCalls": 7,
+          "ctx": 766,
+          "verdict": null
+        },
+        {
+          "id": "read-verify-cycle",
+          "goalSteps": 6,
+          "completed": true,
+          "done": true,
+          "dupes": 2,
+          "toolCalls": 5,
+          "ctx": 706,
+          "verdict": null
+        },
+        {
+          "id": "accumulate-8-lines",
+          "goalSteps": 8,
+          "completed": true,
+          "done": true,
+          "dupes": 0,
+          "toolCalls": 11,
+          "ctx": 1186,
+          "verdict": null
+        },
+        {
+          "id": "arithmetic-chain",
+          "goalSteps": 7,
+          "completed": true,
+          "done": true,
+          "dupes": 0,
+          "toolCalls": 12,
+          "ctx": 1238,
+          "verdict": null
+        },
+        {
+          "id": "self-audit-list",
+          "goalSteps": 7,
+          "completed": true,
+          "done": true,
+          "dupes": 0,
+          "toolCalls": 3,
+          "ctx": 520,
+          "verdict": null
+        }
+      ]
+    }
+  },
+  "suites": [
+    {
+      "id": "longrun.build-5-files",
+      "title": "5-step endurance task",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "task completed correctly",
+          "pass": true,
+          "detail": "all artifacts correct"
+        },
+        {
+          "name": "signalled completion via mark_goal_done",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no duplicate tool calls",
+          "pass": true,
+          "detail": "0 repeated identical calls"
+        },
+        {
+          "name": "made progress (>= 2 tool calls)",
+          "pass": true,
+          "detail": "7 tool calls"
+        },
+        {
+          "name": "context under 60K tokens",
+          "pass": true,
+          "detail": "~766"
+        }
+      ]
+    },
+    {
+      "id": "longrun.read-verify-cycle",
+      "title": "6-step endurance task",
+      "score": 83.3,
+      "passed": 5,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "task completed correctly",
+          "pass": true,
+          "detail": "all artifacts correct"
+        },
+        {
+          "name": "signalled completion via mark_goal_done",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no duplicate tool calls",
+          "pass": false,
+          "detail": "2 repeated identical calls"
+        },
+        {
+          "name": "made progress (>= 2 tool calls)",
+          "pass": true,
+          "detail": "5 tool calls"
+        },
+        {
+          "name": "context under 60K tokens",
+          "pass": true,
+          "detail": "~706"
+        }
+      ]
+    },
+    {
+      "id": "longrun.accumulate-8-lines",
+      "title": "8-step endurance task",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "task completed correctly",
+          "pass": true,
+          "detail": "all artifacts correct"
+        },
+        {
+          "name": "signalled completion via mark_goal_done",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no duplicate tool calls",
+          "pass": true,
+          "detail": "0 repeated identical calls"
+        },
+        {
+          "name": "made progress (>= 2 tool calls)",
+          "pass": true,
+          "detail": "11 tool calls"
+        },
+        {
+          "name": "context under 60K tokens",
+          "pass": true,
+          "detail": "~1186"
+        }
+      ]
+    },
+    {
+      "id": "longrun.arithmetic-chain",
+      "title": "7-step endurance task",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "task completed correctly",
+          "pass": true,
+          "detail": "all artifacts correct"
+        },
+        {
+          "name": "signalled completion via mark_goal_done",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no duplicate tool calls",
+          "pass": true,
+          "detail": "0 repeated identical calls"
+        },
+        {
+          "name": "made progress (>= 2 tool calls)",
+          "pass": true,
+          "detail": "12 tool calls"
+        },
+        {
+          "name": "context under 60K tokens",
+          "pass": true,
+          "detail": "~1238"
+        }
+      ]
+    },
+    {
+      "id": "longrun.self-audit-list",
+      "title": "7-step endurance task",
+      "score": 100,
+      "passed": 6,
+      "total": 6,
+      "cases": [
+        {
+          "name": "no LLM error",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "task completed correctly",
+          "pass": true,
+          "detail": "all artifacts correct"
+        },
+        {
+          "name": "signalled completion via mark_goal_done",
+          "pass": true,
+          "detail": ""
+        },
+        {
+          "name": "no duplicate tool calls",
+          "pass": true,
+          "detail": "0 repeated identical calls"
+        },
+        {
+          "name": "made progress (>= 2 tool calls)",
+          "pass": true,
+          "detail": "3 tool calls"
+        },
+        {
+          "name": "context under 60K tokens",
+          "pass": true,
+          "detail": "~520"
+        }
+      ]
+    }
+  ]
+}

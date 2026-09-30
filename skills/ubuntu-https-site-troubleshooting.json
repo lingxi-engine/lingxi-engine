@@ -1,0 +1,14 @@
+{
+  "name": "ubuntu-https-site-troubleshooting",
+  "displayName": "Ubuntu HTTPS 网站故障排查",
+  "description": "诊断并修复 Ubuntu 上 Nginx、UFW、Let's Encrypt 与 DNS 导致的网站公网访问故障，并通过独立实测完成闭环验证。",
+  "tools": [
+    "shell_exec",
+    "web_search",
+    "write_file",
+    "read_file"
+  ],
+  "prompt": "遇到 Ubuntu 网站无法访问、HTTPS 异常或证书续期失败时，按以下流程持续排查和修复：1）确认域名、目标服务器、公网 IP 和当前故障现象；检查 A、AAAA、CNAME 解析，优先排查指向错误或失效的 AAAA 记录。2）检查 nginx 配置语法、监听端口、server_name、默认站点、HTTP 到 HTTPS 跳转及 SNI/Host 匹配，使用 nginx -t 后再安全重载。3）检查进程和端口状态，包括 systemctl、ss、UFW 规则以及云安全组，确认 TCP 80/443 未被错误阻断；不要为了排障盲目关闭全部防火墙。4）分别测试本机回环地址、服务器 IP、域名和指定 Host，使用 curl、openssl、dig 或 nc 收集状态码、响应头、证书链和握手错误，并查看 nginx、UFW 及 Let's Encrypt 日志。5）检查证书签发域、续期配置、webroot 或 DNS 验证方式，运行 certbot renew --dry-run，并确认续期回访所需的 80 端口和跳转链路正常。6）修改前备份配置，只做可回滚的最小修复，每次修改后重新执行相关测试；不要反复让用户代跑可自行完成的命令，仅在缺少凭据、权限或必须执行高风险操作时询问。7）最后从服务器内部与真正独立的公网节点交叉验证 DNS、TCP 80/443、HTTP 跳转、HTTPS 页面、SNI、证书和自动续期，明确列出命令、节点数、状态码和结果，确认全部通过后再宣告完成。",
+  "autoCreated": true,
+  "createdAt": 1790437434821
+}

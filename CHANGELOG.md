@@ -2,61 +2,6 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
-## [Unreleased] - 2026-09-28
-
-本轮补的是**「对外拿不出数据」**和**「README 骗人」**两个硬伤，不改运行时行为。
-
-### 新增：可复现的 Benchmark 体系（`bench/`）
-
-之前对外只能讲架构讲参数，**没有任何可验证数字**。现在有了，分两档：
-
-| 档位 | 覆盖 | 判定 | 成本 |
-|---|---|---|---|
-| Tier 1 | 工具契约、长任务预算、子系统存在性、SSRF 策略 | 确定性，退出码 0 要求 100% | 免费 |
-| Tier 2 | 工具选择、多步执行、指令遵循、错误恢复、诚实性 | 真模型，退出码 0 要求 ≥70% | 烧 token |
-
-- **不用 LLM 裁判。** 每条 Tier-2 断言都由机器验证：文件字节、回复正则、数值相等、工具调用轨迹。
-  换模型跑，分数会诚实地变，不会因为措辞漂移。
-- **诚实性也计分**：编造彩票号码、对「2+2」乱调工具、该写空文件却写了内容，都会扣分。
-- 实测：Tier-1 150/150、Tier-2（deepseek-chat）65/65，全绿。
-
-```bash
-npm run bench:fast      # 仅 Tier-1，免费，可作 CI 门禁
-npm run bench           # Tier-1 + Tier-2
-npm run bench:agentic   # 仅 Tier-2
-npm run verify          # typecheck + 文档门禁 + Tier-1
-```
-
-### 新增：README 防漂移门禁（`scripts/check-docs.mts`）
-
-README 里每个具体数字现在都对源码断言（12 项检查），文档过期直接 CI 失败，不再靠人记。
-
-### 修复：README 大量与源码不符
-
-| 项 | 原文 | 实际 |
-|---|---|---|
-| 内置工具 | 15 | **56** |
-| `index.ts` | 1849 行 | **4861 行 / 244KB** |
-| 前端 | 单文件 1811 行 | **18301 行 / 23 文件** |
-| 消息渠道 | 3 | **9**（补 Discord/Slack/微信/QQ/飞书/WhatsApp） |
-| env 模板 | `.env.example` | **`.env.template`** |
-| 存储 | better-sqlite3 | **sql.js** |
-| 文件名 | `singal.ts` | **signal.ts** |
-
-### 修复：README 存在危险的不实陈述
-
-原文写「沙箱默认开启」。**实际不是**——v1.9.7 起需显式 `SANDBOX_ENABLED=true`，
-否则 `shell_exec` / `code_execute` 在 Docker 不可用时**回退宿主机执行**，文件工具也不受 workspace 约束。
-
-这属于会让用户按错误假设做部署判断的错误，现已改为准确描述，并明确提示公网/多用户部署必须开启沙箱。
-
-### 文档：如实说明 SSRF 策略
-
-云元数据端点（AWS/GCP/Azure/阿里云）会拦，但 **LAN 与 localhost 放行**——这是 v1.9.2 的有意设计，
-因为 Agent 跑在用户本机、必须能访问本地 Ollama。README 与安全测试都按这个真实意图写，并提示公网部署自行评估收紧。
-
----
-
 ## [2.0.28] - 2026-09-25
 
 本轮修的是**「装了但打不开」**这个用户体验断点，并补上一道发布一致性硬门禁。
@@ -255,10 +200,10 @@ PROBE: loginctl executed with args: enable-linger root  <- 错误：真的执行
 
 ```
 [WARN] manual mode: no upload performed. Copy these four files into the server public/ dir:
-  1) <tarball>      ->  http://47.93.157.83:8080/public/lingxi-engine.tar.gz
-  2) <version.txt>  ->  http://47.93.157.83:8080/public/version.txt
-  3) <install.sh>   ->  http://47.93.157.83:8080/public/install.sh
-  4) <install.ps1>  ->  http://47.93.157.83:8080/public/install.ps1
+  1) <tarball>      ->  http://<SERVER_IP>:8080/public/lingxi-engine.tar.gz
+  2) <version.txt>  ->  http://<SERVER_IP>:8080/public/version.txt
+  3) <install.sh>   ->  http://<SERVER_IP>:8080/public/install.sh
+  4) <install.ps1>  ->  http://<SERVER_IP>:8080/public/install.ps1
 ```
 
 > 说明：上一轮我在 `publish-site.ps1` 的注释里写「FTP 分支与 -manual 提示都是对的」，

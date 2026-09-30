@@ -24,15 +24,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:deploy": "node scripts/verify-deploy.cjs",
-    "bench": "tsx bench/run-all.mts",
-    "bench:fast": "tsx bench/run-all.mts --tier1-only",
-    "bench:contract": "tsx bench/tier1-contract.mts",
-    "bench:safety": "tsx bench/tier1-safety.mts",
-    "bench:agentic": "tsx bench/tier2-agentic.mts",
-    "bench:dry": "tsx bench/tier2-agentic.mts --dry",
-    "check:docs": "tsx scripts/check-docs.mts",
-    "verify": "npm run typecheck && npm run check:docs && npm run bench:fast"
+    "verify:deploy": "node scripts/verify-deploy.cjs"
   },
   "bin": {
     "lingxi": "././src/cli/chat.ts"
@@ -53,6 +45,7 @@
     "puppeteer": "^25.3.0"
   },
   "devDependencies": {
+    "@rolldown/binding-win32-x64-msvc": "^1.2.11",
     "@types/express": "^5.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.1.0",

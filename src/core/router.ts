@@ -487,7 +487,15 @@ export class MessageRouter {
       let autoResumeRounds = 0;
 
       if (isTaskMode && !signal?.aborted) {
-        const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '6', 10);
+        // v2.3.0：默认 6 太少。6 轮通常只有几分钟，复杂任务必然到顶，
+        // 而到顶后收尾必然甩一句「输入「继续」」给用户 —— 这就是"一直让我点继续"。
+        // 提到 24 覆盖绝大多数真实任务；上限的唯一作用是防跑飞，不是防停下。
+        // 需要更多/更少时用 TASK_RESUME_ROUNDS 覆盖。
+        const MAX_RESUME_ROUNDS = parseInt(process.env.TASK_RESUME_ROUNDS || '24', 10);
+        // v2.3.0 P0：续跑轮数直接累加在 autoResumeRounds 上（不再用影子变量 resumeRounds）。
+        // 原 bug：块内累加 resumeRounds、块外读 autoResumeRounds，后者永远是 0，
+        // 于是不管后台自动续跑了几轮，收尾文案都打「输入「继续」可从断点恢复执行」——
+        // 也就是「系统自己老实干了 6 轮，然后转头叫用户点继续」。
         let resumeRounds = autoResumeRounds;
         while (
           resumeRounds < MAX_RESUME_ROUNDS &&
@@ -558,6 +566,11 @@ export class MessageRouter {
           abortErr.name = 'AbortError';
           throw abortErr;
         }
+// v2.3.0 P0（关键）：把实际续跑轮数写回外层变量。
+        // 少了这一行，块外 `if (autoResumeRounds > 0)` 永远不成立，
+        // 于是后台自动续跑若干轮之后，收尾仍打「输入「继续」可从断点恢复执行」——
+        // 用户看到的体验就是「一直让我点继续」，其实后台早就在自己跑了。
+        autoResumeRounds = resumeRounds;
       }
         finalContent = result.finalContent;
         // ⭐ v2.1: 任务中断且未确认完成时，在结尾附断点恢复提示（保留进度 + 告知恢复方式）

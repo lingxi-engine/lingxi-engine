@@ -1,7 +1,7 @@
 {
   "schema": "lingxi-bench/1",
-  "generatedAt": "2026-09-28T14:02:00.964Z",
-  "durationMs": 32,
+  "generatedAt": "2026-09-28T14:25:17.862Z",
+  "durationMs": 70,
   "overall": 100,
   "passed": 30,
   "cases": 30,
@@ -11,7 +11,7 @@
     "engineVersion": "2.0.28",
     "pkgVersion": "2.0.28",
     "license": "MIT",
-    "commit": "b0c4117",
+    "commit": "9cd4401",
     "defaultModel": "qwen3.8:27b-32k",
     "taskTimeoutSec": 7200,
     "tier": 1,

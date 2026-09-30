@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -42,6 +42,11 @@
   .tips{font-size:12.5px;color:var(--muted);background:rgba(74,158,255,.06);border:1px solid var(--line);border-radius:9px;padding:10px 14px;margin-top:4px}
   .tips b{color:var(--text)}
   .ic{display:inline;background:#0d1424;border:1px solid var(--line);border-radius:5px;padding:1px 7px;font-size:12px;font-family:Consolas,Menlo,monospace;color:#7ee787}
+  .keyline{background:linear-gradient(90deg,rgba(124,92,252,.14),rgba(74,158,255,.14));border:1px solid rgba(124,92,252,.45);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13.5px;color:var(--text)}
+  .keyline b{color:var(--brand2)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 14px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:rgba(74,158,255,.08);color:var(--text)}
   details{background:linear-gradient(180deg,var(--card),var(--card2));border:1px solid var(--line);border-radius:14px;margin-bottom:14px;overflow:hidden}
   summary{cursor:pointer;padding:18px 26px;font-size:15.5px;font-weight:700;list-style:none;display:flex;align-items:center;gap:10px}
   summary::-webkit-details-marker{display:none}
@@ -53,9 +58,6 @@
   .dbody ul,.dbody ol{padding-left:22px;margin-bottom:10px}
   .dbody li{margin-bottom:6px}
   .dbody pre{background:#0d1424;border:1px solid var(--line);border-radius:9px;padding:12px 14px;font-family:Consolas,Menlo,monospace;font-size:12.5px;color:#7ee787;overflow-x:auto;margin:8px 0 14px;white-space:pre}
-  table{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0 14px}
-  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
-  th{background:rgba(74,158,255,.08);color:var(--text)}
   .foot{text-align:center;color:#5b6577;font-size:12px;margin-top:32px}
 </style>
 </head>
@@ -63,7 +65,7 @@
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
   <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.28</span></h1>
-  <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署</p>
+  <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
 
@@ -82,13 +84,13 @@
       <p>自动识别 Apple Silicon / Intel 芯片，自动安装 Homebrew 与 Node.js，配置 LaunchAgent 开机自启，装完自动打开 <b>http://localhost:3456</b>。</p>
       <div class="cmdbox">
         <div class="label">打开「终端」（Terminal），粘贴执行：</div>
-        <code class="cmd" id="cmd-mac">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-mac">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash</code>
         <button class="copy" data-target="cmd-mac">复制</button>
       </div>
       <div class="tips">
         💡 <b>常用子命令</b>（管道执行时参数跟在 <span class="ic">bash -s --</span> 后面）：<br>
-        · 解除 dmg 应用拦截：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</b><br>
-        · 卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b><br>
+        · 解除 dmg 应用拦截：<b>curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash -s -- --fix-app</b><br>
+        · 卸载：<b>curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash -s -- --uninstall</b><br>
         · 关闭开机自启：加 <b>--no-autostart</b>；先演练不实际安装：加 <b>--dry-run</b>
       </div>
     </div>
@@ -101,17 +103,17 @@
       <p>支持 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9，自动安装 Node.js 20 与全部依赖。DGX（DGX OS 即 Ubuntu）同样适用，桌面端自动配置应用菜单 + systemd 用户服务自启。</p>
       <div class="cmdbox">
         <div class="label">桌面端 / DGX 安装（用户态，自动配置桌面入口与自启）：</div>
-        <code class="cmd" id="cmd-linux">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-linux">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash</code>
         <button class="copy" data-target="cmd-linux">复制</button>
       </div>
       <div class="cmdbox">
         <div class="label">云服务器部署（/opt 目录 + PM2 托管，对外服务用这个）：</div>
-        <code class="cmd" id="cmd-deploy">curl -fsSL https://lingxi-engine.com/install.sh | bash</code>
+        <code class="cmd" id="cmd-deploy">curl -fsSL http://<SERVER_IP>:8080/install.sh | bash</code>
         <button class="copy" data-target="cmd-deploy">复制</button>
       </div>
       <div class="tips">
         💡 装完桌面端会得到：<b>~/.local/bin/lingxi</b> 命令行入口 + 应用菜单图标 + 开机自启（无 systemd 自动降级 XDG autostart）。<br>
-        卸载：<b>curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</b>
+        卸载：<b>curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash -s -- --uninstall</b>
       </div>
     </div>
   </div>
@@ -121,38 +123,77 @@
     <div class="card">
       <h2>🖥️ Windows 桌面便携版</h2>
       <p>支持 Windows 10 1809+ / Windows 11，便携版开箱即用，集成 15 种 AI 模型，无需命令行。</p>
-      <a class="btn btn-primary" href="/lingxi-engine-desktop-1.1.0-portable.exe" download="lingxi-engine-desktop-1.1.0-portable.exe">⬇ 下载 灵犀引擎.exe</a>
-      <a class="btn btn-ghost" href="/install.ps1" download>⬇ PowerShell 安装脚本</a>
+      <a class="btn btn-primary" href="/public/灵犀引擎-desktop-1.1.0-portable.exe" download>⬇ 下载 灵犀引擎.exe</a>
+      <a class="btn btn-ghost" href="/public/install.ps1" download>⬇ PowerShell 安装脚本</a>
       <div class="cmdbox" style="margin-top:18px">
         <div class="label">或用 PowerShell 一行命令（管理员）：</div>
-        <code class="cmd" id="cmd-win">irm https://lingxi-engine.com/install.ps1 | iex</code>
+        <code class="cmd" id="cmd-win">irm http://<SERVER_IP>:8080/install.ps1 | iex</code>
         <button class="copy" data-target="cmd-win">复制</button>
       </div>
       <div class="tips">💡 安装完成后运行 <b>start.bat</b>，浏览器打开 <b>http://localhost:3456</b>。</div>
     </div>
   </div>
 
-  </div>
-
   <!-- ============ Android ============ -->
   <div class="panel" id="panel-android">
     <div class="card">
-      <h2>🤖 灵犀引擎 Android 版 <span class="ver">v1.0.1</span></h2>
-      <p>官方手机版 App（约 0.05MB，Android 7.0+）。安装后直连灵犀云端引擎，聊天、智能体、工作流、技能市场全功能同步，无需配置。</p>
-      <a class="btn btn-primary" href="/lingxi-app-v1.0.1.apk" download>⬇️ 下载 APK 安装包</a>
-      <a class="btn btn-ghost" href="/lingxi-app.apk" download>🔗 通用链接（永远最新）</a>
+      <h2>🤖 灵犀引擎 Android 版 <span class="ver">v1.1.0</span></h2>
+      <p>手机版灵犀引擎，Android 7.0+。它<b>不在手机上跑模型</b>，本身不产生任何算力——它是<b>你这个账号的遥控器</b>。</p>
+      <div class="keyline">🔑 <b>一个账号，处处操控。</b>用和电脑端／本地部署／云端服务器<b>完全相同的账号</b>登录，手机里出现的就是<b>同一个灵犀引擎</b>：同一套记忆、同一批智能体、同一个工作区和文件、同一批工具能力，一个都不少。</div>
+      <a class="btn btn-primary" href="/public/lingxi-app.apk" download>⬇️ 下载 APK（v1.1.0）</a>
+      <table>
+        <tr><th>能力</th><th>在哪里执行</th><th>说明</th></tr>
+        <tr><td>模型推理／算力</td><td>电脑端或云端服务器</td><td>手机端不跑模型、不消耗手机算力</td></tr>
+        <tr><td>工具调用（搜索／文件／终端／计算）</td><td>电脑端或云端服务器</td><td>在引擎所在机器上真实执行，手机只看结果</td></tr>
+        <tr><td>记忆／智能体／会话／工作区</td><td>同一账号同一份数据</td><td>不是副本，是同一份，上下文完全互通</td></tr>
+        <tr><td>长任务接管</td><td>引擎侧持续运行</td><td>电脑上跑的任务，手机上看进度、继续下指令</td></tr>
+        <tr><td>多代理协作／子任务</td><td>引擎侧执行</td><td>和桌面端完全一致</td></tr>
+      </table>
+      <p style="margin-top:14px">换句话说：你在公司电脑上部署的灵犀、家里笔记本上的灵犀、云服务器上的灵犀，手机都能接管。手机上像不像在自己电脑上用？<b>是，因为它本来就是在操作那台机器。</b></p>
+      <div class="card" style="margin-top:16px;background:#11161f;border:1px solid #243040">
+        <h3 style="margin-top:0">🎯 遥控你电脑上那台引擎（自部署）</h3>
+        <p>App 内可随时切换要连的引擎。顶栏显示当前地址，点一下就能改：</p>
+        <table>
+          <tr><th>填什么</th><th>遥控哪台</th></tr>
+          <tr><td><span class="ic">http://192.168.1.10:3456</span></td><td>家里／公司电脑上的自部署引擎（需同一 WiFi）</td></tr>
+          <tr><td><span class="ic">https://你的域名</span></td><td>公网引擎</td></tr>
+          <tr><td>留空 / 恢复官方云端</td><td>官方云引擎</td></tr>
+        </table>
+        <div class="tips" style="margin-top:10px">🔄 <b>换地址 = 换引擎 = 换一套会话。</b>切换时 App 会自动清掉旧登录态，请用新引擎的账号重新登录。</div>
+      </div>
       <div class="tips" style="margin-top:16px">📌 <b>安装提示：</b>浏览器下载后打开 APK，如提示「未知来源应用」，在弹窗里选择「允许本次安装」即可（系统签名测试包，属正常提示）。安装后桌面出现「灵犀引擎」紫色星形图标。</div>
-      <div class="tips" style="margin-top:10px">💡 不想装 App？用手机浏览器直接打开 <b>https://lingxi-engine.com/m/</b> 也能完整使用（已做移动端适配）。</div>
+      <div class="tips" style="margin-top:10px">🔐 <b>同账号才能操控同一个灵犀。</b>必须用与电脑端／本地部署／云端<b>一致</b>的账号密码登录，登录后手机端才与引擎接通。</div>
+      <div class="tips" style="margin-top:10px">💡 不想装 App？用手机浏览器直接打开 <b>http://<SERVER_IP>/m/</b> 也能完整使用同一账号的引擎（已做移动端适配），并可「添加到主屏幕」。</div>
     </div>
   </div>
 
   <!-- ============ iOS ============ -->
   <div class="panel" id="panel-ios">
     <div class="card">
-      <h2>📱 iPhone / iPad</h2>
-      <p>iOS 版正在通过 TestFlight 内测通道准备中。现在即可用 Safari 直接访问，体验与 App 几乎一致：</p>
-      <a class="btn btn-primary" href="https://lingxi-engine.com/m/" rel="noopener">🌐 用 Safari 打开灵犀引擎</a>
-      <div class="tips" style="margin-top:16px">⭐ <b>加到主屏幕：</b>在 /m/ 页面打开后点底栏「分享」→「添加到主屏幕」，即可获得 App 级全屏体验（独立图标 + 无地址栏）。</div>
+      <h2>📱 灵犀引擎 iOS 版 <span class="ver">v1.1.0</span></h2>
+      <p>iPhone / iPad 版，同样<b>不在手机上跑模型</b>，同样是你这个账号的遥控器。功能与 Android 版<b>完全一致</b>，不是阉割版。</p>
+      <div class="keyline">🔑 <b>一个账号，处处操控。</b>用和电脑端／本地部署／云端服务器<b>完全相同的账号</b>登录，iOS 里出现的就是<b>同一个灵犀引擎</b>：同一套记忆、同一批智能体、同一个工作区和文件、同一批工具能力，一个都不少。</div>
+      <a class="btn btn-primary" href="http://<SERVER_IP>/m/" rel="noopener" target="_blank">🌐 立即用 Safari 打开</a>
+      <a class="btn btn-ghost" href="/public/lingxi-app-ios.ipa" download>⬇️ 下载 iOS 签名包（TestFlight）</a>
+      <div class="card" style="margin-top:16px;background:#11161f;border:1px solid #243040">
+        <h3 style="margin-top:0">⭐ 推荐：加到主屏幕（免签名，永久可用）</h3>
+        <p>1. 点上方「立即用 Safari 打开」<br>
+        2. 底栏点<b>分享</b> → <b>添加到主屏幕</b><br>
+        3. 桌面出现紫色星形图标，点开即全屏运行</p>
+        <div class="tips" style="margin-top:10px">这一步不经过 App Store，不签名，不过期，随时可用。<b>功能与原生 App 一样完整。</b></div>
+      </div>
+      <div class="card" style="margin-top:16px;background:#11161f;border:1px solid #243040">
+        <h3 style="margin-top:0">🎯 遥控你电脑上那台引擎（自部署）</h3>
+        <p>打开 <b>/m/</b> 页面后，点顶栏（手机号／地址栏下方那一条）即可切换要连的引擎：</p>
+        <table>
+          <tr><th>填什么</th><th>遥控哪台</th></tr>
+          <tr><td><span class="ic">http://192.168.1.10:3456</span></td><td>家里／公司电脑上的自部署引擎（需同一 WiFi）</td></tr>
+          <tr><td><span class="ic">https://你的域名</span></td><td>公网引擎</td></tr>
+        </table>
+        <div class="tips" style="margin-top:10px">🔄 <b>换地址 = 换引擎 = 换一套会话。</b>切换时会清掉旧登录态，请用新引擎的账号重新登录。</div>
+      </div>
+      <div class="tips" style="margin-top:16px">🔐 <b>同账号才能操控同一个灵犀。</b>必须用与电脑端／本地部署／云端<b>一致</b>的账号密码登录，登录后手机端才与引擎接通。</div>
+      <div class="tips" style="margin-top:10px">📌 <b>关于 TestFlight 包：</b>需要 Apple 开发者账号（$99/年）签名。当前签名包<b>尚未上架</b>，下载链接上线后可用。推荐直接用上面的「添加到主屏幕」方案。</div>
     </div>
   </div>
 
@@ -160,8 +201,8 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/lingxi-engine-v2.0.28.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.28</span></a>
-    <a class="btn btn-ghost" href="/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.28.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.28</span></a>
+    <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
   <!-- ============ 部署文档 ============ -->
@@ -171,11 +212,11 @@
       <h3>系统要求与部署命令总览</h3>
       <table>
         <tr><th>平台</th><th>要求</th><th>部署命令</th></tr>
-        <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm https://lingxi-engine.com/install.ps1 | iex</span></td></tr>
-        <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
-        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash</span></td></tr>
+        <tr><td>Windows</td><td>Win10 1809+ / Win11，PowerShell 5.1+，磁盘 ≥ 2GB</td><td><span class="ic">irm http://<SERVER_IP>:8080/install.ps1 | iex</span></td></tr>
+        <tr><td>macOS</td><td>macOS 12+，Apple Silicon 或 Intel，磁盘 ≥ 2GB</td><td><span class="ic">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux 桌面</td><td>Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9</td><td><span class="ic">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash</span></td></tr>
+        <tr><td>Linux 服务器</td><td>同上，建议 1 核 2GB 起步</td><td><span class="ic">curl -fsSL http://<SERVER_IP>:8080/install.sh | bash</span></td></tr>
+        <tr><td>NVIDIA DGX</td><td>DGX OS（Ubuntu 基底），自带 CUDA 驱动</td><td><span class="ic">curl -fsSL http://<SERVER_IP>:8080/install.sh | bash</span></td></tr>
         <tr><td>CentOS 7</td><td>❌ 不支持（glibc 2.17 过旧）</td><td>—</td></tr>
       </table>
 
@@ -217,13 +258,23 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     <div class="dbody">
       <h3>安装类</h3>
       <p><b>Q：curl 命令执行后没反应 / 卡住？</b><br>
-      A：检查网络能否访问 <span class="ic">https://lingxi-engine.com</span>（公司内网可能拦截非常用端口）；macOS 用户确认用的是「终端」而非 IDE 内置受限终端。</p>
+      A：检查网络能否访问 <span class="ic">http://<SERVER_IP>:8080</span>（公司内网可能拦截非常用端口）；macOS 用户确认用的是「终端」而非 IDE 内置受限终端。</p>
       <p><b>Q：macOS 上 dmg 应用被系统拦截？</b><br>
-      A：执行 <span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --fix-app</span> 一键解除 Gatekeeper 拦截。</p>
+      A：执行 <span class="ic">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash -s -- --fix-app</span> 一键解除 Gatekeeper 拦截。</p>
       <p><b>Q：Linux 提示 glibc too old？</b><br>
       A：系统过旧（如 CentOS 7），请升级到 Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8+。</p>
       <p><b>Q：npm 安装很慢或超时？</b><br>
       A：切换国内镜像 <span class="ic">npm config set registry https://registry.npmmirror.com</span> 后重跑脚本。</p>
+
+      <h3>移动端类</h3>
+      <p><b>Q：手机端需要配置什么吗？</b><br>
+      A：不需要配置模型、不需要装运行环境。手机只做显示和下发指令，<b>用同一个账号登录即可</b>。</p>
+      <p><b>Q：手机端会不会消耗手机算力／手机会不会发烫？</b><br>
+      A：不会。模型推理和工具执行全部发生在引擎所在机器（你的电脑或云端服务器）上，手机不承担计算。</p>
+      <p><b>Q：手机登录后为什么和我电脑上的会话不一样？</b><br>
+      A：多半是登录了<b>不同账号</b>。请确认手机端与电脑端使用完全相同的账号密码；另外若引擎是本地／自部署的，需确认手机访问的正是那台引擎。</p>
+      <p><b>Q：电脑上正在跑的任务，手机能接管吗？</b><br>
+      A：能。同账号下任务状态共享，手机上可查看进度、继续下发指令，任务仍在引擎侧持续运行。</p>
 
       <h3>运行类</h3>
       <p><b>Q：端口 3456 被占用？</b><br>
@@ -233,13 +284,14 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       <p><b>Q：开机没有自启？</b><br>
       A：macOS 检查「系统设置 → 通用 → 登录项」；Linux 检查 <span class="ic">systemctl --user status lingxi-engine</span>；重跑安装脚本可修复。</p>
       <p><b>Q：怎么彻底卸载？</b><br>
-      A：<span class="ic">curl -fsSL https://lingxi-engine.com/install.sh | bash -s -- --uninstall</span>，会清理程序文件、自启配置和菜单图标（保留用户数据）。</p>
+      A：<span class="ic">curl -fsSL http://<SERVER_IP>:8080/public/install.sh | bash -s -- --uninstall</span>，会清理程序文件、自启配置和菜单图标（保留用户数据）。</p>
       <p><b>Q：WSL 里能跑吗？</b><br>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
 
   <div class="foot">灵犀引擎 <span class="ver">v2.0.28</span> · <a href="/">返回首页</a></div>
+</div>
 
 <script>
 (function() {

@@ -10,8 +10,8 @@ android {
         applicationId "com.lingxi.engine"
         minSdk 24
         targetSdk 34
-        versionCode 2
-        versionName "1.0.1-webview"
+        versionCode 3
+        versionName "1.1.0-remote"
     }
 
     buildTypes {
@@ -20,6 +20,7 @@ android {
             signingConfig signingConfigs.debug   // 测试包用 debug 签名，官网直装验证用
         }
     }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -27,4 +28,5 @@ android {
 }
 
 dependencies {
+    // 刻意保持零第三方依赖：App 内不含推理运行时，全部算力在引擎端
 }

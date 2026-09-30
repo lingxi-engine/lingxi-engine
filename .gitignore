@@ -321,3 +321,20 @@ src/skills/ai-market-integration.json
 # local backup / staging archives (marketplace source, rollback snapshots) - never commit
 stage/
 _stage/
+
+# ── 2026-09-30 开源收尾：构建产物 / 站点包 / 临时转储 ──
+# 这些是部署时的中间产物，不该进仓库（base64 包里可能裹进未来的配置）
+deploy/*.tar.gz
+deploy/*.tar.gz.b64
+deploy/**/*.tar.gz.b64
+deploy/*.tgz
+deploy/site.tar.gz*
+deploy/site.tar
+deploy/_oneshot-template.sh
+deploy/_synbad.sh
+deploy/_verify-syntax.sh
+deploy/FIX-443-NOW.sh
+deploy/RESCUE-443-BROKEN.sh
+*.tar.gz.b64
+*.tgz
+workspace/*.tmp.gz

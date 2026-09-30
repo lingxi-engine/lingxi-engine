@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_bg">#0F1115</color>
+    <color name="lx_bar">#161b22</color>
+    <color name="lx_accent">#7c5cff</color>
+    <color name="lx_text">#e6edf3</color>
+    <color name="lx_text_dim">#7c8590</color>
+    <color name="lx_bg">#0d1117</color>
 </resources>

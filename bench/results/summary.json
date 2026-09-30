@@ -1,9 +1,9 @@
 {
   "schema": "lingxi-bench-summary/1",
-  "generatedAt": "2026-09-28T14:02:00.976Z",
+  "generatedAt": "2026-09-28T14:25:17.887Z",
   "engine": {
     "version": "2.0.28",
-    "commit": "b0c4117",
+    "commit": "9cd4401",
     "toolCount": 56
   },
   "tier1": {

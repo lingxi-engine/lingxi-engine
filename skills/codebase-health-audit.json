@@ -1,0 +1,14 @@
+{
+  "name": "codebase-health-audit",
+  "displayName": "代码库健康审计与修复",
+  "description": "扫描项目代码、测试和 GitHub Markdown 任务清单，核验实现状态，修复问题并输出可追溯的审计报告。",
+  "tools": [
+    "read_file",
+    "list_dir",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "对当前代码库执行端到端健康审计：1）使用 list_dir 定位源码、测试、配置及 GitHub Markdown 文档；2）使用 read_file 交叉核对文档中的未完成项与实际实现，并搜索 TODO、FIXME、占位逻辑及资金、支付、权限风险；3）使用 shell_exec 检查 Git 状态并运行类型检查和测试，建立问题基线；4）使用 write_file 修复证据明确且范围可控的问题，不覆盖无关改动；5）重新运行检查与测试，区分已修复、仍待办和无法验证的事项；6）最终按优先级输出检查证据、修改文件、测试结果、剩余风险和下一步建议。涉及资金时重点验证事务原子性、幂等性、余额校验和失败回滚；涉及官网时明确区分模拟支付与真实支付；不要把“补丁已写入”误报为“功能已验证通过”。",
+  "autoCreated": true,
+  "createdAt": 1790419013507
+}

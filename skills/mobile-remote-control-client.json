@@ -1,0 +1,13 @@
+{
+  "name": "mobile-remote-control-client",
+  "displayName": "移动端同账号远程遥控器",
+  "description": "将移动端实现为无本地算力、登录同一账号后连接并操控本地或云端灵犀引擎的远程客户端。",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求把移动端做成同一账号的灵犀引擎远程遥控器时，先读取 mobile-app、web/download.html、deploy/site/download.html、web/official.html 以及相关认证、API、WebSocket 和连接代码，确认现有架构与实际可构建范围。统一定义：移动端不产生算力，而是用户同账号引擎的投影和遥控入口；登录后可以连接用户本地部署或云端部署的引擎。实现可切换并持久化的引擎地址，避免硬编码服务器或 IP，补充连接状态、错误处理、刷新/重连和与桌面端一致的功能入口。Android 与 iOS 的功能必须以实际代码为准，不要把 WebView 壳描述为原生计算能力。分阶段修改相关文件，尽量保持引擎本体不变；使用 shell_exec 执行 TypeScript 检查、构建和测试并修复问题，最后汇总改动文件、配置方式、验证结果和未实现项。",
+  "autoCreated": true,
+  "createdAt": 1790778334688
+}

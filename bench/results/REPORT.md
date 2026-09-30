@@ -1,7 +1,7 @@
 # LingXi Engine — Benchmark Report
 
-- engine: `2.0.28` (commit `b0c4117`)
-- generated: 2026-09-28T14:02:00.976Z
+- engine: `2.0.28` (commit `9cd4401`)
+- generated: 2026-09-28T14:25:17.887Z
 - built-in tools: **56**
 
 ## Headline

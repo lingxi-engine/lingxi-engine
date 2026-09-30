@@ -1,0 +1,14 @@
+{
+  "name": "repository-health-audit",
+  "displayName": "项目健康审计与修复",
+  "description": "审计代码仓库的构建、测试、文档待办和关键业务链路，并安全修复、验证和汇总结果。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "shell_exec",
+    "write_file"
+  ],
+  "prompt": "当用户要求检查项目健康、梳理未完成任务、审计关键业务逻辑或修复问题时：1. 使用 list_dir 和 read_file 了解目录、README、版本文件、任务文档及相关实现；2. 使用 shell_exec 检查 Git 状态，并运行 TypeScript 编译、测试、lint 或项目现有验证命令；3. 交叉核对文档声明与代码实现，按 P0/P1/P2 列出缺失、风险和证据；4. 修改前确认影响范围，使用 write_file 或补丁方式实施最小改动，避免覆盖用户已有变更；5. 修改后重新运行完整验证，检查 Git diff，并明确区分“已修复”“仍待办”和“无法验证”；6. 最终输出简洁报告，列出问题、证据、改动、验证结果、提交状态及下一步建议。遇到限流或中断时保留进度并从断点继续，不得在未验证时宣称完成。",
+  "autoCreated": true,
+  "createdAt": 1790409051368
+}

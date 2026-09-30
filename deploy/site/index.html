@@ -130,6 +130,11 @@ section{padding:80px 24px;max-width:1140px;margin:0 auto}
 .step p{color:var(--text2);font-size:14px}
 
 /* ═══ 能力矩阵 ═══ */
+.remote-key{
+  max-width:820px;margin:0 auto 32px;padding:16px 22px;border-radius:12px;
+  background:var(--bg2);border:1px solid var(--line);text-align:center;font-size:15px;line-height:1.7;
+}
+.remote-key b{color:var(--accent)}
 .caps{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:20px}
 .cap{
   background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);
@@ -282,6 +287,7 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
   <div class="nav-links">
     <a href="#how" data-i18n="nav.how">How it works</a>
     <a href="#caps" data-i18n="nav.features">Features</a>
+    <a href="#remote" data-i18n="nav.remote">Remote</a>
     <a href="#deploy" data-i18n="nav.deploy">Why open source</a>
     <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
     <a href="#faq" data-i18n="nav.faq">FAQ</a>
@@ -386,7 +392,47 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
       <p data-i18n="caps.6d">Local document indexing plus vectorised retrieval.</p>
       <span class="cap-tag live" data-i18n="tag.live">Live</span>
     </div>
+    <div class="cap">
+      <div class="cap-i">📱</div>
+      <h3 data-i18n="caps.7t">Remote control from your phone</h3>
+      <p data-i18n="caps.7d">The phone runs no model. Sign in with the same account and you are controlling the very same agent on your own machine or server.</p>
+      <span class="cap-tag live" data-i18n="tag.live">Live</span>
+    </div>
   </div>
+</section>
+
+<!-- ═══════ 手机远程遥控 ═══════ -->
+<section id="remote">
+  <h2 class="sec-title" data-i18n="remote.title">Your phone is a remote control for your agent</h2>
+  <p class="sec-sub" data-i18n="remote.sub">The phone itself produces zero compute. It is a projection of your account, not a second agent.</p>
+  <div class="remote-key" data-i18n-html="remote.key"></div>
+  <div class="caps">
+    <div class="cap">
+      <div class="cap-i">🧠</div>
+      <h3 data-i18n="remote.a1t">Same intelligence, same account</h3>
+      <p data-i18n="remote.a1d">One memory, one set of agents, one workspace and one file tree. Not a copy — the same thing.</p>
+    </div>
+    <div class="cap">
+      <div class="cap-i">⚙️</div>
+      <h3 data-i18n="remote.a2t">Compute stays on your machine</h3>
+      <p data-i18n="remote.a2d">Model inference and every tool call run on your PC or your server. The phone only renders and sends commands.</p>
+    </div>
+    <div class="cap">
+      <div class="cap-i">⏱️</div>
+      <h3 data-i18n="remote.a3t">Take over long tasks anywhere</h3>
+      <p data-i18n="remote.a3d">A job started on your desktop keeps running on the engine. Watch its progress from the phone and keep steering it.</p>
+    </div>
+    <div class="cap">
+      <div class="cap-i">🛠️</div>
+      <h3 data-i18n="remote.a4t">Identical feature set</h3>
+      <p data-i18n="remote.a4d">Chat, agents, workflows, files, tools, multi-agent collaboration — exactly what you get when self-hosted.</p>
+    </div>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:28px;justify-content:center;flex-wrap:wrap">
+    <a href="/download.html" class="btn btn-primary btn-lg" data-i18n="remote.cta1">Get the Android app</a>
+    <a href="/download.html" class="btn btn-ghost btn-lg" data-i18n="remote.cta2">Open in Safari on iPhone</a>
+  </div>
+  <p class="sec-sub" style="margin:22px auto 0;max-width:720px;font-size:13.5px" data-i18n="remote.note">Same account required. If you sign in with a different one, you are of course talking to a different agent.</p>
 </section>
 
 <!-- ═══════ 对比表 ═══════ -->
@@ -681,6 +727,23 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'caps.5d': '能看图、读文档，截图也能直接理解。',
     'caps.6t': 'Private knowledge base',
     'caps.6d': 'Local document indexing plus vectorised retrieval, so your AI answers from your own materials instead of hallucinating. Data never leaves your host.',
+    'caps.7t': 'Remote control from your phone',
+    'caps.7d': 'The phone runs no model at all. Sign in with the same account and you are driving the exact same agent running on your own machine or server.',
+    'nav.remote': 'Remote',
+    'remote.title': 'Your phone is a remote control for your agent',
+    'remote.sub': 'The phone itself produces zero compute. It is a projection of your account, not a second agent.',
+    'remote.key': '🔑 <b>One account, control it anywhere.</b> Sign in on the phone with <b>exactly the same account</b> you use on desktop or on your server, and what you get is <b>the same LingXi agent</b> — not a copy of it.',
+    'remote.a1t': 'Same intelligence, same account',
+    'remote.a1d': 'One memory, one set of agents, one workspace and one file tree. Not a copy — the same thing.',
+    'remote.a2t': 'Compute stays on your machine',
+    'remote.a2d': 'Model inference and every tool call run on your PC or your server. The phone only renders and sends commands.',
+    'remote.a3t': 'Take over long tasks anywhere',
+    'remote.a3d': 'A job started on your desktop keeps running on the engine. Watch its progress from the phone and keep steering it.',
+    'remote.a4t': 'Identical feature set',
+    'remote.a4d': 'Chat, agents, workflows, files, tools, multi-agent collaboration — exactly what you get when self-hosted.',
+    'remote.cta1': 'Get the Android app',
+    'remote.cta2': 'Open in Safari on iPhone',
+    'remote.note': 'Same account required. If you sign in with a different one, you are of course talking to a different agent.',
 
     'tag.live': 'Live',
     'tag.soon': 'Simulated settlement · testing',
@@ -724,7 +787,7 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'dep.c3t': 'Relatively open policy',
     'dep.c3d': 'Open-source and self-hosted: your data stays on your own machine. No account required for local use.',
     'dep.c4t': 'Why not mainland China',
-    'dep.c4d': '你可以部署到任何地方：自己的云主机、自己的服务器，甚至纯本地环境。',,
+    'dep.c4d': '你可以部署到任何地方：自己的云主机、自己的服务器，甚至纯本地环境。',
     'dep.n1t': 'Please note',
     'dep.n1d': 'Self-hosting means <b>you are in full control</b>: the data, the model keys and the deployment. Always follow the local data-protection rules that apply to you. ',
     'dep.n2t': 'Open-source nature is unchanged',
@@ -741,7 +804,7 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'faq.title': 'Frequently asked questions',
     'faq.sub': 'Straight answers.',
     'faq.q1': '使用引擎需要付费吗？',
-    'faq.a1': '不用。引擎本身是 MIT 许可的开源软件，你只需付濠你自己选的模型 API 费用（用本地模型则完全免费）。',
+    'faq.a1': '不用。引擎本身是 MIT 许可的开源软件，你只需支付你自己选的模型 API 费用（用本地模型则完全免费）。',
     'faq.q2': 'Does the engine send my files to a third party?',
     'faq.a2': 'It depends on which model you connect. Use a local model and nothing leaves your machine.',
     'faq.q3': 'Do I have to use a hosted server?',
@@ -797,7 +860,7 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
 
   /* ═══════════════ 简体中文 ═══════════════ */
   var zh = {
-    'meta.title': '灵犀引擎 — 你的 AI 不只是聊天，是一个能接活、能收钱的人',
+    'meta.title': '灵犀引擎 — 你的 AI 不只是聊天，是一个真能干活的人',
     'meta.desc': '灵犀引擎：开源、可自托管的多模态 AI 智能体。文字、图片和文档都是等价输入，支持工具调用、长期记忆与知识库，跑在你自己的机器上。',
     'meta.keywords': 'AI智能体、多模态AI智能体、开源AI、本地部署、自托管AI、灵犀引擎',
 
@@ -814,10 +877,10 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'nav.community': '社区',
 
     'hero.badge': 'MIT 开源 · 完全自托管',
-    'hero.h1': '你的 AI 不只是聊天，是一个能接活、能收钱的人',
+    'hero.h1': '你的 AI 不只是聊天，是一个真能干活的人',
     'hero.sub': '跑在你自己机器上的开源多模态 AI 智能体。开源、MIT 许可、数据不出机。',
     'hero.cta1': '免费下载试用',
-    'hero.cta2': '先看看怎么赚钱',
+    'hero.cta2': '看看怎么用',
     'hero.note1': '开源 · MIT 许可 · 本地部署 · 数据完全自持',
     'hero.note2': '数据永远留在你自己的机器上',
 
@@ -825,15 +888,15 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'honest.p1': '<b class="warn">灵犀引擎是一个公网上、可自托管的多模态 AI 智能体。</b>它跑在你自己的电脑或服务器上：文字、图片和文档都是等价的输入。工具调用、长期记忆、知识库检索和多渠道接入都已完成实现并有自动化测试。<b>你的数据根本不必离开你的机器。</b>',
     'honest.p2': '引擎本体 <b>MIT 许可、免费开源</b>，你可以在任意机器或服务器上自建部署。如果你选择接入第三方模型 API，数据会进入该提供方的服务器；接入本地模型则数据不出你的机器。<b>本平台不收取任何平台费用</b>。',
 
-    'flow.title': 'AI 怎么帮你赚钱',
-    'flow.sub': '四步，跑起你自己的多模态 AI 智能体。',
-    'flow.s1t': '注册并绑定你的 AI',
+    'flow.title': '四步启动你的 AI 智能体',
+    'flow.sub': '从下载到完成，四步搭建多模态智能体。',
+    'flow.s1t': '下载安装',
     'flow.s1d': '一个包，不需要注册就能开始。你的智能体完全生活在你自己的机器上。',
-    'flow.s2t': '发布你的技能',
+    'flow.s2t': '接入模型',
     'flow.s2d': '任何模型 API 都行，也可以用本地模型；你不在的时候它也在干派。',
     'flow.s3t': '训练工具',
-    'flow.s3d': '对公开任务报价。合同一旦签订预算即锁定，交付按验收标准判定。',
-    'flow.s4t': '验收收钱',
+    'flow.s3d': '文件、浏览器、命令行，以及你自己的技能。',
+    'flow.s4t': '随时随地用',
     'flow.s4d': '随时随地在手机或电脑上和它聊天，你不在的时候它也在干派。',
 
     'caps.title': '一个能真干派的智能体运行时，跑在你自己的机器上',
@@ -850,6 +913,23 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'caps.5d': '能看图、读文档，截图也能直接理解。',
     'caps.6t': '私人知识库',
     'caps.6d': '本地文档索引 + 向量化检索，让 AI 基于你的资料回答，数据不出本机。',
+    'caps.7t': '手机远程遥控',
+    'caps.7d': '手机本身不跑任何模型。用同一个账号登录，你操控的就是跑在自己电脑或服务器上的那个灵犀引擎。',
+    'nav.remote': '手机遥控',
+    'remote.title': '手机，就是你灵犀引擎的遥控器',
+    'remote.sub': '手机端本身不产生任何算力，它是同一个账号的投影，而不是第二个智能体。',
+    'remote.key': '🔑 <b>一个账号，处处操控。</b>手机端用<b>和电脑端／服务器完全相同的账号</b>登录，拿到的就是<b>同一个灵犀引擎</b>——不是它的复印件。',
+    'remote.a1t': '智能是同一份',
+    'remote.a1d': '同一套记忆、同一批智能体、同一个工作区和文件树。不是副本，就是同一个。',
+    'remote.a2t': '算力留在引擎那边',
+    'remote.a2d': '模型推理和每一次工具调用都发生在你的电脑或服务器上，手机只负责显示和下发指令。',
+    'remote.a3t': '长任务随时接管',
+    'remote.a3d': '电脑上启动的任务继续在引擎侧运行，手机上看进度、继续指挥。',
+    'remote.a4t': '功能一个不落',
+    'remote.a4d': '对话、智能体、工作流、文件、工具、多代理协作——和自部署时完全一致。',
+    'remote.cta1': '获取 Android 客户端',
+    'remote.cta2': 'iPhone 用 Safari 打开',
+    'remote.note': '需要同一个账号。如果手机登录的是另一个账号，那当然就是在跟另一个智能体说话了。',
 
     'tag.live': '已上线',
     'tag.soon': '开源自托管',
@@ -859,41 +939,41 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'cmp.h1': '能力项',
     'cmp.h2': '业务规则',
     'cmp.h3': '状态',
-    'cmp.r1t': '任务发布',
-    'cmp.r1d': '真扣雇主预算，余额不足直接拒绝',
+    'cmp.r1t': '多模态输入',
+    'cmp.r1d': '文字、图片、文档都是一等输入',
     'cmp.r1s': '已跑通',
-    'cmp.r2t': '预算 vs 报价',
+    'cmp.r2t': '工具调用',
     'cmp.r2d': '文件、浏览器、命令行，以及自定义技能',
     'cmp.r2s': '已跑通',
-    'cmp.r3t': '多模态输入',
+    'cmp.r3t': '长期记忆',
     'cmp.r3d': '跨会话、跨重启仍然记得你',
     'cmp.r3s': '已跑通',
-    'cmp.r4t': '争议仲裁',
+    'cmp.r4t': '知识库',
     'cmp.r4d': '本地文档索引与向量检索',
     'cmp.r4s': '已跑通',
     'cmp.r5t': '模型切换',
-    'cmp.r5d': '任意齐序的 OpenAI 兼容 API，以及本地模型',
+    'cmp.r5d': '任意兼容的 OpenAI 兼容 API，以及本地模型',
     'cmp.r5s': '已跑通',
-    'cmp.r6t': '免费使用',
+    'cmp.r6t': '多渠道接入',
     'cmp.r6d': 'Telegram、WhatsApp、Discord、Slack 等多种渠道',
-    'cmp.r6s': '测试中',
-    'cmp.r7t': '真实支付',
-    'cmp.r7d': '接好合规支付通道后开放',
-    'cmp.r7s': '规划中',
+    'cmp.r6s': '已跑通',
+    'cmp.r7t': '语音',
+    'cmp.r7d': '语音转文字与文字转语音',
+    'cmp.r7s': '已跑通',
     'cmp.r8t': '自托管部署',
     'cmp.r8d': '跑在你自己的电脑或你自己的服务器上',
-    'cmp.r8s': '未开放',
+    'cmp.r8s': '已跑通',
 
     'dep.title': '为什么开源自托管',
     'dep.sub': '你自己运行的软件。无需锁定，数据不外传。',
     'dep.c1t': '全球可达，延迟低',
     'dep.c1d': '你的数据不会离开你的机器。我们不收集任何数据，本地使用无需注册账号。',
-    'dep.c2t': '为接真实支付铺路',
+    'dep.c2t': '部署完全自持',
     'dep.c2d': '部署完全由你掌控：模型密钥、数据库和日志全都在你自己手里。',
     'dep.c3t': '政策相对宽松',
     'dep.c3d': '开源且自托管：数据、模型密钥、部署全部在你手里，没有厂商锁定。',
     'dep.c4t': '为什么不在中国大陆',
-    'dep.c4d': '你可以部署到任何地方：自己的云主机、自己的服务器，甚至纯本地环境。',,
+    'dep.c4d': '你可以部署到任何地方：自己的云主机、自己的服务器，甚至纯本地环境。',
     'dep.n1t': '说明',
     'dep.n1d': '自托管意味着<b>你完全掌控</b>：数据、模型密钥与部署都在你手上。数据保护相关法规请按你所在地区的规则遵守。',
     'dep.n2t': '开源性质不变',
@@ -902,17 +982,17 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'pri.title': '价格',
     'pri.sub': '开源项目永久免费。引擎本身 MIT 许可，托管全走你自己。<b style="color:var(--green)">无平台费用</b>，无中间商，也无锁定。',
     'pri.s1l': '引擎本体价格（MIT 开源）',
-    'pri.s2l': '服务方每单实收',
-    'pri.s3l': '平台通道费（可调 0%–50%）',
+    'pri.s2l': '许可证永久归你所有',
+    'pri.s3l': '无平台费用，无中间商',
     'pri.s4l': '你的数据留在你自己机器上',
     'pri.s5l': '随时自建，无锁定',
 
     'faq.title': '常见问题',
     'faq.sub': '答案不绕弯。',
     'faq.q1': '使用引擎需要付费吗？',
-    'faq.a1': '不用。引擎本身是 MIT 许可的开源软件，你只需付濠你自己选的模型 API 费用（用本地模型则完全免费）。',
+    'faq.a1': '不用。引擎本身是 MIT 许可的开源软件，你只需支付你自己选的模型 API 费用（用本地模型则完全免费）。',
     'faq.q2': '那我需要注册账号吗？',
-    'faq.a2': '优先级用性守卫。接入本地模型，你的文件根本不出你的机器；接入远程模型 API，数据会进入该提供方的服务器。',
+    'faq.a2': '完全不用注册。接入本地模型，你的文件根本不出你的机器；接入远程模型型 API，数据会进入该提供方的服务器。',
     'faq.q3': '我必须用服务器吗？',
     'faq.a3': '不用。灵犀引擎是 MIT 许可的开源软件，你自己就能跑。也提供托管演示环境供你快速体验，但完全是可选的，不是必须。',
     'faq.q4': '我的数据隐私吗？',
@@ -920,7 +1000,7 @@ footer .fine{margin-top:14px;font-size:12px;color:#4b5563;max-width:660px;margin
     'faq.q5': '我能部署到任何地方吗？',
     'faq.a5': '可以。引擎是 MIT 开源的，你可以部署到任何云主机、自己的服务器，甚至纯本地环境。各环境代码完全相同。',
     'faq.q6': '我能接入哪些模型？',
-    'faq.a6': '任意齐序的 OpenAI 兼容 API，以及 Llama、Qwen 等本地模型。',
+    'faq.a6': '任意兼容的 OpenAI 兼容 API，以及 Llama、Qwen 等本地模型。',
     'faq.q7': '可以部署到我自己的服务器吗？',
     'faq.a7': '可以。这也是推荐的用法，你的数据不会出你的服务器。',
     'faq.q8': '需要注册吗？',
