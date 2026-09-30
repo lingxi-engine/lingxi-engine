@@ -1,6 +1,7 @@
 {
     "version":  "2.0.30",
-    "commit":  "53b623f",
+    "commit":  "131f3d4",
+    "commitMeaning":  "打包所依据的源码提交；其后的 53b623f / c2e0e2f 仅为版本号声明提交，不改变任何运行代码",
     "buildTime":  "2026-10-01T00:20:00Z",
     "builder":  "pack-release.ps1",
     "highlights": [
