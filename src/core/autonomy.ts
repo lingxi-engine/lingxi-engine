@@ -49,6 +49,10 @@ export const RETRYABLE_STATUSES = new Set<number>([408, 409, 425, 429, 500, 502,
 export const FATAL_STATUSES = new Set<number>([400, 401, 403, 404, 410, 422]);
 
 export function isRetryableError(err: any): boolean {
+  // 用户主动停止不是"临时故障"：必须立刻停。
+  // 少了这一行，点过"停止"的任务仍会被退避重试复活。
+  if (err?.name === 'AbortError') return false;
+  if (err?.code === 'ABORT_ERR') return false;
   if (!err) return false;
   const status = typeof err.status === 'number' ? err.status : undefined;
   if (status !== undefined) {
@@ -72,7 +76,15 @@ export function extractRetryAfterMs(err: any, fallbackMs: number): number {
   const raw = hdrs?.get?.('retry-after') ?? hdrs?.['retry-after'] ?? hdrs?.['Retry-After'];
   if (raw !== undefined && raw !== null && raw !== '') {
     const secs = Number(raw);
-    if (Number.isFinite(secs) && secs >= 0) return Math.min(secs * 1000, 120_000);
+    if (Number.isFinite(secs) && secs >= 0) {
+      // 不在这里硬截断：封顶交给调用方的 maxSleepMs，
+      // 否则长窗口会被腰斩，调用方以为服务端只让等 2 分钟，白白早撞一次。
+      return Math.max(0, secs * 1000);
+    }
+    // Retry-After 的第二种合法格式：HTTP-date（RFC 9110 §10.2.3）
+    // 原来这里直接落空，于是"服务端让我们等 10 分钟"被当成没说，等 8 秒又撞一次。
+    const at = Date.parse(String(raw));
+    if (Number.isFinite(at)) return Math.max(0, at - Date.now());
   }
   const body = err?.error?.code || err?.code;
   if (body && /rate_limit|too_many/i.test(String(body))) {

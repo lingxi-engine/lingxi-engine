@@ -6,6 +6,7 @@
 import OpenAI from "openai";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
+import { computeDelayMs, DEFAULT_RETRY_BUDGET } from "../core/retry-coordinator.js";
 
 // ─────────────────── 配置 ───────────────────
 
@@ -922,15 +923,19 @@ export class AIHub {
       cbState.failures = this.CB_THRESHOLD - 1;
     }
 
-    // 指数退避 + 熔断器
-    const MAX_RETRIES = 3;
+    // 统一退避：等待时长由 retry-coordinator 计算（全抖动指数退避 + Retry-After + 服务端 reset 提示解析）
+    //   v2.8.0 之前这里是写死的 1000*2^(n-1) / 上限 16s / 无 jitter / 无视 Retry-After，
+    //   与 executor 各算各的，同一次 429 在两层被叠乘放大。
+    const MAX_RETRIES = parseInt(process.env.AI_HUB_MAX_RETRIES || '3', 10);
+    const HUB_BUDGET = { ...DEFAULT_RETRY_BUDGET, tag: 'AIHub', capMs: 16_000 };
     let lastError: any;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (attempt > 0) {
-          const delay = Math.min(1000 * 2 ** (attempt - 1), 16000);
-          console.log(`[AI Hub] 重试 ${request.model} (${attempt}/${MAX_RETRIES}) — 等待 ${delay / 1000}s`);
-          await new Promise(r => setTimeout(r, delay));
+          const { delayMs, serverHintMs } = computeDelayMs(lastError, attempt, HUB_BUDGET);
+          const hint = serverHintMs ? `（服务端建议 ${Math.round(serverHintMs / 1000)}s）` : '';
+          console.log(`[AI Hub] 重试 ${request.model} (${attempt}/${MAX_RETRIES}) — 退避 ${delayMs}ms${hint}`);
+          await new Promise(r => setTimeout(r, delayMs));
         }
         const response = await client.chat.completions.create({
           model: resolvedModel,

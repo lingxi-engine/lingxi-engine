@@ -25,9 +25,9 @@ import { estimateMessagesTokens } from "../core/compaction.js";
 import type { ToolRegistry } from "./registry.js";
 import {
   isRetryableError,
-  extractRetryAfterMs,
   backoffDelayMs,
 } from "../core/autonomy.js";
+import { runWithRetry, retryBudgetFromEnv, describeRetryEvents } from "../core/retry-coordinator.js";
 
 // ═══════════════════════════════════════════════
 // 类型定义
@@ -372,42 +372,46 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<any> {
     // ── v2.7.0：带韧性重试的 AI 调用 ──
     //   关键：可重试错误（429/5xx/网络）不再立刻消耗一次外层迭代，
     //   而是原地退避重试；只有真正失败才推进迭代。
+    // v2.8.0：退避审计轨迹，最终会拼进 finalContent，让用户看见引擎在自愈而不是"死了"
+    let lastRetryAudit: import("../core/retry-coordinator.js").RetryEvent[] = [];
     let aiResponse!: OpenAIChatResponse;   // 由下面的 aiCallOk 守卫保证已赋值
     let aiCallOk = false;
     let lastErr: unknown = undefined;
-    for (let a = 0; a <= AI_RETRY_PER_ITER; a++) {
-      try {
-        aiResponse = await requestCompletion(client, requestParams, signal, onChunk, onThink) as OpenAIChatResponse;
-        aiCallOk = true;
-        break;
-      } catch (err: unknown) {
-        lastErr = err;
-        const errMsg = err instanceof Error ? err.message : String(err);
-        const status = typeof (err as any)?.status === 'number' ? (err as any).status : undefined;
+    // v2.8.0：退避编排统一交给 retry-coordinator，避免 executor/hub/router 三层各算各的
+    // 导致一次 429 被叠乘放大成十几次请求。协调器负责 full jitter + Retry-After +
+    // 供应商 reset 文案解析，并返回可观测的审计轨迹。
+    const retryOut = await runWithRetry(
+      async () => requestCompletion(client, requestParams, signal, onChunk, onThink) as Promise<OpenAIChatResponse>,
+      {
+        ...retryBudgetFromEnv('Executor'),
+        maxAttempts: AI_RETRY_PER_ITER,
+        baseMs: AI_RETRY_BASE_MS,
+        capMs: AI_RETRY_MAX_MS,
+      },
+      signal,
+    );
 
-        // 用户主动停止 / 超时：不当作 AI 错误，原样退出
-        if (signal?.aborted) {
-          result.aborted = true;
-          break;
-        }
-
-        // 致命错误（配置/权限/模型不存在）：重试无意义，立刻停
-        if (!isRetryableError(err)) {
-          console.error(`[Executor] AI 调用致命失败 (${status ?? 'no-status'}):`, errMsg);
-          result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
-          result.finalContent = `AI 调用失败：${errMsg}。这通常是配置问题（API Key / 模型名 / 权限），重试无用，请检查引擎配置。`;
-          result.stopReason = 'ai_errors';
-          aiCallOk = false;
-          break;
-        }
-
-        // 可重试错误：退避后原地重试（不推进外层迭代）
-        const delay = extractRetryAfterMs(err, backoffDelayMs(a + 1, AI_RETRY_BASE_MS, AI_RETRY_MAX_MS));
-        console.warn(
-          `[Executor] AI 调用可重试失败 (status=${status ?? 'net'})，第 ${a + 1}/${AI_RETRY_PER_ITER} 次退避 ${delay}ms 后重试: ${errMsg}`
-        );
-        await sleepWithSignal(delay, signal);
-        if (signal?.aborted) { result.aborted = true; break; }
+    if (retryOut.ok) {
+      aiResponse = retryOut.value as OpenAIChatResponse;
+      aiCallOk = true;
+      lastRetryAudit = retryOut.events;
+    } else {
+      lastErr = retryOut.error;
+      if (signal?.aborted) {
+        result.aborted = true;
+      } else if (retryOut.suggestedMode === 'stop') {
+        const errMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
+        const status = typeof (lastErr as any)?.status === 'number' ? (lastErr as any)?.status : undefined;
+        console.error(`[Executor] AI 调用致命失败 (${status ?? 'no-status'}):`, errMsg);
+        result.consecutiveErrors = (result.consecutiveErrors || 0) + 1;
+        result.finalContent = `AI 调用失败：${errMsg}。这通常是配置问题（API Key / 模型名 / 权限），重试无用，请检查引擎配置。`;
+        result.stopReason = 'ai_errors';
+      } else {
+        // 可重试但预算耗尽：记一轮连续错误，外层还有 AI_ERROR_ROUNDS_LIMIT 与 router 续跑兜底
+        retryOut.events.forEach((ev) => console.warn(
+          `[Executor] AI 调用失败(${ev.reason}, status=${ev.status ?? 'net'})，退避 ${ev.delayMs}ms 后以 [${ev.mode}] 模式重试（第 ${ev.attempt}/${ev.maxAttempts} 次）`
+        ));
+        lastRetryAudit = retryOut.events;
       }
     }
 
@@ -420,7 +424,8 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<any> {
         if (result.consecutiveErrors >= AI_ERROR_ROUNDS_LIMIT) {
           result.finalContent =
             `AI 服务连续 ${result.consecutiveErrors} 轮不可用（限流或网络）。` +
-            `已完成的进度全部保留，稍后重试即可从断点继续。`;
+            `${describeRetryEvents(lastRetryAudit)}` +
+            `已完成的进度全部保留，引擎会自动从断点继续，无需你点"继续"。`;
           result.stopReason = 'ai_errors';
           break;
         }

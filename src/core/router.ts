@@ -23,6 +23,7 @@ import { Clarifier } from "./clarifier.js";
 import { Evaluator, type EvaluationSummary, type EvaluationRecord } from "./evaluator.js";
 import { dispatchByMode, type ModeDispatchResult } from "./chat-modes.js";
 import { decideAutoResume, backoffDelayMs, inferRemainingWork } from "./autonomy.js";
+import { computeDelayMs, shouldWaitAndRetry, DEFAULT_RETRY_BUDGET } from "./retry-coordinator.js";
 
 /**
  * 判断用户输入是否为"任务类"（需要持续执行直到完成，而非一问一答）
@@ -136,6 +137,44 @@ function getProjectContext(workDir?: string): string {
 }
 
 
+
+/**
+ * 把 executor 返回的 stopReason + error 字符串，合成为带 HTTP 语义的错误对象。
+ *
+ * 为什么需要它：executor 的 result.error 是 `string`，没有 statusCode / headers，
+ * 直接喂给 classifyFailure 会全部落进「未知错误」，
+ * 于是 429 限流被误判成致命错误而不再重试 —— 用户就被迫点继续了。
+ *
+ * 这里按 stopReason 反查一个可信的 HTTP 语义，让统一协调器能正确区分
+ * 「可恢复（429 / 5xx / 超时 / 网络抖动）」与「致命（401 凭据、404 模型不存在、参数错误）」。
+ * 顺序刻意把 401/403/404 排在 429 前面：限流网关偶尔会在正文里带 401 字样，
+ * 先匹配到的若是不该重试的那类，就会白白放弃一个本可自愈的调用。
+ */
+function synthRetryError(result: any): unknown {
+  const raw: string =
+    typeof result?.error === 'string'
+      ? result.error
+      : result?.error?.message || '';
+  const err: any = new Error(raw || `stopReason=${result?.stopReason}`);
+  const stop = result?.stopReason;
+
+  if (stop === 'ai_errors') {
+    if (/\b401\b|unauthorized|invalid[_ -]?api[_ -]?key|authentication/i.test(raw)) {
+      err.statusCode = 401;
+    } else if (/\b403\b|forbidden|permission/i.test(raw)) {
+      err.statusCode = 403;
+    } else if (/\b404\b|model[_ -]?not[_ -]?found|does not exist|unknown model/i.test(raw)) {
+      err.statusCode = 404;
+    } else if (/\b429\b|rate[_ -]?limit|too many requests|quota|overloaded|capacity/i.test(raw)) {
+      err.statusCode = 429;
+    } else if (/timeout|timed out|etimedout|econnreset|enotfound|network|fetch failed|socket hang up/i.test(raw)) {
+      err.code = 'ECONNRESET';
+    } else if (/\b5\d\d\b|internal server error|bad gateway|service unavailable|gateway timeout/i.test(raw)) {
+      err.statusCode = 503;
+    }
+  }
+  return err;
+}
 
 export class MessageRouter {
   private toolRegistry?: ToolRegistry;
@@ -509,10 +548,22 @@ export class MessageRouter {
           const decision = decideAutoResume(result.stopReason, result.finalContent || '');
           const reasonText = decision.label || result.stopReason || '未知原因';
           // 限流类中断先退避再续跑，避免立刻重踩 429 换来更长封禁
-          if (result.stopReason === 'ai_errors') {
-            const coolMs = Math.min(backoffDelayMs(resumeRounds + 1, 2000, 15000), 15000);
-            console.log(`[Router] AI 服务限流/不可用，${coolMs}ms 后自动续跑（无需用户操作）`);
-            await new Promise<void>((r) => setTimeout(r, coolMs));
+          {
+            // v2.8.0：退避不再只看 stopReason。max_iterations / tool_failures 也常被限流拖住，
+            // 只对 ai_errors 退避会「立刻重踩同一堵墙」。统一交给协调器算。
+            const budget = {
+              ...DEFAULT_RETRY_BUDGET,
+              tag: 'Router',
+              capMs: 15_000,
+              maxAttempts: parseInt(process.env.TASK_RESUME_ROUNDS || '24', 10),
+            };
+            const waitErr = synthRetryError(result);
+            const { delayMs, serverHintMs } = computeDelayMs(waitErr, resumeRounds, budget);
+            if (delayMs > 0) {
+              const hint = serverHintMs ? `（服务端建议 ${Math.round(serverHintMs / 1000)}s）` : '';
+              console.log(`[Router] 任务中断（${reasonText}），退避 ${delayMs}ms${hint} 后自动续跑（无需用户操作）`);
+              await new Promise<void>((r) => setTimeout(r, delayMs));
+            }
           }
           console.log(`[Router] 任务中断（${reasonText}），自动续跑第 ${resumeRounds}/${MAX_RESUME_ROUNDS} 轮 (agent=${agentId})`);
           const resumeMessages: ChatMessage[] = [
@@ -553,8 +604,29 @@ export class MessageRouter {
               onSegmentEnd: onBroadcast ? () => onBroadcast({ type: 'agent.streaming.seal' }) : undefined,
             });
           } catch (resumeErr: any) {
-            console.warn('[Router] 自动续跑轮失败:', resumeErr?.message || resumeErr);
-            break;
+            // v2.8.0：不再无条件 break。
+            // 致命（用户主动停止 / 凭据无效 / 模型不存在 / 本地代码确定性异常）→ 必须停。
+            // 可恢复（429 限流 / 5xx / 网络抖动）→ 退避后自动重试，绝不甩锅让用户点继续。
+            const fatal =
+              signal?.aborted ||
+              resumeErr?.name === 'AbortError' ||
+              !shouldWaitAndRetry(resumeErr);
+            if (fatal) {
+              console.warn('[Router] 自动续跑轮因致命错误终止:', resumeErr?.message || resumeErr);
+              break;
+            }
+            const budget = {
+              ...DEFAULT_RETRY_BUDGET,
+              tag: 'Router',
+              maxAttempts: parseInt(process.env.ROUTER_RESUME_RETRIES || '3', 10),
+            };
+            const { delayMs, serverHintMs } = computeDelayMs(resumeErr, resumeRounds, budget);
+            const hint = serverHintMs ? `（服务端建议 ${Math.round(serverHintMs / 1000)}s）` : '';
+            console.warn(
+              `[Router] 自动续跑轮遇到可恢复故障（${resumeErr?.message || resumeErr}），退避 ${delayMs}ms${hint} 后自动重试`,
+            );
+            await new Promise<void>((r) => setTimeout(r, delayMs));
+            continue;
           } finally {
             clearTimeout(resumeTimeoutId);
             if (signal) signal.removeEventListener('abort', onResumeAbort);

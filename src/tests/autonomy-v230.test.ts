@@ -114,9 +114,35 @@ describe('v2.3.0 backoff', () => {
     expect(ms).toBe(30_000);
   });
 
-  it('Retry-After 超大值被夹到 120s 上限', () => {
+  it('Retry-After 超大值如实返回，不在解析层腰斩', () => {
+    // 解析层只负责还原；封顶交给调用方 maxSleepMs（见 retry-coordinator.test.ts）
     const ms = extractRetryAfterMs({ headers: { get: () => '9999' } }, 1000);
-    expect(ms).toBe(120_000);
+    expect(ms).toBe(9_999_000);
+  });
+
+  it('Retry-After 的 HTTP-date 格式被正确解析', () => {
+    const at = new Date(Date.now() + 90_000).toUTCString();
+    const ms = extractRetryAfterMs({ headers: { get: () => at } }, 1000);
+    expect(ms).toBeGreaterThan(60_000);
+    expect(ms).toBeLessThanOrEqual(91_000);
+  });
+
+  it('Retry-After 日期已过期 → 返回 0 而非负数', () => {
+    const past = new Date(Date.now() - 90_000).toUTCString();
+    const ms = extractRetryAfterMs({ headers: { get: () => past } }, 1000);
+    expect(ms).toBe(0);
+  });
+
+  it('AbortError 不可重试 —— 用户点停止后任务不能被复活', () => {
+    expect(isRetryableError({ name: 'AbortError', message: 'aborted' })).toBe(false);
+    expect(isRetryableError({ code: 'ABORT_ERR' })).toBe(false);
+  });
+
+  it('AbortError 优先级高于 429 —— 不得借限流名义复活已停止的任务', () => {
+    const e: any = new Error('aborted');
+    e.name = 'AbortError';
+    e.status = 429;
+    expect(isRetryableError(e)).toBe(false);
   });
 
   it('没有 Retry-After 时退回指数退避', () => {
