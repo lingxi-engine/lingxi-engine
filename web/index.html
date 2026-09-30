@@ -595,7 +595,18 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
         <h2 data-i18n="tools.title">🔧 工具列表</h2>
         <div class="grid" id="toolsGrid"><div class="empty" data-i18n="common.loading">加载中...</div></div>
         
-        <!-- 知识库 (v2.0.6 新增) -->
+          <!-- v2.0.30 -->
+  <section class="card" id="v230-notice">
+    <h2>🛡️ v2.0.30：自动重试与失败自愈</h2>
+    <p>
+      新增全引擎统一的重试协调器：限流、5xx、网络抖动会<strong>自动退避重试</strong>，
+      不会再把「点继续」的活儿甩给你。凭据错误、模型不存在这类确定性失败会立即停止并说明原因。
+      同时修复 multer 中危 DoS 漏洞，<code>npm audit</code> 归零。
+    </p>
+    <p><a href="/download.html">查看完整变更与下载 →</a></p>
+  </section>
+
+<!-- 知识库 (v2.0.6 新增) -->
         <div style="margin-top:24px">
           <h3 style="font-size:16px;margin-bottom:8px" data-i18n="tools.knowledge">📚 知识库</h3>
           <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">

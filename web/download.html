@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.28</title>
+<title>下载部署 · 灵犀引擎 v2.0.30</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.28</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.30</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -201,7 +201,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.28.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.28</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.30.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.30</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -244,7 +244,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.28","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.30","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -290,7 +290,56 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </div>
   </details>
 
-  <div class="foot">灵犀引擎 <span class="ver">v2.0.28</span> · <a href="/">返回首页</a></div>
+  
+  <!-- v2.0.30：重试与失败自愈改造 -->
+  <section class="card" id="v230">
+    <h2>🛡️ v2.0.30 变更：自动重试与失败自愈</h2>
+    <p>
+      集中解决「任务失败后不自动重试」「遇到限流就停下」「一直让用户点继续」三个问题。
+      新增<strong>全引擎唯一的重试协调器</strong>，Executor、AI Hub、任务续跑三层统一决策，
+      不再各自为政地重复重试。
+    </p>
+
+    <h3>改了什么</h3>
+    <table>
+      <thead><tr><th>原问题</th><th>现在</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>续跑时网络抖一下，整个任务就停，并提示「输入继续」</td>
+          <td>按错误类型自动判断：限流 / 5xx / 网络抖动 → 退避后<strong>自动重试</strong>；凭据错误 / 模型不存在 → 立即停下并说明原因</td>
+        </tr>
+        <tr>
+          <td>三层各自重试，一次限流被叠乘放大，越撞越狠</td>
+          <td>统一由一个协调器计算重试次数与等待时长，不再叠乘</td>
+        </tr>
+        <tr>
+          <td>多个任务同时撞上同一个限流端点（惊群）</td>
+          <td>退避加入<strong>随机抖动</strong>，错开重试时刻</td>
+        </tr>
+        <tr>
+          <td>无视服务端说的「等 N 分钟再试」</td>
+          <td>完整支持 <code>Retry-After</code> 的<strong>秒数与 HTTP 日期两种格式</strong>，并解析主流供应商的额度重置提示；单次等待设有绝对上限，不会真睡几小时</td>
+        </tr>
+        <tr>
+          <td>点了「停止」，任务仍会被后台复活</td>
+          <td>用户停止的优先级高于一切自动恢复策略</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>依赖安全</h3>
+    <p>
+      升级 multer 至 2.4.0，修复上传中断导致磁盘写入堆积的 DoS 漏洞（GHSA-3pph-fpjx-jg34）。
+      当前 <code>npm audit</code> 为 <strong>0 vulnerabilities</strong>。
+    </p>
+
+    <h3>验证</h3>
+    <p>
+      TypeScript 编译 0 错误；测试套件 <strong>106 项全部通过</strong>（其中 29 项为本次新增的重试回归测试）。
+    </p>
+  </section>
+
+<div class="foot">灵犀引擎 <span class="ver">v2.0.30</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
@@ -364,7 +413,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   });
 })();
 
-// v2.0.28: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
+// v2.0.30: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
 //          静态回退值同步为当前版本，避免"官网页显示旧版本"的漂移。
 (function () {
   function apply(version) {
