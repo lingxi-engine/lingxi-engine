@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.30</title>
+<title>下载部署 · 灵犀引擎 v2.0.31</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.30</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.31</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -201,7 +201,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.30.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.30</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.31.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.31</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -244,7 +244,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.30","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.31","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -291,6 +291,52 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   </details>
 
   
+  <!-- v2.0.31：数据目录统一 + 长回复安全网阈值修正 -->
+  <section class="card" id="v231">
+    <h2>🧭 v2.0.31 变更：数据目录统一 &amp; 长回复不再被误判</h2>
+    <p>
+      两个真实故障的根因修复：数据目录解析散落各处导致「会话/Provider 凭空消失」，
+      前端 120 秒安全网低于后端超时导致「停止按钮提前消失、排队消息提前放行」。
+    </p>
+
+    <h3>改了什么</h3>
+    <table>
+      <thead><tr><th>原问题</th><th>现在</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>把 DATA_DIR 设成绝对路径时，旧的 <code>join(cwd, DATA_DIR)</code> 拼出
+              <code>&lt;仓库&gt;\D:\lingxi-data</code> 这种荒谬目录，
+              main.db 与 providers.json 各存各的 → 会话和 Provider 凭空消失</td>
+          <td>新增 <code>src/core/paths.ts</code> 作为<strong>唯一</strong>数据目录入口，
+              用 <code>resolve()</code> 兼容相对与绝对路径；同时支持
+              <code>LINGXI_DATA_DIR</code> / <code>DATA_DIR</code> / <code>LINGXI_HOME</code>，
+              未设置时从模块路径反推仓库根，<strong>不再随启动目录漂移</strong></td>
+        </tr>
+        <tr>
+          <td>任何超过 2 分钟的正常长回复，前端安全网都判为「已结束」并强行清零
+              generatingChats —— 停止按钮提前消失、排队消息提前放行，
+              而后端其实还在正常写流</td>
+          <td>安全网阈值提到 <strong>1500s</strong>（高于后端最长聊天超时 1200s）：
+              既不误杀长回复，又仍能兜住真正丢失 <code>streaming.end</code> 的情况</td>
+        </tr>
+        <tr>
+          <td>hub / provider-registry / docker-sandbox / mobile / builtin 各自拼自己的数据路径</td>
+          <td>全部切到 <code>dataPath()</code> / <code>dataDir()</code>，路径解析只有一处实现</td>
+        </tr>
+        <tr>
+          <td>刷新后新 app.js 配旧 style.css，页面样式错乱</td>
+          <td>前端缓存版本号统一（20261002a）+ Service Worker 缓存升到 v22</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3>验证</h3>
+    <p>
+      <code>npm run typecheck</code> 0 错误；<code>npm run test</code> 106 passed / 106；
+      全部前端文件通过 <code>node --check</code>。
+    </p>
+  </section>
+
   <!-- v2.0.30：重试与失败自愈改造 -->
   <section class="card" id="v230">
     <h2>🛡️ v2.0.30 变更：自动重试与失败自愈</h2>
@@ -339,7 +385,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.30</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.31</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
@@ -413,7 +459,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   });
 })();
 
-// v2.0.30: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
+// v2.0.31: 版本动态化加强 —— 静态站点优先读 /public/version.txt（/api/health 只在引擎进程内可用），
 //          静态回退值同步为当前版本，避免"官网页显示旧版本"的漂移。
 (function () {
   function apply(version) {
