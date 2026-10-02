@@ -9,8 +9,9 @@
 import OpenAI from "openai";
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
+import { dataDir, dataPath } from '../core/paths.js';
 
-const PROVIDERS_STORE_PATH = join(process.cwd(), 'data', 'providers.json');
+const PROVIDERS_STORE_PATH = dataPath('providers.json');
 
 interface PersistedProvider {
   id: string; type: string; name: string; apiKey?: string;
@@ -64,7 +65,7 @@ export class ProviderRegistry {
   /** 保存所有 Provider 到磁盘 */
   private persist() {
     try {
-      if (!existsSync(join(process.cwd(), 'data'))) mkdirSync(join(process.cwd(), 'data'), { recursive: true });
+      const _dd = dataDir(); if (!existsSync(_dd)) mkdirSync(_dd, { recursive: true });
       const entries: PersistedProvider[] = [];
       for (const [, p] of this.providers) {
         entries.push({ id: p.id, type: p.type, name: p.name, apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, isLocal: p.isLocal, enabled: p.enabled });

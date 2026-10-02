@@ -41,10 +41,11 @@ import { SkillManager } from '../skills/skill-manager.js';
 import { CustomProviderManager, INFERENCE_BACKENDS } from '../ai/custom-providers.js';
 import { VisionManager } from '../ai/vision.js';
 import { localChat, isLocalModelAvailable, getLocalModelInfo } from './local-llm.js';
+import { dataDir } from '../core/paths.js';
 
 // ═══ 移动端环境配置 ═══
 // 原生层通过环境变量传入数据目录，默认为当前目录下的 data
-const DATA_DIR = process.env.LINGXI_DATA_DIR || join(process.cwd(), 'data');
+const DATA_DIR = dataDir();
 const PORT = parseInt(process.env.LINGXI_PORT || '3456', 10);
 const HOST = '127.0.0.1'; // 安全：仅本地回环，不暴露到网络
 

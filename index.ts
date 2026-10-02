@@ -133,6 +133,7 @@ import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
+import { dataDir as resolveDataDir } from './src/core/paths.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
 import { createAgiRoutes } from './src/routes/agi.js';
@@ -278,7 +279,9 @@ async function main() {
   if (cliDataDir) process.env.DATA_DIR = cliDataDir;
   const autoPort = argv.includes('--auto-port') || process.env.AUTO_PORT === 'true';
 
-  const dataDir = process.env.DATA_DIR ? join(process.cwd(), process.env.DATA_DIR) : join(process.cwd(), 'data');
+  // 数据目录统一交给 src/core/paths.ts 解析。旧的 join(cwd, DATA_DIR) 在 DATA_DIR
+  // 为绝对路径时会拼出 "<repo>\D:\lingxi-data"，导致 main.db 与 providers.json 分家。
+  const dataDir = resolveDataDir();
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   const dbPath = join(dataDir, 'main.db');
   await initDB(dbPath);

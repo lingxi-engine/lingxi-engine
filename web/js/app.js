@@ -832,17 +832,18 @@ function handleMessage(msg) {
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
       updateGenUI();
       appendStreamingMsg(msg);
-      // ── Safety Net: 120s 超时自动清理，防。end 事件丢失导致永久排队 ──
+      // ── Safety Net: 超时自动清理，防 end 事件丢失导致永久排队 ──
+      // 阈值须高于后端 CHAT_TIMEOUT_SECONDS(1200s)，否则长回复会被误判结束、提前清状态
       (function(cid, mid){
         setTimeout(function(){
           if (streamingMsgs[mid]) {
-            console.warn('[SafetyNet] streaming ' + mid + ' 超时(120s)，强制清理');
+            console.warn('[SafetyNet] streaming ' + mid + ' 超时(1500s)，强制清理');
             delete streamingMsgs[mid];
             if (generatingChats[cid] > 0) generatingChats[cid] = 0;
             updateGenUI();
             maybeFlushQueue(cid);
           }
-        }, 120000);
+        }, 1500000);
       })(msg.chatId, msg.msgId);
       break;
     case 'tool.call':

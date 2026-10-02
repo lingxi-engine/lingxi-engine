@@ -32,7 +32,7 @@ export function isSsrfSafeUrl(url: string): boolean {
 // ═══════════════════════════════════════════════
 // 沙箱配置持久化（重启不丢）
 // ═══════════════════════════════════════════════
-const SANDBOX_CONFIG_PATH = join(process.cwd(), 'data', 'sandbox-config.json');
+const SANDBOX_CONFIG_PATH = dataPath('sandbox-config.json');
 function loadSandboxConfig(): boolean {
   // v1.9.7: 默认关闭沙箱。只有显式设置 SANDBOX_ENABLED=true 才开启。
   // 防止旧安装的 sandbox-config.json 残留 enabled:true 导致用户被锁在 workspace 里。
@@ -173,6 +173,7 @@ import type { ToolDefinition } from "./types.js";
 
 // 搜索管理器实例（通过 setter 注入单例，避免多实例问题）
 import { SearchManager } from './search-providers.js';
+import { dataPath } from '../core/paths.js';
 let searchManager = new SearchManager();
 export function setSearchManager(instance: SearchManager) { searchManager = instance; }
 
@@ -1622,8 +1623,8 @@ async function handleMarkGoalDone(args: Record<string, any>) {
 // ═══════════════════════════════════════════════
 
 const COMFYUI_URL = (process.env.COMFYUI_URL || 'http://127.0.0.1:8188').replace(/\/+$/, '');
-const COMFYUI_WORKFLOW_DIR = join(process.cwd(), 'data', 'comfyui-workflows');
-const COMFYUI_OUTPUT_DIR = join(process.cwd(), 'data', 'videos');
+const COMFYUI_WORKFLOW_DIR = dataPath('comfyui-workflows');
+const COMFYUI_OUTPUT_DIR = dataPath('videos');
 
 const TOOL_GENERATE_VIDEO: ToolDefinition = {
   name: "generate_video",
