@@ -22,6 +22,7 @@ import { randomBytes, createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import initSqlJs from 'sql.js';
+import { isDevMode } from './security/token-compare.js';
 import { config as dotenvConfig } from 'dotenv';
 // 2026-09-09 v2.0.15: PM2 环境下加载 .env.platform（平台专属配置；不读主引擎 .env，避免误吞 PORT=3456）
 dotenvConfig({ path: process.env.PLATFORM_ENV_FILE || '.env.platform' });
@@ -33,8 +34,8 @@ const MESH_TOKEN = process.env.MESH_TOKEN || randomBytes(16).toString('hex');
 const MESH_TOKEN_WEAK = ['change-me-to-a-strong-secret', 'changeme', 'change-me'];
 if (MESH_TOKEN_WEAK.includes(MESH_TOKEN) || (process.env.MESH_PLATFORM_URL && !process.env.MESH_TOKEN)) {
   const msg = 'MESH_TOKEN 为默认弱值' + (process.env.MESH_PLATFORM_URL ? '（且已配置 MESH_PLATFORM_URL）' : '');
-  if (process.env.DEV_MODE === 'false') {
-    console.error('[FATAL] ' + msg + '，生产环境（DEV_MODE=false）拒绝启动，请设置强随机 MESH_TOKEN');
+  if (!isDevMode()) {
+    console.error('[FATAL] ' + msg + '，生产环境（NODE_ENV=production）拒绝启动，请设置强随机 MESH_TOKEN');
     process.exit(1);
   }
   console.warn('[WARN] ' + msg + '，仅限开发环境继续运行');
