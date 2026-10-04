@@ -209,6 +209,12 @@ import { rbac, getParticipantRole, type Role } from './src/server/rbac.js';
 // which is also the single switch required to revive the feature later.
 const FEATURE_MARKET = process.env.FEATURE_MARKET === 'true';
 
+// ── [FEATURE_PLATFORM] 云平台（社交/好友/LAN/mesh）总开关 ──────────────────────
+// 2026-10-04：平台侧暂时下线，引擎只保留「注册/登录」，社交与组网功能全部关闭。
+// 关闭时：前端隐藏入口，后端社交/LAN/mesh 路由一律 404（不是 401，避免前端反复重试刷日志）。
+// 恢复方式：.env 里把 FEATURE_PLATFORM 改为 true 并重启，无需改代码。
+// 注意：注册/登录（/api/auth/*、/api/user/*）**不受此开关影响**，继续走云平台注册。
+const FEATURE_PLATFORM = process.env.FEATURE_PLATFORM !== 'false';
 
 async function main() {
   // ═══ 启动检测 ═══
@@ -641,9 +647,33 @@ if (!FEATURE_MARKET) {
            '/api/market', '/api/market/*', '/api/mvp', '/api/mvp/*',
            '/api/hire', '/api/hire/*', '/js/market.js', '/css/market.css'],
     (_req, res) => { res.status(404).json({ error: 'not_found', feature: 'market' }); });
-  app.get('/api/features', (_req, res) => {
-    res.json({ market: false, credits: false, wallet: false, hire: false });
+}
+
+// [FEATURE_PLATFORM] /api/features 必须无条件注册，不能塞进上面的 if (!FEATURE_MARKET)。
+// v2.0.32 实测踩过的坑：FEATURE_MARKET=false 时整块 if 不执行 → 路由不存在 →
+// 前端拿到 404/空对象 → f.platform 是 undefined → !!undefined===false
+// → 误判成"平台已关闭"，把好友入口全隐藏了。功能开关自己的接口不能被别人开关掉。
+app.get('/api/features', (_req, res) => {
+  res.json({
+    market: FEATURE_MARKET,
+    credits: false,
+    wallet: false,
+    hire: false,
+    platform: FEATURE_PLATFORM,
   });
+});
+
+// [FEATURE_PLATFORM] 云平台社交功能下线：好友 / LAN 邻居 / 群组 / mesh 组网一律 404。
+// 放在 static 与所有路由之前，只拦这些前缀，不影响 /api/auth/*（注册登录）、/api/chats/*（群聊）等本地功能。
+if (!FEATURE_PLATFORM) {
+  const blocked = [
+    '/api/lan', '/api/friends', '/api/friend', '/api/mesh',
+    '/api/user/find', '/api/user/search', '/api/instances',
+  ];
+  app.use(blocked, (_req: any, res: any) => {
+    res.status(404).json({ error: 'not_found', feature: 'platform' });
+  });
+  console.log('[Feature] 云平台社交功能已关闭（FEATURE_PLATFORM=false），好友/LAN/mesh 返回 404；注册登录保留');
 }
 
   // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
@@ -3366,7 +3396,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // ────────────────────────────────────────
   // 实例网格 (Instance Mesh) — 局域网/跨机多灵犀协作
+  // [FEATURE_PLATFORM] 平台下线时整块跳过：既不组网，也不注册到 mesh，
+  // 也不注册 /api/mesh/* 路由（前面的 404 中间件已兜底）。
   // ────────────────────────────────────────
+  if (!FEATURE_PLATFORM) {
+    console.log('[Mesh] 云平台社交功能已关闭，跳过实例组网');
+  } else {
   {
     const meshPlatformUrl = process.env.MESH_PLATFORM_URL || process.env.PLATFORM_URL || '';
     const meshToken = process.env.MESH_TOKEN || process.env.PLATFORM_TOKEN || '';
@@ -3507,6 +3542,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       res.json({ ok, taskId });
     });
   }
+  }  // end of [FEATURE_PLATFORM] mesh block
 
 
   // ────────────────────────────────────────

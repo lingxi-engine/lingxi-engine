@@ -517,8 +517,13 @@ function connect() {
     const wsProto = location.protocol === 'https:' ? 'wss://' : 'ws://';
     const url = wsProto + location.host + '/ws?id=' + encodeURIComponent(id) + (authToken ? '&token=' + encodeURIComponent(authToken) : '');
     const socket = new WebSocket(url);
-    ws = socket;
-    socket.onopen = function() {
+        ws = socket;
+        // [FEATURE_PLATFORM] 建连同时拉一次功能开关。必须在这里拉：
+        // 下面 socket.onopen 里的 loadFriends/loadRequests/subscribe 都要按开关决定是否执行，
+        // 开关晚于它们返回的话社交请求会先打出去、被后端 404 掉。
+        // 失败不阻断连接 —— 开关拿不到就按"平台开启"处理，与后端默认值一致。
+        api('/api/features').then(function (f) { if (f && typeof f === 'object') { applyFeatureFlags(f); } }).catch(()=>{});
+        socket.onopen = function() {
       if (ws !== socket) return; // 已被更新的连接替换，忽略
       reconnectAttempts = 0;
       restoreUnreadCounts();
@@ -531,22 +536,24 @@ function connect() {
       if (_lastSavedChat && myChats.some(function(c3){ return c3.id === _lastSavedChat; })) {
         switchChat(_lastSavedChat);
       }
-      loadFriends().catch(()=>{});
-      loadRequests().catch(()=>{});
-      loadModels().catch(()=>{});
-      loadProfileCard().catch(()=>{});
-      // 提前加载用户 numericId（供好友面板和跨平台聊天用）
-      if (!lanMeId) {
-        if (authToken) {
-          platformApi('/api/user/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.id || d.user.sub || null; } }).catch(()=>{});
-        } else {
-          // v2.0.11: 未登录时不调 /api/auth/me（会返回 admin-auto 。'admin'，不是真实用户ID。
-          // 直接。clientId 作为 fromUserId，因为本地模式下 clientId 就是 DB 中的用户ID
-          // lanMeId 保持 null，sendRequest 。fromUserId = lanMeId || clientId = clientId
-        }
-      }
-      // 订阅局域网社交通知频道
-      try { socket.send(JSON.stringify({ type: 'subscribe', chatId: '__lan_social__' })); } catch(_e) {}
+      if (PLATFORM_SOCIAL_ON) {
+              loadFriends().catch(()=>{});
+              loadRequests().catch(()=>{});
+            }
+            loadModels().catch(()=>{});
+            loadProfileCard().catch(()=>{});
+            // 提前加载用户 numericId（供好友面板和跨平台聊天用）
+            if (!lanMeId) {
+              if (authToken) {
+                platformApi('/api/user/me', 'GET').then(d => { if (d && d.ok && d.user) { lanMeId = d.user.id || d.user.sub || null; } }).catch(()=>{});
+              } else {
+                // v2.0.11: 未登录时不调 /api/auth/me（会返回 admin-auto 。'admin'，不是真实用户ID。
+                // 直接。clientId 作为 fromUserId，因为本地模式下 clientId 就是 DB 中的用户ID
+                // lanMeId 保持 null，sendRequest 。fromUserId = lanMeId || clientId = clientId
+              }
+            }
+            // 订阅局域网社交通知频道
+            if (PLATFORM_SOCIAL_ON) { try { socket.send(JSON.stringify({ type: 'subscribe', chatId: '__lan_social__' })); } catch(_e) {} }
       // 恢复上次局域网群组（v2.1.3: F5 刷新后保留打开的群组）
       try {
         var _savedLanGroup = JSON.parse(localStorage.getItem('lingxi-lan-group') || 'null');
@@ -3184,6 +3191,20 @@ async function testTTS() {
 // ── 注册/登录 ──
 let authToken = null;
 const PLATFORM_URL = window.LINGXI_PLATFORM_URL || '';  // v2.0.12: 接回云平台，恢复中心化账号体系。如需纯本地模式，改为 ''
+// [FEATURE_PLATFORM] 云平台社交功能下线。前端在启动时读 /api/features，
+// platform=false 时把好友/LAN 入口彻底隐藏，并跳过所有社交请求，避免 404 刷屏。
+let PLATFORM_SOCIAL_ON = true;
+function applyFeatureFlags(f) {
+  PLATFORM_SOCIAL_ON = !!f.platform;
+  if (!PLATFORM_SOCIAL_ON) {
+    document.querySelectorAll('[data-feature="platform"]').forEach(function (el) { el.style.display = 'none'; });
+    var fp = document.getElementById('friendPanel');
+    if (fp) fp.style.display = 'none';
+    var lp = document.getElementById('lanPanel');
+    if (lp) lp.style.display = 'none';
+  }
+}
+
 
 // 通用 API：本地（不带平台 token，本地引擎 JWT 与平台不一致）
 async function api(url, method, body) {
