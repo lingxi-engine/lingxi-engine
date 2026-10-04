@@ -1,22 +1,22 @@
 {
-    "version": "2.0.31",
-    "commit": "91a08e1",
-    "buildTime": "2026-10-02T15:28:57.5102514Z",
-    "builder": "pack-release.ps1",
-    "highlights": [
-        "新增 src/core/paths.ts 作为唯一数据目录解析入口：DATA_DIR 为绝对路径时不再拼出「<仓库>\\D:\\...」荒谬目录，会话与 Provider 不再凭空消失",
-        "路径解析兼容 LINGXI_DATA_DIR / DATA_DIR / LINGXI_HOME，未设置时从模块路径反推仓库根，不再随启动目录漂移",
-        "前端 agent.streaming.start 安全网 120s -> 1500s：不再误杀超 2 分钟的正常长回复（后端 CHAT_TIMEOUT 为 1200s），停止按钮不再提前消失",
-        "发布流水线 pack-release.ps1 修复 tar 在 PowerShell 5.1 下把 C:\\ 路径当远端主机解析导致打包整体失败的问题",
-        "发布流水线新增体积上限闸门：超 12MB 直接失败并打印最大文件，避免再次把 52MB 陈旧测试库打进公开下载包",
-        "publish-site.ps1 优先使用 System32 原生 scp/ssh，避开 Git MSYS 把远端 POSIX 路径改写成 C:/Program Files/Git/... 的问题",
-        "同步官网首页与下载页至 v2.0.31，公开下载包由 26MB 回落至 1.8MB"
-    ],
-    "quality": {
-        "tsc": "0 errors",
-        "vitest": "106 passed / 106",
-        "npmAudit": "0 vulnerabilities",
-        "publicPackage": "1.8MB, SHA256 三处一致（version.txt / 通用名 / 版本化名）"
-    },
-    "commitMeaning": "本包源码提交即为全部运行代码；其后的提交仅涉及发布脚本、官网 HTML 与发布元数据"
+    "version":  "2.0.32",
+    "commit":  "ac55e2b",
+    "buildTime":  "2026-10-04T04:01:38.3467630Z",
+    "builder":  "pack-release.ps1",
+    "highlights":  [
+                       "新增 src/core/paths.ts 作为唯一数据目录解析入口：DATA_DIR 为绝对路径时不再拼出「\u003c仓库\u003e\\D:\\...」荒谬目录，会话与 Provider 不再凭空消失",
+                       "路径解析兼容 LINGXI_DATA_DIR / DATA_DIR / LINGXI_HOME，未设置时从模块路径反推仓库根，不再随启动目录漂移",
+                       "前端 agent.streaming.start 安全网 120s -\u003e 1500s：不再误杀超 2 分钟的正常长回复（后端 CHAT_TIMEOUT 为 1200s），停止按钮不再提前消失",
+                       "发布流水线 pack-release.ps1 修复 tar 在 PowerShell 5.1 下把 C:\\ 路径当远端主机解析导致打包整体失败的问题",
+                       "发布流水线新增体积上限闸门：超 12MB 直接失败并打印最大文件，避免再次把 52MB 陈旧测试库打进公开下载包",
+                       "publish-site.ps1 优先使用 System32 原生 scp/ssh，避开 Git MSYS 把远端 POSIX 路径改写成 C:/Program Files/Git/... 的问题",
+                       "同步官网首页与下载页至 v2.0.31，公开下载包由 26MB 回落至 1.8MB"
+                   ],
+    "quality":  {
+                    "tsc":  "0 errors",
+                    "vitest":  "106 passed / 106",
+                    "npmAudit":  "0 vulnerabilities",
+                    "publicPackage":  "1.8MB, SHA256 三处一致（version.txt / 通用名 / 版本化名）"
+                },
+    "commitMeaning":  "本包源码提交即为全部运行代码；其后的提交仅涉及发布脚本、官网 HTML 与发布元数据"
 }
