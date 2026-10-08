@@ -484,6 +484,29 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
         .catch(function () { /* 保持静态回退值 */ });
     });
 })();
+
+// 把命令示例里的 <SERVER_IP> 占位符替换成当前服务器主机名（复制即用，无需手动改 IP）
+(function () {
+  function fillServerIp() {
+    var host = location.hostname;
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    var nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (n) {
+      if (n.nodeValue.indexOf('<SERVER_IP>') !== -1) {
+        n.nodeValue = n.nodeValue.replace(/<SERVER_IP>/g, host);
+      }
+    });
+    document.querySelectorAll('a[href*="SERVER_IP"]').forEach(function (a) {
+      a.setAttribute('href', a.getAttribute('href').replace(/<SERVER_IP>/g, host));
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', fillServerIp);
+  } else {
+    fillServerIp();
+  }
+})();
 </script>
 </body>
 </html>
