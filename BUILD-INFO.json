@@ -1,7 +1,7 @@
 {
     "version":  "2.0.32",
-    "commit":  "ac55e2b",
-    "buildTime":  "2026-10-04T04:01:38.3467630Z",
+    "commit":  "4816ec8",
+    "buildTime":  "2026-10-08T10:14:51.0645516Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
                        "新增 src/core/paths.ts 作为唯一数据目录解析入口：DATA_DIR 为绝对路径时不再拼出「\u003c仓库\u003e\\D:\\...」荒谬目录，会话与 Provider 不再凭空消失",
