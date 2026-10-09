@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:deploy": "node scripts/verify-deploy.cjs"
+    "verify:deploy": "node scripts/verify-deploy.cjs",
+    "setup:browser": "npm install puppeteer --no-save"
   },
   "bin": {
     "lingxi": "././src/cli/chat.ts"
