@@ -1,0 +1,128 @@
+[
+  {
+    "ts": 1787879167.443565,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787879167.4436672,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "README.md\nREADME_stage1_memory.md\nREADME_stage2_metacognition.md\nREADME_stage3_sandbox.md\nREADME_stage4_self_improvement.md\nSTAGE1_CLOSED_LOOP_REPORT.md\n__init__.py\n__pycache__\n_archive\nagent.py\nconfig.py\nconsensus.py\nconstitution.py\ncore.py\ncuriosity.py\ndata\ndistill.py\ndream.py\nmemory.py\nmetacognition.py\nmistakes.py\nmodels.py\norchestrator.py\nparliament.py\nprompts\nrole_discussion.py\nroles.py\nsandbox.py\ntests\ntools.py\nworld_model.py",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1787879167.4436781,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137844.652088,
+    "action": "echo 因果对账实验",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "参数文本",
+      "stderr_hint": "",
+      "reasoning": "echo 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "因果对账实验",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137844.6521962,
+    "action": "dir .",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "目录项",
+      "stderr_hint": "",
+      "reasoning": "dir 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "README.md\nREADME_stage1_memory.md\nREADME_stage2_metacognition.md\nREADME_stage3_sandbox.md\nREADME_stage4_self_improvement.md\nSTAGE1_CLOSED_LOOP_REPORT.md\n__init__.py\n__pycache__\n_archive\nagent.py\nbudget.py\ncheckpoint.py\nconfig.py\nconsensus.py\nconstitution.py\ncore.py\ncuriosity.py\ndata\ndistill.py\ndream.py\nmemory.py\nmetacognition.py\nmistakes.py\nmodels.py\norchestrator.py\nparliament.py\nprompts\nrole_discussion.py\nroles.py\nsandbox.py\nswarm.py\ntask_plan.py\ntests\ntools.py\nverifier.py\nworld_model.py",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  },
+  {
+    "ts": 1788137844.6522074,
+    "action": "pwd",
+    "prediction": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout_hint": "路径",
+      "stderr_hint": "",
+      "reasoning": "pwd 类命令通常 成功",
+      "predictor": "heuristic"
+    },
+    "actual": {
+      "ok": true,
+      "exit_code": 0,
+      "stdout": "C:\\Users\\Administrator\\lingxi-engine\\workspace\\lingxi_engine",
+      "stderr": "",
+      "elapsed": 0.0
+    },
+    "match": true,
+    "stdout_hit": false
+  }
+]
