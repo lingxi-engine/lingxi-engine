@@ -1,21 +1,22 @@
 {
-    "version":  "2.0.30",
-    "commit":  "a4367d8",
-    "buildTime":  "2026-09-30T16:36:27.0211342Z",
+    "version":  "2.0.32",
+    "commit":  "4816ec8",
+    "buildTime":  "2026-10-08T10:14:51.0645516Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
-                       "全引擎统一重试协调器（Executor / AI Hub / 任务续跑三层统一决策）",
-                       "续跑失败按错误分类自动重试，不再无条件停止、不再让用户点继续",
-                       "完整支持 Retry-After 的秒数与 HTTP-date 两种格式",
-                       "退避加入随机抖动，防多任务惊群",
-                       "用户点停止后任务不再被复活（AbortError 优先级最高）",
-                       "multer 升级 2.4.0，修 GHSA-3pph-fpjx-jg34 中危 DoS，npm audit 归零"
+                       "新增 src/core/paths.ts 作为唯一数据目录解析入口：DATA_DIR 为绝对路径时不再拼出「\u003c仓库\u003e\\D:\\...」荒谬目录，会话与 Provider 不再凭空消失",
+                       "路径解析兼容 LINGXI_DATA_DIR / DATA_DIR / LINGXI_HOME，未设置时从模块路径反推仓库根，不再随启动目录漂移",
+                       "前端 agent.streaming.start 安全网 120s -\u003e 1500s：不再误杀超 2 分钟的正常长回复（后端 CHAT_TIMEOUT 为 1200s），停止按钮不再提前消失",
+                       "发布流水线 pack-release.ps1 修复 tar 在 PowerShell 5.1 下把 C:\\ 路径当远端主机解析导致打包整体失败的问题",
+                       "发布流水线新增体积上限闸门：超 12MB 直接失败并打印最大文件，避免再次把 52MB 陈旧测试库打进公开下载包",
+                       "publish-site.ps1 优先使用 System32 原生 scp/ssh，避开 Git MSYS 把远端 POSIX 路径改写成 C:/Program Files/Git/... 的问题",
+                       "同步官网首页与下载页至 v2.0.31，公开下载包由 26MB 回落至 1.8MB"
                    ],
     "quality":  {
                     "tsc":  "0 errors",
                     "vitest":  "106 passed / 106",
                     "npmAudit":  "0 vulnerabilities",
-                    "siteConsistency":  "12 checks passed / 0 failed"
+                    "publicPackage":  "1.8MB, SHA256 三处一致（version.txt / 通用名 / 版本化名）"
                 },
-    "commitMeaning":  "打包所依据的源码提交；其后的提交仅为版本号声明与官网 HTML 变更，不改变任何运行代码"
+    "commitMeaning":  "本包源码提交即为全部运行代码；其后的提交仅涉及发布脚本、官网 HTML 与发布元数据"
 }

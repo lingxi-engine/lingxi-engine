@@ -122,7 +122,7 @@ try {
     # Pack from staging root so tarball top-level is ./lingxi-engine/
     Push-Location $StageRoot
     try {
-        tar czf $OutFile .
+        tar --force-local -czf $OutFile .
     } finally {
         Pop-Location
     }
@@ -133,10 +133,31 @@ try {
     Write-Host "SIZE: $sz bytes ($mb MB)" -ForegroundColor Green
     Write-Host "PATH: $OutFile" -ForegroundColor Cyan
 
+    # v7.1 (2026-10-02): SIZE GATE. A hand-run `tar` without the exclude lists once
+    # produced a 26MB public artifact that shipped a 52MB stale test DB to every
+    # downloader. Nothing asserted a ceiling, so the bloat passed unnoticed. Fail loudly
+    # instead - a package above this is almost always junk directories the exclude lists
+    # failed to match. NOTE: $excludeDirsRegex is only applied to TOP-LEVEL names, so a
+    # nested junk dir (e.g. web/data-bench/) slips straight through to the tarball.
+    $MaxPackageMB = 12
+    if ($mb -gt $MaxPackageMB) {
+        Write-Host ""
+        Write-Host "  [FAIL] package is $mb MB, above the $MaxPackageMB MB ceiling" -ForegroundColor Red
+        Write-Host "         largest entries in the artifact:" -ForegroundColor Red
+        tar --force-local -tzvf $OutFile | ForEach-Object {
+            $parts = $_ -split '\s+', 6
+            $size = 0
+            [void][int64]::TryParse($parts[2], [ref]$size)
+            New-Object PSObject -Property @{ Size = $size; Line = $_ }
+        } | Sort-Object Size -Descending | Select-Object -First 15 |
+            ForEach-Object { Write-Host "         $($_.Line)" -ForegroundColor Red }
+        throw "[FAIL] package too large ($mb MB > $MaxPackageMB MB) - junk directories leaked into staging"
+    }
+
     # Verify structure: top level should be lingxi-engine/
     Write-Host ""
     Write-Host "Verify tarball structure..." -ForegroundColor Yellow
-    $top = tar -tzf $OutFile | ForEach-Object {
+    $top = tar --force-local -tzf $OutFile | ForEach-Object {
         $clean = $_ -replace '^\./', ''
         ($clean -split '/')[0]
     } | Sort-Object -Unique
@@ -146,7 +167,7 @@ try {
         throw "[FAIL] top-level is: $($top -join ', ')"
     }
 
-    $tarList = tar -tzf $OutFile
+    $tarList = tar --force-local -tzf $OutFile
 
     # Verify no build junk leaked in
     Write-Host ""
@@ -203,7 +224,7 @@ try {
     # Verify security fixes are present
     Write-Host ""
     Write-Host "Verify v5 security fixes..." -ForegroundColor Yellow
-    $platformSrc = tar -xzf $OutFile -O './lingxi-engine/src/platform-server.ts' 2>$null
+    $platformSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/src/platform-server.ts' 2>$null
     if ($platformSrc -match 'randomBytes\(16\)\.toString\(\x27hex\x27\)') {
         Write-Host "  [OK] MESH_TOKEN uses randomBytes(16).toString('hex')" -ForegroundColor Green
     } else {
@@ -215,14 +236,14 @@ try {
         throw "[FAIL] MESH_TOKEN_WEAK missing"
     }
 
-    $appJs = tar -xzf $OutFile -O './lingxi-engine/web/js/app.js' 2>$null
+    $appJs = tar --force-local -xzf $OutFile -O './lingxi-engine/web/js/app.js' 2>$null
     if ($appJs -match 'LINGXI_PLATFORM_URL') {
         Write-Host "  [OK] app.js uses LINGXI_PLATFORM_URL env var" -ForegroundColor Green
     } else {
         throw "[FAIL] hardcoded platform URL still present"
     }
 
-    $mobileSrc = tar -xzf $OutFile -O './lingxi-engine/src/mobile/index.ts' 2>$null
+    $mobileSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/src/mobile/index.ts' 2>$null
     if ($mobileSrc -match 'verify-email' -and $mobileSrc -match 'post') {
         Write-Host "  [OK] verify-email POST route present" -ForegroundColor Green
     } else {
@@ -253,7 +274,7 @@ try {
     } else {
         throw "[FAIL] admin credits grant API missing"
     }
-    $pkgJson = tar -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
+    $pkgJson = tar --force-local -xzf $OutFile -O './lingxi-engine/package.json' 2>$null
     $verPat = '"version":\s*"' + [regex]::Escape($Version) + '"'
     if ($pkgJson -match $verPat) {
         Write-Host "  [OK] package.json version = $Version" -ForegroundColor Green
@@ -269,13 +290,13 @@ try {
     } else {
         throw "[FAIL] app.js reasoning render markers missing"
     }
-    $swJs = tar -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
+    $swJs = tar --force-local -xzf $OutFile -O './lingxi-engine/web/sw.js' 2>$null
     if ($swJs -match 'lingxi-v2\d') {
         Write-Host "  [OK] sw.js CACHE_NAME = lingxi-v2\d" -ForegroundColor Green
     } else {
         throw "[FAIL] sw.js CACHE_NAME not bumped to v20"
     }
-    $indexSrc = tar -xzf $OutFile -O './lingxi-engine/index.ts' 2>$null
+    $indexSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/index.ts' 2>$null
     # v6.9 (2026-10-01): 自适应断言。
     #   历史背景：credits/wallet 功能已随 marketplace 下线（969b385）整段移除，
     #   原断言仍在检查那段代码的实现细节，于是永久失败并阻断发布。
@@ -295,7 +316,7 @@ try {
     if ($indexCodeOnly -match 'require\(') {
         throw "[FAIL] ESM require() landmine is BACK in index.ts (code line)"
     }
-    $dbSrc = tar -xzf $OutFile -O './lingxi-engine/src/storage/db.ts' 2>$null
+    $dbSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/src/storage/db.ts' 2>$null
     if ($dbSrc -match 'credit rows backfilled') {
         Write-Host "  [OK] user_credits startup backfill present" -ForegroundColor Green
     } else {
@@ -307,7 +328,7 @@ try {
     } else {
         Write-Host "  [WARN] could not auto-verify pay-route closure (manual check)" -ForegroundColor Yellow
     }
-    $routerSrc = tar -xzf $OutFile -O './lingxi-engine/src/core/router.ts' 2>$null
+    $routerSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/src/core/router.ts' 2>$null
     if ($routerSrc -match 'reasoning_content') {
         Write-Host "  [OK] router.ts reads reasoning/reasoning_content" -ForegroundColor Green
     } else {
@@ -316,17 +337,37 @@ try {
 
     Write-Host ""
     Write-Host "Verify BUILD-INFO.json..." -ForegroundColor Yellow
-    $buildInfoInPkg = tar -xzf $OutFile -O './lingxi-engine/BUILD-INFO.json' 2>$null
-    # tar -O 走系统 stdout 管道，PowerShell 侧可能按 ANSI 解码，
-    # 中文会变乱码导致后续 ConvertFrom-Json 不可靠。中文字段不参与断言，此处仅取 version/commit。
-    if ($buildInfoInPkg) {
-        $bi = $buildInfoInPkg | ConvertFrom-Json
+    # v7.1 (2026-10-02): this check had been failing on EVERY release that carried a
+    # Chinese-containing BUILD-INFO.json, and nobody noticed. Two stacked causes:
+    #   1. `tar -xzf ... -O` piped into a cmdlet makes PowerShell decode the native
+    #      stdout with the console output encoding, so UTF-8 Chinese becomes mojibake
+    #      (including a byte-truncated quote) BEFORE Set-Content ever sees it;
+    #   2. the earlier `| ConvertFrom-Json` on that mangled string then threw
+    #      "invalid character, expecting ...".
+    # Fix: never pipe native stdout into a cmdlet. Extract the member to a real temp
+    # file with tar -C and read the bytes explicitly as UTF-8. Same reason
+    # publish-site.ps1 refuses to read .env through a pipe.
+    $biExtractDir = Join-Path $env:TEMP "lingxi-bi-extract-$(Get-Random)"
+    New-Item -ItemType Directory -Path $biExtractDir -Force | Out-Null
+    $bi = $null
+    try {
+        tar --force-local -xzf $OutFile -C $biExtractDir './lingxi-engine/BUILD-INFO.json' 2>$null
+        $biFile = Join-Path $biExtractDir 'lingxi-engine\BUILD-INFO.json'
+        if (Test-Path $biFile) {
+            $biText = [System.IO.File]::ReadAllText($biFile, (New-Object System.Text.UTF8Encoding $false))
+            if ($biText.Trim()) { $bi = $biText | ConvertFrom-Json }
+        }
+    } finally {
+        Remove-Item $biExtractDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    if ($bi) {
         if ($bi.version -eq $Version) {
             Write-Host "  [OK] BUILD-INFO version = $Version" -ForegroundColor Green
         } else {
             throw "[FAIL] BUILD-INFO version ($($bi.version)) != $Version"
         }
         Write-Host "  [OK] BUILD-INFO commit = $($bi.commit)" -ForegroundColor Green
+        Write-Host "  [OK] BUILD-INFO highlights parsed as UTF-8 ($($bi.highlights.Count) items)" -ForegroundColor Green
         $rootBiPath = Join-Path $ProjectRoot 'BUILD-INFO.json'
         if (Test-Path $rootBiPath) {
             $rootBi = Get-Content $rootBiPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -339,10 +380,9 @@ try {
             throw "[FAIL] root BUILD-INFO.json missing"
         }
     } else {
-        throw '[FAIL] BUILD-INFO.json missing from package'
+        throw '[FAIL] BUILD-INFO.json missing or unparseable in package'
     }
 
-    Write-Host ""
     Write-Host "Packaging completed successfully." -ForegroundColor Green
 } finally {
     Pop-Location

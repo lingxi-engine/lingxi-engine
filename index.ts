@@ -84,6 +84,7 @@ import type { ProjectGoal } from './src/core/goal-tracker.js';
 import * as auth from './src/auth/index.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
+import { isDevMode } from './src/security/token-compare.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
@@ -103,6 +104,10 @@ import { ProviderRegistry } from './src/ai/provider-registry.js';
 import { BrowserManager } from './src/tools/browser.js';
 import { PluginManager } from './src/plugins/plugin-manager.js';
 import { CronScheduler, createCronJob, type JobPayload } from './src/core/cron-scheduler.js';
+import { runOnboarding, createOnboardingRoutes } from './src/core/onboarding.js';
+import { TeamManager } from './src/core/team-manager.js';
+import { WebhookScheduler, registerWebhookRoutes } from './src/core/webhook-scheduler.js';
+import { registerAuthRoutes } from './src/routes/auth-main.js';
 import { logger } from './src/core/logger.js';
 import { errorHandler, notFoundHandler } from './src/http/error.js';
 import { registerV17Routes } from './src/routes-v1.7.js';
@@ -133,6 +138,7 @@ import { createGoalOutcomeRoutes } from './src/routes/goals-outcomes.js';
 import { createProfileRoutes } from './src/routes/profile.js';
 import { createMiscRoutes } from './src/routes/misc.js';
 import { createUploadRoutes } from './src/routes/upload.js';
+import { dataDir as resolveDataDir } from './src/core/paths.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
 import { createAgiRoutes } from './src/routes/agi.js';
@@ -207,6 +213,12 @@ import { rbac, getParticipantRole, type Role } from './src/server/rbac.js';
 // which is also the single switch required to revive the feature later.
 const FEATURE_MARKET = process.env.FEATURE_MARKET === 'true';
 
+// ── [FEATURE_PLATFORM] 云平台（社交/好友/LAN/mesh）总开关 ──────────────────────
+// 2026-10-04：平台侧暂时下线，引擎只保留「注册/登录」，社交与组网功能全部关闭。
+// 关闭时：前端隐藏入口，后端社交/LAN/mesh 路由一律 404（不是 401，避免前端反复重试刷日志）。
+// 恢复方式：.env 里把 FEATURE_PLATFORM 改为 true 并重启，无需改代码。
+// 注意：注册/登录（/api/auth/*、/api/user/*）**不受此开关影响**，继续走云平台注册。
+const FEATURE_PLATFORM = process.env.FEATURE_PLATFORM !== 'false';
 
 async function main() {
   // ═══ 启动检测 ═══
@@ -239,15 +251,15 @@ async function main() {
     console.warn('[Config] 缺少配置项:', missing.join(', '), '- 服务可能无法正常运行');
   }
 
-    // 2026-09-02 安全修复：MESH_TOKEN 弱/默认值检测 —— 生产模式（DEV_MODE=false）拒绝启动，开发模式仅警告
+    // 2026-09-02 安全修复：MESH_TOKEN 弱/默认值检测 —— 生产模式（NODE_ENV=production 或 DEV_MODE=false）拒绝启动，开发模式仅警告
     const MESH_TOKEN_WEAK = ['change-me-to-a-strong-secret', 'changeme', 'change-me'];
     const _meshToken = process.env.MESH_TOKEN || '';
     const meshEnabled = !!process.env.MESH_PLATFORM_URL;
     const meshWeak = MESH_TOKEN_WEAK.includes(_meshToken) || (meshEnabled && !_meshToken);
     if (meshWeak) {
       const msg = 'MESH_TOKEN 为默认弱值' + (meshEnabled ? '（且已配置 MESH_PLATFORM_URL）' : '');
-      if (process.env.DEV_MODE === 'false') {
-        console.error('[FATAL] ' + msg + '，生产环境（DEV_MODE=false）拒绝启动，请设置强随机 MESH_TOKEN');
+      if (!isDevMode()) {
+        console.error('[FATAL] ' + msg + '，生产环境（NODE_ENV=production）拒绝启动，请设置强随机 MESH_TOKEN');
         process.exit(1);
       }
       console.warn('[Config] ' + msg + '（开发模式仅警告）');
@@ -278,7 +290,9 @@ async function main() {
   if (cliDataDir) process.env.DATA_DIR = cliDataDir;
   const autoPort = argv.includes('--auto-port') || process.env.AUTO_PORT === 'true';
 
-  const dataDir = process.env.DATA_DIR ? join(process.cwd(), process.env.DATA_DIR) : join(process.cwd(), 'data');
+  // 数据目录统一交给 src/core/paths.ts 解析。旧的 join(cwd, DATA_DIR) 在 DATA_DIR
+  // 为绝对路径时会拼出 "<repo>\D:\lingxi-data"，导致 main.db 与 providers.json 分家。
+  const dataDir = resolveDataDir();
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
   const dbPath = join(dataDir, 'main.db');
   await initDB(dbPath);
@@ -500,6 +514,7 @@ setSearchManager(searchManagerInstance);
   }, dataDir);
   cronScheduler.start();
 
+
   // ── P1-2: 会话管理器 ──
   const sessionManager = new SessionManager(dataDir);
   sessionManager.startAutoSave(10000);
@@ -637,9 +652,33 @@ if (!FEATURE_MARKET) {
            '/api/market', '/api/market/*', '/api/mvp', '/api/mvp/*',
            '/api/hire', '/api/hire/*', '/js/market.js', '/css/market.css'],
     (_req, res) => { res.status(404).json({ error: 'not_found', feature: 'market' }); });
-  app.get('/api/features', (_req, res) => {
-    res.json({ market: false, credits: false, wallet: false, hire: false });
+}
+
+// [FEATURE_PLATFORM] /api/features 必须无条件注册，不能塞进上面的 if (!FEATURE_MARKET)。
+// v2.0.32 实测踩过的坑：FEATURE_MARKET=false 时整块 if 不执行 → 路由不存在 →
+// 前端拿到 404/空对象 → f.platform 是 undefined → !!undefined===false
+// → 误判成"平台已关闭"，把好友入口全隐藏了。功能开关自己的接口不能被别人开关掉。
+app.get('/api/features', (_req, res) => {
+  res.json({
+    market: FEATURE_MARKET,
+    credits: false,
+    wallet: false,
+    hire: false,
+    platform: FEATURE_PLATFORM,
   });
+});
+
+// [FEATURE_PLATFORM] 云平台社交功能下线：好友 / LAN 邻居 / 群组 / mesh 组网一律 404。
+// 放在 static 与所有路由之前，只拦这些前缀，不影响 /api/auth/*（注册登录）、/api/chats/*（群聊）等本地功能。
+if (!FEATURE_PLATFORM) {
+  const blocked = [
+    '/api/lan', '/api/friends', '/api/friend', '/api/mesh',
+    '/api/user/find', '/api/user/search', '/api/instances',
+  ];
+  app.use(blocked, (_req: any, res: any) => {
+    res.status(404).json({ error: 'not_found', feature: 'platform' });
+  });
+  console.log('[Feature] 云平台社交功能已关闭（FEATURE_PLATFORM=false），好友/LAN/mesh 返回 404；注册登录保留');
 }
 
   // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
@@ -781,6 +820,27 @@ if (!FEATURE_MARKET) {
     }
   });
 
+  // ── v2.0.33: Onboarding 状态 API（免鉴权，首次启动引导用）──
+  app.get('/api/onboarding/status', (_req, res) => {
+    try {
+      let userCount = 0;
+      try { userCount = (db.listUsers() as any[]).length; } catch { userCount = 0; }
+      let hasProvider = false;
+      try { hasProvider = (aiHub.listProviders?.() || []).some((p: any) => p.apiKey && p.apiKey.length > 8 && !p.apiKey.startsWith('your-')); } catch { hasProvider = false; }
+      res.json({
+        ok: true,
+        firstRun: userCount === 0,
+        hasProvider,
+        hasUser: userCount > 0,
+        userCount,
+        defaultModel: process.env.DEFAULT_MODEL || '',
+        version: process.env.npm_package_version || '2.0.32',
+        port: process.env.PORT || 3456,
+        timestamp: Date.now(),
+      });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ── 全局鉴权兜底：所有 /api 路由至少走一次 JWT 检查 ──
   app.use('/api', jwtAuth({ required: false }));
   // ── 危险操作鉴权：破坏性/配置类/工具执行类路由必须登录（挂在具体路由上） ──
@@ -793,324 +853,109 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   app.use('/api', apiRateLimit);
 
   // ════════════════════════════════════════════════
-  // ── V7 认证路由（持久身份：邮箱+密码+数字ID+JWT） ──
-  // ════════════════════════════════════════════════
-
-  // ── V7: 注册（邮箱 + 密码 + 数字 ID） ──
-  app.post('/api/auth/register', authRateLimit, async (req, res) => {
-    try {
-      const { email, password, display_name, invite_code, agent_binding } = req.body;
-      const result = auth.register({
-        email, password, displayName: display_name, inviteCode: invite_code,
-        agentBinding: agent_binding || 'skip',
-      });
-      // 注册成功后自动登录并签发 token，前端无需再次登录
-      let tokens: any = {};
-      try { tokens = await auth.loginWithEmail(email, password); } catch (_e) {}
-      // 如果选了 auto_default，自动创建灵犀引擎
-      if (agent_binding === 'auto_default' && result.user) {
-        try {
-          const agent = manager.register(result.user.id, display_name + '的灵犀引擎', display_name + ' 的 AI 助手', 'semi');
-          if (defaultModel) {
-            try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
-          }
-          res.json({ ok: true, user: result.user, agent, ...tokens });
-        } catch (ae: any) {
-          res.json({ ok: true, user: result.user, agentError: ae.message, ...tokens });
-        }
-      } else {
-        res.json({ ok: true, user: result.user, ...tokens });
-      }
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
+  // ── V7 认证路由（从巨石拆分至 src/routes/auth-main.ts，依赖注入） ──
+  registerAuthRoutes(app, {
+    db,
+    manager,
+    defaultModel,
+    requireAuth,
+    broadcast,
   });
 
-  // ── V7: 邮箱验证 ──
-  app.get('/api/auth/verify-email', (req, res) => {
+  // ── 团队协作 + Webhook 触发器（挂载点: app/requireAuth/hookManager 均已声明） ──
+
+  // ── 团队协作 (TeamManager) ──
+  const teamManager = new TeamManager();
+  console.log(`[Team] 团队管理器已初始化`);
+
+  // 团队协作 REST 路由
+  app.get('/api/teams', requireAuth, (req: any, res: any) => {
     try {
-      const token = req.query.token as string;
-      if (!token) return res.status(400).json({ error: '缺少 token' });
-      const result = auth.verifyEmail(token);
-      res.json({ ok: true, message: '邮箱验证成功', userId: result.userId, email: result.email });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 登录（邮箱 + 密码） ──
-  app.post('/api/auth/login', async (req, res) => {
-    try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
-      const result = await auth.loginWithEmail(email, password);
-      res.json({ ok: true, ...result });
-    } catch (err: any) {
-      res.status(401).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 登录（数字 ID + 密码） ──
-  app.post('/api/auth/login-by-id', (req, res) => {
-    try {
-      const { numeric_id, password } = req.body;
-      if (!numeric_id || !password) return res.status(400).json({ error: '数字ID和密码必填' });
-      const result = auth.loginWithNumericId(Number(numeric_id), password);
-      res.json({ ok: true, ...result });
-    } catch (err: any) {
-      res.status(401).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 忘记密码（防枚举，总是 200） ──
-  app.post('/api/auth/forgot-password', (req, res) => {
-    try {
-      const { email } = req.body;
-      if (!email || !email.includes('@')) return res.status(400).json({ error: '请输入有效的邮箱' });
-      auth.forgotPassword(email);
-      res.json({ ok: true, message: '如果该邮箱已注册，重置链接已发送' });
-    } catch (err: any) {
-      res.json({ ok: true, message: '如果该邮箱已注册，重置链接已发送' });
-    }
-  });
-
-  // ── V7: 重置密码 ──
-  app.post('/api/auth/reset-password', (req, res) => {
-    try {
-      const { token, new_password } = req.body;
-      auth.resetPassword(token, new_password);
-      res.json({ ok: true, message: '密码已重置，请重新登录' });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 刷新 token ──
-  app.post('/api/auth/refresh', (req, res) => {
-    try {
-      const { refresh_token } = req.body;
-      if (!refresh_token) return res.status(400).json({ error: '缺少 refresh_token' });
-      const result = auth.refreshAccessToken(refresh_token);
-      res.json({ ok: true, ...result });
-    } catch (err: any) {
-      res.status(401).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 注销 ──
-  app.post('/api/auth/logout', jwtAuth({ required: true }), (req, res) => {
-    try {
-      const sid = (req as any).user?.sid;
-      const uid = (req as any).user?.sub;
-      if (sid) auth.logout(sid);
-      // 登出时设置用户状态为 offline
-      if (uid) {
-        try { getDB().run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['offline', Date.now(), uid]); } catch {}
-        try { broadcast({ type: 'user.offline', userId: uid }); } catch {}
-      }
-      res.json({ ok: true, message: '已注销' });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-
-  // ── V7: 当前用户信息（需 JWT） ──
-  app.get('/api/auth/me', jwtAuth({ required: true }), (req, res) => {
-    const user = { ...(req as any).user };
-    const platformApiUrl = (globalThis as any).__platformApiUrl || '';
-    const platformAdminToken = (globalThis as any).__platformAdminToken || '';
-
-    // 情况 1: 平台 admin-auto 模式（未登录，使用平台 admin 身份）
-    if (user.sid === 'platform-admin') {
-      const pa = (globalThis as any).__platformAdminUser;
-      if (pa) {
-        user.id = String(pa.id);
-        user.display_name = pa.username;
-        user.username = pa.username;
-        user.numeric_id = pa.id;
-        user.email = pa.email || '';
-        user.points = pa.points;
-        user.status = pa.status || 'active';
-        user.role = pa.role || 'admin';
-      }
-      return res.json({ ok: true, user });
-    }
-
-    // 情况 2: 平台 JWT（用户通过平台登录，payload 含 id/username/role）
-    if (user.id && !user.sub) {
-      // 这是平台签发的 JWT，补全字段
-      user.sub = String(user.id);
-      user.numeric_id = Number(user.id);
-      user.sid = user.sid || 'platform';
-      user.roles = user.roles || [user.role || 'user'];
-      // 从平台 API 获取最新用户信息
-      if (platformApiUrl) {
-        (async () => {
-          try {
-            const resp = await fetch(`${platformApiUrl}/api/user/${user.id}`);
-            const d = await resp.json() as any;
-            if (d.ok && d.user) {
-              user.username = d.user.username;
-              user.display_name = d.user.username;
-              user.email = d.user.email || '';
-              // 补充积分等信息
-              if (platformAdminToken) {
-                try {
-                  const ar = await fetch(`${platformApiUrl}/api/admin/users/${user.id}?token=${platformAdminToken}`);
-                  const ad = await ar.json() as any;
-                  if (ad.ok && ad.user) {
-                    user.points = ad.user.points;
-                    user.status = ad.user.status;
-                  }
-                } catch(_e) {}
-              }
-            }
-          } catch(_e) {}
-          // 确保 main.db 中有对应的本地记录（用于聊天引用）
-          try {
-            const localId = String(user.id);
-            const existing = db.getUser(localId);
-            if (!existing && user.username) {
-              db.createUser(localId, user.username);
-              const raw2 = getDB();
-              raw2.run('UPDATE users SET numeric_id = ?, status = ? WHERE id = ?', [Number(user.id), 'online', localId]);
-              saveToDisk();
-            } else if (existing && user.username && existing.display_name !== user.username) {
-              // 修复: 同步云平台最新 display_name 到本地数据库，避免刷新后回退为"用户+nid"
-              const raw2 = getDB();
-              raw2.run('UPDATE users SET display_name = ?, status = ? WHERE id = ?', [user.username, 'online', localId]);
-              saveToDisk();
-            }
-          } catch(_e) {}
-          // 注册到 Mesh 平台（让其他实例能找到此用户）
-          try {
-            const meshUrl = process.env.MESH_PLATFORM_URL || '';
-            const meshTok = process.env.MESH_TOKEN || '';
-            if (meshUrl && meshTok && user.numeric_id) {
-              fetch(meshUrl.replace(/\/$/, '') + '/api/users/register', {
-                method: 'POST',
-                headers: { 'Authorization': 'Bearer ' + meshTok, 'Content-Type': 'application/json' },
-                body: JSON.stringify({ instanceId: getInstanceId(), numericId: Number(user.numeric_id), displayName: user.username || user.display_name || '', email: user.email || '', userId: String(user.id) }),
-              }).catch(() => {});
-            }
-          } catch(_e) {}
-          res.json({ ok: true, user });
-        })();
-      } else {
-        res.json({ ok: true, user });
-      }
-      return;
-    }
-
-    // 情况 3: 引擎本地 JWT（admin-auto 回退模式或本地注册用户）
-    try {
-      const dbUser = db.getUser(user.sub || user.id || '');
-      if (dbUser) {
-        user.id = dbUser.id;
-        user.display_name = dbUser.display_name;
-        user.numeric_id = dbUser.numeric_id;
-        user.email = dbUser.email;
-        user.username = dbUser.username;
-        user.status = dbUser.status;
-        user.avatar_url = dbUser.avatar_url || '';
-        user.bio = dbUser.bio || '';
-        user.email_verified = !!dbUser.email_verified;
-      }
-    } catch(_e) {}
-    // 兜底: 从 sub 取 id
-    if (!user.id && user.sub) user.id = String(user.sub);
-    res.json({ ok: true, user });
-  });
-
-    // ── v2.4.1: /api/user/me 兼容别名（旧前端/客户端 checkAuthStatus 调用，避免 404 误清登录态）──
-  app.get('/api/user/me', jwtAuth({ required: true }), (req, res) => {
-    try {
-      const user = { ...(req as any).user };
-      if (!user.id && user.sub) user.id = String(user.sub);
-      if (user.numeric_id === undefined && user.numericId !== undefined) user.numeric_id = user.numericId;
-      res.json({ ok: true, user });
+      const ownerId = (req as any).user?.sub || (req as any).user?.id;
+      const teams = ownerId ? teamManager.list(ownerId) : teamManager.list();
+      res.json({ ok: true, teams });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-// ── V7: Admin 管理接口 ──
-  app.use('/api/admin/*', adminAuth);
-  app.post('/api/admin/invite-codes', (req, res) => {
+  app.post('/api/teams', requireAuth, (req: any, res: any) => {
     try {
-      const { code, max_uses, expires_at } = req.body;
-      if (!code) return res.status(400).json({ error: '缺少 code' });
-      createInviteCode(code, 'admin', max_uses || 1, expires_at ? Number(expires_at) : undefined);
-      res.json({ ok: true, code });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
-  app.get('/api/admin/invite-codes', (_req, res) => {
-    res.json({ ok: true, codes: listInviteCodes() });
+      const { name, description } = req.body || {};
+      if (!name) return res.status(400).json({ error: 'name 必填' });
+      const ownerId = String((req as any).user?.sub || (req as any).user?.id || 'unknown');
+      const team = teamManager.create(name, description || '', ownerId);
+      broadcast({ type: 'team.created', team });
+      res.json({ ok: true, team });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 旧版兼容：验证码发送（保留 demo 模式） ──
-  app.post('/api/auth/send-code', (req, res) => {
-    const { email } = req.body;
-    if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: '请输入有效的邮箱地址' });
-    }
-    const code = String(randomInt(100000, 1000000));
-    const expiresAt = Date.now() + 5 * 60 * 1000;
-    const username = req.body.username;
-    verificationCodes.set(email, { email, code, username, expiresAt });
-    console.log('[Auth] 验证码已生成:', email, '(已脱敏)');
-    res.json({ ok: true, message: '验证码已生成', expiresIn: 300 });
+  app.get('/api/teams/:id', requireAuth, (req: any, res: any) => {
+    try {
+      const team = teamManager.get(String(req.params.id));
+      if (!team) return res.status(404).json({ error: '团队不存在' });
+      res.json({ ok: true, team });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── 旧版兼容：验证码注册（保留 demo 模式） ──
-  app.post('/api/auth/register-with-email', (req, res) => {
+  app.post('/api/teams/:id/members', requireAuth, (req: any, res: any) => {
     try {
-      const { email, code, username } = req.body;
-      if (!email || !code) return res.status(400).json({ error: '邮箱和验证码必填' });
-      const stored = verificationCodes.get(email);
-      if (!stored) return res.status(400).json({ error: '请先获取验证码' });
-      if (Date.now() > stored.expiresAt) {
-        verificationCodes.delete(email);
-        return res.status(400).json({ error: '验证码已过期，请重新获取' });
-      }
-      // P0-4 修复: 验证码尝试次数检查
-      const attempts = verificationAttempts.get(email);
-      if (attempts && Date.now() - attempts.firstAttempt < ATTEMPT_WINDOW) {
-        if (attempts.count >= MAX_CODE_ATTEMPTS) {
-          return res.status(429).json({ error: '验证码尝试次数过多，请稍后再试' });
+      const { agentId, role, displayName } = req.body || {};
+      if (!agentId) return res.status(400).json({ error: 'agentId 必填' });
+      const ok = teamManager.addMember(String(req.params.id), String(agentId), role || 'member', displayName || agentId);
+      if (!ok) return res.status(404).json({ error: '团队不存在或成员已存在' });
+      broadcast({ type: 'team.member-added', teamId: req.params.id, agentId });
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete('/api/teams/:id/members/:agentId', requireAuth, (req: any, res: any) => {
+    try {
+      const ok = teamManager.removeMember(String(req.params.id), String(req.params.agentId));
+      res.json({ ok });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post('/api/teams/:id/dispatch', requireAuth, (req: any, res: any) => {
+    try {
+      const { task, targetRole } = req.body || {};
+      if (!task) return res.status(400).json({ error: 'task 必填' });
+      const targets = teamManager.dispatchTask(String(req.params.id), task, targetRole);
+      res.json({ ok: true, targets });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.post('/api/teams/:id/archive', requireAuth, (req: any, res: any) => {
+    try { res.json({ ok: teamManager.archive(String(req.params.id)) }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  app.delete('/api/teams/:id', requireAuth, (req: any, res: any) => {
+    try { res.json({ ok: teamManager.delete(String(req.params.id)) }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── Webhook 触发器 (独立版, 对齐 OpenClaw Inbound Webhooks) ──
+  // 与内联版 /api/webhooks/trigger/:jobId (触发 cron 任务) 功能互补:
+  // 内联版 = 触发已注册的 cron 任务; 独立版 = 独立 webhook 作业 (持久化+secret+CRUD)
+  const webhookScheduler = new WebhookScheduler(async (job: any, body: any) => {
+    console.log(`[Webhook] 作业触发: ${job.name} (${job.id})`);
+    try {
+      const prompt = (job.promptTemplate || '').replace(/{payload}/g, JSON.stringify(body || {}));
+      const targetChat = job.chatId || 'chat-default';
+      const agents = db.listAgents();
+      const targetAgent = job.agentId || agents[0]?.id || agents[0]?.agent_id;
+      if (targetAgent) {
+        const reply = await router.generateReply(targetChat, targetAgent, 'webhook-' + job.id);
+        if (reply) {
+          broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + targetAgent, senderType: 'agent', content: reply, timestamp: Date.now() });
+          inboxManager.add('hook', `Webhook: ${job.name}`, reply, targetAgent);
         }
-        attempts.count++;
-      } else {
-        verificationAttempts.set(email, { count: 1, firstAttempt: Date.now() });
       }
-      if (stored.code !== code) return res.status(400).json({ error: '验证码错误' });
-      // 验证成功，清除尝试计数
-      verificationAttempts.delete(email);
-      verificationCodes.delete(email);
-      const localPart = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]+/g, '-');
-      const numericId = nextNumericId(); const userId = String(numericId);
-      const displayName = username || stored.username || localPart;
-      const user: User = db.createUser(userId, displayName);
-      const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
-      if (defaultModel) {
-        try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
-      }
-      res.json({ ok: true, user, agent });
-    } catch (err: any) {
-      res.status(400).json({ error: err.message });
-    }
-  });
+      await hookManager.trigger('cronExecuted', { event: 'cronExecuted', timestamp: Date.now(), message: job.name, args: body });
+    } catch (err: any) { console.error(`[Webhook] 作业执行错误:`, err.message); }
+  }, dataDir);
+  webhookScheduler.start();
+  registerWebhookRoutes(app, webhookScheduler, requireAuth);
 
-  // ── 旧版用户名注册（兼容） ──
-  // P0-3 修复: 添加 requireAuth，防止无鉴权无限创建用户
-  app.post('/api/users/register', requireAuth, (req, res) => {
-    const { displayName, username } = req.body;
-    const name = username || displayName;
-    if (!name) return res.status(400).json({ error: '用户名不能为空' });
-    const numericId = nextNumericId(); const id = String(numericId);
-    const user: User = db.createUser(id, name);
-    res.json({ ok: true, user });
-  });
 
   app.post('/api/agents/register', requireAuth, (req, res) => {
     try {
@@ -2431,6 +2276,42 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── v2.0.33: Webhook 触发器（事件驱动 cron，对齐 OpenClaw 触发器体系）──
+  // 外部事件（GitHub push / 邮件 / IM 消息 / 任意 HTTP POST）可触发已注册的 cron 任务。
+  // 用法: POST /api/webhooks/trigger/:jobId  body: { payload?: object }
+  // 鉴权：X-Webhook-Token 头 == WEBHOOK_TOKEN 环境变量（未设置则拒绝所有外部调用）
+  const webhookToken = process.env.WEBHOOK_TOKEN || '';
+  const checkWebhookAuth = (req: any): boolean => {
+    if (!webhookToken) return false; // 未配置 token 时禁止外部触发（安全默认）
+    const provided = req.headers['x-webhook-token'] || (req.body && req.body.token);
+    return provided === webhookToken;
+  };
+  app.post('/api/webhooks/trigger/:jobId', async (req, res) => {
+    if (!checkWebhookAuth(req)) {
+      return res.status(401).json({ error: 'Webhook 鉴权失败：请在 .env 设置 WEBHOOK_TOKEN，并以 X-Webhook-Token 头携带' });
+    }
+    try {
+      const jobId = String(req.params.jobId);
+      const job = cronScheduler.listJobs().find((j: any) => j.id === jobId);
+      if (!job) return res.status(404).json({ error: `任务 ${jobId} 不存在` });
+      const ok = await cronScheduler.runNow(jobId);
+      // 记录触发来源，供审计
+      inboxManager.add('system', 'Webhook 触发', `任务 ${job.name} 被 webhook 触发（来源: ${req.ip}）`, 'system');
+      res.json({ ok, job: { id: job.id, name: job.name } });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+  // 查询哪些任务可被 webhook 触发（前端管理面板用）
+  app.get('/api/webhooks/jobs', requireAuth, (_req, res) => {
+    try {
+      const jobs = cronScheduler.listJobs().map((j: any) => ({ id: j.id, name: j.name, schedule: j.schedule, enabled: j.enabled }));
+      res.json({ ok: true, jobs, webhookEnabled: !!webhookToken });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ── v1.8.4: 目标系统 (GoalTracker) ──
   // project 参数缺省为 'default'（单项目场景），支持 ?project= 查询多项目
   app.get('/api/goals', requireAuth, (_req, res) => {
@@ -3362,7 +3243,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // ────────────────────────────────────────
   // 实例网格 (Instance Mesh) — 局域网/跨机多灵犀协作
+  // [FEATURE_PLATFORM] 平台下线时整块跳过：既不组网，也不注册到 mesh，
+  // 也不注册 /api/mesh/* 路由（前面的 404 中间件已兜底）。
   // ────────────────────────────────────────
+  if (!FEATURE_PLATFORM) {
+    console.log('[Mesh] 云平台社交功能已关闭，跳过实例组网');
+  } else {
   {
     const meshPlatformUrl = process.env.MESH_PLATFORM_URL || process.env.PLATFORM_URL || '';
     const meshToken = process.env.MESH_TOKEN || process.env.PLATFORM_TOKEN || '';
@@ -3503,6 +3389,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       res.json({ ok, taskId });
     });
   }
+  }  // end of [FEATURE_PLATFORM] mesh block
 
 
   // ────────────────────────────────────────
@@ -4202,7 +4089,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     },
   }));
 
-  server.listen(port, bindAddr, () => {
+    // ── v2.0.33: 开机自检（对齐 OpenClaw onboarding）──
+  createOnboardingRoutes(app, { aiHub, browserAvailable });
+  const _obReport = await runOnboarding({ aiHub });
+  if (_obReport.fatal) console.warn('[Onboarding] ⚠️ 致命项失败：AI 对话不可用，请按上方指引修复 .env 后重启');
+
+server.listen(port, bindAddr, () => {
     console.log('');
     console.log('=== 灵犀引擎 V5 已就绪 ===');
     console.log(' HTTP: http://localhost:' + port + '  [bind ' + bindAddr + ']');
@@ -4215,7 +4107,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     console.log(' [V5] Approval: ' + approvalManager.getPending().length + ' 待审批 | Hooks: ' + hookManager.list().length + ' | Inbox: ' + inboxManager.unreadCount() + ' 未读');
     console.log(' [V5] Skills: ' + skillManager.list().length + ' 已安装 | Channels: ' + channelManager.list().length + ' 已配置');
     console.log('');
-    console.log(' API: /api/inbox | /api/approval | /api/hooks | /api/skills | /api/channels | /api/cron | /api/sessions | /api/subagents | /api/providers | /api/mcp');
+    console.log(' API: /api/inbox | /api/approval | /api/hooks | /api/skills | /api/channels | /api/cron | /api/sessions | /api/subagents | /api/providers | /api/mcp | /api/onboarding');
     console.log('========================');
     console.log('');
   });

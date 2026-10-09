@@ -7,6 +7,7 @@ import OpenAI from "openai";
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { computeDelayMs, DEFAULT_RETRY_BUDGET } from "../core/retry-coordinator.js";
+import { dataPath } from '../core/paths.js';
 
 // ─────────────────── 配置 ───────────────────
 
@@ -71,7 +72,7 @@ const NVIDIA_RECOMMENDED_MODELS = [
 
 // 模型级黑名单持久化路径：记录「目录里有、但账号无授权 / 模型已下线」的模型，
 // 防止 syncNvidiaModels() 反复把死模型灌回 providers。
-const MODEL_BLACKLIST_PATH = join(process.cwd(), "data", "nvidia-model-blacklist.json");
+const MODEL_BLACKLIST_PATH = dataPath('nvidia-model-blacklist.json');
 
 /** 模型级黑名单条目 */
 export interface ModelBlacklistEntry {

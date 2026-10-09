@@ -6,6 +6,7 @@
 import { spawn, execSync } from 'child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join, resolve } from 'path';
+import { dataPath } from './paths.js';
 
 // Docker 可用性检测 — 默认启用，检测失败则降级
 function detectDocker(): boolean {
@@ -177,7 +178,7 @@ export async function runInDocker(options: DockerRunOptions): Promise<DockerRunR
   return execDocker(args, { timeout, input });
 }
 
-const HOST_SANDBOX_DIR = join(process.cwd(), 'data', 'docker-sandbox');
+const HOST_SANDBOX_DIR = dataPath('docker-sandbox');
 
 /**
  * 执行一段 JS 代码：写入临时文件 -> Docker 中 node 运行 -> 清理

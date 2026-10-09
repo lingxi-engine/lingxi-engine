@@ -1,6 +1,6 @@
 {
   "name": "lingxi-engine",
-  "version": "2.0.30",
+  "version": "2.0.32",
   "description": "LingXi Engine - AI-native IM platform where every user gets an AI agent",
   "license": "MIT",
   "author": "LingXi Engine",
@@ -24,7 +24,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify:deploy": "node scripts/verify-deploy.cjs"
+    "verify:deploy": "node scripts/verify-deploy.cjs",
+    "setup:browser": "npm install puppeteer --no-save"
   },
   "bin": {
     "lingxi": "././src/cli/chat.ts"

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>灵犀引擎 · 初始设置向导</title>
+<link rel="stylesheet" href="style.css?v=20261008a">
+<style>
+/* ── Onboarding 向导专属样式（独立于 style.css，避免污染主样式）── */
+:root {
+  --ob-primary: #4f6ef7;
+  --ob-primary-dark: #3d5ce0;
+  --ob-bg: #0f1420;
+  --ob-card: #171e2e;
+  --ob-border: #2a3450;
+  --ob-text: #e8ecf5;
+  --ob-text-dim: #8b94ad;
+  --ob-success: #2ecc71;
+  --ob-error: #e74c3c;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: radial-gradient(ellipse at top, #1a2338 0%, var(--ob-bg) 60%);
+  color: var(--ob-text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.ob-wrapper { width: 100%; max-width: 640px; }
+.ob-logo {
+  text-align: center; margin-bottom: 28px;
+}
+.ob-logo .brand {
+  font-size: 28px; font-weight: 700; letter-spacing: 2px;
+  background: linear-gradient(135deg, #6a8bff, #a78bfa);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+.ob-logo .sub { color: var(--ob-text-dim); font-size: 14px; margin-top: 6px; }
+.ob-card {
+  background: var(--ob-card);
+  border: 1px solid var(--ob-border);
+  border-radius: 16px;
+  padding: 32px;
+  box-shadow: 0 24px 64px rgba(0,0,0,.45);
+}
+.ob-steps {
+  display: flex; gap: 8px; margin-bottom: 28px;
+}
+.ob-steps .dot {
+  flex: 1; height: 4px; border-radius: 2px; background: var(--ob-border);
+  transition: background .3s;
+}
+.ob-steps .dot.active { background: var(--ob-primary); }
+.ob-steps .dot.done { background: var(--ob-success); }
+.ob-step-title { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+.ob-step-desc { color: var(--ob-text-dim); font-size: 14px; margin-bottom: 24px; line-height: 1.6; }
+.ob-form { display: flex; flex-direction: column; gap: 16px; }
+.ob-field label { display: block; font-size: 13px; color: var(--ob-text-dim); margin-bottom: 6px; }
+.ob-field input, .ob-field select {
+  width: 100%; padding: 10px 14px; border-radius: 8px;
+  border: 1px solid var(--ob-border); background: #0d1220;
+  color: var(--ob-text); font-size: 14px; outline: none;
+}
+.ob-field input:focus, .ob-field select:focus { border-color: var(--ob-primary); }
+.ob-field .hint { font-size: 12px; color: var(--ob-text-dim); margin-top: 4px; }
+.ob-field .hint a { color: var(--ob-primary); }
+.ob-actions { display: flex; justify-content: space-between; margin-top: 8px; gap: 12px; }
+.ob-btn {
+  padding: 10px 22px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 14px; font-weight: 600; transition: all .2s;
+}
+.ob-btn-primary { background: var(--ob-primary); color: #fff; }
+.ob-btn-primary:hover { background: var(--ob-primary-dark); }
+.ob-btn-primary:disabled { background: #3a4460; cursor: not-allowed; }
+.ob-btn-ghost { background: transparent; color: var(--ob-text-dim); border: 1px solid var(--ob-border); }
+.ob-btn-ghost:hover { color: var(--ob-text); }
+.ob-check { display: flex; align-items: center; gap: 10px; padding: 14px; border: 1px solid var(--ob-border); border-radius: 10px; cursor: pointer; }
+.ob-check input { accent-color: var(--ob-primary); width: 16px; height: 16px; }
+.ob-status { margin-top: 16px; font-size: 13px; min-height: 18px; }
+.ob-status.ok { color: var(--ob-success); }
+.ob-status.err { color: var(--ob-error); }
+.ob-status .spin {
+  display: inline-block; width: 14px; height: 14px; border: 2px solid var(--ob-border);
+  border-top-color: var(--ob-primary); border-radius: 50%;
+  animation: obspin .8s linear infinite; vertical-align: -2px; margin-right: 6px;
+}
+@keyframes obspin { to { transform: rotate(360deg); } }
+.ob-result { text-align: center; padding: 24px 0; }
+.ob-result .icon { font-size: 48px; margin-bottom: 16px; }
+.ob-result h3 { font-size: 20px; margin-bottom: 8px; }
+.ob-result p { color: var(--ob-text-dim); font-size: 14px; margin-bottom: 24px; }
+.ob-links { text-align: center; margin-top: 20px; font-size: 13px; color: var(--ob-text-dim); }
+.ob-links a { color: var(--ob-primary); text-decoration: none; }
+.ob-links a:hover { text-decoration: underline; }
+.ob-providers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.ob-providers .p {
+  padding: 14px 10px; text-align: center; border: 1px solid var(--ob-border);
+  border-radius: 10px; cursor: pointer; transition: all .2s; font-size: 13px;
+}
+.ob-providers .p:hover { border-color: var(--ob-primary); background: rgba(79,110,247,.08); }
+.ob-providers .p.sel { border-color: var(--ob-primary); background: rgba(79,110,247,.15); }
+.ob-providers .p .n { font-weight: 600; display: block; margin-bottom: 2px; }
+.ob-providers .p .m { color: var(--ob-text-dim); font-size: 11px; }
+@media (max-width: 600px) {
+  .ob-card { padding: 20px; }
+  .ob-providers { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="ob-wrapper">
+  <div class="ob-logo">
+    <div class="brand">灵犀引擎</div>
+    <div class="sub">LingXi Engine · 初始设置向导</div>
+  </div>
+
+  <div class="ob-card">
+    <div class="ob-steps" id="obSteps">
+      <div class="dot"></div><div class="dot"></div><div class="dot"></div>
+    </div>
+    <div id="obContent"></div>
+  </div>
+
+  <div class="ob-links">
+    <a href="index.html">跳过向导，直接进入控制台 →</a>
+  </div>
+</div>
+
+<script src="js/onboarding.js?v=20261008a"></script>
+</body>
+</html>

@@ -55,6 +55,27 @@ function W-Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
 function W-Warn($m) { Write-Host "[WARN] $m" -ForegroundColor Yellow }
 function W-Fail($m) { Write-Host "[FAIL] $m" -ForegroundColor Red; exit 1 }
 
+# ---------- 0.5 native OpenSSH resolution (v2.0.31 fix) ----------
+# PowerShell on this box resolves `scp`/`ssh` to Git's MSYS copies under
+# "C:\Program Files\Git\usr\bin". Those rewrite POSIX remote paths into
+# "C:/Program Files/Git/<path>", so uploading to /var/www/lingxi/public fails with
+# 'dest open "C:/Program Files/Git/var/www/...": No such file or directory'.
+# Always prefer the native System32 OpenSSH binaries when they exist.
+function Get-NativeOpenSsh($name) {
+    $candidates = @(
+        (Join-Path $env:SystemRoot "System32\OpenSSH\$name.exe"),
+        (Join-Path $env:SystemRoot "Sysnative\OpenSSH\$name.exe")
+    )
+    foreach ($c in $candidates) {
+        if (Test-Path $c) { return $c }
+    }
+    return $null
+}
+$ScpExe = Get-NativeOpenSsh 'scp'
+$SshExe = Get-NativeOpenSsh 'ssh'
+if ($ScpExe) { W-Info "native scp: $ScpExe" } else { W-Warn "native scp not found - falling back to whatever scp resolves to" }
+if ($SshExe) { W-Info "native ssh: $SshExe" } else { W-Warn "native ssh not found - falling back to whatever ssh resolves to" }
+
 # ---------- 0. local version ----------
 $LocalVersion = (Get-Content (Join-Path $RepoRoot 'version.txt') -Raw).Trim().TrimStart([char]0xFEFF)
 $LocalCommit  = (git -C $RepoRoot rev-parse --short HEAD 2>$null)
@@ -193,7 +214,10 @@ if (-not $Host_ -or -not $User_ -or -not $Path_) {
 if (-not $Port_) { $Port_ = '22' }
 
 if ($Method -eq 'scp') {
-    if (-not (Get-Command scp -ErrorAction SilentlyContinue)) {
+    # v2.0.31: use the native binary when available (see Get-NativeOpenSsh above);
+    # MSYS scp mangles the POSIX remote path into C:/Program Files/Git/var/www/...
+    $scpCmd = if ($ScpExe) { $ScpExe } else { 'scp' }
+    if (-not (Get-Command $scpCmd -ErrorAction SilentlyContinue)) {
         W-Fail "scp not found. Install OpenSSH Client, or use -Method manual"
     }
     $sshArgs = @()
@@ -201,11 +225,11 @@ if ($Method -eq 'scp') {
     $sshArgs += '-P', $Port_
 
     W-Info "upload tarball -> ${User_}@${Host_}:${Path_}/lingxi-engine.tar.gz"
-    & scp @sshArgs $tarball "${User_}@${Host_}:${Path_}/lingxi-engine.tar.gz"
+    & $scpCmd @sshArgs $tarball "${User_}@${Host_}:${Path_}/lingxi-engine.tar.gz"
     if ($LASTEXITCODE -ne 0) { W-Fail "tarball upload failed (version.txt untouched, live still old - safe)" }
 
     W-Info "upload version.txt"
-    & scp @sshArgs $verFile "${User_}@${Host_}:${Path_}/version.txt"
+    & $scpCmd @sshArgs $verFile "${User_}@${Host_}:${Path_}/version.txt"
     if ($LASTEXITCODE -ne 0) { W-Fail "version.txt upload failed (tarball uploaded but version file stale - retry)" }
 
     W-Info "upload install.sh"
@@ -213,19 +237,19 @@ if ($Method -eq 'scp') {
     # server.js serves GET /install.sh from public/ ONLY - the parent dir is a dead path,
     # so scp mode never actually updated the installer users download. Aligned with the
     # FTP branch and -manual instructions, which both target public/.
-    & scp @sshArgs $installSh "${User_}@${Host_}:${Path_}/install.sh"
+    & $scpCmd @sshArgs $installSh "${User_}@${Host_}:${Path_}/install.sh"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.sh upload failed (tarball+version already live; retry)" }
 
     W-Info "upload install.ps1"
     # v2.0.26 FIX: same dead-path bug as install.sh above - server.js reads install.ps1 from public/ too.
-    & scp @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/install.ps1"
+    & $scpCmd @sshArgs $installPs1 "${User_}@${Host_}:${Path_}/install.ps1"
     if ($LASTEXITCODE -ne 0) { W-Fail "install.ps1 upload failed (retry)" }
 
     # v2.0.28 FIX: publish the download page in the same transaction as the artifacts it
     # describes. Warn (not fail) so a page-only problem cannot block a code release.
     if ($downloadHtml) {
         W-Info "upload web/download.html"
-        & scp @sshArgs $downloadHtml "${User_}@${Host_}:${Path_}/download.html"
+        & $scpCmd @sshArgs $downloadHtml "${User_}@${Host_}:${Path_}/download.html"
         if ($LASTEXITCODE -ne 0) { W-Warn "download.html upload failed - the public page may show a stale version" }
     }
 
@@ -233,7 +257,7 @@ if ($Method -eq 'scp') {
     # /public/lingxi-engine-<ver>.tar.gz while only the generic name was being uploaded, so the
     # current release's link 404'd (found: the v2.0.26/27/28 copies were all missing server-side).
     W-Info "upload versioned archive copy -> lingxi-engine-v$LocalVersion.tar.gz"
-    & scp @sshArgs $tarball "${User_}@${Host_}:${Path_}/lingxi-engine-v$LocalVersion.tar.gz"
+    & $scpCmd @sshArgs $tarball "${User_}@${Host_}:${Path_}/lingxi-engine-v$LocalVersion.tar.gz"
     if ($LASTEXITCODE -ne 0) { W-Warn "versioned archive copy upload failed - download page link may 404" }
 
     # v2.0.27 FIX: refresh the ORPHAN parent-dir copy of version.txt in the same transaction.
@@ -244,13 +268,14 @@ if ($Method -eq 'scp') {
     $ParentDir = ($Path_.TrimEnd("/") -replace "/public$", "")
     if ($ParentDir -and $ParentDir -ne $Path_.TrimEnd("/")) {
         $ParentVer = "$ParentDir/version.txt"
-        if (Get-Command ssh -ErrorAction SilentlyContinue) {
+        $sshCmdExe = if ($SshExe) { $SshExe } else { 'ssh' }
+        if (Get-Command $sshCmdExe -ErrorAction SilentlyContinue) {
             $sshCmdArgs = @()
             if ($Key_) { $sshCmdArgs += "-i", $Key_ }
             $sshCmdArgs += "-p", $Port_, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"
             W-Info "sync orphan copy -> $ParentVer"
             $cpCmd = "cp -f " + $Path_ + "/version.txt " + $ParentVer + " && cat " + $ParentVer
-            & ssh @sshCmdArgs "${User_}@${Host_}" $cpCmd
+            & $sshCmdExe @sshCmdArgs "${User_}@${Host_}" $cpCmd
             if ($LASTEXITCODE -ne 0) { W-Warn "orphan version.txt sync failed (harmless: not served over HTTP)" }
         } else {
             W-Warn "ssh not found - orphan $ParentVer left stale (harmless: not served)"

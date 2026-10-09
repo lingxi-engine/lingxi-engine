@@ -79,19 +79,22 @@ export async function initDB(dbPath: string) {
     if (_schemaStatus.drift.length) console.warn('[schema] 迁移后仍有漂移:', JSON.stringify(_schemaStatus.drift));
     else console.log('[schema] ✅ 迁移账本一致 · 漂移 0 处 · checksum=' + _schemaStatus.checksum);
   } catch (e: any) { console.error('[schema] runMigrations 失败:', e.message); }
-  // v2.0.20: 存量用户积分建档——补齐 user_credits 缺失记录，避免各处读到兜底值
-  try {
-    const missing = _db.exec('SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM user_credits)');
-    const rows = (missing[0] && missing[0].values) || [];
-    if (rows.length) {
-      const now = Date.now();
-      const ins = _db.prepare('INSERT OR IGNORE INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, 1000, 0, 0, ?)');
-      for (const r of rows) { ins.run([String(r[0]), now]); }
-      ins.free();
-      markDirty();
-      console.log('[DB] credit rows backfilled: ' + rows.length);
-    }
-  } catch (e: any) { console.error('[DB] credit backfill failed:', e.message); }
+  // v2.0.20: 存量用户积分建档——补齐 user_credits 缺失记录，避免各处读到兜底值。
+  // user_credits 已随雇佣市场退役（[FEATURE_MARKET]），新库不再有这张表，此时无需回填。
+  if (hasTable(_db, 'user_credits')) {
+    try {
+      const missing = _db.exec('SELECT id FROM users WHERE id NOT IN (SELECT user_id FROM user_credits)');
+      const rows = (missing[0] && missing[0].values) || [];
+      if (rows.length) {
+        const now = Date.now();
+        const ins = _db.prepare('INSERT OR IGNORE INTO user_credits (user_id, credits, total_earned, total_spent, updated_at) VALUES (?, 1000, 0, 0, ?)');
+        for (const r of rows) { ins.run([String(r[0]), now]); }
+        ins.free();
+        markDirty();
+        console.log('[DB] credit rows backfilled: ' + rows.length);
+      }
+    } catch (e: any) { console.error('[DB] credit backfill failed:', e.message); }
+  }
   console.log(`[DB] initialized: ${dbPath}`);
   return _db;
 }
@@ -777,10 +780,13 @@ function _dbInit(db: any) {
       db.run(`ALTER TABLE agent_market ADD COLUMN duration_unit TEXT NOT NULL DEFAULT 'permanent'`);
       console.log('[DB] v2.0.12 migration: added duration_unit to agent_market');
     }
-    const hireCols = db.exec(`PRAGMA table_info(hires)`)[0]?.values?.map((r: any) => r[1]) || [];
-    if (!hireCols.includes('expires_at')) {
-      db.run(`ALTER TABLE hires ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`);
-      console.log('[DB] v2.0.12 migration: added expires_at to hires');
+    // hires 已随雇佣市场退役（[FEATURE_MARKET]），新库无此表；仅对遗留库补列
+    if (hasTable(db, 'hires')) {
+      const hireCols = db.exec(`PRAGMA table_info(hires)`)[0]?.values?.map((r: any) => r[1]) || [];
+      if (!hireCols.includes('expires_at')) {
+        db.run(`ALTER TABLE hires ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0`);
+        console.log('[DB] v2.0.12 migration: added expires_at to hires');
+      }
     }
     const orderCols = db.exec(`PRAGMA table_info(market_orders)`)[0]?.values?.map((r: any) => r[1]) || [];
     if (!orderCols.includes('hire_id')) {
@@ -2101,7 +2107,8 @@ const MIGRATIONS: Migration[] = [
   {
     id: '20260912_001_hires_expires_at',
     description: 'hires 增加 expires_at（原 v2.0.12 迁移）',
-    up: (db) => { addColumnIfMissing(db, 'hires', 'expires_at', 'INTEGER NOT NULL DEFAULT 0'); },
+    // hires 表已随雇佣市场退役；保留迁移仅为兼容既有库账本，新库不再执行
+    up: (db) => { if (hasTable(db, 'hires')) addColumnIfMissing(db, 'hires', 'expires_at', 'INTEGER NOT NULL DEFAULT 0'); },
   },
   {
     id: '20260918_001_hires_align_code_schema',
@@ -2110,6 +2117,7 @@ const MIGRATIONS: Migration[] = [
       '而真实库用的是 buyer_agent_id/seller_agent_id/credits_paid/created_at。' +
       '只补列 + 尽力回填，不破坏既有行。',
     up: (db) => {
+      if (!hasTable(db, 'hires')) return;
       addColumnIfMissing(db, 'hires', 'agent_id', 'TEXT');
       addColumnIfMissing(db, 'hires', 'title', "TEXT DEFAULT ''");
       addColumnIfMissing(db, 'hires', 'price', 'INTEGER DEFAULT 0');
@@ -2224,6 +2232,8 @@ export function runMigrations(opts: { autoAddMissingColumns?: boolean; failFast?
 
 /** 漂移检测：返回"迁移清单期望但库中缺失"的列 */
 export function detectDrift(): Array<{ table: string; column: string }> {
+  // hires / user_credits / wallet_tx 已随雇佣市场退役（见 [FEATURE_MARKET]），
+  // 新库不会再创建这些表，因此不在漂移期望清单里——否则每台新机器都报假漂移。
   const expected: Array<[string, string]> = [
     ['chats', 'shared_workspace'], ['chats', 'chat_mode'], ['chats', 'name'],
     ['agents', 'personality_dims'],
@@ -2233,8 +2243,6 @@ export function detectDrift(): Array<{ table: string; column: string }> {
     ['agent_market', 'duration'], ['agent_market', 'duration_unit'], ['agent_market', 'item_type'],
     ['agent_market', 'preview_url'], ['agent_market', 'file_url'], ['agent_market', 'license'],
     ['agent_market', 'cover_url'], ['agent_market', 'currency'],
-    ['hires', 'expires_at'], ['hires', 'agent_id'], ['hires', 'title'], ['hires', 'price'],
-    ['hires', 'hired_at'], ['hires', 'fired_at'],
     ['market_orders', 'hire_id'],
   ];
   const out: Array<{ table: string; column: string }> = [];
