@@ -10,7 +10,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $InstallDir = Join-Path $env:USERPROFILE "lingxi-engine"
 # Tarball source: production URL by default; override with $env:LINGXI_TARBALL_URL if self-hosting
 $TarballUrl = if ($env:LINGXI_TARBALL_URL) { $env:LINGXI_TARBALL_URL } else { "http://47.93.157.83:8080/public/lingxi-engine.tar.gz" }
-$INSTALL_VERSION = "unknown"
+$INSTALL_VERSION = (Get-Date).ToString("v2026.M.d-H.mm")
 
 function W-OK($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
 function W-Info($m) { Write-Host "[INFO] $m" -ForegroundColor Cyan }
@@ -152,12 +152,6 @@ if (-not (Test-Path (Join-Path $InstallDir "package.json"))) {
     W-Fail "package.json not found in $InstallDir after extraction. Installation corrupted."
 }
 W-OK "Extracted and verified"
-# 从解压产物读取真实版本号（version.txt 由发布流程写入，比安装时间戳权威）
-$verFile = Join-Path $InstallDir "version.txt"
-if (Test-Path $verFile) {
-    $verRaw = (Get-Content -LiteralPath $verFile -Raw -Encoding UTF8).Trim()
-    if ($verRaw) { $INSTALL_VERSION = $verRaw }
-}
 Remove-Item $extractTmp -Recurse -Force -EA SilentlyContinue
 Remove-Item $tb -Force -EA SilentlyContinue
 
@@ -199,10 +193,6 @@ Pop-Location
 $envFile = Join-Path $InstallDir ".env"
 $ollamaOK = $false
 if (-not (Test-Path $envFile)) {
-    # 与 install.sh 对齐：自动生成随机密钥，避免空密钥裸奔（引擎监听 0.0.0.0）
-    $hexChars = '0123456789abcdef'.ToCharArray()
-    $jwtSecret = -join (1..64 | ForEach-Object { $hexChars | Get-Random })
-    $adminToken = -join (1..32 | ForEach-Object { $hexChars | Get-Random })
     $envContent = @"
 # ==========================================
 #  LingXi Engine - AI Provider Configuration
@@ -242,12 +232,12 @@ DEFAULT_MODEL=deepseek-chat
 TOOL_MODEL=
 REPLY_MODEL=
 
-# --- Security (REQUIRED - auto-generated on first install) ---
-# 已自动生成随机密钥，如需更换可自行修改
-JWT_SECRET=$jwtSecret
+# --- Security (REQUIRED - change these!) ---
+# Generate a random JWT secret: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+JWT_SECRET=
 
 # Admin API token (set a strong password)
-ADMIN_TOKEN=$adminToken
+ADMIN_TOKEN=
 
 # --- Mesh Platform (cross-network social) ---
 MESH_PLATFORM_URL=
@@ -349,11 +339,12 @@ if ($startNow -eq 'y' -or $startNow -eq 'Y') {
     } catch {}
     W-Info "Starting engine..."
     if ($isFileMode) {
-        # -File 模式：前台运行引擎看日志；独立后台进程负责就绪后自动打开浏览器（不受会话退出影响）
-        # 用 EncodedCommand 规避 PS5.1 Start-Process 对含引号字符串的参数转义缺陷
-        $openCmd = 'Start-Sleep 8; try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 20 | Out-Null } catch {}; Start-Process "http://127.0.0.1:3456"'
-        $openEnc = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($openCmd))
-        Start-Process powershell -ArgumentList "-NoProfile","-EncodedCommand",$openEnc -WindowStyle Hidden
+        # -File 模式：前台运行，用户可以看日志、Ctrl+C 退出
+        Start-Job {
+            Start-Sleep 5
+            try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 15 | Out-Null } catch {}
+            Start-Process "http://127.0.0.1:3456"
+        } | Out-Null
         Push-Location $InstallDir
         npx tsx index.ts
         Pop-Location
@@ -368,9 +359,11 @@ if ($startNow -eq 'y' -or $startNow -eq 'Y') {
         W-Info "Engine started in background (minimized window)"
         Write-Host ""
         Write-Host "  Engine is starting... Opening browser in 5 seconds..." -ForegroundColor Cyan
-        Start-Sleep 8
-        try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 20 | Out-Null } catch {}
-        Start-Process "http://127.0.0.1:3456"
+        Start-Job {
+            Start-Sleep 5
+            try { Invoke-WebRequest http://127.0.0.1:3456/api/health -UseBasicParsing -TimeoutSec 20 | Out-Null } catch {}
+            Start-Process "http://127.0.0.1:3456"
+        } | Out-Null
         Write-Host "  Open: http://localhost:3456" -ForegroundColor White
         Write-Host ""
         Write-Host "  To stop: close the minimized PowerShell window or run:" -ForegroundColor Gray

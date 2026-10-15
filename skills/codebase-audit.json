@@ -1,0 +1,13 @@
+{
+  "name": "codebase-audit",
+  "displayName": "代码库审计",
+  "description": "搜索、验证和报告代码库中的功能或模块，不做任何修改",
+  "tools": [
+    "shell_exec",
+    "read_file",
+    "write_file"
+  ],
+  "prompt": "当用户要求检查代码库中的功能、模块或特性是否存在/隐藏/被引用时：\n1. 先用 shell_exec 搜索关键词和引用关系（grep/rg）\n2. 用 read_file 读取关键文件确认内容\n3. 追踪调用链判断是否真正被使用\n4. 最后用 write_file 输出审计报告，全程不做任何代码修改\n\n关键原则：\n- 先搜索再下结论，不要凭印象\n- 区分「直接引用」「间接引用」「完全孤立」三种状态\n- 报告中明确标注证据位置（文件:行号）\n- 用户说「不要做改动」就严格只读，包括清理自己的临时文件也要先问",
+  "autoCreated": true,
+  "createdAt": 1791718165863
+}

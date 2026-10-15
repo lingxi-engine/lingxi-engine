@@ -1612,8 +1612,24 @@ export function initNumericIdSeq(): void {
   else _nextNumericId = 10000;
 }
 
-/** 分配下一个 numeric_id（10000 起自增）*/
+/**
+ * 分配下一个 numeric_id（10000 起自增）
+ *
+ * ⚠️ 2026-10-15 修复 UNIQUE constraint failed: users.numeric_id
+ * 旧实现 `return _nextNumericId++` 只依赖内存计数器。但引擎里有多处
+ * 「直接写库」的号段消费者，用的是 `SELECT MAX(numeric_id)+1`（不推进内存计数器）：
+ *   - index.ts ensureUserSetup()：访客连 WebSocket 时给访客补号（前端一打开聊天页就连 WS！）
+ *   - index.ts 启动迁移：给 numeric_id 为 NULL 的旧用户补号
+ * 结果：访客占掉 max+1 后内存计数器仍停在同一个值 → 下一个真实注册
+ * 必然撞 `UNIQUE constraint failed: users.numeric_id`，新用户完全无法注册。
+ *
+ * 现改为每次分配都从 DB 读实时 MAX，保证返回值一定大于库中所有已存在 id。
+ * 单线程 JS 下读取+自增之间不会有其它分配者插入，故无竞态。
+ */
 export function nextNumericId(): number {
+  const row = queryOne(`SELECT MAX(numeric_id) FROM users WHERE numeric_id IS NOT NULL`);
+  const dbMax = (row && typeof row[0] === 'number') ? (row[0] as number) : 9999;
+  if (dbMax + 1 > _nextNumericId) _nextNumericId = dbMax + 1;
   return _nextNumericId++;
 }
 

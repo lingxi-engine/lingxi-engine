@@ -56,7 +56,7 @@ public class MainActivity extends Activity {
     private static final String TAG = "LingxiRemote";
 
     /** 默认官方云引擎。自部署用户可在「更换引擎地址」里改成自己的。 */
-    private static final String DEFAULT_ENDPOINT = "http://<SERVER_IP>";
+    private static final String DEFAULT_ENDPOINT = "http://10.0.2.2:3456"; // Android模拟器访问宿主机localhost，真机请改为电脑局域网IP
 
     /** 引擎移动端入口。手机端一律走 /m/，保证拿到的是移动版界面。 */
     private static final String MOBILE_PATH = "/m/";
