@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 · LingXi Engine</title>
+<meta name="description" content="登录灵犀引擎，管理你的 AI 员工、任务市场与钱包。">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://lingxi-engine.com/login.html">
+<style>
+  :root{
+    --bg:#080c16; --bg2:#0e1526; --bg3:#151d33; --border:#1e293b; --border2:#334155;
+    --text:#e8eefc; --text2:#9fb0cc; --text3:#63748f;
+    --accent:#2563eb; --accent2:#3b82f6; --green:#22c55e; --red:#ef4444;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:var(--bg); color:var(--text); min-height:100vh;
+    display:flex; align-items:center; justify-content:center; padding:40px 20px;
+    position:relative; overflow:hidden;
+  }
+  body::before{
+    content:''; position:fixed; inset:0; pointer-events:none;
+    background:
+      radial-gradient(900px 500px at 15% -5%, rgba(37,99,235,.20), transparent 60%),
+      radial-gradient(700px 420px at 90% 105%, rgba(34,197,94,.13), transparent 60%);
+  }
+  .wrap{width:100%; max-width:430px; position:relative; z-index:1}
+  .brand{display:flex; align-items:center; justify-content:center; gap:10px; margin-bottom:26px}
+  .orb{
+    width:34px; height:34px; border-radius:50%;
+    background:conic-gradient(from 0deg,#2563eb,#22c55e,#a855f7,#2563eb);
+    animation:spin 5s linear infinite;
+  }
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .brand span{font-weight:700; font-size:17px; letter-spacing:.3px}
+  .card{
+    background:rgba(14,21,38,.88); border:1px solid var(--border);
+    border-radius:16px; padding:32px 30px; backdrop-filter:blur(12px);
+    box-shadow:0 24px 60px rgba(0,0,0,.5);
+  }
+  h1{font-size:22px; margin-bottom:6px}
+  .sub{font-size:13.5px; color:var(--text2); margin-bottom:22px}
+  label{display:block; font-size:12.5px; color:var(--text2); margin:0 0 7px; font-weight:600}
+  .field{margin-bottom:16px}
+  input{
+    width:100%; background:var(--bg3); border:1px solid var(--border2);
+    border-radius:10px; padding:12px 14px; color:var(--text);
+    font-size:14px; font-family:inherit; outline:none; transition:.18s;
+  }
+  input:focus{border-color:var(--accent2); box-shadow:0 0 0 3px rgba(59,130,246,.15)}
+  input::placeholder{color:var(--text3)}
+  .pw-wrap{position:relative}
+  .pw-wrap input{padding-right:64px}
+  .toggle{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--text3); font-size:12px;
+    cursor:pointer; font-family:inherit; padding:6px 8px;
+  }
+  .toggle:hover{color:var(--accent2)}
+  .line{
+    display:flex; align-items:center; justify-content:space-between;
+    margin:-4px 0 18px; font-size:12.5px;
+  }
+  .line label{display:flex; align-items:center; gap:6px; margin:0; font-weight:400; cursor:pointer}
+  .line input{width:auto; accent-color:var(--accent2)}
+  .line a{color:var(--text3); text-decoration:none}
+  .line a:hover{color:var(--accent2)}
+  button.primary{
+    width:100%; background:linear-gradient(135deg,var(--accent),#1d4ed8);
+    border:none; border-radius:10px; padding:13px; color:#fff;
+    font-size:15px; font-weight:700; cursor:pointer; font-family:inherit;
+    transition:.18s;
+  }
+  button.primary:hover:not(:disabled){transform:translateY(-1px); box-shadow:0 8px 22px rgba(37,99,235,.42)}
+  button.primary:disabled{opacity:.55; cursor:not-allowed}
+  .msg{margin-top:14px; padding:11px 14px; border-radius:9px; font-size:13px; display:none; line-height:1.55}
+  .msg.show{display:block}
+  .msg.err{background:rgba(239,68,68,.11); border:1px solid rgba(239,68,68,.35); color:#fca5a5}
+  .msg.ok{background:rgba(34,197,94,.11); border:1px solid rgba(34,197,94,.35); color:#86efac}
+  .tabs{display:flex; gap:6px; margin-bottom:20px; background:var(--bg3); padding:4px; border-radius:10px}
+  .tab{
+    flex:1; text-align:center; padding:9px; border-radius:7px; font-size:13px;
+    font-weight:600; color:var(--text2); cursor:pointer; transition:.18s; border:none;
+    background:none; font-family:inherit;
+  }
+  .tab.on{background:var(--accent); color:#fff}
+  .divider{margin:20px 0 16px; text-align:center; font-size:11.5px; color:var(--text3)}
+  .alt{margin-top:20px; text-align:center; font-size:13px; color:var(--text2)}
+  .alt a{color:var(--accent2); text-decoration:none; font-weight:600}
+  .alt a:hover{text-decoration:underline}
+  .foot{margin-top:22px; text-align:center; font-size:12px; color:var(--text3)}
+  .foot a{color:var(--text3)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">
+    <div class="orb"></div>
+    <span>LingXi Engine</span>
+  </div>
+
+  <div class="card">
+    <h1>欢迎回来</h1>
+    <p class="sub">登录后继续管理你的 AI 员工与收益</p>
+
+    <div class="tabs">
+      <button class="tab on" id="tab-email" type="button">邮箱登录</button>
+      <button class="tab" id="tab-id" type="button">数字 ID 登录</button>
+    </div>
+
+    <!-- 邮箱登录 -->
+    <form id="f-email" autocomplete="off">
+      <div class="field">
+        <label for="email">邮箱</label>
+        <input id="email" type="email" placeholder="you@example.com" required>
+      </div>
+      <div class="field">
+        <label for="pw">密码</label>
+        <div class="pw-wrap">
+          <input id="pw" type="password" placeholder="你的密码" required>
+          <button type="button" class="toggle" data-pw="pw">显示</button>
+        </div>
+      </div>
+      <div class="line">
+        <label><input type="checkbox" id="rem">记住我</label>
+        <a href="#" id="forgot">忘记密码？</a>
+      </div>
+      <button class="primary" type="submit">登录</button>
+    </form>
+
+    <!-- 数字 ID 登录 -->
+    <form id="f-id" autocomplete="off" style="display:none">
+      <div class="field">
+        <label for="nid">数字 ID</label>
+        <input id="nid" type="number" placeholder="注册时分配的数字 ID" required>
+      </div>
+      <div class="field">
+        <label for="pw2">密码</label>
+        <div class="pw-wrap">
+          <input id="pw2" type="password" placeholder="你的密码" required>
+          <button type="button" class="toggle" data-pw="pw2">显示</button>
+        </div>
+      </div>
+      <button class="primary" type="submit">登录</button>
+    </form>
+
+    <div class="msg" id="msg"></div>
+
+    <div class="divider">────────　或　────────</div>
+
+    <div class="alt"><a href="/register.html">还没有账号？免费注册 →</a></div>
+    <div class="alt" style="margin-top:10px">
+      <a href="/admin.html">管理员后台入口</a>
+    </div>
+  </div>
+
+  <div class="foot">© 2026 LingXi Engine · <a href="/">返回官网首页</a></div>
+</div>
+
+<script>
+(function () {
+  var API = location.origin + '/api';
+  var $ = function (id) { return document.getElementById(id); };
+
+  // 记住我：预填邮箱
+  try {
+    var savedMail = localStorage.getItem('lingxi_email');
+    if (savedMail) { $('email').value = savedMail; $('rem').checked = true; }
+  } catch (e) {}
+
+  // 密码显示
+  document.querySelectorAll('[data-pw]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var i = $(b.getAttribute('data-pw'));
+      var show = i.type === 'password';
+      i.type = show ? 'text' : 'password';
+      b.textContent = show ? '隐藏' : '显示';
+    });
+  });
+
+  // Tab 切换
+  $('tab-email').addEventListener('click', function () {
+    this.classList.add('on'); $('tab-id').classList.remove('on');
+    $('f-email').style.display = ''; $('f-id').style.display = 'none';
+  });
+  $('tab-id').addEventListener('click', function () {
+    this.classList.add('on'); $('tab-email').classList.remove('on');
+    $('f-id').style.display = ''; $('f-email').style.display = 'none';
+  });
+
+  function say(kind, text) {
+    var m = $('msg');
+    m.className = 'msg show ' + kind;
+    m.textContent = text;
+  }
+
+  function save(d, key) {
+    try {
+      var tk = d.token || d.accessToken || d.access_token;
+      var u = d.user || {};
+      localStorage.setItem('authToken', tk);
+      localStorage.setItem('userId', String(u.id || u.sub || ''));
+      localStorage.setItem('displayName', u.username || u.display_name || u.displayName || key || '');
+      if (key) localStorage.setItem('lingxi_email', key);
+    } catch (e) {}
+  }
+
+  function go() {
+    // 有账号就进市场/工作台，管理员可另行访问后台
+    location.href = '/app/'; // [FEATURE_MARKET] 市场下线，落地页改回多模态智能体主站
+  }
+
+  // 邮箱登录
+  $('f-email').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var email = $('email').value.trim();
+    var pw = $('pw').value;
+    var btn = ev.target.querySelector('button.primary');
+    if (!email || !pw) return say('err', '请填写邮箱和密码');
+    btn.disabled = true; btn.textContent = '登录中…';
+
+    fetch(API + '/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email, password: pw })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s < 200 || r.s >= 300 || !r.d.ok) {
+          btn.disabled = false; btn.textContent = '登录';
+          return say('err', r.d.error || '邮箱或密码不正确');
+        }
+        save(r.d, $('rem').checked ? email : '');
+        say('ok', '登录成功，正在进入…');
+        setTimeout(go, 700);
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = '登录';
+        say('err', '网络连接失败，请确认官网服务正在运行');
+      });
+  });
+
+  // 数字 ID 登录
+  $('f-id').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var nid = $('nid').value.trim();
+    var pw = $('pw2').value;
+    var btn = ev.target.querySelector('button.primary');
+    if (!nid || !pw) return say('err', '请填写数字 ID 和密码');
+    btn.disabled = true; btn.textContent = '登录中…';
+
+    fetch(API + '/auth/login-by-id', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ numeric_id: nid, password: pw })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { s: r.status, d: d }; }); })
+      .then(function (r) {
+        if (r.s < 200 || r.s >= 300 || !r.d.ok) {
+          btn.disabled = false; btn.textContent = '登录';
+          return say('err', r.d.error || '数字 ID 或密码不正确');
+        }
+        save(r.d, '');
+        say('ok', '登录成功，正在进入…');
+        setTimeout(go, 700);
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = '登录';
+        say('err', '网络连接失败，请确认官网服务正在运行');
+      });
+  });
+
+  // 忘记密码
+  $('forgot').addEventListener('click', function (ev) {
+    ev.preventDefault();
+    var email = $('email').value.trim();
+    if (!email) return say('err', '请先填写你的邮箱，再点击忘记密码');
+    fetch(API + '/auth/forgot-password', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { say('ok', d.message || '如果该邮箱已注册，重置链接已发送'); })
+      .catch(function () { say('err', '请求失败，请稍后再试'); });
+  });
+})();
+</script>
+</body>
+</html>
