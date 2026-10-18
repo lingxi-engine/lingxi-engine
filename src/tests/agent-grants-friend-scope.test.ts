@@ -1,7 +1,9 @@
 /**
  * 追加用例：好友范围规则
- *  - 非好友的共享/本机 Agent：保持历史行为（allowed, not_friend_agent）
- *  - 好友的 Agent：仍必须授权（回归保护）
+ *  - 好友的 Agent：必须授权（回归保护）
+ *  - 非好友的 Agent：默认拒绝（安全），唯一例外是该 AI 本来就在这个群里
+ *      · 不在群里 → denied / not_friend_agent
+ *      · 已在群里 → allowed / already_participant
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
@@ -31,6 +33,11 @@ beforeAll(async () => {
   ins('INSERT INTO agents (id, user_id, display_name, created_at) VALUES (?,?,?,?)', ['agent-shared', 'user-shared', '共享AI', t]);
   ins('INSERT INTO friendships (id, from_user_id, to_user_id, status, created_at, updated_at) VALUES (?,?,?,?,?,?)',
     ['f-1', 'u-me', 'u-frd', 'accepted', t, t]);
+
+  // 一个「共享 AI 本来就在里面」的群，用于豁免场景
+  ins('INSERT INTO chats (id, type, name, created_at) VALUES (?,?,?,?)', ['c-has-shared', 'group', '存量群', t]);
+  ins('INSERT INTO participants (id, chat_id, agent_id, role, joined_at) VALUES (?,?,?,?,?)',
+    ['p-existing', 'c-has-shared', 'agent-shared', 'member', t]);
 });
 
 afterAll(() => { try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ } });
@@ -42,10 +49,21 @@ describe('好友范围规则', () => {
     expect(r.reason).toBe('no_grant');
   });
 
-  it('非好友的共享/本机 AI → 放行（不误伤老用户）', () => {
+  it('非好友的 AI 且不在该群 → 拒绝（安全，禁止白嫖）', () => {
     const r = grants.canUseAgent('agent-shared', 'u-me', { chatId: 'c1' });
-    expect(r.allowed).toBe(true);
+    expect(r.allowed).toBe(false);
     expect(r.reason).toBe('not_friend_agent');
+  });
+
+  it('非好友的 AI 但本来就在该群 → 放行（不打断存量群聊）', () => {
+    const r = grants.canUseAgent('agent-shared', 'u-me', { chatId: 'c-has-shared' });
+    expect(r.allowed).toBe(true);
+    expect(r.reason).toBe('already_participant');
+  });
+
+  it('拒绝文案可读化：not_friend_agent 有专属提示', () => {
+    const msg = grants.grantDeniedMessage('not_friend_agent');
+    expect(msg).toContain('先加对方为好友');
   });
 
   it('自己绑定的 AI（users.agent_id）→ owner', () => {

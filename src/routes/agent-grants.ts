@@ -183,6 +183,17 @@ function areFriends(a: string, b: string): boolean {
   } catch (_e) { return false; }
 }
 
+/** 统一的拒绝文案：把内部 reason 翻译成用户看得懂的话 */
+export function grantDeniedMessage(reason: string): string {
+  switch (String(reason || '')) {
+    case 'pending_approval': return '该 AI 的授权申请正在等待主人同意';
+    case 'not_friend_agent': return '只能使用好友的 AI，请先加对方为好友并申请授权';
+    case 'out_of_scope': return '该 AI 的授权不覆盖当前会话，请重新申请授权';
+    case 'agent_not_found': return '该 AI 不存在或已删除';
+    default: return '该 AI 尚未授权给你使用，请先申请授权';
+  }
+}
+
 /** 授权记录是否覆盖给定上下文 */
 function grantCovers(g: any, ctx: GrantCtx): boolean {
   if (g.scope === 'group') return ctx.chatId ? String(g.chat_id) === String(ctx.chatId) : true;
@@ -213,7 +224,15 @@ export function canUseAgent(
   // 只对「好友的 AI」强制授权：本机/共享 Agent 保持历史行为，
   // 需求范围是「加好友后默认没有授权」，不误伤老用户正在用的 AI。
   if (!areFriends(String(agent.user_id), String(granteeId))) {
-    return { allowed: true, reason: 'not_friend_agent' };
+    // [安全] 陌生人默认拒绝；唯一例外：该 AI 本来就在这个群里（不打断存量群聊）
+    let alreadyIn = false;
+    if (ctx.chatId) {
+      try {
+        alreadyIn = !!one('SELECT 1 AS x FROM participants WHERE chat_id=? AND agent_id=? LIMIT 1', [String(ctx.chatId), String(agentId)]);
+      } catch (_e) { alreadyIn = false; }
+    }
+    if (alreadyIn) return { allowed: true, reason: 'already_participant' };
+    return { allowed: false, reason: 'not_friend_agent' };
   }
 
   const rows = q(
@@ -477,7 +496,7 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
           allowed: chk.allowed,
           reason: chk.reason,
           status: chk.allowed
-            ? (chk.reason === 'owner' ? 'own' : (chk.reason === 'not_friend_agent' ? 'shared' : 'accepted'))
+            ? (chk.reason === 'owner' ? 'own' : ((chk.reason === 'not_friend_agent' || chk.reason === 'already_participant') ? 'shared' : 'accepted'))
             : (chk.reason === 'pending_approval' ? 'pending'
               : chk.reason === 'tool_not_granted' ? 'tool_locked' : 'locked'),
           scope,

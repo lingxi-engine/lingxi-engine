@@ -13,7 +13,7 @@
 import type { Express, RequestHandler } from 'express';
 import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, type DB } from '../storage/db.js';
 import { sendPeerMessage, getInstanceId } from '../core/instance-mesh.js';
-import { canUseAgent } from './agent-grants.js';
+import { canUseAgent, grantDeniedMessage } from './agent-grants.js';
 
 export interface FriendsChatsRouteDeps {
   db: DB;
@@ -214,9 +214,7 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
         const chk = canUseAgent(String(agentId), actorId, { chatId: String(chatId) });
         if (!chk.allowed) {
           return res.status(403).json({
-            error: chk.reason === 'pending_approval'
-              ? '\u8be5 AI \u7684\u6388\u6743\u7533\u8bf7\u6b63\u5728\u7b49\u5f85\u4e3b\u4eba\u540c\u610f'
-              : '\u8be5 AI \u5c1a\u672a\u6388\u6743\u7ed9\u4f60\u4f7f\u7528\uff0c\u8bf7\u5148\u7533\u8bf7\u6388\u6743',
+            error: grantDeniedMessage(chk.reason),
             code: 'AGENT_NOT_GRANTED',
             reason: chk.reason,
           });
