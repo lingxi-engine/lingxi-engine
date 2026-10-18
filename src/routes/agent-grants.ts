@@ -19,6 +19,8 @@ import { getDB } from '../storage/db.js';
 export interface AgentGrantsDeps {
   requireAuth: RequestHandler;
   broadcast: (event: any) => void;
+  /** 定向推送（推荐）：只发给指定用户，避免授权信息全局泄露 */
+  sendToUser?: (userId: string, event: any) => void;
 }
 
 export type GrantScope = 'group' | 'friend' | 'task';
@@ -220,6 +222,12 @@ export function migrateLegacyAgentParticipants(): number {
 
 export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): void {
   const { requireAuth, broadcast } = deps;
+  const push = (userId: string, event: any) => {
+    try {
+      if (deps.sendToUser && userId) { deps.sendToUser(String(userId), event); return; }
+    } catch (_e) { /* fallthrough */ }
+    try { broadcast(event); } catch (_e2) { /* ignore */ }
+  };
   const me = (req: any) => String(req.user?.sub || req.user?.id || req.user?.numeric_id || '');
 
   // ── 1. 我可见的 AI 及授权状态（供成员面板使用） ──
@@ -272,6 +280,34 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
     }
   });
 
+  // ── 1.5 批量查询授权状态（供聊天成员面板一次性拿全量） ──
+  app.post('/api/agent-grants/status', requireAuth, (req, res) => {
+    try {
+      const granteeId = me(req) || String(req.body?.userId || '');
+      const chatId = String(req.body?.chatId || '');
+      const ids: string[] = Array.isArray(req.body?.agentIds) ? req.body.agentIds.map(String) : [];
+      if (!granteeId) return res.status(401).json({ error: '未登录' });
+      if (!ids.length) return res.json({ ok: true, featureEnabled: grantsEnabled(), statuses: {} });
+      const statuses: Record<string, any> = {};
+      for (const agentId of ids.slice(0, 500)) {
+        const chk = canUseAgent(agentId, granteeId, chatId ? { chatId } : {});
+        let scope: string | null = null;
+        let expiresAt: number | null = null;
+        if (chk.grant) { scope = chk.grant.scope; expiresAt = chk.grant.expires_at || null; }
+        statuses[agentId] = {
+          allowed: chk.allowed,
+          reason: chk.reason,
+          status: chk.allowed
+            ? (chk.reason === 'owner' ? 'own' : 'accepted')
+            : (chk.reason === 'pending_approval' ? 'pending' : 'locked'),
+          scope,
+          expiresAt,
+        };
+      }
+      res.json({ ok: true, featureEnabled: grantsEnabled(), statuses });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
   // ── 2. 发起申请 ──
   app.post('/api/agent-grants', requireAuth, (req, res) => {
     try {
@@ -318,7 +354,7 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
 
       // 通知 AI 主人
       const u = one('SELECT display_name FROM users WHERE id=?', [granteeId]);
-      broadcast({
+      push(ownerId, {
         type: 'agent_grant.request', grantId: id, toUserId: ownerId,
         fromUserId: granteeId, fromName: u?.display_name || granteeId,
         agentId, agentName: agent.display_name, scope, chatId, expiresAt
@@ -379,7 +415,7 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
       const status = action === 'accept' ? 'accepted' : 'rejected';
       exec(`UPDATE agent_grants SET status=?, decided_at=? WHERE id=?`, [status, now(), g.id]);
       audit(g.id, uidMe, action, {});
-      broadcast({
+      push(g.grantee_id, {
         type: 'agent_grant.decided', grantId: g.id, toUserId: g.grantee_id,
         status, agentId: g.agent_id, scope: g.scope, chatId: g.chat_id
       });
@@ -408,7 +444,7 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
           getDB().run('DELETE FROM participants WHERE chat_id=? AND agent_id=?', [g.chat_id, g.agent_id]);
         } catch (_e) {}
       }
-      broadcast({
+      push(isOwner ? g.grantee_id : g.owner_id, {
         type: 'agent_grant.revoked', grantId: g.id,
         toUserId: isOwner ? g.grantee_id : g.owner_id,
         agentId: g.agent_id, chatId: g.chat_id, by: isOwner ? 'owner' : 'grantee'

@@ -2601,7 +2601,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // AI 浣跨敤鏉冩巿鏉冿紙鍔犲ソ鍙嬮粯璁ゆ棤鎺堟潈锛岄渶涓讳汉鍚屾剰锛汧EATURE_AGENT_GRANTS=off 鍙洖婊氾級
   ensureAgentGrantsSchema();
   migrateLegacyAgentParticipants();
-  registerAgentGrantsRoutes(app, { requireAuth, broadcast });
+  registerAgentGrantsRoutes(app, { requireAuth, broadcast, sendToUser });
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
   app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));
@@ -3385,6 +3385,26 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   const clients = new Map<string, Set<WebSocket>>();
 
   // V10 安全修复：按 chatId 过滤广播，只推送给订阅了该聊天的客户端
+  // 定向推送：只发给指定用户的所有连接（授权通知含隐私内容，不能全局广播）
+  function sendToUser(userId: string, event: any) {
+    const payload = JSON.stringify(event);
+    const keys = [String(userId)];
+    const num = Number(userId);
+    if (!isNaN(num)) keys.push(String(num));
+    keys.push('u:' + userId);
+    const seen = new Set<any>();
+    for (const k of keys) {
+      const set = clients.get(k);
+      if (!set) continue;
+      for (const ws of set) {
+        if (seen.has(ws)) continue;
+        seen.add(ws);
+        if (ws.readyState !== WebSocket.OPEN) continue;
+        try { ws.send(payload); } catch (_e) { /* ignore */ }
+      }
+    }
+  }
+
   function broadcast(event: any) {
     const payload = JSON.stringify(event);
     const eventChatId = event.chatId;

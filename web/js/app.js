@@ -12,6 +12,7 @@ window.addEventListener('unhandledrejection', function(e) {
 let ws = null, clientId = null, currentChat = null;
 let myChats = [], unreadCounts = {}, reconnectAttempts = 0, reconnectTimer = null;
 let myFriends = [], incomingRequests = [], searchResults = [], currentFriendTab = 'friends';
+let agentGrantRequests = [];
 let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionList = [], mentionIndex = -1;
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重。
 const _optimisticSent = new Set();
@@ -906,6 +907,23 @@ function handleMessage(msg) {
       // v2.1.7: 不再本地自增（接口一旦失败红点会永久虚高），红点一律以服务端 pending 数为准
       toast(t('friends.requestReceived', { name: (msg.fromName || msg.fromUserId) }));
       loadRequests().catch(function(e){ console.warn('[friend.request] refresh failed', e); });
+      break;
+    case 'agent_grant.request':
+      // 有人申请使用我的 AI：加好友默认无授权，必须我同意
+      toast('🔔 ' + (msg.fromName || msg.fromUserId || '好友') + ' 申请使用你的 AI「' + (msg.agentName || '') + '」');
+      loadRequests().catch(function(e){ console.warn('[agent_grant.request] refresh failed', e); });
+      break;
+    case 'agent_grant.decided':
+      if (msg.status === 'accepted') toast('✅ 对方已同意，你可以使用这个 AI 了');
+      else toast('申请被拒绝');
+      if (typeof loadAvailableMembers === 'function') { try { loadAvailableMembers(); } catch(e) {} }
+      break;
+    case 'agent_grant.revoked':
+      toast('⚠️ ' + (msg.by === 'owner' ? 'AI 主人撤销了授权' : '对方已放弃授权'));
+      if (typeof loadAvailableMembers === 'function') { try { loadAvailableMembers(); } catch(e) {} }
+      break;
+    case 'agent_grant.blocked':
+      toast('🔒 ' + (msg.message || '该 AI 尚未授权给你使用'));
       break;
     case 'friend.accepted':
       toast(t('friends.requestAccepted')); loadFriends(); loadRequests();
@@ -2096,6 +2114,11 @@ async function deleteFriend(fid) {
 }
 async function loadRequests() {
   if (!authToken && !clientId) return;
+  // AI 使用权授权：待我审批的申请（加好友默认无授权，需主人同意）
+  try {
+    const gd = await grantApi('/api/agent-grants/inbox');
+    agentGrantRequests = (gd && gd.items) || [];
+  } catch (_ge) { agentGrantRequests = []; }
   try {
     let d;
     if (authToken) {
@@ -2113,6 +2136,7 @@ async function loadRequests() {
     outgoingRequests = d.outgoing||[];
     // v2.1.7: 红点只数待处理申请(pending)，历史 accepted/denied 不再顶数字
     requestNotifyCount = (d.pendingIncoming || incomingRequests.filter(function(r){ return r.status === 'pending'; })).length;
+    requestNotifyCount += agentGrantRequests.length;
     updateBadge();
     renderRequests();
   } catch(e){ console.warn('[loadRequests] failed', e); }
@@ -2122,11 +2146,31 @@ function renderRequests() {
   const inEl = document.getElementById('incomingRequests');
   if (!inEl) return;
   // v2.1.7: 「收到的好友申请」只展示 pending，历史记录不在这里重复出现
+  const grantCardsHtml = agentGrantRequests.map(function(g){
+    var agentName = g.agent_name || g.agent_id;
+    var who = g.grantee_name || g.grantee_id;
+    var scopeTxt = g.scope === 'group' ? ('群「' + (g.chat_name || g.chat_id || '') + '」') : (g.scope === 'friend' ? '仅私聊' : '单次任务');
+    var ttlTxt = g.expires_at ? ('至 ' + new Date(Number(g.expires_at)).toLocaleString()) : '长期（可随时撤销）';
+    return '<div class="request-item" style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-left:3px solid #6c5ce7">' +
+      '<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">🤖</div>' +
+      '<div style="flex:1;min-width:0">' +
+        '<div style="font-size:13px;color:var(--text);font-weight:600">' + esc(who) + ' 想用你的 AI</div>' +
+        '<div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.6">' +
+          '对象：<b style="color:var(--text)">' + esc(agentName) + '</b><br>' +
+          '范围：' + esc(scopeTxt) + ' · 有效期：' + esc(ttlTxt) +
+          (g.note ? '<br>附言：' + esc(g.note) : '') +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">' +
+        '<button class="btn-sm btn-accept" onclick="decideAgentGrant(\'' + g.id + '\',\'accept\')">同意</button>' +
+        '<button class="btn-sm btn-reject" onclick="decideAgentGrant(\'' + g.id + '\',\'reject\')">拒绝</button>' +
+      '</div></div>';
+  }).join('');
   const pendingIn = incomingRequests.filter(function(r){ return r.status === 'pending'; });
   if (!pendingIn.length) {
-    inEl.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">'+t('friends.noNewRequests')+'</div>';
+    inEl.innerHTML = grantCardsHtml + (grantCardsHtml ? '' : '<div style="padding:20px;text-align:center;color:var(--text3);font-size:12px">'+t('friends.noNewRequests')+'</div>');
   } else {
-    inEl.innerHTML = pendingIn.map(r => {
+    inEl.innerHTML = grantCardsHtml + pendingIn.map(r => {
       const name = r.fromName || (t('profile.defaultUser')+r.fromUserId);
       const initial = name[0].toUpperCase();
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">'+esc(initial)+'</div>';
@@ -2440,11 +2484,29 @@ async function loadAvailableMembers() {
       (pd.participants || []).forEach(m => { if (m.agent_id) existing[m.agent_id] = true; if (m.user_id) existing['u:' + m.user_id] = true; });
     } catch(e) {}
     const rows = [];
+    // 授权状态（默认拒绝：别人家的 AI 没有主人同意不能加进群）
+    var grantMap = {};
+    try {
+      const sd = await grantApi('/api/agent-grants/status', 'POST', { chatId: currentChat, agentIds: agents.map(a => a.id) });
+      grantMap = (sd && sd.statuses) || {};
+    } catch (e) {}
     agents.forEach(a => {
       if (existing[a.id]) return;
-      rows.push('<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #222;cursor:pointer;font-size:12px">' +
-        '<input type="checkbox" class="availMemberCb" data-type="agent" value="' + esc(a.id) + '">' +
+      const gs = grantMap[a.id] || { allowed: false, status: 'locked', reason: 'no_grant' };
+      const locked = gs.allowed === false;
+      const chipLocked = locked
+        ? '<span style="font-size:10px;color:#fbbf24;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.35);padding:0 6px;border-radius:8px;flex-shrink:0">' +
+          (gs.status === 'pending' ? '⏳ 等待同意' : '🔒 未授权') + '</span>'
+        : (gs.status === 'own'
+            ? '<span style="font-size:10px;color:#4ade80;background:rgba(34,197,94,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">我的</span>'
+            : '<span style="font-size:10px;color:#4ade80;background:rgba(34,197,94,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">✅ 已授权</span>');
+      const applyBtn = locked && gs.status !== 'pending'
+        ? '<span onclick="event.preventDefault();event.stopPropagation();applyAgentGrant(\'' + esc(a.id) + '\',\'' + esc(a.displayName || '') + '\')" style="cursor:pointer;font-size:10.5px;color:#fff;background:linear-gradient(135deg,#6c5ce7,#4c7ef3);padding:2px 8px;border-radius:8px;flex-shrink:0">申请授权</span>'
+        : '';
+      rows.push('<label style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-bottom:1px solid #222;cursor:' + (locked ? 'not-allowed' : 'pointer') + ';font-size:12px' + (locked ? ';opacity:0.72' : '') + '">' +
+        '<input type="checkbox" class="availMemberCb" data-type="agent" value="' + esc(a.id) + '"' + (locked ? ' disabled' : '') + '>' +
         '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">🤖 ' + esc(a.displayName) + '</span>' +
+        chipLocked + applyBtn +
         '<span style="font-size:10px;color:#8ab4f8;background:rgba(138,180,248,0.12);padding:0 6px;border-radius:8px;flex-shrink:0">' + esc(a.model) + '</span>' +
         '<span onclick="event.preventDefault();event.stopPropagation();renameAgent(this)" data-id="' + esc(a.id) + '" style="cursor:pointer;font-size:11px;color:#ffb74d;flex-shrink:0;padding:0 4px" title="改名">✏️</span></label>');
     });
@@ -2465,6 +2527,74 @@ async function loadAvailableMembers() {
     availMemberRefreshCount();
   } catch(e) { box.innerHTML = '<div style="padding:6px;color:#f66;font-size:11px">' + t('err.loadFail') + '</div>'; }
 }
+// ── AI 使用权授权：申请 / 审批（加好友默认无授权，需主人同意）──
+function applyAgentGrant(agentId, agentName) {
+  if (!currentChat) { toast('请先选择一个群聊'); return; }
+  var old = document.getElementById('grantApplyModal');
+  if (old) old.remove();
+  var wrap = document.createElement('div');
+  wrap.id = 'grantApplyModal';
+  wrap.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9999;display:flex;align-items:center;justify-content:center;padding:18px';
+  wrap.innerHTML =
+    '<div style="width:100%;max-width:390px;background:var(--bg2,#171b2e);border:1px solid #343c5e;border-radius:16px;padding:18px;color:var(--text,#e8eaf6);font-family:inherit">' +
+      '<div style="font-size:15px;font-weight:700;margin-bottom:4px">申请使用「' + esc(agentName) + '」</div>' +
+      '<div style="font-size:11.5px;color:var(--text3,#8b93b0);margin-bottom:14px;line-height:1.6">对方会收到通知。同意之前，这个 AI 不会响应你的任何消息。</div>' +
+      '<div style="font-size:11.5px;color:#a9b1cf;margin-bottom:6px">授权范围</div>' +
+      '<div style="display:flex;gap:6px;margin-bottom:12px">' +
+        '<div class="gaOpt" data-scope="group" style="flex:1;padding:9px;border:1px solid #6c5ce7;background:rgba(108,92,231,.16);border-radius:9px;cursor:pointer;font-size:12px;text-align:center">本群可用</div>' +
+        '<div class="gaOpt" data-scope="friend" style="flex:1;padding:9px;border:1px solid #343c5e;background:#1c2136;border-radius:9px;cursor:pointer;font-size:12px;text-align:center">仅私聊</div>' +
+      '</div>' +
+      '<div style="font-size:11.5px;color:#a9b1cf;margin-bottom:6px">有效期</div>' +
+      '<select id="gaTtl" style="width:100%;background:#12162a;border:1px solid #343c5e;border-radius:9px;padding:9px;color:inherit;font-family:inherit;font-size:12px;margin-bottom:12px;outline:none">' +
+        '<option value="2">2 小时</option><option value="24" selected>24 小时</option><option value="168">7 天</option><option value="0">长期（可随时撤销）</option>' +
+      '</select>' +
+      '<div style="font-size:11.5px;color:#a9b1cf;margin-bottom:6px">附言（对方能看到）</div>' +
+      '<input id="gaNote" value="借用一下你的 AI，用完就还～" style="width:100%;background:#12162a;border:1px solid #343c5e;border-radius:9px;padding:9px;color:inherit;font-family:inherit;font-size:12px;margin-bottom:16px;outline:none">' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+        '<button id="gaCancel" class="btn-sm">取消</button>' +
+        '<button id="gaSubmit" class="btn-sm btn-accept">发送申请</button>' +
+      '</div>' +
+    '</div>';
+  document.body.appendChild(wrap);
+  var scope = 'group';
+  wrap.querySelectorAll('.gaOpt').forEach(function (el) {
+    el.onclick = function () {
+      scope = el.getAttribute('data-scope');
+      wrap.querySelectorAll('.gaOpt').forEach(function (o) {
+        var on = o === el;
+        o.style.borderColor = on ? '#6c5ce7' : '#343c5e';
+        o.style.background = on ? 'rgba(108,92,231,.16)' : '#1c2136';
+      });
+    };
+  });
+  function close() { wrap.remove(); }
+  document.getElementById('gaCancel').onclick = close;
+  wrap.onclick = function (e) { if (e.target === wrap) close(); };
+  document.getElementById('gaSubmit').onclick = async function () {
+    var ttl = Number(document.getElementById('gaTtl').value || 0);
+    var note = document.getElementById('gaNote').value || '';
+    var body = { agentId: agentId, scope: scope, ttlHours: ttl, note: note };
+    if (scope === 'group') body.chatId = currentChat;
+    try {
+      var r = await grantApi('/api/agent-grants', 'POST', body);
+      close();
+      if (r && (r.grantId || r.status === 'pending')) { toast('申请已发出，等对方主人同意'); loadAvailableMembers(); }
+      else { toast((r && r.error) || '申请失败'); }
+    } catch (e) { close(); toast('申请失败：' + (e && e.message ? e.message : '网络错误')); }
+  };
+}
+async function decideAgentGrant(grantId, action) {
+  try {
+    var r = await grantApi('/api/agent-grants/' + encodeURIComponent(grantId), 'PATCH', { action: action });
+    if (r && (r.ok || r.status)) {
+      toast(action === 'accept' ? '已同意，对方现在可以使用' : '已拒绝');
+      agentGrantRequests = (agentGrantRequests || []).filter(function (g) { return g.id !== grantId; });
+      loadRequests();
+      if (typeof loadAvailableMembers === 'function') { try { loadAvailableMembers(); } catch (e) {} }
+    } else { toast((r && r.error) || '操作失败'); }
+  } catch (e) { toast('操作失败：' + (e && e.message ? e.message : '网络错误')); }
+}
+
 async function renameAgent(btn) {
   const id = btn.getAttribute('data-id');
   if (!id) return;
@@ -3210,7 +3340,19 @@ function applyFeatureFlags(f) {
 async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const r = await fetch(url, opts);
+  let r = await fetch(url, opts);
+  // v2026.10.18 fix: same-origin auth retry. /m/ api() sent no token, so every authed call (chats/agents/models) returned 401 after App takeover.
+  if (r.status === 401 && !/^https?:/i.test(url)) {
+    try {
+      const _tk = localStorage.getItem('authToken');
+      if (_tk) {
+        const _o2 = { method, headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _tk } };
+        if (body) _o2.body = JSON.stringify(body);
+        const _r2 = await fetch(url, _o2);
+        if (_r2.status !== 401) r = _r2;
+      }
+    } catch (_e) { }
+  }
   if (!r.ok) {
     let d = null; try { d = await r.json(); } catch (e) {}
     console.warn('[api]', method || 'GET', url, r.status, d && d.error ? (d.error.code || d.error.message || d.error) : '');
@@ -3224,6 +3366,20 @@ async function platformApi(url, method, body) {
   if (authToken) opts.headers['Authorization'] = 'Bearer ' + authToken;
   if (body) opts.body = JSON.stringify(body);
   const r = await fetch(PLATFORM_URL + url, opts); return r.json();
+}
+// 授权类接口专用：始终携带 Bearer token。
+// 原因：通用 api() 首包不带 token，本地免登录模式下会被当成 admin 虚拟身份，
+// 导致「只能向好友申请使用其 AI」这类归属校验误判。
+function grantApi(url, method, body) {
+  var headers = { 'Content-Type': 'application/json' };
+  var tk = '';
+  try { tk = localStorage.getItem('authToken') || ''; } catch (e) {}
+  if (tk) headers['Authorization'] = 'Bearer ' + tk;
+  var opts = { method: method || 'GET', headers: headers };
+  if (body) opts.body = JSON.stringify(body);
+  return fetch(url, opts).then(function (r) {
+    return r.json().then(function (d) { return d; }).catch(function () { return { ok: false, error: { code: 'HTTP_' + r.status } }; });
+  });
 }
 function esc(s) { if (s == null) return ''; const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML.replace(/'/g, '&#39;'); }
 // v1.9.8: 安全提取错误消息——API 可能返回 {error: {code, message}} 对象而非字符。
