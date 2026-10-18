@@ -2494,12 +2494,15 @@ async function loadAvailableMembers() {
       if (existing[a.id]) return;
       const gs = grantMap[a.id] || { allowed: false, status: 'locked', reason: 'no_grant' };
       const locked = gs.allowed === false;
+      const isShared = gs.status === 'shared';
       const chipLocked = locked
         ? '<span style="font-size:10px;color:#fbbf24;background:rgba(245,158,11,0.14);border:1px solid rgba(245,158,11,0.35);padding:0 6px;border-radius:8px;flex-shrink:0">' +
           (gs.status === 'pending' ? '⏳ 等待同意' : '🔒 未授权') + '</span>'
         : (gs.status === 'own'
             ? '<span style="font-size:10px;color:#4ade80;background:rgba(34,197,94,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">我的</span>'
-            : '<span style="font-size:10px;color:#4ade80;background:rgba(34,197,94,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">✅ 已授权</span>');
+            : (isShared
+                ? '<span style="font-size:10px;color:#8ab4f8;background:rgba(138,180,248,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">可直接用</span>'
+                : '<span style="font-size:10px;color:#4ade80;background:rgba(34,197,94,0.14);padding:0 6px;border-radius:8px;flex-shrink:0">✅ 已授权</span>'));
       const applyBtn = locked && gs.status !== 'pending'
         ? '<span onclick="event.preventDefault();event.stopPropagation();applyAgentGrant(\'' + esc(a.id) + '\',\'' + esc(a.displayName || '') + '\')" style="cursor:pointer;font-size:10.5px;color:#fff;background:linear-gradient(135deg,#6c5ce7,#4c7ef3);padding:2px 8px;border-radius:8px;flex-shrink:0">申请授权</span>'
         : '';

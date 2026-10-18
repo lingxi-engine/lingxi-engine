@@ -122,6 +122,36 @@ function expireIfNeeded(row: any): any {
  * 核心判定：grantee 能否在此上下文使用 agentId
  * 所有真正「调用他人 AI」的入口都必须调用它。
  */
+/** agent 是否属于该用户（owner 判定，兼容 users.agent_id 绑定与 numeric_id 别名） */
+function isOwnAgent(agent: any, userId: string): boolean {
+  const uid = String(userId || '');
+  if (!agent || !uid) return false;
+  if (String(agent.user_id) === uid) return true;
+  try {
+    const u = one('SELECT id, agent_id, numeric_id FROM users WHERE id=? OR numeric_id=? LIMIT 1', [uid, Number(uid) || -1]);
+    if (u) {
+      if (u.agent_id && String(u.agent_id) === String(agent.id)) return true;
+      if (String(u.id) === String(agent.user_id)) return true;
+      if (u.numeric_id != null) {
+        const owner = one('SELECT id, numeric_id FROM users WHERE id=?', [String(agent.user_id)]);
+        if (owner && String(owner.numeric_id) === String(u.numeric_id)) return true;
+      }
+    }
+  } catch (_e) { /* ignore */ }
+  return false;
+}
+
+/** 两人是否为已接受的好友 */
+function areFriends(a: string, b: string): boolean {
+  if (!a || !b || a === b) return false;
+  try {
+    return !!one(
+      "SELECT id FROM friendships WHERE status='accepted' AND ((from_user_id=? AND to_user_id=?) OR (from_user_id=? AND to_user_id=?)) LIMIT 1",
+      [a, b, b, a]
+    );
+  } catch (_e) { return false; }
+}
+
 export function canUseAgent(
   agentId: string,
   granteeId: string,
@@ -136,7 +166,13 @@ export function canUseAgent(
   const agent = getAgent(agentId);
   if (!agent) return { allowed: false, reason: 'agent_not_found' };
   // 自己的 AI 永远可用
-  if (String(agent.user_id) === String(granteeId)) return { allowed: true, reason: 'owner' };
+  if (isOwnAgent(agent, granteeId)) return { allowed: true, reason: 'owner' };
+
+  // 只对「好友的 AI」强制授权：本机/共享 Agent 保持历史行为，
+  // 需求范围是「加好友后默认没有授权」，不误伤老用户正在用的 AI。
+  if (!areFriends(String(agent.user_id), String(granteeId))) {
+    return { allowed: true, reason: 'not_friend_agent' };
+  }
 
   const rows = q(
     `SELECT * FROM agent_grants WHERE agent_id=? AND grantee_id=? AND status IN ('accepted','expired') ORDER BY created_at DESC`,
@@ -298,7 +334,7 @@ export function registerAgentGrantsRoutes(app: Express, deps: AgentGrantsDeps): 
           allowed: chk.allowed,
           reason: chk.reason,
           status: chk.allowed
-            ? (chk.reason === 'owner' ? 'own' : 'accepted')
+            ? (chk.reason === 'owner' ? 'own' : (chk.reason === 'not_friend_agent' ? 'shared' : 'accepted'))
             : (chk.reason === 'pending_approval' ? 'pending' : 'locked'),
           scope,
           expiresAt,
