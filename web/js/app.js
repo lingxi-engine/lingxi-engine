@@ -13,6 +13,8 @@ let ws = null, clientId = null, currentChat = null;
 let myChats = [], unreadCounts = {}, reconnectAttempts = 0, reconnectTimer = null;
 let myFriends = [], incomingRequests = [], searchResults = [], currentFriendTab = 'friends';
 let agentGrantRequests = [];
+let agentGrantExpiring = { asOwner: [], asGrantee: [] };
+let agentGrantSel = {};
 let requestNotifyCount = 0, currentFile = null, isMentioning = false, mentionList = [], mentionIndex = -1;
 // 乐观渲染去重：记录客户端已立即渲染的消息，服务端回传时跳过避免重。
 const _optimisticSent = new Set();
@@ -2120,6 +2122,10 @@ async function loadRequests() {
     agentGrantRequests = (gd && gd.items) || [];
   } catch (_ge) { agentGrantRequests = []; }
   try {
+    const ed = await grantApi('/api/agent-grants/expiring?withinHours=24');
+    agentGrantExpiring = { asOwner: (ed && ed.asOwner) || [], asGrantee: (ed && ed.asGrantee) || [] };
+  } catch (_ee) { agentGrantExpiring = { asOwner: [], asGrantee: [] }; }
+  try {
     let d;
     if (authToken) {
       d = await platformApi('/api/lan/friend-requests', 'GET');
@@ -2146,12 +2152,26 @@ function renderRequests() {
   const inEl = document.getElementById('incomingRequests');
   if (!inEl) return;
   // v2.1.7: 「收到的好友申请」只展示 pending，历史记录不在这里重复出现
-  const grantCardsHtml = agentGrantRequests.map(function(g){
+  const _expAll = (agentGrantExpiring.asOwner || []).concat(agentGrantExpiring.asGrantee || []);
+  const expBanner = _expAll.length ? ('<div style="margin:6px 8px 10px;padding:9px 11px;border-radius:10px;border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);font-size:11.5px;line-height:1.7;color:#fbbf24">'
+    + '⏳ <b>' + _expAll.length + '</b> 条授权 24 小时内到期'
+    + _expAll.slice(0, 3).map(function(x){ return '<div style="display:flex;gap:8px;align-items:center;margin-top:5px"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#e8eaf6">' + esc(x.agent_name || x.agent_id) + (x.role === 'owner' ? ' → ' + esc(x.grantee_name || x.grantee_id) : ' ← 主人 ' + esc(x.owner_name || x.owner_id)) + '</span><span style="color:#fbbf24;font-weight:700">' + (x.hoursLeft || 0) + 'h</span><span onclick="renewGrant(\'' + esc(x.id) + '\',168)" style="cursor:pointer;color:#7dd3fc;text-decoration:underline">续 7 天</span></div>'; }).join('')
+    + '</div>') : '';
+  const _gselCount = Object.keys(agentGrantSel).filter(function(k){ return agentGrantSel[k]; }).length;
+  const grantToolbar = agentGrantRequests.length ? ('<div style="display:flex;gap:6px;align-items:center;padding:6px 10px;flex-wrap:wrap">'
+    + '<button class="btn-sm" onclick="selAllGrants(true)">全选</button>'
+    + '<button class="btn-sm" onclick="selAllGrants(false)">清空</button>'
+    + '<span style="flex:1;font-size:11px;color:var(--text3)">已选 ' + _gselCount + ' 条</span>'
+    + '<button class="btn-sm btn-accept" onclick="batchDecideGrants(\'accept\')"' + (_gselCount ? '' : ' disabled') + '>批量同意</button>'
+    + '<button class="btn-sm btn-reject" onclick="batchDecideGrants(\'reject\')"' + (_gselCount ? '' : ' disabled') + '>批量拒绝</button>'
+    + '</div>') : '';
+  const grantCardsHtml = expBanner + grantToolbar + agentGrantRequests.map(function(g){
     var agentName = g.agent_name || g.agent_id;
     var who = g.grantee_name || g.grantee_id;
     var scopeTxt = g.scope === 'group' ? ('群「' + (g.chat_name || g.chat_id || '') + '」') : (g.scope === 'friend' ? '仅私聊' : '单次任务');
     var ttlTxt = g.expires_at ? ('至 ' + new Date(Number(g.expires_at)).toLocaleString()) : '长期（可随时撤销）';
     return '<div class="request-item" style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-left:3px solid #6c5ce7">' +
+      '<input type="checkbox" class="grant-sel" data-gid="' + g.id + '"' + (agentGrantSel[g.id] ? ' checked' : '') + ' onchange="toggleGrantSel(this)" style="margin-top:9px;accent-color:#6c5ce7">' +
       '<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#8b5cf6,#ec4899);display:flex;align-items:center;justify-content:center;font-size:16px;color:#fff;flex-shrink:0">🤖</div>' +
       '<div style="flex:1;min-width:0">' +
         '<div style="font-size:13px;color:var(--text);font-weight:600">' + esc(who) + ' 想用你的 AI</div>' +
@@ -2551,6 +2571,12 @@ function applyAgentGrant(agentId, agentName) {
       '<select id="gaTtl" style="width:100%;background:#12162a;border:1px solid #343c5e;border-radius:9px;padding:9px;color:inherit;font-family:inherit;font-size:12px;margin-bottom:12px;outline:none">' +
         '<option value="2">2 小时</option><option value="24" selected>24 小时</option><option value="168">7 天</option><option value="0">长期（可随时撤销）</option>' +
       '</select>' +
+      '<div style="font-size:11.5px;color:#a9b1cf;margin-bottom:6px">可用能力（不选 = 全部）</div>' +
+      '<div id="gaSkills" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">' +
+        [['web_search','🔍 搜索'],['scrape_url','🌐 抓网页'],['read_file','📖 读文件'],['write_file','✍️ 写文件'],['code_execute','💻 跑代码'],['shell_exec','⌨️ 命令'],['generate_image','🎨 画图'],['delegate_task','🧩 子任务']].map(function(p){
+          return '<span class="gaSkill" data-skill="' + p[0] + '" data-on="0" style="padding:6px 9px;border:1px solid #343c5e;background:#1c2136;border-radius:8px;font-size:11.5px;cursor:pointer">' + p[1] + '</span>';
+        }).join('') +
+      '</div>' +
       '<div style="font-size:11.5px;color:#a9b1cf;margin-bottom:6px">附言（对方能看到）</div>' +
       '<input id="gaNote" value="借用一下你的 AI，用完就还～" style="width:100%;background:#12162a;border:1px solid #343c5e;border-radius:9px;padding:9px;color:inherit;font-family:inherit;font-size:12px;margin-bottom:16px;outline:none">' +
       '<div style="display:flex;gap:8px;justify-content:flex-end">' +
@@ -2570,6 +2596,14 @@ function applyAgentGrant(agentId, agentName) {
       });
     };
   });
+  wrap.querySelectorAll('.gaSkill').forEach(function (el) {
+    el.onclick = function () {
+      var on = el.getAttribute('data-on') === '1';
+      el.setAttribute('data-on', on ? '0' : '1');
+      el.style.borderColor = on ? '#343c5e' : '#6c5ce7';
+      el.style.background = on ? '#1c2136' : 'rgba(108,92,231,.16)';
+    };
+  });
   function close() { wrap.remove(); }
   document.getElementById('gaCancel').onclick = close;
   wrap.onclick = function (e) { if (e.target === wrap) close(); };
@@ -2577,6 +2611,8 @@ function applyAgentGrant(agentId, agentName) {
     var ttl = Number(document.getElementById('gaTtl').value || 0);
     var note = document.getElementById('gaNote').value || '';
     var body = { agentId: agentId, scope: scope, ttlHours: ttl, note: note };
+    var _sk = Array.from(wrap.querySelectorAll('.gaSkill')).filter(function (e) { return e.getAttribute('data-on') === '1'; }).map(function (e) { return e.getAttribute('data-skill'); });
+    if (_sk.length) body.skills = _sk;
     if (scope === 'group') body.chatId = currentChat;
     try {
       var r = await grantApi('/api/agent-grants', 'POST', body);
@@ -2598,6 +2634,34 @@ async function decideAgentGrant(grantId, action) {
   } catch (e) { toast('操作失败：' + (e && e.message ? e.message : '网络错误')); }
 }
 
+// ── v1.2：授权多选批量审批 / 续期 / 到期提醒 ──
+function toggleGrantSel(cb) {
+  agentGrantSel[cb.getAttribute('data-gid')] = cb.checked;
+  renderRequests();
+}
+function selAllGrants(on) {
+  agentGrantRequests.forEach(function (g) { agentGrantSel[g.id] = on; });
+  renderRequests();
+}
+async function batchDecideGrants(action) {
+  var ids = Object.keys(agentGrantSel).filter(function (k) { return agentGrantSel[k]; });
+  if (!ids.length) { toast('请先勾选申请'); return; }
+  try {
+    var r = await grantApi('/api/agent-grants/batch-decide', 'PATCH', { action: action, ids: ids });
+    if (r && r.ok) {
+      toast((action === 'accept' ? '已同意 ' : '已拒绝 ') + (r.done || []).length + ' 条');
+      agentGrantSel = {}; loadRequests();
+      if (typeof loadAvailableMembers === 'function') { try { loadAvailableMembers(); } catch (e) {} }
+    } else { toast((r && r.error) || '操作失败'); }
+  } catch (e) { toast('操作失败：' + (e && e.message ? e.message : '网络错误')); }
+}
+async function renewGrant(grantId, ttlHours) {
+  try {
+    var r = await grantApi('/api/agent-grants/' + encodeURIComponent(grantId) + '/renew', 'POST', { ttlHours: ttlHours || 168 });
+    if (r && r.ok) { toast('已续期 ' + Math.round((ttlHours || 168) / 24) + ' 天'); loadRequests(); }
+    else { toast((r && r.error) || '续期失败'); }
+  } catch (e) { toast('续期失败：' + (e && e.message ? e.message : '网络错误')); }
+}
 async function renameAgent(btn) {
   const id = btn.getAttribute('data-id');
   if (!id) return;

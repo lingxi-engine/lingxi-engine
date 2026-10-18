@@ -138,7 +138,7 @@ import { createUploadRoutes } from './src/routes/upload.js';
 import { dataDir as resolveDataDir } from './src/core/paths.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
-import { registerAgentGrantsRoutes, ensureAgentGrantsSchema, migrateLegacyAgentParticipants, canUseAgent } from './src/routes/agent-grants.js';
+import { registerAgentGrantsRoutes, ensureAgentGrantsSchema, migrateLegacyAgentParticipants, canUseAgent, startGrantReminders } from './src/routes/agent-grants.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
@@ -2602,6 +2602,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   ensureAgentGrantsSchema();
   migrateLegacyAgentParticipants();
   registerAgentGrantsRoutes(app, { requireAuth, broadcast, sendToUser });
+  // v1.2: 授权到期前 1 天提醒借用人与主人（每 30 分钟扫一次，重启即扫）
+  startGrantReminders(30 * 60 * 1000);
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
   app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));
