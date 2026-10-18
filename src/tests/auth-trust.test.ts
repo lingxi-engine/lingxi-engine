@@ -110,6 +110,47 @@ describe('isTrustedLocalSource — escape hatch and XFF guard', () => {
   });
 });
 
+describe('isTrustedLocalSource — XFF 链伪造防护（P0 未授权访问回归）', () => {
+  // 复现真实攻击：nginx 用 $proxy_add_x_forwarded_for，请求头 = 客户端自带 + ', ' + 真实地址。
+  // 旧实现取链首（客户端可控），于是带 X-Forwarded-For: 127.0.0.1 即可拿到 admin。
+  it('链首伪造 loopback、链尾是公网真实 IP → 拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '127.0.0.1, 8.8.8.8', trustProxy: true }))).toBe(false);
+  });
+
+  it('链首伪造内网 10.x、链尾是公网真实 IP → 拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '10.0.0.1, 47.93.157.83', trustProxy: true }))).toBe(false);
+  });
+
+  it('链首伪造 ::ffff: 形式 loopback → 仍拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '::ffff:127.0.0.1, 8.8.8.8', trustProxy: true }))).toBe(false);
+  });
+
+  it('多级伪造链，链尾为公网 → 拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '127.0.0.1, 10.1.1.1, 8.8.8.8', trustProxy: true }))).toBe(false);
+  });
+
+  it('链尾为 IPv4-mapped 公网地址 → 拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '127.0.0.1, ::ffff:8.8.8.8', trustProxy: true }))).toBe(false);
+  });
+
+  it('正常的本地请求（单跳，链尾即真实内网 IP）→ 放行', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '192.168.1.9', trustProxy: true }))).toBe(true);
+  });
+
+  it('带端口的内网链尾 → 放行', () => {
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '192.168.1.9:51234', trustProxy: true }))).toBe(true);
+  });
+
+  it('socket 本身是公网直连（无代理配置）→ 拒绝', () => {
+    expect(isTrustedLocalSource(mkReq('8.8.8.8', { xff: '127.0.0.1', trustProxy: false }))).toBe(false);
+  });
+
+  it('TRUSTED_LOCAL_MODE=none 时即使链尾是 loopback 也拒绝', () => {
+    process.env.TRUSTED_LOCAL_MODE = 'none';
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '127.0.0.1', trustProxy: true }))).toBe(false);
+  });
+});
+
 describe('isDevMode', () => {
   it('treats NODE_ENV=production as non-dev regardless of DEV_MODE', () => {
     process.env.NODE_ENV = 'production';

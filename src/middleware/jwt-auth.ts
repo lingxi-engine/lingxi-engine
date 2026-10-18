@@ -37,20 +37,30 @@ export function isTrustedLocalSource(req: Request): boolean {
   // 显式开启公网免登录（不推荐，仅向后兼容）；生产模式下一律无效
   const allowPublicAuto = process.env.ALLOW_PUBLIC_ADMIN_AUTO === '1' || process.env.ALLOW_PUBLIC_ADMIN_AUTO === 'true';
   if (allowPublicAuto && isDevMode()) return true;
-  const raw = req.socket?.remoteAddress || '';
-  const ip = raw.startsWith('::ffff:') ? raw.slice(7) : raw;
-  if (!ip) return false; // fail-closed when the source cannot be determined
 
   // v2.0.29 TRUSTED_LOCAL_MODE switch:
   //   all      (default) trust loopback + RFC1918 LAN
   //   loopback            trust 127.0.0.0/8 and ::1 only
   //   none                trust nobody (credentials always required)
   const mode = String(process.env.TRUSTED_LOCAL_MODE || 'all').trim().toLowerCase();
+  const normalize = (addr: unknown): string => {
+    let a = String(addr ?? '').trim();
+    if (!a) return '';
+    if (a.startsWith('[')) {
+      a = a.replace(/^\[/, '').replace(/\](:\d+)?$/, ''); // [::1]:1234 -> ::1
+    } else {
+      // 仅剥 IPv4:port；裸 IPv6（如 ::1）不能按 :数字 处理，否则 ::1 会被切坏
+      a = a.replace(/^(\d{1,3}(?:\.\d{1,3}){3}):\d+$/, '$1');
+    }
+    a = a.replace(/^::ffff:/i, ''); // IPv4-mapped IPv6
+    return a.toLowerCase();
+  };
   const isLoopback = (addr: string): boolean =>
     addr === '::1' || addr === 'localhost' || addr.startsWith('127.');
   const isPrivate = (addr: string): boolean =>
     addr.startsWith('192.168.') || addr.startsWith('10.') || /^172\.(1[6-9]|2\d|3[01])\./.test(addr);
   const inScope = (addr: string): boolean => {
+    if (!addr) return false;
     if (mode === 'none') return false;
     if (mode === 'loopback') return isLoopback(addr);
     if (mode === 'all') return isLoopback(addr) || isPrivate(addr);
@@ -59,17 +69,37 @@ export function isTrustedLocalSource(req: Request): boolean {
     return false;
   };
 
-  if (!inScope(ip)) return false;
+  const socketAddr = normalize(req.socket?.remoteAddress);
+  if (!socketAddr) return false; // fail-closed when the source cannot be determined
 
-  // v5-P0-C: behind a reverse proxy the socket is loopback/LAN, so judge by the
-  // real client IP from XFF instead; otherwise a public attacker gets laundered
-  // into a trusted local source.
-  const xff = req.headers['x-forwarded-for'];
+  // ════════════════════════════════════════════════════════════════════
+  // 安全修复（P0 未授权访问）：反代场景下必须用 XFF「链尾」判定真实客户端。
+  //
+  // nginx 用 $proxy_add_x_forwarded_for 时，请求头是
+  //   客户端自带的 XFF + ", " + 真实 $remote_addr
+  // 原实现取 split(',')[0]（链首，完全由客户端控制），攻击者只要带上
+  //   X-Forwarded-For: 127.0.0.1
+  // 本函数就返回 true，从而在无任何凭证时拿到 roles:['admin']，读取任意用户会话。
+  // 链首永远不可信；链尾才是最近一级受信代理追加的地址。
+  // ════════════════════════════════════════════════════════════════════
   const trustProxy = req.app?.get?.('trust proxy');
-  if (xff && trustProxy) {
-    const clientIp = String(xff).split(',')[0].trim().replace(/^::ffff:/, '');
-    if (clientIp && !inScope(clientIp)) return false;
+  let clientAddr = socketAddr;
+  if (trustProxy) {
+    const rawXff = req.headers['x-forwarded-for'];
+    const xffStr = Array.isArray(rawXff) ? rawXff.join(',') : String(rawXff ?? '');
+    const hops = xffStr.split(',').map((h) => normalize(h)).filter(Boolean);
+    if (hops.length > 0) {
+      clientAddr = hops[hops.length - 1]; // 链尾：最近受信代理追加，客户端不可伪造
+    } else {
+      const expressIp = normalize((req as any).ip);
+      if (expressIp) clientAddr = expressIp; // 无 XFF 时用 express 的 proxy-aware 解析
+    }
   }
+
+  // 真实客户端必须在受信范围内
+  if (!inScope(clientAddr)) return false;
+  // 纵深防御：socket 本身也必须在受信范围内，避免将来配置漂移把公网直连洗白
+  if (!inScope(socketAddr)) return false;
   return true;
 }
 
