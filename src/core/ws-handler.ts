@@ -1,4 +1,5 @@
 import type { MessageRouter } from "./router.js";
+import { canUseAgent } from '../routes/agent-grants.js';
 import type { WebSocket } from "ws";
 import { dispatchDebateSummary, dispatchRoundtableNext, dispatchVoteSummary, dispatchBrainstormNext } from "./chat-modes.js";
 import { Orchestrator, ORCHESTRATOR_DEFAULT_TIMEOUT_MS, type TaskNode } from "./orchestrator.js";
@@ -686,7 +687,7 @@ export function processUserMessage(
       const nameOf = (agentId: string) =>
         agents.find((a: any) => a.id === agentId)?.displayName || agentId;
       const collected = await runResponses(
-        chatId, result.responses, broadcast, router, nameOf, false
+        chatId, senderId, result.responses, broadcast, router, nameOf, false
       );
     }).catch((err: any) => {
       console.error('[WS] auto-decompose error:', err);
@@ -723,7 +724,7 @@ export function processUserMessage(
 
     // 首轮回复：收集每个 AI 的输出，供后续汇总/开票使用
     const collected = await runResponses(
-      chatId, result.responses, broadcast, router, nameOf, isChain
+      chatId, senderId, result.responses, broadcast, router, nameOf, isChain
     );
 
     // ── 后续轮次编排（辩论汇总 / 圆桌多轮 / 投票开票）──
@@ -747,7 +748,7 @@ export function processUserMessage(
         followUp = undefined;
       }
       if (!next || !next.responses?.length) break;
-      await runResponses(chatId, next.responses, broadcast, router, nameOf, false);
+      await runResponses(chatId, senderId, next.responses, broadcast, router, nameOf, false);
     }
   }).catch((err: any) => {
     console.error('[WS] handleIncoming error:', err);
@@ -937,6 +938,7 @@ async function triggerAgentReply(
  */
 async function runResponses(
   chatId: string,
+  senderId: string,
   responses: any[],
   broadcast: (event: any) => void,
   router: MessageRouter,
@@ -945,6 +947,34 @@ async function runResponses(
 ): Promise<Array<{ agentId: string; agentName: string; content: string }>> {
   const collected: Array<{ agentId: string; agentName: string; content: string }> = [];
   if (!responses || responses.length === 0) return collected;
+
+  // 鈹€鈹€ AI 浣跨敤鏉冩巿鏉冩嫤鎴紙榛樿鎷掔粷锛氭病鏈変富浜哄悓鎰忥紝涓嶅緱璋冪敤浠栦汉 AI锛夆攢鈹€
+  // AI usage grant enforcement (default deny: no owner consent, no call)
+  const denied: string[] = [];
+  responses = responses.filter((resp: any) => {
+    const chk = canUseAgent(String(resp?.agentId || ''), senderId, { chatId });
+    if (!chk.allowed) {
+      denied.push(String(resp?.agentId || ''));
+      try {
+        broadcast({
+          type: 'agent_grant.blocked',
+          chatId,
+          agentId: resp?.agentId,
+          agentName: nameOf(String(resp?.agentId || '')),
+          reason: chk.reason,
+          message: chk.reason === 'pending_approval'
+            ? '\u8be5 AI \u7684\u6388\u6743\u7533\u8bf7\u6b63\u5728\u7b49\u5f85\u4e3b\u4eba\u540c\u610f'
+            : '\u8be5 AI \u5c1a\u672a\u6388\u6743\u7ed9\u4f60\u4f7f\u7528',
+        });
+      } catch (_e) { /* broadcast failure must not affect enforcement */ }
+      return false;
+    }
+    return true;
+  });
+  if (denied.length > 0) {
+    console.warn('[grants] blocked agent(s) in chat ' + chatId + ': ' + denied.join(','));
+  }
+  if (responses.length === 0) return collected;
 
   if (sequential) {
     for (const resp of responses) {

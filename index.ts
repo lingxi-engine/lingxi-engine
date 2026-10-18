@@ -84,6 +84,7 @@ import type { ProjectGoal } from './src/core/goal-tracker.js';
 import * as auth from './src/auth/index.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
+import { registerAppConnectRoutes } from './src/routes/app-connect.js';
 import { isDevMode } from './src/security/token-compare.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
@@ -137,6 +138,7 @@ import { createUploadRoutes } from './src/routes/upload.js';
 import { dataDir as resolveDataDir } from './src/core/paths.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
+import { registerAgentGrantsRoutes, ensureAgentGrantsSchema, migrateLegacyAgentParticipants, canUseAgent } from './src/routes/agent-grants.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
@@ -780,6 +782,11 @@ if (!FEATURE_PLATFORM) {
     res.redirect('/m/');
   });
 
+  // 手机 App 主入口（登录 + 我的灵犀 + 一键接管）
+  app.get(/^\/app$/, (_req, res) => res.redirect('/app/'));
+  app.get('/app/connect', (_req, res) => res.sendFile(join(process.cwd(), 'web', 'app', 'connect.html')));
+  app.get('/app/connect/', (_req, res) => res.sendFile(join(process.cwd(), 'web', 'app', 'connect.html')));
+
 app.use(express.static(join(process.cwd(), 'web')));
   let port = parseInt(process.env.PORT || '3456', 10);
   // 单机多实例：--auto-port 时端口被占用自动顺延，避免 EADDRINUSE 崩溃
@@ -829,6 +836,31 @@ app.use(express.static(join(process.cwd(), 'web')));
   const requireAuth = jwtAuth({ required: true }) as unknown as import('express').RequestHandler;
 // v2.3.1: 市场浏览类接口使用可选鉴权（公网可浏览，登录用户可发布/雇佣）
 const optAuth = jwtAuth({ required: false }) as unknown as import('express').RequestHandler;
+
+  // ─────────────────────────────────────────────────────────────
+  // 手机 App 连接层：同一账号 → 发现名下所有灵犀 → 在线才能接管
+  // 云端灵犀兼任「设备在线目录」，电脑端登录后自动登记 + 60s 心跳。
+  // ─────────────────────────────────────────────────────────────
+  (globalThis as any).__getDB = getDB;
+  (globalThis as any).__agentManager = manager;
+  try {
+    const appVersion = (() => {
+      try { return readFileSync(join(process.cwd(), 'version.txt'), 'utf8').trim(); } catch { return '0.0.0'; }
+    })();
+    const appConnect = registerAppConnectRoutes(app, {
+      dataDir,
+      port,
+      version: appVersion || '0.0.0',
+      requireAuth,
+      db,
+      nextNumericId,
+    });
+    appConnect.startHeartbeat();
+    console.log('[AppConnect] 手机连接层就绪 · 实例=' + appConnect.instanceId + ' · 云端入口=' + (appConnect.hubUrl || '(未配置)'));
+  } catch (e: any) {
+    console.warn('[AppConnect] 初始化失败（不影响引擎本体）:', e?.message || e);
+  }
+
   // ── 认证接口限流 ──
   app.use('/api/auth', authRateLimit);
   // ── v2.0.4: 通用 API 限流（30次/分钟）──
@@ -886,6 +918,11 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const { email, password } = req.body;
       if (!email || !password) return res.status(400).json({ error: '邮箱和密码必填' });
       const result = await auth.loginWithEmail(email, password);
+      // 电脑端登录同一账号后自动登记到云端目录（失败不影响登录本身）
+      try {
+        const ac: any = (globalThis as any).__appConnect;
+        if (ac && email && password) void ac.linkAccount(String(email), String(password), ac.hubUrl || undefined);
+      } catch (_e) { /* ignore */ }
       res.json({ ok: true, ...result });
     } catch (err: any) {
       res.status(401).json({ error: err.message });
@@ -1361,6 +1398,20 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       // 角色白名单: 只允许 member/owner
       const allowedRoles = ['member', 'owner'];
       const finalRole = allowedRoles.includes(role) ? role : 'member';
+      // AI usage grant check (duplicate route kept in sync with routes/friends-chats.ts)
+      if (agentId) {
+        const actorId = String(userId || jwtUser?.sub || jwtUser?.id || jwtUser?.numeric_id || '');
+        const chk = canUseAgent(String(agentId), actorId, { chatId: String(chatId) });
+        if (!chk.allowed) {
+          return res.status(403).json({
+            error: chk.reason === 'pending_approval'
+              ? '\u8be5 AI \u7684\u6388\u6743\u7533\u8bf7\u6b63\u5728\u7b49\u5f85\u4e3b\u4eba\u540c\u610f'
+              : '\u8be5 AI \u5c1a\u672a\u6388\u6743\u7ed9\u4f60\u4f7f\u7528\uff0c\u8bf7\u5148\u7533\u8bf7\u6388\u6743',
+            code: 'AGENT_NOT_GRANTED',
+            reason: chk.reason,
+          });
+        }
+      }
       db.addParticipant(id, chatId, userId, agentId, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
@@ -1615,7 +1666,18 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const friends = db.listFriends(userId);
       const friendAgents = friends.map((f: any) => {
         const agent = db.getAgentByUserId(f.friendId);
-        return agent ? { id: agent.id, displayName: agent.display_name || agent.displayName, type: 'agent' } : null;
+        if (!agent) return null;
+        const chk = canUseAgent(String(agent.id), String(userId), { chatId });
+        return {
+          id: agent.id,
+          displayName: agent.display_name || agent.displayName,
+          type: 'agent',
+          ownerId: f.friendId,
+          ownerName: f.friendName,
+          granted: chk.allowed,
+          grantStatus: chk.allowed ? 'accepted' : (chk.reason === 'pending_approval' ? 'pending' : 'locked'),
+          grantReason: chk.reason,
+        };
       }).filter(Boolean);
       const myAgent = db.getAgentByUserId(userId);
       const myAI = myAgent ? [{ id: myAgent.id, displayName: myAgent.display_name || myAgent.displayName, type: 'my-ai' }] : [];
@@ -2535,6 +2597,11 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 好友/会话路由（含 PATCH /api/chats/:id/name 会话重命名）──
   // v2.0.25: 此前该模块仅被测试引用，主入口从未注册 → 生产环境改名端点 404
   registerFriendsChatsRoutes(app, { db, requireAuth, broadcast } as any);
+
+  // AI 浣跨敤鏉冩巿鏉冿紙鍔犲ソ鍙嬮粯璁ゆ棤鎺堟潈锛岄渶涓讳汉鍚屾剰锛汧EATURE_AGENT_GRANTS=off 鍙洖婊氾級
+  ensureAgentGrantsSchema();
+  migrateLegacyAgentParticipants();
+  registerAgentGrantsRoutes(app, { requireAuth, broadcast });
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
   app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));

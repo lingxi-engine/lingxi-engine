@@ -13,6 +13,7 @@
 import type { Express, RequestHandler } from 'express';
 import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, type DB } from '../storage/db.js';
 import { sendPeerMessage, getInstanceId } from '../core/instance-mesh.js';
+import { canUseAgent } from './agent-grants.js';
 
 export interface FriendsChatsRouteDeps {
   db: DB;
@@ -207,6 +208,20 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       // 角色白名单: 只允许 member/owner
       const allowedRoles = ['member', 'owner'];
       const finalRole = allowedRoles.includes(role) ? role : 'member';
+      // AI usage grant check (friend != permission to use their AI; default deny)
+      if (agentId) {
+        const actorId = String(userId || jwtUser?.sub || jwtUser?.id || jwtUser?.numeric_id || '');
+        const chk = canUseAgent(String(agentId), actorId, { chatId: String(chatId) });
+        if (!chk.allowed) {
+          return res.status(403).json({
+            error: chk.reason === 'pending_approval'
+              ? '\u8be5 AI \u7684\u6388\u6743\u7533\u8bf7\u6b63\u5728\u7b49\u5f85\u4e3b\u4eba\u540c\u610f'
+              : '\u8be5 AI \u5c1a\u672a\u6388\u6743\u7ed9\u4f60\u4f7f\u7528\uff0c\u8bf7\u5148\u7533\u8bf7\u6388\u6743',
+            code: 'AGENT_NOT_GRANTED',
+            reason: chk.reason,
+          });
+        }
+      }
       db.addParticipant(id, chatId, userId, agentId, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
@@ -345,7 +360,19 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       const friends = db.listFriends(userId);
       const friendAgents = friends.map((f: any) => {
         const agent = db.getAgentByUserId(f.friendId);
-        return agent ? { id: agent.id, displayName: agent.display_name || agent.displayName, type: 'agent' } : null;
+        if (!agent) return null;
+        // Grant status decides whether this agent can be added at all (default deny)
+        const chk = canUseAgent(String(agent.id), String(userId), { chatId });
+        return {
+          id: agent.id,
+          displayName: agent.display_name || agent.displayName,
+          type: 'agent',
+          ownerId: f.friendId,
+          ownerName: f.friendName,
+          granted: chk.allowed,
+          grantStatus: chk.allowed ? 'accepted' : (chk.reason === 'pending_approval' ? 'pending' : 'locked'),
+          grantReason: chk.reason,
+        };
       }).filter(Boolean);
       const myAgent = db.getAgentByUserId(userId);
       const myAI = myAgent ? [{ id: myAgent.id, displayName: myAgent.display_name || myAgent.displayName, type: 'my-ai' }] : [];
