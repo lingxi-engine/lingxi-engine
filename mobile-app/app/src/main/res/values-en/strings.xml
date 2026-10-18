@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LingXi</string>
+    <string name="engine_title">LingXi</string>
+    <string name="status_connecting">Connecting to your engine…</string>
+    <string name="status_connected">Connected · compute runs on your engine (computer or cloud)</string>
+    <string name="status_offline">Disconnected</string>
+    <string name="retry">Retry</string>
+    <string name="change_endpoint">Change engine address</string>
+    <string name="refresh">Reconnect</string>
+    <string name="choose_engine">Choose the engine to control</string>
+    <string name="choose_engine_msg">Sign in once and both your cloud and computer LingXi show up under “My LingXi”.\nYour computer must keep the engine running and be signed in with the same account to appear online.\n\nYou can also enter a self-hosted engine address here.</string>
+    <string name="connect">Connect</string>
+    <string name="cancel">Cancel</string>
+    <string name="restore_cloud">Back to official cloud</string>
+    <string name="endpoint_hint">e.g. http://192.168.1.10:3456 or https://your-domain</string>
+    <string name="endpoint_empty">Address cannot be empty</string>
+    <string name="engine_switched">Engine switched</string>
+    <string name="err_connect">Cannot reach this engine\n\nAddress: %1$s\n\n(%2$d) %3$s\n\n· Phone and computer must be on the same network, or the engine must be public\n· Make sure LingXi is running on that computer\n· Tap the top bar to change the engine address</string>
+    <string name="err_404">This engine has no mobile page\n\nAddress: %1$s\n\n(HTTP 404)\n\n· It may not be a LingXi engine, or the version is too old\n· Please upgrade to v2.1+</string>
+    <string name="err_http">The engine returned an error\n\nAddress: %1$s\n\n(HTTP %2$d)\n\n· The engine may be restarting — try again shortly</string>
+    <string name="exit_title">Leave LingXi?</string>
+    <string name="exit_msg">Tasks on the engine keep running — only the remote control disconnects.</string>
+    <string name="exit">Leave</string>
+    <string name="stay">Stay</string>
+    <string name="file_chooser">Choose a file for the engine</string>
+    <string name="no_file_picker">No file picker available on this phone</string>
+    <string name="cant_open_picker">Cannot open the file picker</string>
+    <string name="download_on_pc">This file needs to be downloaded on a computer</string>
+    <string name="no_app">No app can open this link</string>
+    <string name="lang_title">Language / 语言</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_tw">繁體中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_changed">Language changed</string>
+</resources>

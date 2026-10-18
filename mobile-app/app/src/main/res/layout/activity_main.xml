@@ -3,48 +3,53 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#0d1117">
+    android:background="#0b0f14">
 
-    <!-- 顶栏：引擎地址可见 + 点击可换引擎 + 刷新 -->
+    <!-- 顶栏：引擎地址可见 + 点击可换引擎 + 语言 + 刷新 -->
     <LinearLayout
         android:id="@+id/topbar"
         android:layout_width="match_parent"
-        android:layout_height="52dp"
+        android:layout_height="54dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:background="#161b22"
-        android:paddingLeft="14dp"
-        android:paddingRight="4dp"
+        android:background="#141b24"
+        android:paddingLeft="12dp"
+        android:paddingRight="2dp"
         android:clickable="true"
         android:focusable="true">
 
-        <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
-            android:src="@mipmap/ic_launcher"
-            android:contentDescription="@null" />
+        <TextView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:gravity="center"
+            android:text="犀"
+            android:textStyle="bold"
+            android:textSize="15sp"
+            android:textColor="#06101a"
+            android:background="#5b9dff" />
 
         <TextView
             android:id="@+id/title"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginLeft="8dp"
-            android:text="灵犀引擎"
-            android:textColor="#e6edf3"
-            android:textSize="15sp"
+            android:layout_marginLeft="9dp"
+            android:text="@string/engine_title"
+            android:textColor="#eef3f8"
+            android:textSize="16sp"
+            android:textStyle="bold"
             android:singleLine="true" />
 
         <TextView
-            android:id="@+id/endpoint"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginRight="6dp"
-            android:maxWidth="140dp"
-            android:ellipsize="middle"
-            android:singleLine="true"
-            android:textColor="#7c8590"
-            android:textSize="11sp" />
+            android:id="@+id/btn_lang"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:gravity="center"
+            android:text="文"
+            android:textSize="15sp"
+            android:textColor="#8996a8"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/lang_title" />
 
         <ImageView
             android:id="@+id/btn_refresh"
@@ -52,9 +57,22 @@
             android:layout_height="44dp"
             android:padding="12dp"
             android:background="?android:attr/selectableItemBackgroundBorderless"
-            android:contentDescription="重新连接"
+            android:contentDescription="@string/refresh"
             android:src="@android:drawable/ic_popup_sync" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/endpoint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#141b24"
+        android:paddingLeft="14dp"
+        android:paddingRight="14dp"
+        android:paddingBottom="6dp"
+        android:ellipsize="middle"
+        android:singleLine="true"
+        android:textColor="#6f7d90"
+        android:textSize="10.5sp" />
 
     <FrameLayout
         android:layout_width="match_parent"
@@ -73,7 +91,7 @@
             android:layout_height="3dp"
             android:layout_gravity="top"
             android:max="100"
-            android:progressTint="#7c5cff" />
+            android:progressTint="#5b9dff" />
 
         <LinearLayout
             android:id="@+id/error_page"
@@ -81,7 +99,7 @@
             android:layout_height="match_parent"
             android:orientation="vertical"
             android:gravity="center"
-            android:background="#0d1117"
+            android:background="#0b0f14"
             android:padding="24dp"
             android:visibility="gone">
 
@@ -99,21 +117,22 @@
                 android:textColor="#c9d1d9"
                 android:textSize="15sp"
                 android:gravity="center"
-                android:text="无法连接到灵犀引擎" />
+                android:lineSpacingExtra="3dp"
+                android:text="@string/status_offline" />
 
             <Button
                 android:id="@+id/btn_retry"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:text="重 试" />
+                android:text="@string/retry" />
 
             <Button
                 android:id="@+id/btn_settings"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
-                android:text="更换引擎地址" />
+                android:text="@string/change_endpoint" />
         </LinearLayout>
     </FrameLayout>
 
@@ -121,13 +140,13 @@
     <TextView
         android:id="@+id/statusbar"
         android:layout_width="match_parent"
-        android:layout_height="28dp"
+        android:layout_height="30dp"
         android:gravity="center_vertical"
-        android:background="#161b22"
+        android:background="#141b24"
         android:paddingLeft="14dp"
         android:paddingRight="14dp"
         android:singleLine="true"
-        android:textColor="#7c8590"
+        android:textColor="#8895a7"
         android:textSize="11sp"
-        android:text="正在连接引擎…" />
+        android:text="@string/status_connecting" />
 </LinearLayout>

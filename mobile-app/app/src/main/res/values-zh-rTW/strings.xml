@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">靈犀</string>
+    <string name="engine_title">靈犀</string>
+    <string name="status_connecting">正在連線引擎…</string>
+    <string name="status_connected">已連線 · 算力運行在引擎端（你的電腦或雲端）</string>
+    <string name="status_offline">未連線</string>
+    <string name="retry">重 試</string>
+    <string name="change_endpoint">更換引擎位址</string>
+    <string name="refresh">重新連線</string>
+    <string name="choose_engine">選擇要操控的引擎</string>
+    <string name="choose_engine_msg">登入帳號後，雲端和你電腦上的靈犀都會出現在「我的靈犀」裡。\n電腦需要保持引擎運行並登入同一個帳號，才會顯示為在線。\n\n這裡也可以直接填一台自建引擎的位址。</string>
+    <string name="connect">連線</string>
+    <string name="cancel">取消</string>
+    <string name="restore_cloud">恢復官方雲端</string>
+    <string name="endpoint_hint">例如 http://192.168.1.10:3456 或 https://你的網域</string>
+    <string name="endpoint_empty">位址不能為空</string>
+    <string name="engine_switched">已切換引擎</string>
+    <string name="err_connect">連不上這台引擎\n\n位址：%1$s\n\n(%2$d) %3$s\n\n· 手機和電腦要在同一網路，或引擎已開放公網位址\n· 確認電腦上的靈犀已啟動\n· 點頂欄可以更換引擎位址</string>
+    <string name="err_404">這台引擎上沒有手機版頁面\n\n位址：%1$s\n\n(HTTP 404)\n\n· 可能不是靈犀引擎，或版本太舊\n· 請升級到 v2.1 以上再試</string>
+    <string name="err_http">引擎回傳了錯誤\n\n位址：%1$s\n\n(HTTP %2$d)\n\n· 引擎可能正在重啟，稍後重試</string>
+    <string name="exit_title">退出靈犀？</string>
+    <string name="exit_msg">引擎端的任務不會停止，只是斷開遙控。</string>
+    <string name="exit">退出</string>
+    <string name="stay">留在靈犀</string>
+    <string name="file_chooser">選擇要交給引擎的檔案</string>
+    <string name="no_file_picker">這台手機沒有可用的檔案選擇器</string>
+    <string name="cant_open_picker">無法開啟檔案選擇器</string>
+    <string name="download_on_pc">這個檔案需要到電腦上下載</string>
+    <string name="no_app">沒有能開啟該連結的應用</string>
+    <string name="lang_title">語言 / Language</string>
+    <string name="lang_zh">简体中文</string>
+    <string name="lang_tw">繁體中文</string>
+    <string name="lang_en">English</string>
+    <string name="lang_changed">語言已切換</string>
+</resources>

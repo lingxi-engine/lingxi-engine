@@ -16,6 +16,129 @@ import UIKit
 import WebKit
 import UniformTypeIdentifiers
 
+// MARK: - 三语（简体 / 繁體 / English）
+
+enum L10n {
+    static let codes = ["zh", "zh-TW", "en"]
+
+    static var lang: String {
+        get {
+            if let v = UserDefaults.standard.string(forKey: "lingxi.lang"), codes.contains(v) { return v }
+            let tag = Locale.preferredLanguages.first?.lowercased() ?? "zh"
+            if tag.hasPrefix("zh") {
+                return (tag.contains("tw") || tag.contains("hk") || tag.contains("hant")) ? "zh-TW" : "zh"
+            }
+            return tag.hasPrefix("en") ? "en" : "zh"
+        }
+        set { UserDefaults.standard.set(newValue, forKey: "lingxi.lang") }
+    }
+
+    static func t(_ key: String) -> String {
+        let d: [String: [String: String]] = [
+            "zh": [
+                "appName": "灵犀",
+                "connecting": "正在连接引擎…",
+                "connected": "已连接 · 算力运行在引擎端（你的电脑或云端）",
+                "offline": "未连接",
+                "cannotConnect": "无法连接到灵犀引擎",
+                "retry": "重 试",
+                "changeEndpoint": "更换引擎地址",
+                "chooseEngine": "选择要操控的引擎",
+                "chooseMsg": "登录账号后，云端和你电脑上的灵犀都会出现在「我的灵犀」里。\n电脑需要保持引擎运行并登录同一账号，才会显示为在线。\n\n这里也可以直接填一台自建引擎的地址。",
+                "endpointHint": "例如 http://192.168.1.10:3456",
+                "connect": "连接",
+                "cancel": "取消",
+                "restoreCloud": "恢复官方云端",
+                "language": "语言 / Language",
+                "langChanged": "语言已切换",
+                "exitTitle": "退出灵犀？",
+                "exitMsg": "引擎端的任务不会停止，只是断开遥控。",
+                "exit": "退出",
+                "stay": "留在灵犀",
+                "noMobilePage": "这台引擎上没有手机版页面",
+                "engineError": "引擎返回了错误",
+                "cannotReach": "连不上这台引擎",
+                "timeout": "连接超时",
+                "hostNotFound": "找不到这台引擎",
+                "portClosed": "引擎端口没开",
+                "noInternet": "手机没连网",
+                "certProblem": "HTTPS 证书有问题",
+                "atsBlocked": "系统禁止了不安全的 http 连接",
+                "hintSameNetwork": "· 手机和引擎要在同一网络，或引擎已开放公网地址",
+                "hintEngineRunning": "· 确认引擎已启动并在监听端口",
+                "hintChangeEndpoint": "· 顶栏点一下可以更换引擎地址"
+            ],
+            "zh-TW": [
+                "appName": "靈犀",
+                "connecting": "正在連線引擎…",
+                "connected": "已連線 · 算力運行在引擎端（你的電腦或雲端）",
+                "offline": "未連線",
+                "cannotConnect": "無法連線到靈犀引擎",
+                "retry": "重 試",
+                "changeEndpoint": "更換引擎位址",
+                "chooseEngine": "選擇要操控的引擎",
+                "chooseMsg": "登入帳號後，雲端和你電腦上的靈犀都會出現在「我的靈犀」裡。\n電腦需要保持引擎運行並登入同一個帳號，才會顯示為在線。\n\n這裡也可以直接填一台自建引擎的位址。",
+                "endpointHint": "例如 http://192.168.1.10:3456",
+                "connect": "連線",
+                "cancel": "取消",
+                "restoreCloud": "恢復官方雲端",
+                "language": "語言 / Language",
+                "langChanged": "語言已切換",
+                "exitTitle": "退出靈犀？",
+                "exitMsg": "引擎端的任務不會停止，只是斷開遙控。",
+                "exit": "退出",
+                "stay": "留在靈犀",
+                "noMobilePage": "這台引擎上沒有手機版頁面",
+                "engineError": "引擎回傳了錯誤",
+                "cannotReach": "連不上這台引擎",
+                "timeout": "連線逾時",
+                "hostNotFound": "找不到這台引擎",
+                "portClosed": "引擎連接埠沒開",
+                "noInternet": "手機沒連網",
+                "certProblem": "HTTPS 憑證有問題",
+                "atsBlocked": "系統禁止了不安全的 http 連線",
+                "hintSameNetwork": "· 手機和引擎要在同一網路，或引擎已開放公網位址",
+                "hintEngineRunning": "· 確認引擎已啟動並在監聽連接埠",
+                "hintChangeEndpoint": "· 頂欄點一下可以更換引擎位址"
+            ],
+            "en": [
+                "appName": "LingXi",
+                "connecting": "Connecting to your engine…",
+                "connected": "Connected · compute runs on your engine (computer or cloud)",
+                "offline": "Disconnected",
+                "cannotConnect": "Cannot reach LingXi engine",
+                "retry": "Retry",
+                "changeEndpoint": "Change engine address",
+                "chooseEngine": "Choose the engine to control",
+                "chooseMsg": "Sign in once and both your cloud and computer LingXi show up under “My LingXi”.\nYour computer must keep the engine running and be signed in with the same account to appear online.\n\nYou can also enter a self-hosted engine address here.",
+                "endpointHint": "e.g. http://192.168.1.10:3456",
+                "connect": "Connect",
+                "cancel": "Cancel",
+                "restoreCloud": "Back to official cloud",
+                "language": "Language / 语言",
+                "langChanged": "Language changed",
+                "exitTitle": "Leave LingXi?",
+                "exitMsg": "Tasks on the engine keep running — only the remote control disconnects.",
+                "exit": "Leave",
+                "stay": "Stay",
+                "noMobilePage": "This engine has no mobile page",
+                "engineError": "The engine returned an error",
+                "cannotReach": "Cannot reach this engine",
+                "timeout": "Connection timed out",
+                "hostNotFound": "Engine host not found",
+                "portClosed": "Engine port is closed",
+                "noInternet": "No internet on this phone",
+                "certProblem": "HTTPS certificate problem",
+                "atsBlocked": "iOS blocked an insecure http connection",
+                "hintSameNetwork": "· Phone and engine must share a network, or the engine must be public",
+                "hintEngineRunning": "· Make sure the engine is running and listening",
+                "hintChangeEndpoint": "· Tap the top bar to change the engine address"
+            ]
+        ]
+        return d[lang]?[key] ?? d["zh"]?[key] ?? key
+    }
+}
+
 final class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
@@ -36,7 +159,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 enum EngineStore {
     private static let key = "lingxi.endpoint"
     /// 默认官方云引擎。自部署用户可在「更换引擎地址」里改成自己的。
-    static let defaultEndpoint = "http://<SERVER_IP>"
+    static let defaultEndpoint = "https://lingxi-engine.com"
 
     static var endpoint: String {
         get {
@@ -46,13 +169,16 @@ enum EngineStore {
         set { UserDefaults.standard.set(normalize(newValue), forKey: key) }
     }
 
-    /// 引擎移动端入口。手机端一律走 /m/，保证拿到的是移动版界面。
-    static var mobileURL: URL? {
+    /// 手机 App 入口：先登录账号，再在「我的灵犀」里选择云端 / 电脑引擎。
+    static var appURL: URL? {
         guard let base = URL(string: endpoint) else { return nil }
         var s = base.absoluteString
         if s.hasSuffix("/") { s.removeLast() }
-        return URL(string: s + "/m/")
+        return URL(string: s + "/app/?lang=" + L10n.lang)
     }
+
+    /// 兼容旧调用
+    static var mobileURL: URL? { appURL }
 
     static func normalize(_ raw: String) -> String {
         var v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -69,6 +195,25 @@ enum EngineStore {
             t = String(t.prefix(10)) + "…" + String(t.suffix(8))
         }
         return t
+    }
+
+    /// 是否留在 App 内：站内 + 其它灵犀引擎（/app/ 接管、/m/ 聊天、局域网地址）。
+    /// 手机在云端点「接管」会跳到另一台引擎，不能用「同一台引擎」判断，
+    /// 否则会被当成外链交给 Safari，接管直接断掉。
+    static func shouldKeepInside(_ url: URL) -> Bool {
+        if isSameEngine(url) { return true }
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else { return false }
+        let host = (url.host ?? "").lowercased()
+        if host == "localhost" || host == "127.0.0.1" || host.hasPrefix("192.168.")
+            || host.hasPrefix("10.") || host.range(of: "^172\\.(1[6-9]|2\\d|3[01])\\.", options: .regularExpression) != nil {
+            return true
+        }
+        let path = url.path
+        return path == "/m" || path.hasPrefix("/m/")
+            || path.hasPrefix("/app")
+            || path.hasPrefix("/chat")
+            || path == "/login" || path == "/register"
+            || path == "/login.html" || path == "/register.html"
     }
 
     /// 是否属于同一台引擎 —— 必须同时比 host 和 port。
@@ -94,6 +239,9 @@ final class EngineViewController: UIViewController {
     private let statusBar = UILabel()
     private let topBar = UIView()
     private let endpointLabel = UILabel()
+    private let titleLabel = UILabel()
+    private let retryBtn = UIButton(type: .system)
+    private let settingsBtn = UIButton(type: .system)
     private let errorView = UIStackView()
     private let errorLabel = UILabel()
 
@@ -136,12 +284,11 @@ final class EngineViewController: UIViewController {
         icon.isUserInteractionEnabled = false
         topBar.addSubview(icon)
 
-        let title = UILabel()
-        title.text = "灵犀引擎"
-        title.textColor = UIColor(red: 0.902, green: 0.929, blue: 0.953, alpha: 1)
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
-        title.isUserInteractionEnabled = false
-        topBar.addSubview(title)
+        titleLabel.text = L10n.t("appName")
+        titleLabel.textColor = UIColor(red: 0.902, green: 0.929, blue: 0.953, alpha: 1)
+        titleLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        titleLabel.isUserInteractionEnabled = false
+        topBar.addSubview(titleLabel)
 
         endpointLabel.font = .systemFont(ofSize: 11)
         endpointLabel.textColor = UIColor(red: 0.486, green: 0.522, blue: 0.565, alpha: 1)
@@ -156,12 +303,28 @@ final class EngineViewController: UIViewController {
         refresh.addTarget(self, action: #selector(reloadEngine), for: .touchUpInside)
         topBar.addSubview(refresh)
 
-        // 点顶栏任意处（除刷新键）都能换引擎
-        topBar.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(promptEndpoint)))
+        let langBtn = UIButton(type: .system)
+        langBtn.setTitle("文", for: .normal)
+        langBtn.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        langBtn.setTitleColor(UIColor(red: 0.537, green: 0.588, blue: 0.659, alpha: 1), for: .normal)
+        langBtn.addTarget(self, action: #selector(promptLanguage), for: .touchUpInside)
+        langBtn.isUserInteractionEnabled = true
+        topBar.addSubview(langBtn)
+        langBtn.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            langBtn.trailingAnchor.constraint(equalTo: refresh.leadingAnchor, constant: -2),
+            langBtn.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            langBtn.widthAnchor.constraint(equalToConstant: 40),
+            langBtn.heightAnchor.constraint(equalToConstant: 40)
+        ])
+
+        // 点标题区域可换引擎（按钮自己处理点击，避免手势把按钮吃掉）
+        titleLabel.isUserInteractionEnabled = true
+        titleLabel.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(promptEndpoint)))
 
         topBar.translatesAutoresizingMaskIntoConstraints = false
         icon.translatesAutoresizingMaskIntoConstraints = false
-        title.translatesAutoresizingMaskIntoConstraints = false
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
         endpointLabel.translatesAutoresizingMaskIntoConstraints = false
         refresh.translatesAutoresizingMaskIntoConstraints = false
 
@@ -176,9 +339,9 @@ final class EngineViewController: UIViewController {
             icon.widthAnchor.constraint(equalToConstant: 20),
             icon.heightAnchor.constraint(equalToConstant: 20),
 
-            title.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
-            title.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
-            title.trailingAnchor.constraint(lessThanOrEqualTo: endpointLabel.leadingAnchor, constant: -8),
+            titleLabel.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 8),
+            titleLabel.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
+            titleLabel.trailingAnchor.constraint(lessThanOrEqualTo: endpointLabel.leadingAnchor, constant: -8),
 
             refresh.trailingAnchor.constraint(equalTo: topBar.trailingAnchor, constant: -6),
             refresh.centerYAnchor.constraint(equalTo: topBar.centerYAnchor),
@@ -224,7 +387,7 @@ final class EngineViewController: UIViewController {
         statusBar.font = .systemFont(ofSize: 11)
         statusBar.textColor = UIColor(red: 0.486, green: 0.522, blue: 0.565, alpha: 1)
         statusBar.backgroundColor = UIColor(red: 0.086, green: 0.106, blue: 0.133, alpha: 1)
-        statusBar.text = "正在连接引擎…"
+        statusBar.text = L10n.t("connecting")
         view.addSubview(statusBar)
     }
 
@@ -245,23 +408,21 @@ final class EngineViewController: UIViewController {
         errorLabel.textColor = UIColor(red: 0.788, green: 0.819, blue: 0.851, alpha: 1)
         errorLabel.textAlignment = .center
         errorLabel.numberOfLines = 0
-        errorLabel.text = "无法连接到灵犀引擎"
+        errorLabel.text = L10n.t("cannotConnect")
         errorView.addArrangedSubview(errorLabel)
 
-        let retry = UIButton(type: .system)
-        retry.setTitle("重 试", for: .normal)
-        retry.setTitleColor(.white, for: .normal)
-        retry.backgroundColor = UIColor(red: 0.49, green: 0.36, blue: 1, alpha: 1)
-        retry.layer.cornerRadius = 8
-        retry.contentEdgeInsets = UIEdgeInsets(top: 10, left: 28, bottom: 10, right: 28)
-        retry.addTarget(self, action: #selector(reloadEngine), for: .touchUpInside)
-        errorView.addArrangedSubview(retry)
+        retryBtn.setTitle(L10n.t("retry"), for: .normal)
+        retryBtn.setTitleColor(.white, for: .normal)
+        retryBtn.backgroundColor = UIColor(red: 0.49, green: 0.36, blue: 1, alpha: 1)
+        retryBtn.layer.cornerRadius = 8
+        retryBtn.contentEdgeInsets = UIEdgeInsets(top: 10, left: 28, bottom: 10, right: 28)
+        retryBtn.addTarget(self, action: #selector(reloadEngine), for: .touchUpInside)
+        errorView.addArrangedSubview(retryBtn)
 
-        let settings = UIButton(type: .system)
-        settings.setTitle("更换引擎地址", for: .normal)
-        settings.setTitleColor(UIColor(red: 0.788, green: 0.819, blue: 0.851, alpha: 1), for: .normal)
-        settings.addTarget(self, action: #selector(promptEndpoint), for: .touchUpInside)
-        errorView.addArrangedSubview(settings)
+        settingsBtn.setTitle(L10n.t("changeEndpoint"), for: .normal)
+        settingsBtn.setTitleColor(UIColor(red: 0.788, green: 0.819, blue: 0.851, alpha: 1), for: .normal)
+        settingsBtn.addTarget(self, action: #selector(promptEndpoint), for: .touchUpInside)
+        errorView.addArrangedSubview(settingsBtn)
     }
 
     // MARK: 加载
@@ -274,7 +435,7 @@ final class EngineViewController: UIViewController {
         }
         failed = false
         errorView.isHidden = true
-        statusBar.text = "正在连接引擎…"
+        statusBar.text = L10n.t("connecting")
         web.load(URLRequest(url: url))
     }
 
@@ -290,31 +451,31 @@ final class EngineViewController: UIViewController {
         failed = true
         errorLabel.text = msg
         errorView.isHidden = false
-        statusBar.text = "未连接"
+        statusBar.text = L10n.t("offline")
     }
 
     // MARK: 换引擎
 
     @objc private func promptEndpoint() {
         let alert = UIAlertController(
-            title: "选择要遥控的引擎",
-            message: "填你电脑 / 云端上那台灵犀引擎的地址。\n换一个地址就是换一个引擎，请用同一账号登录。\n\n手机不产生算力，这里填的机器才是真正干活的。",
+            title: L10n.t("chooseEngine"),
+            message: L10n.t("chooseMsg"),
             preferredStyle: .alert
         )
         alert.addTextField { tf in
             tf.text = EngineStore.endpoint
-            tf.placeholder = "例如 http://192.168.1.10:3456"
+            tf.placeholder = L10n.t("endpointHint")
             tf.keyboardType = .URL
             tf.autocapitalizationType = .none
             tf.autocorrectionType = .no
         }
-        alert.addAction(UIAlertAction(title: "取消", style: .cancel))
-        alert.addAction(UIAlertAction(title: "恢复官方云端", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: L10n.t("cancel"), style: .cancel))
+        alert.addAction(UIAlertAction(title: L10n.t("restoreCloud"), style: .default) { [weak self] _ in
             UserDefaults.standard.removeObject(forKey: "lingxi.endpoint")
             self?.clearWebsiteData()
             self?.loadEngine()
         })
-        alert.addAction(UIAlertAction(title: "连接", style: .default) { [weak self] _ in
+        alert.addAction(UIAlertAction(title: L10n.t("connect"), style: .default) { [weak self] _ in
             let before = EngineStore.endpoint
             let typed = EngineStore.normalize(alert.textFields?.first?.text ?? "")
             if !typed.isEmpty {
@@ -325,6 +486,36 @@ final class EngineViewController: UIViewController {
             self?.loadEngine()
         })
         present(alert, animated: true)
+    }
+
+    // MARK: 语言
+
+    @objc private func promptLanguage() {
+        let sheet = UIAlertController(title: L10n.t("language"), message: nil, preferredStyle: .actionSheet)
+        let names = ["zh": "简体中文", "zh-TW": "繁體中文", "en": "English"]
+        for code in L10n.codes {
+            sheet.addAction(UIAlertAction(title: names[code], style: .default) { [weak self] _ in
+                L10n.lang = code
+                self?.refreshLocalizedTexts()
+                self?.loadEngine()
+            })
+        }
+        sheet.addAction(UIAlertAction(title: L10n.t("cancel"), style: .cancel))
+        if let pop = sheet.popoverPresentationController {
+            pop.sourceView = self.view
+            pop.sourceRect = CGRect(x: self.view.bounds.midX, y: self.view.bounds.maxY - 60, width: 1, height: 1)
+        }
+        present(sheet, animated: true)
+    }
+
+    private func refreshLocalizedTexts() {
+        titleLabel.text = L10n.t("appName")
+        retryBtn.setTitle(L10n.t("retry"), for: .normal)
+        settingsBtn.setTitle(L10n.t("changeEndpoint"), for: .normal)
+        errorLabel.text = L10n.t("cannotConnect")
+        if failed { statusBar.text = L10n.t("offline") }
+        else if web.isLoading { statusBar.text = L10n.t("connecting") }
+        else { statusBar.text = L10n.t("connected") }
     }
 
     /// 换引擎时清掉旧会话（Cookie / localStorage），否则会带着上一个引擎的登录态串号。
@@ -364,7 +555,7 @@ extension EngineViewController: WKNavigationDelegate {
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         if !failed {
             errorView.isHidden = true
-            statusBar.text = "已连接 · 算力运行在引擎端（你的电脑或云端）"
+            statusBar.text = L10n.t("connected")
         }
     }
 
@@ -374,9 +565,9 @@ extension EngineViewController: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         showError(Self.describe(error)
-            + "\n\n· 手机和引擎要在同一网络，或引擎已开放公网地址"
-            + "\n· 确认引擎已启动并在监听端口"
-            + "\n· 顶栏点一下可以更换引擎地址")
+            + "\n\n" + L10n.t("hintSameNetwork")
+            + "\n" + L10n.t("hintEngineRunning")
+            + "\n" + L10n.t("hintChangeEndpoint"))
     }
 
     func webView(_ webView: WKWebView,
@@ -386,7 +577,7 @@ extension EngineViewController: WKNavigationDelegate {
             decisionHandler(.allow)
             return
         }
-        if EngineStore.isSameEngine(url) {
+        if EngineStore.shouldKeepInside(url) {
             decisionHandler(.allow)
             return
         }
@@ -403,14 +594,14 @@ extension EngineViewController: WKNavigationDelegate {
            EngineStore.isSameEngine(url) {
             let code = http.statusCode
             if code == 404 {
-                showError("这台引擎上没有手机版页面\n\n地址：\(url.absoluteString)\n\n(HTTP 404)"
+                showError(L10n.t("noMobilePage") + "\n\n\(url.absoluteString)\n\n(HTTP 404)"
                     + "\n\n· 这台引擎可能不是灵犀引擎，或版本太老"
                     + "\n· 请到引擎根地址确认一下，再重试")
                 decisionHandler(.cancel)
                 return
             }
             if code >= 400 {
-                showError("引擎返回了错误\n\n地址：\(url.absoluteString)\n\n(HTTP \(code))"
+                showError(L10n.t("engineError") + "\n\n\(url.absoluteString)\n\n(HTTP \(code))"
                     + "\n\n· 引擎服务可能正在重启，稍后重试")
                 decisionHandler(.cancel)
                 return
@@ -421,22 +612,22 @@ extension EngineViewController: WKNavigationDelegate {
 
     private static func describe(_ error: Error) -> String {
         let ns = error as NSError
-        var head = "连不上这台引擎"
+        var head = L10n.t("cannotReach")
         var detail = ns.localizedDescription
         if ns.domain == NSURLErrorDomain {
             switch ns.code {
             case NSURLErrorTimedOut:
-                head = "连接超时"
+                head = L10n.t("timeout")
             case NSURLErrorCannotFindHost:
-                head = "找不到这台引擎"
+                head = L10n.t("hostNotFound")
             case NSURLErrorCannotConnectToHost:
-                head = "引擎端口没开"
+                head = L10n.t("portClosed")
             case NSURLErrorNotConnectedToInternet:
-                head = "手机没连网"
+                head = L10n.t("noInternet")
             case NSURLErrorSecureConnectionFailed:
-                head = "HTTPS 证书有问题"
+                head = L10n.t("certProblem")
             case NSURLErrorAppTransportSecurityRequiresSecureConnection:
-                head = "系统禁止了不安全的 http 连接"
+                head = L10n.t("atsBlocked")
                 detail = "iOS 默认拦截 http。请用 https 访问这台引擎，或在 Info.plist 放开 ATS。"
             default:
                 head = "连不上这台引擎"
