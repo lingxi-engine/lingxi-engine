@@ -168,6 +168,7 @@ footer{
   color:var(--text3);font-size:13px;
 }
 footer a{color:var(--text2)}
+.ver{display:inline-block;background:rgba(74,222,128,.12);color:var(--green);font-size:12px;padding:3px 10px;border-radius:999px;margin-left:10px;vertical-align:middle}
 
 @media (max-width:768px){
   nav{padding:12px 16px}
@@ -182,7 +183,7 @@ footer a{color:var(--text2)}
 <body>
 
 <nav>
-  <div class="logo"><div class="logo-orb"></div>灵犀引擎</div>
+  <div class="logo"><div class="logo-orb"></div>灵犀引擎<span class="ver">v2.0.34</span></div>
   <div class="nav-links">
     <a href="#features">特性</a>
     <a href="#remote">手机遥控</a>
@@ -337,13 +338,13 @@ footer a{color:var(--text2)}
     </div>
     <p style="margin-top:32px;font-size:13px">
       也可以通过命令行一键安装：
-      <code style="background:var(--bg3);padding:4px 10px;border-radius:4px;font-family:monospace">irm http://&lt;SERVER_IP&gt;:8080/install.ps1 | iex</code>
+      <code style="background:var(--bg3);padding:4px 10px;border-radius:4px;font-family:monospace">irm https://www.lingxi-engine.com/install.ps1 | iex</code>
     </p>
   </div>
 </section>
 
 <footer>
-  <p>© 2026 灵犀引擎 LingXi Engine · <a href="/docs">文档</a> · <a href="/download.html">下载中心</a></p>
+  <p>© 2026 灵犀引擎 LingXi Engine <span class="ver">v2.0.34</span> · <a href="/docs">文档</a> · <a href="/download.html">下载中心</a></p>
 </footer>
 
 </body>

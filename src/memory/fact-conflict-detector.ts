@@ -334,7 +334,7 @@ ${candidates.map((f, i) => `${i+1}. key="${f.key}" value="${f.value}" source=${f
       return {
         hasConflict: conflicts.length > 0,
         conflicts,
-        action: conflicts.some(c => c.severity === 'high' || c.suggestion === 'ask_user') ? 'ask_user' : 'allow_with_warning',
+        action: conflicts.some((c: { severity: string; suggestion: string }) => c.severity === 'high' || c.suggestion === 'ask_user') ? 'ask_user' : 'allow_with_warning',
       };
     } catch {
       return { hasConflict: false, conflicts: [], action: 'allow' };
@@ -357,7 +357,7 @@ export class FactConflictDetector {
     // 1. 规则检测（同步、快速）
     const ruleResult = this.rule.detect(newFact, existingFacts);
     
-    // 2. 无高严重冲突且启用 LLM → 二次检测
+    // 2. 无高严重冲突且启用 LLM -> 二次检测
     if (!ruleResult.hasConflict || ruleResult.action !== 'ask_user') {
       return ruleResult;
     }
@@ -386,7 +386,7 @@ export class FactConflictDetector {
     return {
       hasConflict: conflicts.length > 0,
       conflicts,
-      action: conflicts.some(c => c.severity === 'high' || c.suggestion === 'ask_user') ? 'ask_user' : 'allow_with_warning',
+      action: conflicts.some((c: { severity: string; suggestion: string }) => c.severity === 'high' || c.suggestion === 'ask_user') ? 'ask_user' : 'allow_with_warning',
     };
   }
 

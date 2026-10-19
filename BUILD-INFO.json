@@ -1,7 +1,7 @@
 {
     "version": "2.0.34",
-    "commit": "local",
-    "buildTime": "2026-10-18T16:20:00.000Z",
+    "commit": "ba596fc",
+    "buildTime": "2026-10-19T12:34:40.000Z",
     "builder": "pack-release.ps1",
     "highlights": [
         "AI 授权 v1.2：收件箱多选批量同意/拒绝、主人一键授权全群、过期授权一键续期",

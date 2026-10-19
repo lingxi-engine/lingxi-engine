@@ -310,9 +310,9 @@ describe('LLMConflictDetector (Mock)', () => {
     const detector = new LLMConflictDetector(mockLLM, true);
     
     const existing = new Map<string, FactEntry>([
-      ['姓名', { key: '姓名', value: '张三', source: 'user', confidence: 0.9, createdAt: 0, updatedAt: 0 }],
+      ['姓名', { key: '姓名', value: '张三', source: 'user' as const, confidence: 0.9, createdAt: 0, updatedAt: 0 }],
     ]);
-    const newFact = { key: '职业', value: '工程师', source: 'assistant', confidence: 0.8, createdAt: 0, updatedAt: 0 };
+    const newFact = { key: '职业', value: '工程师', source: 'assistant' as const, confidence: 0.8, createdAt: 0, updatedAt: 0 };
     
     const result = await detector.detect(newFact, existing);
     
@@ -324,9 +324,9 @@ describe('LLMConflictDetector (Mock)', () => {
     const detector = new LLMConflictDetector(mockLLM, true);
     
     const existing = new Map<string, FactEntry>([
-      ['姓名', { key: '姓名', value: '张三', source: 'user', confidence: 0.9, createdAt: 0, updatedAt: 0 }],
+      ['姓名', { key: '姓名', value: '张三', source: 'user' as const, confidence: 0.9, createdAt: 0, updatedAt: 0 }],
     ]);
-    const newFact = { key: '姓名', value: '李四', source: 'assistant', confidence: 0.8, createdAt: 0, updatedAt: 0 };
+    const newFact = { key: '姓名', value: '李四', source: 'assistant' as const, confidence: 0.8, createdAt: 0, updatedAt: 0 };
     
     const result = await detector.detect(newFact, existing);
     
