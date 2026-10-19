@@ -34,6 +34,7 @@
     "backups",
     "rollback_*",
     "archive*",
+    "_archive*",
     "archives",
     "backup_pre_*",
     "backup_sync_*",
