@@ -1,0 +1,42 @@
+name: Deploy Official Site
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'web/**'
+      - 'deploy/**'
+      - 'package.json'
+      - 'version.txt'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Pack site
+        run: |
+          tar -czf site.tar.gz -C deploy/site .
+
+      - name: Deploy via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          echo "$SSH_PRIVATE_KEY" > key.pem && chmod 600 key.pem
+          scp -o StrictHostKeyChecking=no -i key.pem site.tar.gz root@$SERVER_IP:/tmp/
+          ssh -o StrictHostKeyChecking=no -i key.pem root@$SERVER_IP 'bash /opt/lingxi-deploy.sh'
+
+      - name: Verify deployment
+        env:
+          SERVER_IP: ${{ secrets.SERVER_IP }}
+        run: |
+          sleep 5
+          curl -sf -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "http://$SERVER_IP/" || true
+          curl -skf -o /dev/null -w "HTTPS %{http_code}\n" --max-time 10 "https://$SERVER_IP/" || true
