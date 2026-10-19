@@ -290,6 +290,9 @@ ws-boot.log
 
 # 2026-09-20: root scratch archive + bench runtime data (kept on disk, never tracked)
 _archive/
+# 2026-10-19: scratch archive renamed without leading _ so tsconfig's "archive*" exclude
+# skips it — leftover one-off .ts scripts here must not break `npm run typecheck`.
+archive_scratch_*/
 data-bench*/
 _creditfix/
 data-v36local/
