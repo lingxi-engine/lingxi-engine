@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>更新日志 - 灵犀引擎</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.7;color:#1a1a1a;background:#fafafa}
+.container{max-width:800px;margin:0 auto;padding:0 24px}
+header{background:#0d1117;color:white;padding:16px 0}
+header .container{display:flex;justify-content:space-between;align-items:center}
+.logo{color:white;text-decoration:none;font-size:22px;font-weight:700}
+h1{font-size:32px;margin:40px 0 20px}
+.version{background:#0d1117;color:white;padding:12px 16px;border-radius:8px;margin-bottom:8px}
+.version h2{font-size:18px;margin:0}
+.version .date{color:#8b949e;font-size:13px;margin-top:4px}
+.version ul{margin:8px 0 0 20px}
+.version li{margin:4px 0;color:#57606a}
+.back-link{color:#58a6ff;text-decoration:none}
+</style>
+</head>
+<body>
+<header><div class="container"><a href="/" class="logo">灵犀引擎</a><div><a href="/" style="color:#a5b4fc;text-decoration:none">返回首页</a></div></div></header>
+<div class="container">
+<a href="/" class="back-link">← 返回</a>
+<h1>更新日志</h1>
+
+<div class="version">
+<h2>v2.0.35</h2>
+<div class="date">2026-10-19</div>
+<ul>
+<li>聊天输入框修复：粘贴 / 拖拽 / 📎 选中的截图和文件先进入预览条，可以继续补充文字后再发送（不再一粘贴就直接发出去）</li>
+<li>预览条支持多附件、缩略图、单独移除，发送后自动清空</li>
+<li>修复右下角「任务」按钮点击无反应（被 display:flex !important 钉死，旧实现切换的 class 没有任何样式）</li>
+<li>状态栏 / 任务监控自愈：引擎启动或重启期间 API 短暂不可达时自动重试，恢复后红色标记自动消失</li>
+<li>任务列表加载失败改为中文提示 + 重试按钮，不再显示浏览器原始的 "Failed to fetch"</li>
+<li>api() 的 GET 请求网络失败自动重试 3 次（0.4s / 1.2s 退避）</li>
+<li>钱包功能已退役，前端按功能开关跳过 /api/wallet，消除控制台 404</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.34</h2>
+<div class="date">2026-10-19</div>
+<ul>
+<li>记忆系统核心升级：语义去重 + 事实冲突检测 + 写入前安全合并</li>
+<li>MinHash + LSH 语义去重（中文阈值 0.85）</li>
+<li>四类冲突全覆盖：直接矛盾、语义覆盖、时序取代、偏好变更</li>
+<li>规则检测 + 可选 LLM 增强，25/25 单测全通过</li>
+<li>官网版本显示同步至 v2.0.34</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.32</h2>
+<div class="date">2026-10-08</div>
+<ul>
+<li>新增 PWA 支持（安卓/iOS 添加到主屏幕）</li>
+<li>新增渠道管理（微信/Telegram/Discord/Slack 等 9 个渠道）</li>
+<li>新增群聊智能体权限控制（允许/禁止/指定好友）</li>
+<li>新增聊天界面（开源/局域网/好友三标签）</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.31</h2>
+<div class="date">2026-09-28</div>
+<ul>
+<li>修复 Agent 工具执行稳定性问题</li>
+<li>优化多模型切换性能</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.30</h2>
+<div class="date">2026-09-25</div>
+<ul>
+<li>新增工作流编排功能</li>
+<li>支持本地 Ollama 模型</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.29</h2>
+<div class="date">2026-09-18</div>
+<ul>
+<li>新增多 AI 群聊协作（圆桌/辩论/投票等 7 种模式）</li>
+<li>优化数据库结构</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.28</h2>
+<div class="date">2026-09-12</div>
+<ul>
+<li>新增 Agent 工具执行（文件/终端/数据库/HTTP）</li>
+<li>新增本地优先数据存储</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.27</h2>
+<div class="date">2026-09-07</div>
+<ul>
+<li>初始版本发布</li>
+<li>支持多模型接入</li>
+</ul>
+</div>
+</div>
+</body>
+</html>

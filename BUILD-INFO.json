@@ -1,18 +1,18 @@
 {
-    "version": "2.0.34",
-    "commit": "ba596fc",
-    "buildTime": "2026-10-19T12:34:40.000Z",
-    "builder": "pack-release.ps1",
-    "highlights": [
-        "AI 授权 v1.2：收件箱多选批量同意/拒绝、主人一键授权全群、过期授权一键续期",
-        "新增到期提醒：到期前 1 天推 agent_grant.expiring（主人+借用方各一条，reminded_at 去重）",
-        "按能力细分授权：agent_grants.skills 白名单 + POST /api/agent-grants/check-tool，越界返回 tool_not_granted",
-        "新增 GET /api/agent-grants/expiring、POST /bulk、PATCH /batch-decide、POST /:id/renew、GET /chat/:chatId",
-        "修复跨群误判：available 不再按 created_at DESC LIMIT 1 拿到别的群的授权",
-        "授权中心 /app/grants.html 重写：到期横幅、批量审批、批量授权面板、能力勾选、续期按钮、20s 自动刷新",
-        "聊天页 app.js 接入：好友面板到期横幅、多选批量审批、申请弹窗能力勾选",
-        "安全：合入远端 P0 修复（XFF 链头伪造导致匿名 admin）+ Dependabot 2 项依赖告警修复",
-        "测试：全量 vitest 143/143 PASS，tsc 0 error"
-    ],
-    "notes": "v2.0.34 = 远端安全修复(3 commits) + AI 使用权授权 v1.2"
+    "version":  "2.0.35",
+    "commit":  "eff378b",
+    "buildTime":  "2026-10-19T13:08:26.9163407Z",
+    "builder":  "pack-release.ps1",
+    "highlights":  [
+                       "聊天输入框：粘贴 / 拖拽 / 📎 选中的截图与文件先进入输入框上方预览条，可继续补充文字后再按 Enter 一起发送（不再一粘贴就直接发出去）",
+                       "预览条支持多附件、缩略图、单个移除，发送后自动清空",
+                       "右下角「任务」按钮修复：旧实现只切一个在桌面端无 CSS 的 .show 类，且 .rightbar 被 display:flex !important 钉死 → 点击完全无反应；新增 toggleRightbar() + .rb-hidden",
+                       "状态栏 / 任务监控自愈：引擎启动或重启期间 API 短暂不可达时不再永久显示红字，3~4 秒自动重试，恢复后自动消失",
+                       "任务列表加载失败改为中文提示 + 「重试」按钮，不再把浏览器的 Failed to fetch 原样贴给用户",
+                       "api() 的 GET 请求网络失败自动重试 3 次（0.4s / 1.2s 退避），错误文案中文化",
+                       "WS 连接成功、页面重新可见时自动刷新状态栏、任务监控、目标面板",
+                       "钱包功能已退役：前端按 /api/features 的 wallet 开关跳过 /api/wallet 调用，消除控制台 404 红字",
+                       "验证：puppeteer 端到端实测 —— 粘贴截图只进预览不发送、补字后回车图片+文字各发一条、任务按钮 display flex↔none 正常切换"
+                   ],
+    "notes":  "v2.0.35 = 聊天附件先预览后发送 + 右下角任务按钮修复 + 状态栏/任务监控自愈"
 }

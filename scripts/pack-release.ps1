@@ -21,7 +21,7 @@ if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
 $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2','stage')
-$excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_'
+$excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_|^archive[_-]'  # v2.0.35: exclude archive_scratch_* junk (3.9MB screenshots)
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
 
 # 只锟斤拷锟斤拷锟斤拷些 env 模锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?.env* 一锟缴帮拷锟斤拷
@@ -101,7 +101,7 @@ try {
             # 于是落进 catch，人工字段被静默丢弃。日志里的
             # "[WARN] 既有 BUILD-INFO.json 解析失败" 就是它的指纹。
             $prev = Get-Content $rootBiExisting -Raw -Encoding UTF8 | ConvertFrom-Json
-            foreach ($k in @('highlights','quality','commitMeaning')) {
+            foreach ($k in @('highlights','quality','commitMeaning','notes')) {  # v2.0.35: notes was silently dropped on every repack
                 if ($prev.PSObject.Properties.Name -contains $k) { $buildInfo[$k] = $prev.$k }
             }
         } catch {

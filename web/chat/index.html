@@ -279,6 +279,8 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 
 /* ══════════════ 右侧栏 ══════════════ */
 .rightbar{width:300px;min-width:300px;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;transition:background .4s,border-color .4s}
+/* v2.0.35: 「任务」按钮真正可折叠——rb-hidden 的权重高于下面那条 !important 的 .rightbar 覆盖规则 */
+.rightbar.rb-hidden{display:none !important}
 .right-head{display:flex;border-bottom:1px solid var(--border)}
 .right-head button{flex:1;padding:9px 0;font-size:13px;border:none;background:transparent;color:var(--text2);border-bottom:2px solid transparent}
 .right-head button.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
@@ -733,7 +735,7 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
   <button onclick="switchPanel('tools')" id="tbToolsBtn" data-i18n="tb.tools">工具</button>
   <button onclick="switchPanel('social')" id="tbSocialBtn" data-i18n="tb.social">局域网</button>
   <div class="tb-spacer"></div>
-  <button onclick="document.getElementById('rightbar').classList.toggle('show')" data-i18n="tb.tasks">任务</button>
+  <button onclick="toggleRightbar()" id="tbTasksBtn" data-i18n="tb.tasks">任务</button>
   <button onclick="document.getElementById('membersBtn').click()" id="tbMembersBtn">👥</button>
   <button onclick="document.getElementById('memoryBtn').click()" id="tbMemoBtn">🧠</button>
   <button onclick="toggleAdmin()" id="tbAdminBtn" data-i18n="tb.admin">管理</button>
@@ -762,6 +764,18 @@ function switchTab(name,btn){
   document.getElementById('tab-tasks').style.display = name==='tasks'?'block':'none';
   document.getElementById('tab-goals').style.display = name==='goals'?'block':'none';
   document.getElementById('tab-subagents').style.display = name==='subagents'?'block':'none';
+}
+// v2.0.35: 右下角「任务」按钮——旧实现只 toggle 一个在桌面端没有任何 CSS 的 .show 类，
+// 且 .rightbar 被 `display:flex !important` 钉死，所以点了完全没反应。
+function toggleRightbar(force){
+  var rb=document.getElementById('rightbar');
+  if(!rb) return;
+  var btn=document.getElementById('tbTasksBtn');
+  var show = (typeof force==='boolean') ? force : rb.classList.contains('rb-hidden');
+  rb.classList.toggle('rb-hidden', !show);
+  rb.classList.toggle('show', show);   // 兼容窄屏的滑入样式
+  if(btn) btn.classList.toggle('active', show);
+  if(show){ try{ loadTaskMonitor(); }catch(e){} }
 }
 function switchTheme(name,btn){
   document.body.className = 'theme-' + name;
@@ -1033,7 +1047,7 @@ if (ov) ov.classList.remove('show');
 </script>
 <script src="/js/i18n.js?v=20261002a"></script>
 <script src="/chat/platform-config.js"></script>
-<script src="/js/app.js?v=20261018a"></script>
+<script src="/js/app.js?v=20261019a"></script>
 <script>
 // ── 包装 switchPanel 同步更新底部工具栏 ──
 (function(){

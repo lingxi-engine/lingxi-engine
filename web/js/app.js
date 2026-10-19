@@ -534,6 +534,10 @@ function connect() {
       setStatus(t('status.online'), 'ok');
       enableInput(true);
       loadChatList().catch(()=>{});
+      // v2.0.35: WS 连上说明引擎已就绪——把启动瞬间失败的状态栏/任务面板重新拉一遍，红字自动消失
+      try { refreshStatusBar(); } catch(_e) {}
+      try { loadTaskMonitor().catch(()=>{}); } catch(_e) {}
+      try { loadRightGoals().catch(()=>{}); } catch(_e) {}
       // 。v2.0.5: 重连后恢复上次打开的聊。
       var _lastSavedChat = localStorage.getItem('lingxi-last-chat');
       if (_lastSavedChat && myChats.some(function(c3){ return c3.id === _lastSavedChat; })) {
@@ -631,6 +635,13 @@ window.addEventListener('load', function() {
     loadRightGoals().catch(()=>{});
     loadProfileCard().catch(()=>{});
   }, 300);
+});
+
+// v2.0.35: 切回本页时自动复查状态（引擎重启/休眠后红字不会一直挂着）
+document.addEventListener('visibilitychange', function () {
+  if (document.visibilityState !== 'visible') return;
+  try { refreshStatusBar(); } catch (e) {}
+  try { loadTaskMonitor().catch(function () {}); } catch (e) {}
 });
 
 // ── i18n 语言切换回调：刷新所有动态文本（状态栏 / 顶栏状。/ 登录弹窗。──
@@ -1751,9 +1762,28 @@ function maybeFlushQueue(chatId) {
 async function send() {
   const input = document.getElementById('input');
   const content = input.value.trim();
-  if (!content) return;
+  const attachments = (window.__pendingAttachments || []).slice();
+  if (!content && !attachments.length) return;
   if (!currentChat) { toast(t('chat.selectChatFirst')); return; }
   const chatId = currentChat;
+
+  // ── v2.0.35 附件先入预览区，不立发；用户补充文字后按 Enter/点发送才真正上传发送 ──
+  if (attachments.length) {
+    input.value = '';
+    clearPendingAttachments();
+    if (!ws || ws.readyState !== 1) { toast(t('toast.notConnected')); return; }
+    for (let ai = 0; ai < attachments.length; ai++) {
+      try {
+        const upUrl = await uploadPendingFile(attachments[ai]);
+        const msgType = attachments[ai].isImage ? 'image' : 'file';
+        ws.send(JSON.stringify({ type: 'message', chatId: chatId, content: upUrl, originalName: attachments[ai].name, fileType: msgType }));
+        appendMessage({ chatId: chatId, senderId: clientId || 'user', senderType: 'user', content: upUrl, fileType: msgType, originalName: attachments[ai].name, timestamp: Date.now() });
+      } catch(ue) {
+        toast(t('err.uploadError') + ': ' + (ue.message || ''));
+      }
+    }
+    if (!content) return; // 只发附件
+  }
 
   // 跨平台好友聊天：。HTTP -> 本地引擎 -> Mesh 中继
   if (String(chatId).startsWith('chat-platform-')) {
@@ -1799,6 +1829,82 @@ document.getElementById('input').addEventListener('keydown', function(e) {
 });
 document.getElementById('input').addEventListener('input', checkMention);
 
+// ── v2.0.35 附件预览：粘贴/拖拽/📎 选文件 → 先进输入框上方的预览条，不立即发送 ──
+window.__pendingAttachments = [];
+function getPendingAttachments() { return window.__pendingAttachments || (window.__pendingAttachments = []); }
+function queueAttachment(file) {
+  if (!file) return;
+  if (!currentChat) { toast(t('chat.selectChatFirst')); return; }
+  if (file.size > 10 * 1024 * 1024) { toast(t('err.fileTooLarge')); return; }
+  var arr = getPendingAttachments();
+  var isImg = !!(file.type && file.type.startsWith('image/'));
+  var name = file.name && file.name !== 'image.png' ? file.name : ('截图-' + new Date().toISOString().slice(11, 19).replace(/:/g, '') + (isImg ? '.png' : ''));
+  arr.push({
+    file: file,
+    name: name,
+    size: file.size,
+    isImage: isImg,
+    previewUrl: isImg ? URL.createObjectURL(file) : ''
+  });
+  renderAttachTray();
+}
+function ensureAttachTray() {
+  var tray = document.getElementById('attachTray');
+  if (tray) return tray;
+  var inputEl = document.getElementById('input');
+  if (!inputEl) return null;
+  var inputArea = inputEl.closest('.input-area');
+  if (!inputArea || !inputArea.parentNode) return null;
+  tray = document.createElement('div');
+  tray.id = 'attachTray';
+  tray.style.cssText = 'display:none;flex-wrap:wrap;gap:8px;padding:8px 14px;border-top:1px solid var(--border);background:var(--bg2)';
+  inputArea.parentNode.insertBefore(tray, inputArea);
+  return tray;
+}
+function renderAttachTray() {
+  var tray = ensureAttachTray();
+  if (!tray) return;
+  var arr = getPendingAttachments();
+  if (!arr.length) { tray.style.display = 'none'; tray.innerHTML = ''; return; }
+  tray.style.display = 'flex';
+  tray.innerHTML = arr.map(function(a, i) {
+    var thumb = a.isImage
+      ? '<img src="' + a.previewUrl + '" style="width:44px;height:44px;object-fit:cover;border-radius:6px;display:block">'
+      : '<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;font-size:20px;background:var(--bg3);border-radius:6px">\uD83D\uDCC4</div>';
+    return '<div style="position:relative;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:4px 8px 4px 4px">'
+      + thumb
+      + '<div style="font-size:11px;color:var(--text2);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(a.name)
+      + '<br><span style="color:var(--text3)">' + (a.size / 1024).toFixed(0) + ' KB · 待发送</span></div>'
+      + '<button type="button" title="移除" onclick="removePendingAttachment(' + i + ')" style="border:none;background:transparent;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px">\u2715</button>'
+      + '</div>';
+  }).join('') + '<div style="font-size:11px;color:var(--text3);align-self:center;margin-left:auto">可直接在输入框补充文字，按 Enter 一起发送</div>';
+}
+function removePendingAttachment(i) {
+  var arr = getPendingAttachments();
+  var it = arr[i];
+  if (it && it.previewUrl) { try { URL.revokeObjectURL(it.previewUrl); } catch(e) {} }
+  arr.splice(i, 1);
+  renderAttachTray();
+}
+function clearPendingAttachments() {
+  var arr = getPendingAttachments();
+  arr.forEach(function(it) { if (it && it.previewUrl) { try { URL.revokeObjectURL(it.previewUrl); } catch(e) {} } });
+  arr.length = 0;
+  renderAttachTray();
+}
+async function uploadPendingFile(a) {
+  var fd = new FormData();
+  fd.append('file', a.file, a.name);
+  var headers = {};
+  var token = localStorage.getItem('authToken');
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  var res = await fetch('/api/upload', { method: 'POST', headers: headers, body: fd });
+  var data = null;
+  try { data = await res.json(); } catch(e) {}
+  if (!data || !data.ok) throw new Error(_errMsg(data, 'HTTP ' + res.status));
+  return data.url;
+}
+
 // ── 粘贴截图 ──
 document.addEventListener('paste', function(e) {
   const items = e.clipboardData?.items || [];
@@ -1807,7 +1913,7 @@ document.addEventListener('paste', function(e) {
       e.preventDefault();
       const file = item.getAsFile();
       if (!file) continue;
-      uploadAndSendFile(file);
+      queueAttachment(file);
       break;
     }
   }
@@ -1818,12 +1924,7 @@ document.addEventListener('dragover', function(e) { e.preventDefault(); });
 document.addEventListener('drop', function(e) {
   e.preventDefault();
   const files = e.dataTransfer?.files || [];
-  for (const file of files) {
-    if (file.type.startsWith('image/')) {
-      uploadAndSendFile(file);
-      break;
-    }
-  }
+  for (const file of files) queueAttachment(file);
 });
 
 // ── 通用文件上传发。──
@@ -1860,11 +1961,11 @@ async function uploadAndSendFile(file) {
 }
 
 // ── File Upload ──
-// 点击 📎 按钮选择文件后直接上传发送（与粘。拖拽行为一致）
+// v2.0.35: 点击 📎 选文件后先进预览条（与粘贴/拖拽一致），可补充文字后再发送
 function onFileSelected(input) {
   const file = input.files[0];
   if (!file) return;
-  uploadAndSendFile(file);
+  queueAttachment(file);
   input.value = ''; // 重置以便再次选择同一文件
 }
 function previewFile() {
@@ -3391,7 +3492,9 @@ const PLATFORM_URL = window.LINGXI_PLATFORM_URL || '';  // v2.0.12: 接回云平
 // [FEATURE_PLATFORM] 云平台社交功能下线。前端在启动时读 /api/features，
 // platform=false 时把好友/LAN 入口彻底隐藏，并跳过所有社交请求，避免 404 刷屏。
 let PLATFORM_SOCIAL_ON = true;
+let FEATURES = {};  // v2.0.35: 后端能力开关（market/credits/wallet/hire/platform），用于避免调用已退役接口
 function applyFeatureFlags(f) {
+  FEATURES = f || {};
   PLATFORM_SOCIAL_ON = !!f.platform;
   if (!PLATFORM_SOCIAL_ON) {
     document.querySelectorAll('[data-feature="platform"]').forEach(function (el) { el.style.display = 'none'; });
@@ -3407,7 +3510,22 @@ function applyFeatureFlags(f) {
 async function api(url, method, body) {
   const opts = { method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  let r = await fetch(url, opts);
+  // v2.0.35: GET 网络失败自动重试——引擎启动中/重启时 fetch 会直接抛 "Failed to fetch"，
+  // 旧实现只试一次，界面上就永久留下红色报错（任务监控显示 Failed to fetch、状态栏 API 不可达）。
+  const _isGet = !method || String(method).toUpperCase() === 'GET';
+  const _maxTry = _isGet ? 3 : 1;
+  let r = null;
+  for (let _try = 0; _try < _maxTry; _try++) {
+    try {
+      r = await fetch(url, opts);
+      break;
+    } catch (e) {
+      if (_try === _maxTry - 1) {
+        throw new Error('无法连接灵犀引擎（' + url + '），请确认引擎已启动；稍后会自动重试');
+      }
+      await new Promise(function (res) { setTimeout(res, 400 * Math.pow(3, _try)); });
+    }
+  }
   // v2026.10.18 fix: same-origin auth retry. /m/ api() sent no token, so every authed call (chats/agents/models) returned 401 after App takeover.
   if (r.status === 401 && !/^https?:/i.test(url)) {
     try {
@@ -3663,7 +3781,8 @@ async function loadProfileCard() {
     el = document.getElementById('pdId'); if (el) el.textContent = esc(String(idShow));
     el = document.getElementById('pdEmail'); if (el) el.textContent = esc(email || t('profile.notSet'));
     // v2.4.0: 钱包余额（USD/CNY）
-    try {
+    // v2.0.35: 钱包功能已退役（后端 /api/wallet 返回 404）时不再请求，避免控制台刷红
+    if (FEATURES.wallet !== false) try {
       var wr = await api('/api/wallet?userId=' + encodeURIComponent(userId));
       if (wr && wr.ok) {
         var wu = Number(wr.balanceUsd) || 0, wc = Number(wr.balanceCny) || 0;
@@ -4313,6 +4432,13 @@ async function refreshAllAdmin() {
   adminHealth(); adminAgents(); adminSessions(); adminSubAgents(); adminCron(); adminMCP(); adminPlugins(); loadApprovals(); loadVoiceStatus(); loadPromptAgentSelect(); loadGoals();
   refreshStatusBar(); refreshAdminVersion();
 }
+let _statusRetryTimer = null;
+function _cancelStatusRetry() { if (_statusRetryTimer) { clearTimeout(_statusRetryTimer); _statusRetryTimer = null; } }
+function _scheduleStatusRetry() {
+  if (_statusRetryTimer) return;
+  // v2.0.35: 引擎启动中/重启时 API 会短暂不可达；3 秒后自动复查，恢复后红色标记自动消失
+  _statusRetryTimer = setTimeout(function () { _statusRetryTimer = null; refreshStatusBar(); }, 3000);
+}
 async function refreshStatusBar() {
   try {
     const h = await api('/api/health');
@@ -4320,7 +4446,12 @@ async function refreshStatusBar() {
     const healthy = h.status === 'ok';
     aEl.textContent = healthy ? t('status.apiOk') : '⚠' + (h.status || t('admin.abnormal'));
     aEl.className = healthy ? 'ok' : 'err';
-  } catch(e) { document.getElementById('apiHealth').textContent=t('status.apiDown'); document.getElementById('apiHealth').className='err'; }
+    if (healthy) _cancelStatusRetry(); else _scheduleStatusRetry();
+  } catch(e) {
+    const aEl = document.getElementById('apiHealth');
+    if (aEl) { aEl.textContent = t('status.apiDown'); aEl.className = 'err'; aEl.title = e.message || ''; }
+    _scheduleStatusRetry();
+  }
   try {
     const agents = await api('/api/agents');
     const scEl = document.getElementById('sessionCount'); if (scEl) scEl.textContent = agents.agents ? agents.agents.length : '-';
@@ -5434,6 +5565,7 @@ function renderTaskDecompSteps(msgId) {
   el.innerHTML = html;
 }
 
+let _taskRetryTimer = null;
 async function loadTaskMonitor() {
   const el = document.getElementById('taskMonitorList');
   if (!el) return;
@@ -5464,7 +5596,12 @@ async function loadTaskMonitor() {
         '</div></div>';
     }).join('');
   } catch(e) {
-    el.innerHTML = '<span style="color:var(--red)">。' + esc(e.message || t('err.loadFail')) + '</span>';
+    // v2.0.35: 不再把浏览器原始的 "Failed to fetch" 直接贴给用户
+    el.innerHTML = '<div style="color:var(--red)">\u26A0 任务列表加载失败：' + esc(e.message || t('err.loadFail')) + '</div>'
+      + '<button type="button" onclick="loadTaskMonitor()" style="margin-top:6px;font-size:11px;padding:2px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">重试</button>';
+    if (!_taskRetryTimer) {
+      _taskRetryTimer = setTimeout(function () { _taskRetryTimer = null; loadTaskMonitor(); }, 4000);
+    }
   }
 }
 async function runTaskMonitor(id) {

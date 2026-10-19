@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.34</title>
+<title>下载部署 · 灵犀引擎 v2.0.35</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.34</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.35</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -203,7 +203,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.34.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.34</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.35.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.35</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -246,7 +246,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.34","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.35","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -291,6 +291,44 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
+
+  <!-- v2.0.35：聊天附件预览 + 任务按钮修复 + 状态栏自愈 -->
+  <section class="card" id="v235">
+    <h2>🧩 v2.0.35 变更：附件先预览后发送 + 任务按钮修复 + 状态栏自愈</h2>
+    <p>
+      这一版全是「用起来别扭」的问题，改的都是聊天页本身：粘贴截图不再被立刻发出去、
+      右下角「任务」按钮终于能开合、引擎重启后状态栏不会一直挂着红字。
+    </p>
+    <table>
+      <thead><tr><th>问题</th><th>旧行为</th><th>v2.0.35</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>粘贴截图</td>
+          <td>一粘贴立即上传并发出，没法再补文字</td>
+          <td>先进输入框上方预览条（缩略图 + 可移除），补完文字按 Enter 一起发</td>
+        </tr>
+        <tr>
+          <td>右下角「任务」</td>
+          <td>点击无任何反应（只切了一个没有样式的 class）</td>
+          <td>正常展开 / 收起右侧任务监控栏，按钮高亮跟随状态</td>
+        </tr>
+        <tr>
+          <td>状态栏 API / 任务监控</td>
+          <td>启动瞬间失败就永久显示「Failed to fetch」「API 不可达」</td>
+          <td>自动重试（3~4 秒），恢复后红字自动消失；失败提示改中文并带「重试」按钮</td>
+        </tr>
+        <tr>
+          <td>文件上传入口</td>
+          <td>📎 选完文件直接发出</td>
+          <td>与粘贴/拖拽一致：先进预览条，可多附件</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px;color:#8b949e;font-size:13px">
+      已用 Chromium 端到端验证：粘贴截图只进预览不发送 → 补「这张截图说明什么」→ 回车后图片与文字各一条落库；
+      「任务」按钮 display 在 flex ↔ none 之间正常切换。
+    </p>
+  </section>
 
   <!-- v2.0.34：记忆系统核心升级 + 版本同步 -->
   <section class="card" id="v234">
@@ -445,7 +483,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.34</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.35</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
