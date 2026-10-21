@@ -183,3 +183,31 @@ describe('WebhookScheduler 持久化', () => {
     expect(typeof data[0].lastTriggerAt).toBe('number');
   });
 });
+
+// ════════════════════════════════════════════
+// 生命周期：stop() 与 CronScheduler 对称
+// ════════════════════════════════════════════
+describe('WebhookScheduler 生命周期', () => {
+  it('stop() 后不再接受触发', async () => {
+    let dispatched = 0;
+    const sched = new WebhookScheduler(async () => { dispatched++; }, tmpDir);
+    sched.start();
+    const hook = sched.createHook({ name: 'h', promptTemplate: 'x' });
+
+    const before = await sched.trigger(hook.id, hook.secret, { a: 1 });
+    expect(before.ok).toBe(true);
+    expect(dispatched).toBe(1);
+
+    sched.stop();
+    const after = await sched.trigger(hook.id, hook.secret, { a: 2 });
+    expect(after.ok).toBe(false);
+    expect(after.error).toContain('已停止');
+    expect(dispatched).toBe(1); // 停止后不再派发
+  });
+
+  it('stop() 可重复调用而不抛错', () => {
+    const sched = new WebhookScheduler(async () => {}, tmpDir);
+    sched.start();
+    expect(() => { sched.stop(); sched.stop(); }).not.toThrow();
+  });
+});

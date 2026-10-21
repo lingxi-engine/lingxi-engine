@@ -52,6 +52,8 @@ export class WebhookScheduler {
   private hooks = new Map<string, WebhookJob>();
   private dispatch: WebhookDispatch;
   private persistPath: string;
+  /** 调度器是否处于运行状态（stop() 后不再接受触发） */
+  private running = false;
 
   constructor(dispatch: WebhookDispatch, dataDir?: string) {
     this.dispatch = dispatch;
@@ -60,7 +62,20 @@ export class WebhookScheduler {
 
   start(): void {
     this.loadFromDisk();
+    this.running = true;
     console.log(`[Webhook] 触发器已启动, ${this.hooks.size} 个 webhook`);
+  }
+
+  /**
+   * 停止触发器。
+   *
+   * 与 CronScheduler.stop() 生命周期对称：关闭后不再接受新的触发。
+   * （Webhook 本身不跑定时器，但保持对称的启停语义能避免
+   *   服务关闭流程里出现"只停了一半"的坑。）
+   */
+  stop(): void {
+    this.running = false;
+    console.log('[Webhook] 触发器已停止');
   }
 
   /**
@@ -70,6 +85,7 @@ export class WebhookScheduler {
    * 导致配置了 IP 白名单的 webhook 依然能被任意来源调用。
    */
   async trigger(hookId: string, token: string, body: any, remoteIp?: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.running) return { ok: false, error: 'webhook 触发器已停止' };
     const hook = this.hooks.get(hookId);
     if (!hook) return { ok: false, error: 'webhook 不存在' };
     if (!hook.enabled) return { ok: false, error: 'webhook 已禁用' };

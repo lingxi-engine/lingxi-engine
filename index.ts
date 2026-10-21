@@ -4391,6 +4391,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     _shuttingDown = true;
     console.log(`\n[Shutdown] 收到 ${sig}，开始优雅退出...`);
     try { cronScheduler.stop(); } catch(_e) {}
+    try { webhookScheduler.stop(); } catch(_e) {}
     try { sessionManager.close(); console.log('[Shutdown] 会话已保存'); } catch(_e) {}
     try { telegramAdapter?.stop(); } catch(_e) {}
     try { await channelManager.closeAll(); } catch(_e) {}

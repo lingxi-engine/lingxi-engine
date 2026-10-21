@@ -1,5 +1,10 @@
 /**
  * 管理路由 — Cron、会话、子代理、收件箱、审批、Hook、技能、开发面板、日志、语音、视觉、推送
+ *
+ * ⚠️ 当前状态：本文件**未被挂载**（全仓库无 createAdminRoutes 调用点），
+ *    属于死代码。实际生效的管理接口在 index.ts 里。
+ *    这里的 70+ 个路由是待接入资产 —— 接线前请逐个确认鉴权要求
+ *    （index.ts 的 /api/admin/* 走 adminAuth，本文件的 router 自身不含鉴权）。
  */
 import { Router } from 'express';
 import { getDB, deleteUser } from '../storage/db.js';
@@ -21,6 +26,9 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   } = ctx;
 
   // ── Cron 定时任务 ──
+  // 注意：index.ts 里 /api/cron 系列路由是**权威实现**（已实际挂载并生效）。
+  // 本文件当前零调用点（死代码），其中的定时任务逻辑已与 index.ts 对齐；
+  // 若将来接线，请以 index.ts 为准同步修改，避免两份实现行为漂移。
   router.get('/cron', (_req, res) => {
     try { res.json({ ok: true, jobs: cronScheduler.listJobs() }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -30,7 +38,7 @@ export function createAdminRoutes(ctx: ServerContext): Router {
     try {
       const { name, schedule, payload, enabled } = req.body;
       if (!name || !schedule || !payload) return res.status(400).json({ error: 'name/schedule/payload 必填' });
-      // P1-4 修复：先校验再落盘
+      // 先校验再落盘：非法配置绝不进入内存与磁盘
       validateSchedule(schedule);
       const job = createCronJob({ name, schedule, payload, enabled: enabled ?? true });
       cronScheduler.addJob(job);
@@ -58,7 +66,7 @@ export function createAdminRoutes(ctx: ServerContext): Router {
     try {
       const { name, cron, prompt, chatId, timezone } = req.body || {};
       if (!name || !cron || !prompt) return res.status(400).json({ error: 'name/cron/prompt 必填' });
-      // P1-4 修复：先校验 cron 表达式与时区
+      // 先校验 cron 表达式与时区（与 index.ts /api/standing-orders 保持一致）
       validateSchedule({ kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' });
       const jobId = 'so-' + Date.now().toString(36);
       cronScheduler.addJob({ id: jobId, name: 'SO: ' + name, enabled: true, schedule: { kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' }, payload: { kind: 'standingOrder', prompt, chatId: chatId || '', text: prompt }, runCount: 0, createdAt: Date.now() });

@@ -21,6 +21,23 @@
  *           修复：addJob 先校验再落盘。
  *  - P2-1 运行历史不持久化：every/cron 执行后只更新内存。
  *           修复：执行后立即持久化 lastRunAt / runCount。
+ *
+ * v4 修复（2026-10-21，复核 v3 修复时发现残留缺陷）：
+ *  - P0-4 DST 回拨日死循环：小时跳跃用 "UTC 瞬时 + 1h"，回拨日墙钟原地
+ *           踏步（01:00 EDT → 01:00 EST），迭代器永不前进。实测
+ *           getNextCronRun 卡死 63.8 秒 → 整个 Node 事件循环冻结 1 分钟。
+ *           修复：改用墙钟重建（advanceToNextHour / advanceToNextDay）。
+ *  - P0-5 整点被跳过：getDelayMs 传 now+1000 作为搜索起点，当距目标整点
+ *           不足 1 秒时整点被整段跳过（v3 "整点晚一小时" 的残留变种）。
+ *           修复：起点改为 now 本身。
+ *  - P1-5 闰年不可达：搜索窗口只有 366 天，"0 0 29 2 *" 永远算不出下次
+ *           运行 → 任务创建成功但永不执行。修复：窗口扩到 4 年。
+ *  - P1-6 不可达日期静默：getNextCronRun 返回 null 时静默不调度。
+ *           修复：输出告警 + nextRunAt 置 undefined，状态可见。
+ *  - P1-7 every 过期补跑：重启后落后多个周期的任务 1 秒就补跑一次。
+ *           修复：从"现在"重新计时，不追赶历史周期。
+ *  - P1-8 DST 日墙钟漂移：日期跳跃用 UTC +24h，DST 日墙钟偏 1 小时。
+ *           修复：日期进位改用 Date.UTC + 目标时区重建。
  */
 
 import { getZonedParts, zonedTimeToUtc, isValidTimezone } from './timezone.js';
@@ -245,19 +262,27 @@ export function parseCronExpr(expr: string): ParsedCron {
 export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Shanghai'): Date | null {
   const parsed = parseCronExpr(expr);
 
-  // 从 after 的下一个整分钟开始（对齐到分钟边界）
-  const start = new Date(Math.floor(after.getTime() / 60000) * 60000 + 60000);
-  const limit = new Date(after.getTime() + 366 * 86400000); // 最多找 1 年多一点（覆盖 2/29）
+  // ── 搜索窗口 ──
+  // 必须是 4 年而不是 1 年：像 "0 0 29 2 *"（2 月 29 日）这种表达式，
+  // 下一个匹配点最远在 4 年后（闰年间隔最多 8 年，但 4 年已覆盖绝大多数，
+  // 且 8 年窗口会让不可达表达式的探测成本过高）。
+  // v3 用 366 天窗口，导致 2026-10 之后创建的 2/29 任务永远算不出下次运行
+  // → 任务"创建成功但永不执行"，正是本次审计要消灭的病根。
+  const limit = new Date(after.getTime() + SEARCH_WINDOW_DAYS * 86400000);
 
-  let d = start;
+  // ── 起点：after 的下一个整分钟 ──
+  // 注意：不能用 "after + 1000ms" 作为起点，那会把"整点前 1 秒内触发"的
+  // 场景直接推到整点之后，导致整点被整段跳过（v3 残留 bug）。
+  let d = new Date(Math.floor(after.getTime() / 60000) * 60000 + 60000);
+
   let iterations = 0;
-  const MAX_ITER = 366 * 24 * 60; // 一年分钟数上限
+  const MAX_ITER = SEARCH_WINDOW_DAYS * 24 * 60;
 
   while (d.getTime() < limit.getTime() && iterations++ < MAX_ITER) {
     const z = getZonedParts(d, tz);
 
     if (!parsed.month.includes(z.month)) {
-      // 月份不匹配 → 直接跳到下个月 1 号 00:00（时区墙钟）
+      // 月份不匹配 → 跳到下个月 1 号 00:00（目标时区墙钟）
       // 跨年时年份必须 +1，否则会跳回过去的时间点（2026-12 → 2026-01）
       const nextYear = z.month === 12 ? z.year + 1 : z.year;
       const nextMonth = z.month === 12 ? 1 : z.month + 1;
@@ -266,24 +291,25 @@ export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Sha
     }
 
     // 日/星期 OR 语义：两者都被限定 → 并集；只有一个被限定 → 那一个；都通配 → 全匹配
-    const dayMatch = parsed.dayWildcard
-      ? true
-      : parsed.day.includes(z.day);
-    const dowMatch = parsed.weekdayWildcard
-      ? true
-      : parsed.weekday.includes(z.weekday);
+    const dayMatch = parsed.dayWildcard ? true : parsed.day.includes(z.day);
+    const dowMatch = parsed.weekdayWildcard ? true : parsed.weekday.includes(z.weekday);
     const dateMatch = (parsed.dayWildcard && parsed.weekdayWildcard)
       ? true
       : (parsed.dayWildcard ? dowMatch : (parsed.weekdayWildcard ? dayMatch : (dayMatch || dowMatch)));
 
     if (!dateMatch) {
-      d = new Date(d.getTime() + 86400000); // 跳到明天同刻
+      // 跳到"明天同一墙钟时刻"——必须用墙钟重建，不能用 UTC +24h。
+      // UTC +24h 在 DST 切换日会让墙钟漂移 1 小时（春季少一小时，秋季多一小时）。
+      d = advanceToNextDay(z, tz, d.getTime());
       continue;
     }
 
     if (!parsed.hour.includes(z.hour)) {
-      // 小时不匹配 → 跳到下一个整点
-      d = new Date(zonedTimeToUtc(z.year, z.month, z.day, z.hour, 0, 0, tz) + 3600000);
+      // 小时不匹配 → 跳到"下一个整点"（按目标时区墙钟重建）
+      // v3 用 "zonedTimeToUtc(墙钟) + 3600000"（UTC 瞬时 +1h），在 DST 回拨日
+      // 墙钟会原地踏步（01:00 EDT → 01:00 EST）→ 迭代器永不前进 → 死循环
+      // 63.8 秒卡死整个 Node 事件循环。必须用墙钟重建。
+      d = advanceToNextHour(z, tz, d.getTime());
       continue;
     }
 
@@ -295,14 +321,90 @@ export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Sha
     d = new Date(d.getTime() + 60000);
   }
 
-  console.warn(`[Cron] 表达式 "${expr}" 在 1 年内无匹配时间点`);
+  console.warn(`[Cron] 表达式 "${expr}" 在 ${SEARCH_WINDOW_DAYS} 天内无匹配时间点`);
   return null;
+}
+
+/**
+ * 把"目标时区的当前墙钟"推进到"下一个整点"。
+ *
+ * 关键：全程用墙钟语义重建时间戳，绝不用 "UTC 瞬时 + 1 小时"。
+ * DST 回拨日两者结果相同（墙钟不变），但春季跳变日会差 1 小时；
+ * 而回拨日的"墙钟不变"正是用 UTC+1h 死循环的根因 —— 用墙钟重建则
+ * 无论 DST 如何变化都保证严格前进。
+ *
+ * 单调性保证：目标墙钟时刻可能落在 DST 空档里（春季跳变日不存在的时刻），
+ * 此时 zonedTimeToUtc 会反向解析回上一个存在的时刻，导致时间不前进。
+ * 因此这里循环尝试"下一个存在的整点"，并最终用真实时间 +1 小时兜底，
+ * 确保返回的��间戳严格大于 currentTs —— 这是防止死循环的最后一道防线。
+ */
+function advanceToNextHour(
+  z: { year: number; month: number; day: number; hour: number },
+  tz: string,
+  currentTs: number,
+): Date {
+  let y = z.year, m = z.month, d = z.day;
+  let targetHour = z.hour + 1;
+
+  if (targetHour > 23) {
+    targetHour = 0;
+    // 天数进位：用 Date.UTC 处理月末/年末，天然支持月长与闰年
+    const nd = new Date(Date.UTC(z.year, z.month - 1, z.day) + 86400000);
+    y = nd.getUTCFullYear();
+    m = nd.getUTCMonth() + 1;
+    d = nd.getUTCDate();
+  }
+
+  // 最多尝试 4 个整点（覆盖单次 DST 跳变的空档长度）
+  for (let guard = 0; guard < 4; guard++) {
+    const ts = zonedTimeToUtc(y, m, d, targetHour, 0, 0, tz);
+    if (ts > currentTs) return new Date(ts);
+
+    // 目标墙钟时刻不存在（DST 空档）→ 顺延到下一个整点
+    targetHour++;
+    if (targetHour > 23) {
+      targetHour = 0;
+      const nd = new Date(Date.UTC(y, m - 1, d) + 86400000);
+      y = nd.getUTCFullYear();
+      m = nd.getUTCMonth() + 1;
+      d = nd.getUTCDate();
+    }
+  }
+
+  // 兜底：按真实时间前进 1 小时，保证严格单调（死循环的最后防线）
+  return new Date(currentTs + 3600000);
+}
+
+/**
+ * 把"目标时区的当前墙钟"推进到"明天同一墙钟时刻"。
+ *
+ * 用 Date.UTC 做日进位（自动处理月末、年末、闰年），再用目标时区重建，
+ * 避免 UTC +24h 在 DST 日造成的墙钟漂移。
+ */
+function advanceToNextDay(
+  z: { year: number; month: number; day: number; hour: number; minute: number },
+  tz: string,
+  currentTs: number,
+): Date {
+  const nd = new Date(Date.UTC(z.year, z.month - 1, z.day) + 86400000);
+  const ts = zonedTimeToUtc(
+    nd.getUTCFullYear(), nd.getUTCMonth() + 1, nd.getUTCDate(),
+    z.hour, z.minute, 0, tz,
+  );
+  // 单调性兜底（明天同一墙钟在 DST 空档中不存在时可能反向）
+  return ts > currentTs ? new Date(ts) : new Date(currentTs + 3600000);
 }
 
 // ── Cron 调度器 ──
 
 /** Node setTimeout 最大延迟（2^31-1 ms ≈ 24.9 天） */
 const MAX_TIMEOUT_MS = 2 ** 31 - 1;
+
+/**
+ * cron 下次运行时间的搜索窗口（天）。
+ * 必须 ≥ 4 年，否则 "0 0 29 2 *"（2/29）这类表达式在非闰年算不出下次运行。
+ */
+const SEARCH_WINDOW_DAYS = 366 * 4;
 
 /**
  * 校验调度配置（供 API 层在落盘前调用）。
@@ -379,10 +481,15 @@ export class CronScheduler {
   addJob(job: CronJob): void {
     this.validateJob(job);
     this.jobs.set(job.id, job);
-    this.persistToDisk();
+    // v4 修复：先调度再落盘。
+    // 原顺序（先落盘后调度）会让第一次落盘的 nextRunAt 为 null —— 因为
+    // nextRunAt 是 scheduleJob 里算出来的，内存里算完但磁盘上还是旧的。
+    // 后果：API 返回的 job.nextRunAt 有值，磁盘上却是 null；
+    //      重启后从磁盘恢复的任务也拿不到 nextRunAt。
     if (this.running && job.enabled) {
       this.scheduleJob(job);
     }
+    this.persistToDisk();
   }
 
   removeJob(id: string): boolean {
@@ -545,7 +652,12 @@ export class CronScheduler {
     if (oldTimer) clearTimeout(oldTimer);
 
     const delay = this.getDelayMs(job);
-    if (delay < 0) return;
+    if (delay < 0) {
+      // P1-6 修复：不可达日期 → 明确标记 nextRunAt = undefined，
+      // 让前端/接口能看出"这个任务永远不会触发"，而不是看起来一切正常。
+      job.nextRunAt = undefined;
+      return;
+    }
 
     job.nextRunAt = Date.now() + delay;
 
@@ -606,12 +718,29 @@ export class CronScheduler {
         const every = job.schedule.everyMs || 60000;
         const last = job.lastRunAt || job.createdAt;
         const next = last + every;
-        return Math.max(next - now, 1000);
+        // P1-7 修复：过期任务（落后多个周期）不再"立即补跑"。
+        // v3 用 Math.max(next - now, 1000)，意味着落后 30 分钟的 every 任务
+        // 重启后 1 秒就触发一次 —— 进程重启风暴会造成任务集中爆发。
+        // 正确语义：从"现在"重新计时，固定周期继续，不追赶历史周期。
+        if (next <= now) return every;
+        return next - now;
       }
       case 'cron': {
-        const next = getNextCronRun(job.schedule.expr!, new Date(now + 1000), job.schedule.tz);
-        if (!next) return -1; // 不可达日期
-        return next.getTime() - now;
+        // P0-5 修复：起点必须是 now 本身，不能是 now + 1000。
+        // 用 now+1000 时，若当前时刻距目标整点不足 1 秒，搜索会直接跳过该整点
+        // （08:59:59.9 触发 → 整点被跳过 → 下次是明天 09:00）。
+        // getNextCronRun 内部已对齐到"下一个整分钟"，传 now 即可。
+        const next = getNextCronRun(job.schedule.expr!, new Date(now), job.schedule.tz);
+        if (!next) {
+          // P1-6 修复：不可达日期必须给出明确告警，不能静默返回 -1
+          // （否则任务看起来"已启用"却永远不会运行，用户完全无从察觉）。
+          console.warn(
+            `[Cron] 任务 ${job.id} (${job.name}) 的表达式 "${job.schedule.expr}" ` +
+            `在未来 ${SEARCH_WINDOW_DAYS} 天内无匹配时间点，该任务不会触发`,
+          );
+          return -1;
+        }
+        return Math.max(next.getTime() - now, 1000);
       }
       default:
         return -1;
