@@ -10,16 +10,8 @@
 #       等于安装器全盘失效。macOS 同样中招。
 #
 # 处理：显式钉死关键文件的换行符，不再依赖使用者本地的 git 配置。
-#
-# ── v2.0.27 补充说明 ────────────────────────────────────────────────
-#   此前只覆盖了 *.sh / *.ps1，导致 src/ 下大量 .ts 文件的换行符
-#   取决于「谁在哪台机器上改的」，导致 git diff 里混进大量纯行尾符假 diff
-#   （实测 src/storage/db.ts 一度显示 4446 行变更，真实改动只有 54 行）。
-#
-#   这里的 *.ts text eol=lf 只对 **新增/修改** 的文件生效，
-#   git 不会追溯改写已入库文件的历史内容，因此不会产生全仓库重写 diff。
 
-# ── POSIX shell：必须 LF ──
+# ── POSIX shell：必须 LF（跨平台分发，错误会直接让安装器失效）──
 *.sh            text eol=lf
 *.bash          text eol=lf
 
@@ -28,22 +20,34 @@
 *.bat           text eol=crlf
 *.cmd           text eol=crlf
 
-# ── 源码/脚本：统一 LF（v2.0.27 补充）────────────────────────────
-*.ts            text eol=lf
-*.tsx           text eol=lf
-*.js            text eol=lf
-*.jsx           text eol=lf
-*.mts           text eol=lf
-*.cts           text eol=lf
-*.mjs           text eol=lf
-*.cjs           text eol=lf
-*.py            text eol=lf
-*.json          text eol=lf
+# ── 源码：统一 LF（v2.0.27 补充）────────────────────────────────────
+# 为什么要补：src/ 下的 .ts 文件此前没有任何 .gitattributes 覆盖，
+#   换行符取决于「谁在哪台机器上改的」。src/storage/db.ts 一度显示
+#   **4446 行变更**（其中 4403 行是纯行尾符差异，真实改动只有 54 行）
+#   —— 假 diff 会淹没真实改动，review 形同虚设。
+src/**/*.ts     text eol=lf
+src/**/*.tsx    text eol=lf
+src/**/*.js     text eol=lf
+src/**/*.mjs    text eol=lf
+src/**/*.cjs    text eol=lf
+src/**/*.mts    text eol=lf
+src/**/*.json   text eol=lf
+scripts/**      text eol=lf
+index.ts        text eol=lf
+README.md       text eol=lf
 *.md            text eol=lf
-*.yml           text eol=lf
-*.yaml          text eol=lf
-*.html          text eol=lf
-*.css           text eol=lf
+
+# ── 历史遗留 CRLF 文件：显式豁免（v2.0.27）──────────────────────────
+# 这些文件在入库时就是 CRLF，git 一度把它们当作 binary（-text）而不做
+# 规范化。若不豁免，新规则会触发一次性全文件重写，产生上萬行纯行尾符
+# 假 diff（web/js/i18n.js 一个文件就是 10224 行），完全淹没真实改动。
+#
+# 策略：**豁免现状，但从下一次真正修改起自动收敛为 LF**。
+# 等这些文件因为业务需要被改动时，规则会把新内容写成 LF，
+# 届时再单独做一次规范化提交即可。
+src/routes/lan.ts      -text
+src/routes/subagents.ts -text
+web/js/i18n.js         -text
 
 # ── 二进制：不做行尾符转换 ──
 *.png           binary
