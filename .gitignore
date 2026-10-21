@@ -341,3 +341,19 @@ deploy/RESCUE-443-BROKEN.sh
 *.tar.gz.b64
 *.tgz
 workspace/*.tmp.gz
+# ── 2026-10-21 清理：历史调试/测试垃圾（已归档到 _trash_20261021/）──
+_trash_*/
+_archive_*/
+data-bench*/
+data-apptest*/
+data-hubtest/
+data-pctest/
+data-pcui/
+data-uitest/
+data-smoke-*/
+data-v36*
+data-boottest/
+data-verify/
+data-platform/
+*.bak_*
+*.bak-*

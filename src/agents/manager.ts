@@ -1,4 +1,5 @@
 import { v4 as uuid } from 'uuid';
+import { updateAgentMemoryWithChecks, upsertChatMemoryWithChecks } from '../memory/memory-write-integration.js';
 
 export type AutonomyLevel = 'passive' | 'semi' | 'full';
 
@@ -36,7 +37,6 @@ interface AgentRow {
 
 function rowToDTO(row: any): AgentDTO {
   if (!row) return row;
-  // sql.js exec 返回的是 values 数组，prepare 的是 object
   if (Array.isArray(row)) {
     return {
       id: row[0],
@@ -101,7 +101,7 @@ export class AgentManager {
     return rows.map((r: any) => rowToDTO(r));
   }
 
-  update(id: string, updates: Partial<AgentDTO>): AgentDTO {
+  async update(id: string, updates: Partial<AgentDTO>): Promise<AgentDTO> {
     const agent: AgentRow | undefined = this.db.getAgent(id);
     if (!agent) throw new Error('Agent not found: ' + id);
     if (updates.displayName) agent.display_name = updates.displayName;
@@ -110,12 +110,38 @@ export class AgentManager {
     if (updates.personality) agent.personality = updates.personality as string;
     if (updates.autonomy) agent.autonomy = updates.autonomy as string;
     if (updates.skills) agent.skills = JSON.stringify(updates.skills);
-    if (updates.memorySummary !== undefined) agent.memory_summary = updates.memorySummary;
-    if (updates.memoryFacts) agent.memory_facts = JSON.stringify(updates.memoryFacts);
     if (updates.status) agent.status = updates.status;
+
     const dbRef: any = this.db;
-    dbRef.raw.run('UPDATE agents SET display_name=?,model=?,model_source=?,personality=?,autonomy=?,skills=?,memory_summary=?,memory_facts=?,status=? WHERE id=?',
-      [agent.display_name, agent.model, agent.model_source, agent.personality, agent.autonomy, agent.skills, agent.memory_summary, agent.memory_facts, agent.status, id]);
+
+    // 处理记忆更新：如果有 memorySummary 或 memoryFacts 变更，走新的去重+冲突检测流程
+    if (updates.memorySummary !== undefined || updates.memoryFacts) {
+      const newSummary = updates.memorySummary !== undefined ? updates.memorySummary : agent.memory_summary;
+      const newFacts = updates.memoryFacts || safeObj(agent.memory_facts);
+
+      // 使用新的集成接口：语义去重 + 冲突检测 + 写入
+      const result = await updateAgentMemoryWithChecks(id, newSummary, newFacts, {
+        source: 'assistant',
+        confidence: 0.8,
+        skipConflictCheck: false,
+        skipDedup: false,
+      });
+
+      if (!result.success) {
+        // 冲突阻止写入，返回冲突信息供上层决策
+        throw new Error(`记忆冲突: ${JSON.stringify(result.conflicts)}`);
+      }
+      // 更新 agent 对象以便后续统一 UPDATE
+      agent.memory_summary = newSummary;
+      agent.memory_facts = JSON.stringify({ ...safeObj(agent.memory_facts), ...newFacts });
+    }
+
+    // 其它字段常规更新
+    dbRef.raw.run(
+      'UPDATE agents SET display_name=?,model=?,model_source=?,personality=?,autonomy=?,skills=?,memory_summary=?,memory_facts=?,status=? WHERE id=?',
+      [agent.display_name, agent.model, agent.model_source, agent.personality, agent.autonomy, agent.skills, agent.memory_summary, agent.memory_facts, agent.status, id]
+    );
+    dbRef.markDirty?.();
     return rowToDTO(agent);
   }
 
@@ -123,5 +149,39 @@ export class AgentManager {
     const agent = this.db.getAgent(agentId);
     if (!agent) return;
     (this.db as any).db.prepare('UPDATE agents SET status=? WHERE id=?').run(status, agentId);
+    this.db.markDirty?.();
+  }
+
+  /** 追加记忆摘要（供反思/总结调用）——接入去重+冲突检测 */
+  async appendMemorySummary(agentId: string, newContent: string): Promise<void> {
+    const agent = this.db.getAgent(agentId);
+    if (!agent) return;
+    const safeContent = this.db.sanitizeMemoryInput?.(newContent) || newContent;
+    if (!safeContent) return;
+
+    // 提取新 facts（简单启发式：按行分割 key: value）
+    const newFacts: Record<string, string> = {};
+    for (const line of safeContent.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx > 0 && idx < 50) {
+        const key = line.slice(0, idx).trim();
+        const value = line.slice(idx + 1).trim();
+        if (key && value) newFacts[key] = value;
+      }
+    }
+
+    if (Object.keys(newFacts).length > 0) {
+      // 走新接口：去重 + 冲突检测
+      await updateAgentMemoryWithChecks(agentId, agent.memory_summary || '', newFacts, {
+        source: 'assistant',
+        confidence: 0.7,
+        skipConflictCheck: false,
+        skipDedup: false,
+      });
+    } else {
+      // 纯文本摘要，走旧逻辑但标记脏位
+      this.db.appendMemorySummary?.(agentId, safeContent);
+    }
+    this.db.markDirty?.();
   }
 }

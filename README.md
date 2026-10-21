@@ -2,9 +2,10 @@
 
 > **AI-Native 即时通讯平台** — 每个用户绑定一个 AI 智能体，对话时真人与 AI 同在
 
-[![License](https://img.shields.io/github/license/lingxi-engine/lingxi-engine?color=blue)](LICENSE)
-[![Node](https://img.shields.io/badge/node-24%2B-brightgreen)](https://nodejs.org)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
+[![Version](https://img.shields.io/badge/version-2.0.35-orange)](CHANGELOG.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -13,15 +14,18 @@
 
 - 🤖 **AI Agent 双向对话** — 每个用户自带 AI 分身，群聊中真人与 Agent 共存
 - 🧠 **推理过程可视化** — 支持 DeepSeek R1 / OpenAI o1 等推理模型的思考链流式展示
-- 🔧 **多工具系统** — web_search / code_execute / shell_exec / 文件读写 / 时间计算
-- 🛡️ **安全沙箱** — Docker 隔离执行代码和命令，默认开启
-- 📦 **零依赖前端** — 单文件 HTML (1811 行)，无需 React/Vue
-- 🔌 **多渠道** — 支持 Telegram / Signal / iMessage 接入
+- 🔧 **56 个内置工具** — web_search / code_execute / shell_exec / 文件读写 / 时间计算 / Git 操作 / 子代理委派 / 多模型协作
+- 🛡️ **安全沙箱** — Docker 隔离执行代码和命令，**需显式开启**（见下方说明）
+- 📦 **零依赖前端** — 单文件 HTML，无需 React/Vue
+- 🔌 **9 个消息渠道** — Telegram / Signal / iMessage / Discord / Slack / WhatsApp / 飞书 / 企业微信 / QQ Bot
 - 🌐 **多 AI Provider** — OpenAI / DeepSeek / NVIDIA NIM / Ollama 即插即用
 - ⏰ **Cron 定时任务** — 带时区支持 + 磁盘持久化
-- 💾 **SQLite 存储** — 零配置本地数据库
+- 💾 **SQLite 存储** — 零配置本地数据库（sql.js，WASM 实现）
 - 🔒 **JWT 认证** — access token + 刷新令牌滚动刷新
 - 📡 **WebSocket 实时推送** — 流式输出 + 工具调用进度广播
+- 🧩 **MCP 支持** — 通过 `src/mcp/adapter.ts` 接入外部 Model Context Protocol 服务
+- 📱 **移动端 App** — `mobile-app/` 提供 Android / iOS 客户端（v1.2.0）
+- 🐍 **Python 自主引擎** — `lingxi_engine/` 独立 Python 子系统（记忆 / 元认知 / 议会 / 沙箱 / 群体智能）
 
 ## 🚀 快速开始
 
@@ -48,48 +52,78 @@ npm start
 | NVIDIA NIM | `NVIDIA_API_KEY` | 免费额度 | ❌ |
 | Ollama | 无需 Key | 免费 (需 GPU) | 取决于模型 |
 
+### ⚠️ 关于安全沙箱
+
+Docker 沙箱**默认关闭**（v1.9.7 起改为显式开启）。未开启时 `shell_exec` / `code_execute`
+直接在宿主机执行，仅靠命令白名单和 `safePath` 约束。
+
+```bash
+# 开启沙箱隔离（推荐生产环境启用）
+echo "SANDBOX_ENABLED=true" >> .env
+```
+
+未安装 Docker 时会打印降级警告并继续运行。生产部署请务必开启。
+
 ## 📋 环境要求
 
 | 依赖 | 版本 | 必须 |
 |---|---|---|
 | Node.js | 18+ (推荐 24+) | ✅ |
 | npm | 9+ | ✅ |
-| Docker | 任意 | 可选 (沙箱隔离) |
+| Docker | 任意 | 可选 (沙箱隔离，需 `SANDBOX_ENABLED=true`) |
 | Ollama | 任意 | 可选 (本地模型) |
+| Python 3.11+ | 仅跑 `lingxi_engine/` 回归测试时需要 | 可选 |
 
 ## 🏗 架构
 
 ```
-index.ts (1849 行)          ← HTTP + WebSocket 主入口
-├── src/ai/                 ← AI 接入 (RedisHub + ProviderRegistry)
-├── src/agents/             ← Agent 生命周期 (创建/删除/模型切换)
-├── src/auth/               ← JWT + bcrypt 认证
+index.ts (4468 行)                    ← HTTP + WebSocket 主入口
+├── src/ai/                           ← AI 接入 (RedisHub + ProviderRegistry + 故障转移)
+├── src/agents/                       ← Agent 生命周期 (创建/删除/模型切换)
+├── src/auth/                         ← JWT + bcrypt 认证
 ├── src/core/
-│   ├── router.ts           ← 消息路由 + 工具调用循环
-│   ├── cron-scheduler.ts   ← 定时任务 + IANA时区 + 持久化
-│   ├── docker-sandbox.ts   ← Docker 沙箱隔离
-│   ├── hooks.ts            ← 可编程钩子系统
-│   ├── inbox.ts            ← 站内通知
-│   ├── compaction.ts       ← 上下文压缩
-│   ├── memory-reflector.ts ← 记忆反思
-│   ├── push.ts             ← APNs + FCM 推送
-│   ├── session-manager.ts  ← 会话生命周期
-│   └── ws-handler.ts       ← WebSocket 协议处理
+│   ├── router.ts                     ← 消息路由 + 工具调用循环
+│   ├── cron-scheduler.ts             ← 定时任务 + IANA时区 + 持久化
+│   ├── docker-sandbox.ts             ← Docker 沙箱隔离
+│   ├── hooks.ts                      ← 可编程钩子系统
+│   ├── inbox.ts                      ← 站内通知
+│   ├── compaction.ts                 ← 上下文压缩
+│   ├── memory-reflector.ts           ← 记忆反思
+│   ├── push.ts                       ← APNs + FCM 推送
+│   ├── session-manager.ts            ← 会话生命周期
+│   ├── ws-handler.ts                 ← WebSocket 协议处理
+│   ├── subagent-manager.ts           ← 子代理派生与结果回收
+│   ├── autonomy.ts                   ← 自主任务执行
+│   ├── retry-coordinator.ts          ← 统一自动重试
+│   └── watchdog.ts                   ← 进程守护
 ├── src/tools/
-│   ├── builtin.ts          ← 15 个内置工具 + Docker沙箱集成
-│   ├── executor.ts         ← 工具调用循环
-│   ├── search-providers.ts ← Web 搜索 (3 Provider)
-│   ├── auto-skill.ts       ← 自动技能学习
-│   └── registry.ts         ← 工具注册表
+│   ├── builtin.ts                    ← 56 个内置工具 + Docker沙箱集成
+│   ├── executor.ts                   ← 工具调用循环 (默认 50 轮工具循环)
+│   ├── search-providers.ts           ← Web 搜索 (多 Provider)
+│   ├── auto-skill.ts                 ← 自动技能学习
+│   └── registry.ts                   ← 工具注册表
+├── src/memory/                       ← 记忆系统 (事实冲突检测 / 语义去重 / 写入集成)
+├── src/mcp/adapter.ts                ← MCP 协议适配
 ├── src/middleware/
-│   ├── jwt-auth.ts         ← JWT 鉴权 (required/optional)
-│   ├── admin-auth.ts       ← Admin Token 鉴权 (fail-secure)
-│   └── rate-limit.ts       ← 内存限流 (X-Forwarded-For)
-├── src/storage/db.ts       ← SQLite (better-sqlite3) 数据库
-├── src/channels/           ← Telegram / Signal / iMessage 适配
-├── src/voice/              ← TTS + STT
-└── web/index.html          ← 前端单文件 (1811行)
+│   ├── jwt-auth.ts                   ← JWT 鉴权 (required/optional)
+│   ├── admin-auth.ts                 ← Admin Token 鉴权 (fail-secure)
+│   └── rate-limit.ts                 ← 内存限流 (X-Forwarded-For)
+├── src/storage/db.ts                 ← SQLite (sql.js) 数据库
+├── src/channels/                     ← 9 个渠道适配 (discord/feishu/imessage/qqbot/signal/slack/telegram/wechat/whatsapp)
+├── src/voice/                        ← TTS + STT
+├── src/cli/chat.ts                   ← CLI 客户端 (bin: lingxi)
+└── web/index.html                    ← 前端单文件 (1129 行)
 ```
+
+### 长任务预算
+
+| 配置项 | `.env` | `.env.example` | 说明 |
+|---|---|---|---|
+| `TASK_TIMEOUT_SECONDS` | 7200（2 小时） | 1200（20 分钟） | 单任务最长执行时间 |
+| 工具循环轮数 | 50 轮（代码硬编码，`executor.ts` 默认值） | — | 超出即强制收尾 |
+
+> `.env` 与 `.env.example` 的超时值不同：前者是开发机实测配置，后者是给新用户的保守默认值。
+> 如需长任务，自行调大 `TASK_TIMEOUT_SECONDS`。
 
 ## 🔒 安全
 
@@ -97,7 +131,7 @@ index.ts (1849 行)          ← HTTP + WebSocket 主入口
 
 - ✅ 全局 JWT 鉴权兜底
 - ✅ Admin Token 防护 (fail-secure)
-- ✅ Docker 沙箱隔离 (shell_exec + code_execute)
+- ✅ Docker 沙箱隔离 (shell_exec + code_execute)，**需 `SANDBOX_ENABLED=true`**
 - ✅ shell_exec 命令白名单
 - ✅ 文件操作 safePath 约束
 - ✅ WebSocket 生产环境拒绝匿名连接
@@ -164,6 +198,22 @@ powershell -ExecutionPolicy Bypass -File scripts/publish-site.ps1 -Method scp
 > 注意：`scripts/publish-site.ps1` 与 `pack-release.ps1` 均为 **ASCII-only** 文件。
 > PowerShell 在中文系统上会把无 BOM 的 UTF-8 `.ps1` 按 GBK 解析，导致中文注释变成乱码甚至语法错误。
 
+## 🧪 测试
+
+```bash
+npm run typecheck   # TypeScript 类型检查 (必须通过)
+npm test            # Vitest 单元测试
+npm run verify:deploy  # 部署校验
+
+# README 数字一致性门禁（工具数/渠道数/沙箱默认值/循环轮数/超时值）
+npx tsx scripts/check-docs.mts
+
+# Python 自主引擎回归 (152 项断言)
+cd lingxi_engine/tests && python run_all.py
+```
+
+CI 分三个 job：`python-engine`（152 断言）、`ts-engine`（typecheck + vitest）、`hygiene-check`（BOM / 垃圾文件 / 巨石行数棘轮 / shell LF）。
+
 ## 🤝 贡献
 
 欢迎 Pull Request。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -173,7 +223,9 @@ npm run dev        # 开发模式 (热重载)
 npm run typecheck  # 类型检查 (必须通过)
 ```
 
+改代码时请顺手跑 `npx tsx scripts/check-docs.mts`——README 里的工具数、渠道数、
+沙箱默认值、循环轮数、超时值都是写死的数字，代码一改就会说谎。
+
 ## 📄 许可证
 
 MIT License — 详见 [LICENSE](LICENSE)。
-

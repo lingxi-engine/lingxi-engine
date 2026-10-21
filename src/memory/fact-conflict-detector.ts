@@ -5,6 +5,7 @@
  */
 
 import { globalDedup } from './semantic-dedup.js';
+import { extractJsonObject } from './json-extract.js';
 
 export interface FactEntry {
   key: string;
@@ -106,7 +107,7 @@ export class RuleBasedConflictDetector {
       { keys: ['年龄', '岁数'], type: 'age' },
       { keys: ['城市', '居住地', '家乡', '所在地'], type: 'location' },
       { keys: ['职业', '工作', '职位'], type: 'job' },
-      { keys: ['喜欢', '偏好', '爱吃', '讨厌', '不吃'], type: 'preference' }, // 偏好类也加入语义覆盖
+      // [P1-1 FIX] 偏好类从语义覆盖移除，改由 preference_change 处理
     ];
 
     for (const { keys, type } of entityPatterns) {
@@ -119,8 +120,8 @@ export class RuleBasedConflictDetector {
           newKey: nKey,
           newValue: nVal,
           reason: 'semantic_override',
-          severity: type === 'identity' ? 'high' : (type === 'preference' ? 'low' : 'medium'),
-          suggestion: type === 'preference' ? 'keep_both' : 'replace_old',
+          severity: type === 'identity' ? 'high' : 'medium',
+          suggestion: 'replace_old',
         };
       }
     }
@@ -172,7 +173,8 @@ export class RuleBasedConflictDetector {
             newValue: newer.value,
             reason: 'preference_change',
             severity: 'low',
-            suggestion: 'keep_both', // 偏好变化保留历史，供画像分析
+            // [P1-1 FIX] 偏好变更改为 replace_old，避免同类偏好共存污染画像
+            suggestion: 'replace_old',
           };
         }
       }
@@ -201,16 +203,22 @@ export class RuleBasedConflictDetector {
   }
 
   private suggestResolution(exist: FactEntry, newer: FactEntry, isSameKey: boolean = false): ConflictResult['conflicts'][0]['suggestion'] {
-    // 同 key 直接矛盾：默认新值替换旧值（时间更新的原则）
+    // 同 key 直接矛盾：按置信度、来源、更新时间决策
     if (isSameKey) {
-      // 高置信度新事实覆盖低置信度旧事实
-      if (newer.confidence > exist.confidence + 0.2) return 'replace_old';
-      if (exist.confidence > newer.confidence + 0.2) return 'replace_new';
-      // 用户明确陈述 > 推断
-      if (newer.source === 'user' && exist.source !== 'user') return 'replace_old';
-      if (exist.source === 'user' && newer.source !== 'user') return 'replace_new';
-      // 默认：新值替换旧值（更新时间更新）
-      return 'replace_old';
+      // [P1-2 FIX] 同 key 冲突时比较 updatedAt：更新时间新的才覆盖
+      if (newer.updatedAt > exist.updatedAt) {
+        // 高置信度新事实覆盖低置信度旧事实
+        if (newer.confidence > exist.confidence + 0.2) return 'replace_old';
+        if (exist.confidence > newer.confidence + 0.2) return 'replace_new';
+        // 用户明确陈述 > 推断
+        if (newer.source === 'user' && exist.source !== 'user') return 'replace_old';
+        if (exist.source === 'user' && newer.source !== 'user') return 'replace_new';
+        // 默认：新值替换旧值（更新时间更新）
+        return 'replace_old';
+      } else {
+        // 新事实更旧，保留旧值
+        return 'replace_new';
+      }
     }
     
     // 不同 key 的语义冲突
@@ -317,7 +325,7 @@ ${candidates.map((f, i) => `${i+1}. key="${f.key}" value="${f.value}" source=${f
 
   private parseResponse(response: string, newFact: FactEntry, candidateKeys: string[]): ConflictResult {
     try {
-      const parsed = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+      const parsed = JSON.parse(extractJsonObject(response));
       const conflicts = (parsed.conflicts || []).map((c: any) => {
         const idx = c.index - 1;
         const existFact = candidateKeys[idx];

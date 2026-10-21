@@ -1,6 +1,6 @@
 # LingXi Engine - Windows Installer (PowerShell)
 # Version: auto (generated at install time)
-# Usage: iwr -useb http://47.93.157.83:8080/install.ps1 | iex
+# Usage: iwr -useb http://www.lingxi-engine.com/install.ps1 | iex
 
 try { Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force -ErrorAction Stop } catch {}
 $ErrorActionPreference = "Stop"
@@ -9,7 +9,7 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 
 $InstallDir = Join-Path $env:USERPROFILE "lingxi-engine"
 # Tarball source: production URL by default; override with $env:LINGXI_TARBALL_URL if self-hosting
-$TarballUrl = if ($env:LINGXI_TARBALL_URL) { $env:LINGXI_TARBALL_URL } else { "http://47.93.157.83:8080/public/lingxi-engine.tar.gz" }
+$TarballUrl = if ($env:LINGXI_TARBALL_URL) { $env:LINGXI_TARBALL_URL } else { "https://www.lingxi-engine.com/public/lingxi-engine.tar.gz" }
 $INSTALL_VERSION = (Get-Date).ToString("v2026.M.d-H.mm")
 
 function W-OK($m)   { Write-Host "[OK] $m" -ForegroundColor Green }
@@ -324,7 +324,7 @@ if (-not $isFileMode) {
     Write-Host ""
     Write-Host "  [One-liner mode] Auto-starting engine (no prompt)..." -ForegroundColor Cyan
     Write-Host "  Prefer the two-step install to control startup:" -ForegroundColor Gray
-    Write-Host "    Invoke-WebRequest -Uri http://47.93.157.83:8080/install.ps1 -OutFile install.ps1" -ForegroundColor Gray
+    Write-Host "    Invoke-WebRequest -Uri http://www.lingxi-engine.com/install.ps1 -OutFile install.ps1" -ForegroundColor Gray
     Write-Host "    powershell -ExecutionPolicy Bypass -File install.ps1" -ForegroundColor Gray
     $startNow = 'y'
 } else {

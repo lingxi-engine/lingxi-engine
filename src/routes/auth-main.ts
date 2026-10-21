@@ -73,7 +73,7 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
         try {
           const agent = manager.register(result.user.id, display_name + '的灵犀引擎', display_name + ' 的 AI 助手', 'semi');
           if (defaultModel) {
-            try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
+            try { await manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
           }
           res.json({ ok: true, user: result.user, agent, ...tokens });
         } catch (ae: any) {
@@ -367,7 +367,7 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
   });
 
   // ── 旧版兼容：验证码注册（保留 demo 模式） ──
-  app.post('/api/auth/register-with-email', (req, res) => {
+  app.post('/api/auth/register-with-email', async (req, res) => {
     try {
       const { email, code, username } = req.body;
       if (!email || !code) return res.status(400).json({ error: '邮箱和验证码必填' });
@@ -397,7 +397,7 @@ export function registerAuthRoutes(app: Express, deps: AuthRouteDeps): void {
       const user: User = db.createUser(userId, displayName);
       const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
       if (defaultModel) {
-        try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
+        try { await manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch(_e) {}
       }
       res.json({ ok: true, user, agent });
     } catch (err: any) {

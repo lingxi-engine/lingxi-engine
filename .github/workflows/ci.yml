@@ -49,6 +49,15 @@ jobs:
       - name: Vitest suite (100 tests)
         run: npx vitest run
 
+      - name: README consistency gate
+        # 2026-10-21: scripts/check-docs.mts existed since 2026-09-28 but was NEVER
+        # wired into CI. Result: README drifted for three weeks (tool count 15 vs
+        # real 56, channel count missing, sandbox claimed default-on while code
+        # requires opt-in) and nobody noticed until it was run by hand.
+        # This gate asserts the README's concrete numbers against the source tree,
+        # so a stale README fails CI instead of misleading users.
+        run: npx tsx scripts/check-docs.mts
+
   hygiene-check:
     name: Workspace hygiene check
     runs-on: ubuntu-22.04

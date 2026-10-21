@@ -3,7 +3,7 @@
 #  灵犀引擎 macOS / Linux 桌面端一键安装脚本
 #
 #  一行命令安装:
-#    curl -fsSL ${LINGXI_BASE_URL:-http://47.93.157.83:8080}/public/install.sh | bash
+#    curl -fsSL ${LINGXI_BASE_URL:-https://www.lingxi-engine.com}/public/install.sh | bash
 #
 #  功能:
 #    - 自动识别 macOS (Apple Silicon / Intel) 与 Linux
@@ -30,13 +30,13 @@ if [ -z "${BASH_VERSION:-}" ]; then
     if [ -f "$0" ] && [ "$0" != "sh" ] && [ "$0" != "bash" ]; then
         exec bash "$0" "$@"
     fi
-    echo "  ❌ 请用 bash 执行: curl -fsSL ${LINGXI_BASE_URL:-http://47.93.157.83:8080}/public/install.sh | bash" >&2
+    echo "  ❌ 请用 bash 执行: curl -fsSL ${LINGXI_BASE_URL:-https://www.lingxi-engine.com}/public/install.sh | bash" >&2
     exit 1
 fi
 
 # 版本号从 version.txt 动态读取（与仓库/git tag 单一源头，杜绝显示漂移）
 VERSION="unknown"
-BASE_URL="${LINGXI_BASE_URL:-http://47.93.157.83:8080}"
+BASE_URL="${LINGXI_BASE_URL:-https://www.lingxi-engine.com}"
 TARBALL_URL="$BASE_URL/public/lingxi-engine.tar.gz"
 INSTALL_DIR="$HOME/lingxi-engine"
 PORT=3456
@@ -193,7 +193,7 @@ case "$OS" in
         CHIP="$ARCH"
         ;;
     MINGW*|MSYS*|CYGWIN*)
-        die "检测到 Windows 下的 Git Bash。Windows 请用 PowerShell 一键安装: irm ${LINGXI_BASE_URL:-http://47.93.157.83:8080}/install.ps1 | iex"
+        die "检测到 Windows 下的 Git Bash。Windows 请用 PowerShell 一键安装: irm ${LINGXI_BASE_URL:-https://www.lingxi-engine.com}/install.ps1 | iex"
         ;;
     *)
         die "不支持的系统: $OS"

@@ -1,14 +1,14 @@
 {
   "name": "codebase-bug-audit",
-  "displayName": "代码库Bug排查与诊断",
-  "description": "全面排查代码库中的配置不一致、逻辑错误等问题，并提供修改方案但不直接修改。",
+  "displayName": "代码库 Bug 全景审计",
+  "description": "对 TypeScript 项目进行全面的代码阅读、测试运行、类型检查并生成 Bug 审计报告",
   "tools": [
-    "list_dir",
     "read_file",
+    "list_dir",
     "shell_exec",
-    "web_search"
+    "write_file"
   ],
-  "prompt": "遇到排查代码库Bug或配置不一致的任务时，首先使用工具（如list_dir, read_file, shell_exec）浏览项目结构，定位相关配置文件（如.env）和核心逻辑代码。分析代码逻辑，找出配置不一致、硬编码、UI显示逻辑错误等问题。整理所有发现的Bug，给出具体的代码位置和修改方案，但严格遵守用户要求不直接修改代码。如果遇到不确定的技术细节，可以使用web_search查找相关文档。最后以清晰的列表形式输出所有Bug及其修改方案。",
+  "prompt": "当用户要求检查项目的 Bug 或进行代码健康度审计时，按以下步骤执行：\n1. 使用 list_dir 了解项目结构，定位核心模块（如 memory、storage、api 等）\n2. 使用 read_file 逐个阅读核心模块的关键文件（优先读取 .ts 核心逻辑文件）\n3. 使用 shell_exec 运行单元测试（如 `npm test` 或 `pnpm test`）并记录通过/失败数量\n4. 使用 shell_exec 运行 TypeScript 类型检查（`tsc --noEmit`）\n5. 汇总生成结构化报告，包含：检查项目、状态、详情、发现的问题及建议\n6. 若用户要求修复，根据报告中的问题逐个定位并修复代码",
   "autoCreated": true,
-  "createdAt": 1784039588257
+  "createdAt": 1792591564869
 }

@@ -2,8 +2,7 @@
  * 语义去重模块：MinHash + LSH 近似去重
  * 依赖：无外部依赖，纯 TS 实现
  * 用法：import { SemanticDedup } from './semantic-dedup.js';
- *       const dedup = new SemanticDedup(0.85); // 相似度阈值，中文建议 0.8-0.85
- *       const isDup = await dedup.checkAndAdd('fact_key', 'fact_value');
+ *       const dedup = new SemanticDedup(0.78); // 相似度阈值，中文建议 0.75-0.80
  */
 
 // 轻量级 MinHash 实现（无外部依赖）
@@ -40,6 +39,16 @@ export class MinHash {
     const shingles = new Set<number>();
     const normalized = text.toLowerCase().replace(/\s+/g, '');
     
+    // [P1-3 FIX] 短文本（<10字）直接用完整 token 签名，避免 2-gram 全 65535 误判
+    if (normalized.length < 10) {
+      let h = 0;
+      for (const ch of normalized) {
+        h = (h * 31 + ch.charCodeAt(0)) & 0xffff;
+      }
+      shingles.add(h);
+      return shingles;
+    }
+
     // 中文按单字，英文按词分割
     const tokens: string[] = [];
     let currentWord = '';
@@ -163,7 +172,7 @@ export class SemanticDedup {
   private minHash: MinHash;
   private readonly threshold: number;
 
-  constructor(threshold: number = 0.85, numHashes: number = 128, bands: number = 16) {
+  constructor(threshold: number = 0.78, numHashes: number = 128, bands: number = 16) {
     this.threshold = threshold;
     this.minHash = new MinHash(numHashes);
     this.lsh = new LSHIndex(this.minHash, bands);
@@ -198,5 +207,5 @@ export class SemanticDedup {
   }
 }
 
-// 导出单例（进程内复用）——中文场景阈值调低到 0.85
-export const globalDedup = new SemanticDedup(0.85);
+// 导出单例（进程内复用）——中文场景阈值调低到 0.78
+export const globalDedup = new SemanticDedup(0.78);

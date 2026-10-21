@@ -58,8 +58,16 @@ check('sandbox default claim matches code', !(claimsDefaultOn && srcRequiresOptI
 
 // ── long-task constants ──
 const executor = fs.readFileSync(path.join(ROOT, 'src', 'tools', 'executor.ts'), 'utf8');
-const maxIter = (executor.match(/maxIterations\s*=\s*(\d+)/) || [])[1];
-check('README quotes real maxIterations', readme.includes(maxIter + ' 轮工具循环'), 'code=' + maxIter);
+// 2026-10-21: executor.ts writes `const maxIterations = options.maxIterations ?? 50`
+// (nullish coalescing), NOT `maxIterations = 50`. The old regex matched neither
+// form and reported code=undefined, so this check could never pass. Accept both.
+const maxIter = (executor.match(/maxIterations\s*=\s*(?:options\.maxIterations\s*\?\?\s*)?(\d+)/) || [])[1];
+if (!maxIter) {
+  check('maxIterations default is parseable from executor.ts', false,
+    'no `maxIterations = <n>` or `options.maxIterations ?? <n>` found');
+} else {
+  check('README quotes real maxIterations', readme.includes(maxIter + ' 轮工具循环'), 'code=' + maxIter);
+}
 
 let envSrc = '';
 try { envSrc = fs.readFileSync(path.join(ROOT, '.env'), 'utf8'); } catch {}

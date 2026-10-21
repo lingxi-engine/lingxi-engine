@@ -26,7 +26,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
   const { manager, defaultModel } = ctx;
 
   // ── V7: 注册（邮箱 + 密码 + 数字 ID） ──
-  router.post('/register', (req, res) => {
+  router.post('/register', async (req, res) => {
     try {
       const { email, password, display_name, invite_code, agent_binding } = req.body;
       const result = auth.register({
@@ -46,7 +46,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
           );
           if (defaultModel) {
             try {
-              manager.update(agent.id, { model: defaultModel, modelSource: 'local' });
+              await manager.update(agent.id, { model: defaultModel, modelSource: 'local' });
             } catch (_e) {}
           }
           res.json({ ok: true, user: result.user, agent, verificationToken: result.verificationToken });
@@ -221,7 +221,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
   });
 
   // ── 旧版兼容：验证码注册（已改为纯数字 ID） ──
-  router.post('/register-with-email', (req, res) => {
+  router.post('/register-with-email', async (req, res) => {
     try {
       const { email, code, username } = req.body;
       if (!email || !code) return res.status(400).json({ error: '邮箱和验证码必填' });
@@ -241,7 +241,7 @@ export function createAuthRoutes(ctx: ServerContext): Router {
       (ctx.db as any).run('UPDATE users SET numeric_id = ? WHERE id = ?', [numericId, userId]);
       const agent = manager.register(userId, displayName + '的AI', displayName + ' 的 AI 助手', 'semi');
       if (defaultModel) {
-        try { manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch (_e) {}
+        try { await manager.update(agent.id, { model: defaultModel, modelSource: 'local' }); } catch (_e) {}
       }
       res.json({ ok: true, user: { id: userId, numericId, displayName }, agent });
     } catch (err: any) {

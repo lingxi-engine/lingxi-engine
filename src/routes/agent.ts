@@ -2,6 +2,7 @@
  * Agent 路由 — Agent CRUD、记忆、技能绑定
  */
 import { Router } from 'express';
+import { updateAgentMemoryWithChecks, upsertChatMemoryWithChecks } from '../memory/memory-write-integration.js';
 import type { ServerContext } from '../server/context.js';
 
 export function createAgentRoutes(ctx: ServerContext): Router {
@@ -30,17 +31,17 @@ export function createAgentRoutes(ctx: ServerContext): Router {
   });
 
   // ── Agent 更新 ──
-  router.patch('/agents/:id', (req, res) => {
+  router.patch('/agents/:id', async (req, res) => {
     try {
       const updates = req.body;
-      const agent = manager.update(req.params.id, updates);
+      const agent = await manager.update(req.params.id, updates);
       res.json({ ok: true, agent });
     } catch (err: any) {
       res.status(400).json({ error: err.message });
     }
   });
 
-  // ── Agent 记忆 ──
+  // ── Agent 记忆读取 ──
   router.get('/agents/:id/memory', (req, res) => {
     try {
       const agent = db.getAgent(req.params.id);
@@ -51,11 +52,65 @@ export function createAgentRoutes(ctx: ServerContext): Router {
     }
   });
 
-  router.put('/agents/:id/memory', (req, res) => {
+  // ── Agent 记忆更新（接入去重+冲突检测）──
+  router.put('/agents/:id/memory', async (req, res) => {
     try {
-      const { personality, memory } = req.body || {};
-      db.updateAgent(req.params.id, { personality: personality || undefined, memory_summary: memory || undefined });
+      const { personality, memory, facts } = req.body || {};
+      const agentId = req.params.id;
+
+      // 如果有 facts 更新，走新接口
+      if (facts && Object.keys(facts).length > 0) {
+        const agent = db.getAgent(agentId);
+        if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+        const result = await updateAgentMemoryWithChecks(agentId, agent.memory_summary || '', facts, {
+          source: 'assistant',
+          confidence: 0.8,
+          skipConflictCheck: false,
+          skipDedup: false,
+        });
+
+        if (!result.success) {
+          return res.status(409).json({ ok: false, error: '记忆冲突', conflicts: result.conflicts, skippedKeys: result.skippedKeys });
+        }
+      }
+
+      // personality / memory_summary 常规更新
+      if (personality !== undefined || memory !== undefined) {
+        db.updateAgent(agentId, {
+          personality: personality || undefined,
+          memory_summary: memory || undefined,
+        });
+      }
+
       res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Chat 级记忆更新（接入去重+冲突检测）──
+  router.put('/chats/:chatId/agents/:agentId/memory', async (req, res) => {
+    try {
+      const { chatId, agentId } = req.params;
+      const { summary, facts } = req.body || {};
+
+      if (!facts || Object.keys(facts).length === 0) {
+        return res.status(400).json({ error: 'facts 必填且非空' });
+      }
+
+      const result = await upsertChatMemoryWithChecks(chatId, agentId, summary || '', facts, {
+        source: 'assistant',
+        confidence: 0.8,
+        skipConflictCheck: false,
+        skipDedup: false,
+      });
+
+      if (!result.success) {
+        return res.status(409).json({ ok: false, error: '记忆冲突', conflicts: result.conflicts, skippedKeys: result.skippedKeys });
+      }
+
+      res.json({ ok: true, skippedKeys: result.skippedKeys });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ?- SQLite (sql.js)
  *  DB 
  */
@@ -95,6 +95,12 @@ export async function initDB(dbPath: string) {
       }
     } catch (e: any) { console.error('[DB] credit backfill failed:', e.message); }
   }
+  // [P1-4 FIX] Rebuild dedup index from persistent signatures on startup
+  try {
+    const { rebuildDedupIndexFromDB } = await import('../memory/memory-write-integration.js');
+    rebuildDedupIndexFromDB();
+    console.log('[DB] dedup index rebuilt from persistent signatures');
+  } catch (e: any) { console.warn('[DB] dedup index rebuild skipped:', e.message); }
   console.log(`[DB] initialized: ${dbPath}`);
   return _db;
 }
@@ -233,7 +239,7 @@ export function revokeMemoryPattern(
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [revokedId(), chatId, agentId, pattern, reason, Date.now(), supersededBy || null],
     );
-    markDirty();
+  markDirty();
   } catch (e) {
     console.warn('[db] revokeMemoryPattern failed:', (e as Error).message);
   }
@@ -275,7 +281,7 @@ export function applyRevocations(text: string, patterns: string[]): string {
 }
 
 /** P1-4: 标记数据库有变更，下次自动保存时写入磁盘 */
-export function markDirty() { _dirty = true; }
+export function markDirty(): void { _dirty = true; }
 
 /**  DB ?*/
 export const db = {
@@ -283,6 +289,7 @@ export const db = {
   exec: (...args: any[]) => _db.exec(...args),
   run: (...args: any[]) => _db.run(...args),
   prepare: (...args: any[]) => _db.prepare(...args),
+  markDirty: () => { _dirty = true; },
 };
 
 export async function closeDB(dbPath?: string) {
@@ -299,6 +306,7 @@ function _dbInit(db: any) {
   db.run(`
     CREATE TABLE IF NOT EXISTS users (
       id TEXT PRIMARY KEY,
+      numeric_id INTEGER UNIQUE NOT NULL,
       display_name TEXT NOT NULL,
       email TEXT,
       username TEXT,
@@ -885,6 +893,7 @@ export function getUserByEmail(email: string) {
 
 
 export function getUserByDisplayName(displayName: string) {
+  markDirty();
   const stmt = _db.prepare("SELECT * FROM users WHERE display_name = ?");
   stmt.bind([displayName]);
   if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
@@ -940,6 +949,7 @@ export function updateAgent(agentId: string, updates: Record<string, any>) {
   }
   if (!sets.length) return;
   vals.push(agentId);
+    markDirty();
   const db = getDB();
   db.run(`UPDATE agents SET ${sets.join(', ')} WHERE id = ?`, vals);
 }
@@ -976,12 +986,14 @@ export function listChatMemoryPairs(): Array<{ chat_id: string; agent_id: string
   return queryObjects("SELECT DISTINCT chat_id, agent_id FROM chat_memories WHERE memory_summary IS NOT NULL AND length(memory_summary) >= 100");
 }
 
+  markDirty();
 
 export function appendMemorySummary(agentId: string, newContent: string) {
   const agent = getAgent(agentId);
   if (!agent) return;
   const existing = agent.memory_summary || '';
   const safeContent = sanitizeMemoryInput(newContent); // 写入侧过滤指令性内容
+    markDirty();
   if (!safeContent) return;
 
   // ═══ P0-2: 作废检测 —— 让最新的纠正指令拥有「覆盖权」 ═══
@@ -1048,10 +1060,12 @@ export function getChatById(id: string) {
 
 export function updateChatWorkspace(id: string, sharedWorkspace: string | null) {
   _db.run("UPDATE chats SET shared_workspace = ? WHERE id = ?", [sharedWorkspace, id]);
+    markDirty();
 }
 
 export function updateChatName(id: string, name: string | null) {
   _db.run("UPDATE chats SET name = ? WHERE id = ?", [name, id]);
+    markDirty();
 }
 
 // —— 群聊协作模式（v1.7.2）——
@@ -1074,9 +1088,11 @@ export function setChatMode(chatId: string, mode: string): boolean {
     _db.run("UPDATE chats SET chat_mode = ? WHERE id = ?", [mode, chatId]);
     return true;
   } catch {
+    markDirty();
     return false;
   }
 }
+  markDirty();
 
 
 export function removeParticipant(chatId: string, userId: string, agentId?: string) {
@@ -1096,8 +1112,10 @@ export function addMessage(msg: DBMessage) {
       msg.content, msg.type, msg.replyTo ?? null,
       JSON.stringify(msg.metadata ?? {}), msg.timestamp
     ]
-  );
+  )
+  markDirty();
   _db.run("UPDATE chats SET last_message_at = ? WHERE id = ?", [msg.timestamp, msg.chatId]);
+  markDirty();
 }
 
 export function listMessages(chatId: string, limit = 100) {
@@ -1121,7 +1139,8 @@ export function saveVerificationCode(email: string, code: string, username?: str
   _db.run(
     "INSERT OR REPLACE INTO verification_codes (email, code, username, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
     [email, code, username ?? null, exp, now]
-  );
+  )
+  markDirty();
 }
 
 export function getVerificationCode(email: string) {
@@ -1140,6 +1159,7 @@ export function deleteVerificationCode(email: string) {
 /**
  * 统一生成私聊 chatId：按字典序排序两个 userId，保证 A→B 和 B→A 生成同一个 chatId。
  * 这样无论发起方是谁，所有查询、创建、删除私聊的逻辑都能用同一个 key。
+   markDirty();
  */
 export function makePrivateChatId(userA: string, userB: string): string {
   const [a, b] = [userA, userB].sort();
@@ -1154,6 +1174,7 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
   // DB 层兜底校验（所有调用方——API 层、LAN 层——都经过这里，无需各自重复校验）
   if (fromUserId === toUserId) return { error: '不能添加自己为好友' };
   // 对方必须是本地用户、或远程 LAN 用户（remote- 前缀 / lan_remote_identities 表中有记录）
+    markDirty();
   const targetUser = getUser(toUserId);
   if (!targetUser && !toUserId.startsWith('remote-') && !getLanRemoteIdentity(toUserId)) {
     return { error: '对方用户不存在' };
@@ -1197,6 +1218,7 @@ export function respondFriendRequest(requestId: string, action: 'accept' | 'reje
       addParticipant('p-' + chatId + '-1', chatId, row.from_user_id, undefined, 'member');
       addParticipant('p-' + chatId + '-2', chatId, row.to_user_id, undefined, 'member');
       // Also add their agents
+        markDirty();
       const agent1 = getAgentByUserId(row.from_user_id);
       const agent2 = getAgentByUserId(row.to_user_id);
       if (agent1) addParticipant('p-' + chatId + '-a1', chatId, undefined, agent1.id, 'agent');
@@ -1285,6 +1307,7 @@ export function upsertLanRemoteIdentity(params: {
     [params.userId, params.instanceId, params.numericId ?? null,
      params.displayName ?? null, params.agentId ?? null, now]
   );
+  markDirty();
 }
 
 export function getLanRemoteIdentity(userId: string): any {
@@ -1295,6 +1318,7 @@ export function listLanRemoteIdentities(): any[] {
   return queryObjects("SELECT * FROM lan_remote_identities ORDER BY updated_at DESC");
 }
 
+  markDirty();
 export function getAgentByUserId(userId: string) {
   const stmt = _db.prepare("SELECT * FROM agents WHERE user_id = ?");
   stmt.bind([userId]);
@@ -1547,6 +1571,7 @@ export function listInbox(agentId?: string): any[] {
   return queryObjects("SELECT * FROM inbox ORDER BY created_at DESC");
 }
 
+  markDirty();
 export function markInboxRead(id: string): void {
   _db.run("UPDATE inbox SET read = 1 WHERE id = ?", [id]);
 }
@@ -1564,6 +1589,7 @@ export function markChatRead(userId: string, chatId: string): void {
     "INSERT OR REPLACE INTO chat_read_state (user_id, chat_id, last_read_at) VALUES (?, ?, ?)",
     [userId, chatId, Date.now()]
   );
+  markDirty();
 }
 
 /** 获取用户的未读消息数 */
@@ -1614,16 +1640,8 @@ export function initNumericIdSeq(): void {
 
 /**
  * 分配下一个 numeric_id（10000 起自增）
- *
- * ⚠️ 2026-10-15 修复 UNIQUE constraint failed: users.numeric_id
- * 旧实现 `return _nextNumericId++` 只依赖内存计数器。但引擎里有多处
- * 「直接写库」的号段消费者，用的是 `SELECT MAX(numeric_id)+1`（不推进内存计数器）：
- *   - index.ts ensureUserSetup()：访客连 WebSocket 时给访客补号（前端一打开聊天页就连 WS！）
- *   - index.ts 启动迁移：给 numeric_id 为 NULL 的旧用户补号
- * 结果：访客占掉 max+1 后内存计数器仍停在同一个值 → 下一个真实注册
- * 必然撞 `UNIQUE constraint failed: users.numeric_id`，新用户完全无法注册。
- *
- * 现改为每次分配都从 DB 读实时 MAX，保证返回值一定大于库中所有已存在 id。
+ * 
+ * 每次分配都从 DB 读实时 MAX，保证返回值一定大于库中所有已存在 id。
  * 单线程 JS 下读取+自增之间不会有其它分配者插入，故无竞态。
  */
 export function nextNumericId(): number {
@@ -1651,12 +1669,14 @@ export function createFullUser(params: {
   return getUser(params.id);
 }
 
+
 /** 更新用户邮箱验证状态 */
 export function verifyUserEmail(userId: string): void {
   _db.run(`UPDATE users SET email_verified = 1, updated_at = ? WHERE id = ?`, [Date.now(), userId]);
 }
 
 /** 更新用户密码 */
+  markDirty();
 export function updateUserPassword(userId: string, newPasswordHash: string): void {
   _db.run(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, [newPasswordHash, Date.now(), userId]);
 }
@@ -1668,10 +1688,12 @@ export function updateUserStatus(userId: string, status: string): void {
 
 /** 通过数字 ID 找用户 */
 export function getUserByNumericId(numericId: number): any {
+  markDirty();
   return queryObjects(`SELECT * FROM users WHERE numeric_id = ?`, [numericId])[0] || null;
 }
 
 /** (encoding fix) */
+  markDirty();
 export function createVerificationToken(params: {
   id: string; userId: string; token: string; type: string; expiresAtMs: number;
 }): void {
@@ -1683,6 +1705,7 @@ export function createVerificationToken(params: {
 
 /** 鏌ユ壘楠岃瘉 token */
 export function getVerificationToken(token: string): any {
+  markDirty();
   return queryObjects(`SELECT * FROM user_verifications WHERE token = ? AND consumed_at IS NULL`, [token])[0] || null;
 }
 
@@ -1726,6 +1749,7 @@ export function createUserSession(params: {
   );
 }
 
+  markDirty();
 /** 通过 refreshToken 找活跃会话（遍历 + bcrypt 比对）*/
 export function getActiveSessionByToken(refreshToken: string): any {
   // 安全：限制最多检查 1000 条，防 DoS
@@ -1821,6 +1845,7 @@ export function createLanGroup(id: string, name: string, ownerInstance: string, 
     "INSERT OR REPLACE INTO lan_groups (id, name, owner_instance, owner_user_id, chat_mode, member_count, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)",
     [id, name, ownerInstance, ownerUserId, chatMode, now]
   );
+  markDirty();
 }
 
 export function getLanGroup(id: string): any {
@@ -1842,6 +1867,7 @@ export function deleteLanGroup(id: string): void {
   _db.run("DELETE FROM lan_groups WHERE id = ?", [id]);
 }
 
+  markDirty();
 export function removeLanGroup(id: string): void {
   deleteLanGroup(id);
 }
@@ -1858,7 +1884,7 @@ export function addLanGroupMember(params: {
   const now = Date.now();
   _db.run(
     `INSERT OR REPLACE INTO lan_group_members (id, group_id, user_id, numeric_id, display_name, instance_id, role, joined_at, agent_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, 
     [id, params.groupId, params.userId, params.numericId ?? null, params.displayName ?? null, params.instanceId ?? null, params.role ?? 'member', now, params.agentId ?? null]
   );
   // Update member count
@@ -1878,6 +1904,7 @@ export function removeLanGroupMember(groupId: string, userId: string): void {
 
 export function deleteFriendRequest(requestId: string): void {
   _db.run("DELETE FROM friendships WHERE id = ?", [requestId]);
+    markDirty();
 }
 
 // ==================== deleteUser: cascade delete a user and all related data ====================
@@ -2012,7 +2039,7 @@ export function deleteUser(userId: string): { ok: boolean; deleted: Record<strin
         _db.run(`RELEASE ${name}`);
         deleted[st.label] = _db.getRowsModified();
       } catch (e: any) {
-        try { _db.run(`ROLLBACK TO ${name}`); _db.run(`RELEASE ${name}`); } catch { /* ignore */ }
+        try { _db.run(`ROLLBACK TO ${name}`); } finally { try { _db.run(`RELEASE ${name}`); } catch { /* ignore */ } }
         const msg = String(e?.message || e);
         const isDrift = /no such column|no such table/i.test(msg);
         if (isDrift) {

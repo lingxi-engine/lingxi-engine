@@ -305,12 +305,10 @@ async function main() {
     while (s.step()) orphans.push(s.get()[0]);
     s.free();
     for (const uid of orphans) {
-      const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL');
-      ms.step(); const max = ms.getAsObject().m || 9999; ms.free();
-      const nid = max + 1;
-      raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END, status = CASE WHEN status = "offline" OR status IS NULL THEN "online" ELSE status END WHERE id = ?', [nid, '用户' + nid, uid]);
-      console.log('[DB] 迁移: 用户', uid, '-> numeric_id', nid);
-    }
+          const nid = nextNumericId();
+          raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END, status = CASE WHEN status = "offline" OR status IS NULL THEN "online" ELSE status END WHERE id = ?', [nid, '用户' + nid, uid]);
+          console.log('[DB] 迁移: 用户', uid, '-> numeric_id', nid);
+        }
     if (orphans.length > 0) { saveToDisk(); console.log('[DB] 迁移完成，补分配', orphans.length, '个用户'); }
   } catch (e: any) { console.warn('[DB] 迁移失败:', e.message); }
   initGoalTrackerTable();   // v1.7.1: 项目目标追踪表
@@ -329,47 +327,44 @@ async function main() {
         platformAdminUser = data.users.find((u: any) => u.role === 'admin') || data.users[0];
         console.log('[Platform] admin 用户:', platformAdminUser.username, 'ID:', platformAdminUser.id, '积分:', platformAdminUser.points);
         // 在 main.db 中创建/更新对应的本地用户记录（用于聊天/消息外键引用）
-        const localId = String(platformAdminUser.id);
-        const existing = db.getUser(localId);
-        if (!existing) {
-          db.createUser(localId, platformAdminUser.username || '管理员');
-          const raw2 = getDB();
-          raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [platformAdminUser.id, Date.now(), localId]);
-          saveToDisk();
-          console.log('[DB] 创建平台 admin 用户映射, id =', localId, 'numeric_id =', platformAdminUser.id);
-        } else {
-          const raw2 = getDB();
-          raw2.run('UPDATE users SET status = "online", last_active_at = ?, display_name = ? WHERE id = ?', [Date.now(), platformAdminUser.username || '管理员', localId]);
-        }
-      }
-    } catch (e: any) {
-      console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
-    }
-  }
+                const localId = String(platformAdminUser.id);
+                const existing = db.getUser(localId);
+                if (!existing) {
+                  db.createUser(localId, platformAdminUser.username || '管理员');
+                  const nid = nextNumericId();
+                  const raw2 = getDB();
+                  raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [nid, Date.now(), localId]);
+                  saveToDisk();
+                  console.log('[DB] 创建平台 admin 用户映射, id =', localId, 'numeric_id =', nid);
+                }
+                const raw2 = getDB();
+                raw2.run('UPDATE users SET status = "online", last_active_at = ?, display_name = ? WHERE id = ?', [Date.now(), platformAdminUser.username || '管理员', localId]);
+              }
+            } catch (e: any) {
+              console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
+            }
+          }
   // P1-7: 缓存到全局，供 jwt-auth 中间件使用（deprecated: 后续应迁移到 app.locals）
   (globalThis as any).__platformAdminUser = platformAdminUser;
   (globalThis as any).__platformApiUrl = PLATFORM_API_URL;
   (globalThis as any).__platformAdminToken = PLATFORM_ADMIN_TOKEN;
 
   // 如果平台不可达，回退到旧的 admin-auto 逻辑
-  if (!platformAdminUser) {
-    try {
-      const adminUser = db.getUser('admin');
-      if (!adminUser) {
-        const raw2 = getDB();
-        const ms2 = raw2.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL');
-        ms2.step(); const maxNid = (ms2.getAsObject().m || 9999) as number; ms2.free();
-        const adminNid = maxNid + 1;
-        db.createUser('admin', '管理员');
-        raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [adminNid, Date.now(), 'admin']);
-        console.log('[DB] 创建 admin-auto 用户(本地回退), numeric_id =', adminNid);
-        saveToDisk();
-      } else {
+    if (!platformAdminUser) {
+      try {
+        const adminUser = db.getUser('admin');
+        if (!adminUser) {
+          const adminNid = nextNumericId();
+          db.createUser('admin', '管理员');
+          const raw2 = getDB();
+          raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [adminNid, Date.now(), 'admin']);
+          console.log('[DB] 创建 admin-auto 用户(本地回退), numeric_id =', adminNid);
+          saveToDisk();
+        }
         const raw2 = getDB();
         raw2.run('UPDATE users SET status = "online", last_active_at = ? WHERE id = ?', [Date.now(), 'admin']);
-      }
-    } catch (e: any) { console.warn('[DB] admin 用户初始化警告:', e.message); }
-  }
+      } catch (e: any) { console.warn('[DB] admin 用户初始化警告:', e.message); }
+    }
   const aiHub = new AIHub();
   (globalThis as any).__aiHub = aiHub;
   (globalThis as any).__aiHub_providers = [];
@@ -4425,14 +4420,14 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
     const existing = db.getUser(clientId);
     if (existing) {
       // 用户已存在：更新状态为在线 + 补 numeric_id
-      try {
-        const raw = getDB();
-        if (!existing.numeric_id) {
-          const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL'); ms.step(); const max = ms.getAsObject().m || 9999; ms.free();
-          raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END WHERE id = ?', [max + 1, '用户' + (max + 1), clientId]);
-        }
-        raw.run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['online', Date.now(), clientId]);
-      } catch {}
+            try {
+              const raw = getDB();
+              if (!existing.numeric_id) {
+                const nextId = nextNumericId();
+                raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END WHERE id = ?', [nextId, '用户' + nextId, clientId]);
+              }
+              raw.run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['online', Date.now(), clientId]);
+            } catch {}
       const chats = db.listChats();
       const userChats = chats.filter((c: any) => {
         const ps = db.getChatParticipants(c.id);
@@ -4450,11 +4445,10 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
       return;
     }
     // 全新用户
-    const raw = getDB();
-    const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL'); ms.step(); const maxId = ms.getAsObject().m || 9999; ms.free();
-    const nextId = maxId + 1;
-    db.createUser(clientId, '用户' + nextId);
-    raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', '用户' + nextId, clientId]);
+        const nextId = nextNumericId();
+        db.createUser(clientId, '用户' + nextId);
+        const raw = getDB();
+        raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', '用户' + nextId, clientId]);
     const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
     const chatId = 'chat-' + clientId;
     db.createChat(chatId, 'private');

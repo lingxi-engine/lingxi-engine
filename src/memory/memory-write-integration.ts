@@ -59,10 +59,98 @@ export async function loadExistingFacts(agentId: string, chatId?: string): Promi
 }
 
 /**
- * 重建去重索引（启动时或批量导入后调用）
+ * [P1-4 FIX] 初始化去重签名持久化表（启动时调用一次）
+ */
+export function initDedupSignaturesTable(): void {
+  const db = getDB();
+  db.run(`
+    CREATE TABLE IF NOT EXISTS dedup_signatures (
+      key TEXT PRIMARY KEY,
+      signature TEXT NOT NULL,  -- JSON array of numbers
+      created_at INTEGER NOT NULL
+    );
+  `);
+}
+
+/**
+ * [P1-4 FIX] 从持久化表重建去重索引（启动时调用）
+ */
+export function rebuildDedupIndexFromDB(): void {
+  const db = getDB();
+  initDedupSignaturesTable();
+  
+  const rows = db.exec(`SELECT key, signature FROM dedup_signatures`);
+  const entries: Array<{ key: string; value: string }> = [];
+  
+  for (const r of rows) {
+    if (r.values) {
+      for (const v of r.values) {
+        const key = String(v[0]);
+        // 我们只存签名，value 需要从 facts 表获取
+        // 这里先收集 key，后面统一从 facts 表加载 value
+        entries.push({ key, value: '' });
+      }
+    }
+  }
+  
+  // 从 facts 表加载实际 value
+  const agentFacts = db.exec(`SELECT memory_facts FROM agents WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
+  const chatFacts = db.exec(`SELECT memory_facts FROM chat_memories WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
+  
+  const factMap = new Map<string, string>();
+  
+  for (const r of agentFacts) {
+    if (r.values) {
+      for (const v of r.values) {
+        try {
+          const facts = JSON.parse(String(v[0]));
+          for (const [k, val] of Object.entries(facts)) {
+            factMap.set(k, String(val));
+          }
+        } catch {}
+      }
+    }
+  }
+  
+  for (const r of chatFacts) {
+    if (r.values) {
+      for (const v of r.values) {
+        try {
+          const facts = JSON.parse(String(v[0]));
+          for (const [k, val] of Object.entries(facts)) {
+            factMap.set(k, String(val));
+          }
+        } catch {}
+      }
+    }
+  }
+  
+  const entriesWithValue = entries
+    .map(e => ({ key: e.key, value: factMap.get(e.key) || '' }))
+    .filter(e => e.value);
+  
+  globalDedup.rebuild(entriesWithValue);
+}
+
+/**
+ * [P1-4 FIX] 重建去重索引（启动时或批量导入后调用）
  */
 export function rebuildDedupIndex(entries: Array<{ key: string; value: string }>): void {
   globalDedup.rebuild(entries);
+  
+  // [P1-4 FIX] 持久化签名到数据库
+  const db = getDB();
+  initDedupSignaturesTable();
+  
+  for (const { key, value } of entries) {
+    const sig = globalDedup['lsh'].getSignature(key);
+    if (sig) {
+      db.run(
+        `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
+        [key, JSON.stringify(sig), Date.now()]
+      );
+    }
+  }
 }
 
 /**
@@ -100,6 +188,16 @@ export async function updateAgentMemoryWithChecks(
       console.log(`[MemoryDedup] 跳过重复 fact: ${key} = ${value.slice(0, 50)}`);
     } else {
       dedupedFacts[key] = value;
+      
+      // [P1-4 FIX] 持久化签名
+      const db = getDB();
+      const sig = globalDedup['lsh'].getSignature(key);
+      if (sig) {
+        db.run(
+          `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
+          [key, JSON.stringify(sig), Date.now()]
+        );
+      }
     }
   }
 
@@ -194,6 +292,16 @@ export async function upsertChatMemoryWithChecks(
       console.log(`[MemoryDedup] 跳过重复 chat fact: ${key} = ${value.slice(0, 50)}`);
     } else {
       dedupedFacts[key] = value;
+      
+      // [P1-4 FIX] 持久化签名
+      const db = getDB();
+      const sig = globalDedup['lsh'].getSignature(key);
+      if (sig) {
+        db.run(
+          `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
+          [key, JSON.stringify(sig), Date.now()]
+        );
+      }
     }
   }
 
@@ -281,6 +389,10 @@ export async function bulkImportFacts(
  */
 export function forgetFact(agentId: string, key: string, chatId?: string): void {
   globalDedup.remove(key);
+  
+  // [P1-4 FIX] 从持久化表删除签名
+  const db = getDB();
+  db.run(`DELETE FROM dedup_signatures WHERE key = ?`, [key]);
   
   // 实际删除由上层决定是否物理移除，这里只演示标记
   // 可扩展：在 facts 中添加 _deleted: true 标记
