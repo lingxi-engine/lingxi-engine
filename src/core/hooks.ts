@@ -12,6 +12,7 @@ export type HookEvent =
   | 'postToolUse'
   | 'agentReply'
   | 'cronExecuted'
+  | 'webhookTriggered'
   | 'sessionStart'
   | 'sessionEnd';
 

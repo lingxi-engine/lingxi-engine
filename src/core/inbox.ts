@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
 
-export type InboxType = 'cron' | 'subagent' | 'hook' | 'system';
+export type InboxType = 'cron' | 'subagent' | 'hook' | 'system' | 'webhook';
 
 export interface InboxItem {
   id: string;

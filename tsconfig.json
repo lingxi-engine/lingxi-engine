@@ -35,6 +35,8 @@
     "rollback_*",
     "archive*",
     "_archive*",
+    "_trash_20261021",
+    "_trash_*",
     "archives",
     "backup_pre_*",
     "backup_sync_*",

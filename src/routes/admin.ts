@@ -3,7 +3,7 @@
  */
 import { Router } from 'express';
 import { getDB, deleteUser } from '../storage/db.js';
-import { createCronJob } from '../core/cron-scheduler.js';
+import { createCronJob, validateSchedule } from '../core/cron-scheduler.js';
 import { INFERENCE_BACKENDS } from '../ai/custom-providers.js';
 import { UsageTracker } from '../core/usage-tracker.js';
 import { logger } from '../core/logger.js';
@@ -30,6 +30,8 @@ export function createAdminRoutes(ctx: ServerContext): Router {
     try {
       const { name, schedule, payload, enabled } = req.body;
       if (!name || !schedule || !payload) return res.status(400).json({ error: 'name/schedule/payload 必填' });
+      // P1-4 修复：先校验再落盘
+      validateSchedule(schedule);
       const job = createCronJob({ name, schedule, payload, enabled: enabled ?? true });
       cronScheduler.addJob(job);
       res.json({ ok: true, job });
@@ -56,6 +58,8 @@ export function createAdminRoutes(ctx: ServerContext): Router {
     try {
       const { name, cron, prompt, chatId, timezone } = req.body || {};
       if (!name || !cron || !prompt) return res.status(400).json({ error: 'name/cron/prompt 必填' });
+      // P1-4 修复：先校验 cron 表达式与时区
+      validateSchedule({ kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' });
       const jobId = 'so-' + Date.now().toString(36);
       cronScheduler.addJob({ id: jobId, name: 'SO: ' + name, enabled: true, schedule: { kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' }, payload: { kind: 'standingOrder', prompt, chatId: chatId || '', text: prompt }, runCount: 0, createdAt: Date.now() });
       res.json({ ok: true, id: jobId });

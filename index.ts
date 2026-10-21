@@ -104,7 +104,8 @@ import { MCPManager } from './src/mcp/adapter.js';
 import { ProviderRegistry } from './src/ai/provider-registry.js';
 import { BrowserManager } from './src/tools/browser.js';
 import { PluginManager } from './src/plugins/plugin-manager.js';
-import { CronScheduler, createCronJob, type JobPayload } from './src/core/cron-scheduler.js';
+import { CronScheduler, createCronJob, validateSchedule, type JobPayload } from './src/core/cron-scheduler.js';
+import { WebhookScheduler, registerWebhookRoutes } from './src/core/webhook-scheduler.js';
 import { logger } from './src/core/logger.js';
 import { errorHandler, notFoundHandler } from './src/http/error.js';
 import { registerV17Routes } from './src/routes-v1.7.js';
@@ -506,6 +507,30 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { console.error(`[Cron] 任务执行错误:`, err.message); }
   }, dataDir);
   cronScheduler.start();
+
+  // ── Webhook 触发器（外部系统主动唤醒）──
+  // 此前 WebhookScheduler 与 registerWebhookRoutes 均未接入主程序，
+  // 属于"写了但没生效"的死代码 —— 现在正式接线。
+  const webhookScheduler = new WebhookScheduler(async (hook, body) => {
+    console.log(`[Webhook] 触发: ${hook.name} (${hook.id})`);
+    const targetChat = hook.chatId || 'chat-default';
+    const payloadText = typeof body === 'string'
+      ? body
+      : JSON.stringify((body && body.payload) ?? body ?? '', null, 2);
+    const prompt = (hook.promptTemplate || '').replace('{payload}', payloadText);
+    try {
+      const agents = db.listAgents();
+      if (agents.length > 0) {
+        const reply = await router.generateReply(targetChat, agents[0].id || agents[0].agent_id, 'wh-' + hook.id);
+        if (reply) {
+          broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + (agents[0].id || agents[0].agent_id), senderType: 'agent', content: reply, timestamp: Date.now() });
+          inboxManager.add('webhook', `Webhook: ${hook.name}`, reply);
+        }
+      }
+      await hookManager.trigger('webhookTriggered', { event: 'webhookTriggered', timestamp: Date.now(), message: hook.name, chatId: targetChat });
+    } catch (err: any) { console.error('[Webhook] 执行失败:', err.message); }
+  }, dataDir);
+  webhookScheduler.start();
 
   // ── P1-2: 会话管理器 ──
   const sessionManager = new SessionManager(dataDir);
@@ -2457,6 +2482,9 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
+  // ── Webhook 路由（管理端需登录，触发端靠 token + IP 白名单鉴权）──
+  registerWebhookRoutes(app, webhookScheduler, requireAuth);
+
   // ────────────────────────────────────────
   // P1 REST API
   // ────────────────────────────────────────
@@ -2472,6 +2500,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { name, cron, prompt, chatId, timezone } = req.body || {};
       if (!name || !cron || !prompt) return res.status(400).json({ error: 'name/cron/prompt 必填' });
+      // P1-4 修复：先校验 cron 表达式与时区
+      validateSchedule({ kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' });
       const jobId = 'so-' + Date.now().toString(36);
       cronScheduler.addJob({
         id: jobId,
@@ -2502,6 +2532,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { name, schedule, payload, enabled } = req.body;
       if (!name || !schedule || !payload) return res.status(400).json({ error: 'name/schedule/payload 必填' });
+      // P1-4 修复：先校验表达式/时区/调度参数，非法直接 400，绝不落盘
+      validateSchedule(schedule);
       const job = createCronJob({ name, schedule, payload, enabled: enabled ?? true });
       cronScheduler.addJob(job);
       res.json({ ok: true, job });
