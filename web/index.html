@@ -337,6 +337,144 @@ body.theme-minimal .logo-mark .nucleus-dot{animation:none}
 .bottom-toolbar{position:static !important;transform:none !important}
 .content-panel.active{display:flex !important}
 
+/* 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲 v2.0.36 fix: mobile bottom-right Tasks button unclickable 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+ * Symptom: on viewports <=900px, clicking the bottom-right "Tasks" button does nothing
+ *           (the click is swallowed by the chat textarea).
+ * Root cause:
+ *   1) mobile.css sets `.content-panel{position:absolute;inset:0}` on narrow screens,
+ *      but the `.main-area{position:static !important}` override block above strips the
+ *      containing block, so #panel-chat expands to the FULL viewport instead of the
+ *      .content area;
+ *   2) .input-area is then pushed to the very bottom of the viewport and vertically
+ *      overlaps .bottom-toolbar; the #input textarea covers #tbTasksBtn, so the click
+ *      lands on the textarea and the button never receives the event.
+ * Fix: restore a positioning context for .content on narrow screens so #panel-chat is
+ *      confined to the .content box, and raise .bottom-toolbar above .input-area as a
+ *      safety net so the toolbar is always clickable.
+ */
+@media(max-width:900px){
+  .main-area{position:relative !important}
+  .content{position:relative !important}
+  .content-panel{position:absolute !important;inset:0 !important}
+  .bottom-toolbar{position:relative !important;z-index:60 !important;flex-shrink:0 !important}
+  .input-area{position:relative !important;z-index:1 !important}
+  .rightbar{z-index:100 !important}
+
+/* v2.0.36 fix (part 2): narrow-screen rightbar must be an off-canvas drawer.
+ * The desktop override block above forces `.rightbar{position:static !important}`,
+ * which turns it into an in-flow flex sibling on mobile: it steals space from
+ * .content and paints OVER the bottom toolbar (z-index 100), swallowing clicks
+ * on #tbTasksBtn. Restore the drawer behaviour on narrow screens.
+ */
+@media(max-width:900px){
+  .rightbar{
+    position:absolute !important;
+    top:0 !important;
+    bottom:0 !important;
+    right:0 !important;
+    width:min(86vw,320px) !important;
+    min-width:0 !important;
+    z-index:100 !important;
+    transform:translateX(100%) !important;
+    transition:transform .2s ease !important;
+    box-shadow:0 0 20px rgba(0,0,0,.5) !important;
+  }
+  .rightbar.show{transform:translateX(0) !important}
+  .rightbar.rb-hidden{display:none !important}
+  .sidebar{
+    position:absolute !important;
+    top:0 !important;
+    bottom:0 !important;
+    left:0 !important;
+    width:min(86vw,320px) !important;
+    min-width:0 !important;
+    z-index:100 !important;
+    transform:translateX(-100%) !important;
+    transition:transform .2s ease !important;
+  }
+  .sidebar.show{transform:translateX(0) !important}
+}
+
+
+
+
+/* v2.0.36 fix (part 3d): inset the chat panel explicitly.
+ * .content-panel is position:absolute with inset:0; an absolutely positioned
+ * element resolves `bottom:0` against the containing block's PADDING box, so
+ * padding-bottom on .content does not shrink it. Offset the panel explicitly so
+ * the chat input never reaches into the bottom toolbar row.
+ */
+/* v2.0.36 fix (part 3e): reset the stale `top` offset inherited from mobile.css.
+ * mobile.css sets `.main-area{position:fixed; top:calc(48px + safe-top)}`.
+ * Our override flips it to `position:relative`, but the `top:48px` offset
+ * survives and shifts .main-area down by 48px, pushing its bottom edge past the
+ * bottom toolbar. Reset `top` to auto so the flex layout sizes it correctly.
+ */
+/* v2.0.36 fix (part 3f): keep .main-area below the fixed topnav.
+ * With position:relative the `top` property acts as a shift, so it must keep
+ * the same offset mobile.css uses (header height + safe-area inset). Setting
+ * `top:auto` instead lets the element inherit the mobile.css `bottom` offset
+ * and slide off-screen (y=-56).
+ */
+/* v2.0.36 fix (part 3g): consume the header height as layout space.
+ * With position:relative the `top` property is a pure visual shift and does NOT
+ * consume layout space, so .main-area still took the full flex height and its
+ * bottom edge overlapped the bottom toolbar. `margin-top` DOES consume space,
+ * so the flex algorithm subtracts the header height automatically and .main-area
+ * ends exactly where .bottom-toolbar begins.
+ */
+@media(max-width:900px){
+  .main-area{
+    position:relative !important;
+    top:auto !important;
+    bottom:auto !important;
+    margin-top:calc(var(--mobile-header-height, 48px) + var(--safe-top, 0px)) !important;
+    margin-bottom:0 !important;
+    padding:0 !important;
+    min-height:0 !important;
+  }
+  .content{
+    position:relative !important;
+    top:auto !important;
+    bottom:auto !important;
+    padding-bottom:0 !important;
+    box-sizing:border-box !important;
+    min-height:0 !important;
+  }
+  .messages{min-height:0 !important}
+  .content-panel{
+    top:0 !important;
+    left:0 !important;
+    right:0 !important;
+    bottom:var(--bottom-h) !important;
+  }
+
+  /* v2.0.37 fix: 窄屏工具栏必须容得下 44px 触控按钮，否则「任务」按钮
+   * 底部溢出视口（iPhone SE 实测 y=626..670 > 667），看起来就是「点不动」。
+   * --bottom-h 同时被 .content-panel 的 bottom 使用，面板会同步内缩，
+   * 聊天输入框不会被工具栏压住。
+   */
+  :root{--bottom-h:48px !important}
+  .bottom-toolbar{
+    height:var(--bottom-h) !important;
+    overflow-x:hidden !important;
+    overflow-y:hidden !important;
+    padding:0 8px !important;
+    gap:4px !important;
+  }
+  .bottom-toolbar button{
+    flex-shrink:0 !important;
+    height:44px !important;
+    min-height:44px !important;
+    line-height:1 !important;
+    padding:0 10px !important;
+  }
+  /* 状态区在窄屏隐藏：它是最主要的横向溢出源（607px > 375px） */
+  .bottom-toolbar .tb-status{display:none !important}
+  /* 「任务」按钮固定到右下角 */
+  .bottom-toolbar #tbTasksBtn{margin-left:auto !important}
+}
+}}
 /* Markdown 表格样式 */
 .md-table-wrap{overflow-x:auto;margin:8px 0;border-radius:var(--radius-sm);}
 .md-table{width:100%;border-collapse:collapse;font-size:13px;border:1px solid var(--border);}
@@ -771,9 +909,26 @@ function toggleRightbar(force){
   var rb=document.getElementById('rightbar');
   if(!rb) return;
   var btn=document.getElementById('tbTasksBtn');
-  var show = (typeof force==='boolean') ? force : rb.classList.contains('rb-hidden');
+  // v2.0.36: derive the current state from the RENDERED visibility.
+  // The old logic keyed off the `rb-hidden` class only. On narrow screens the
+  // drawer starts off-canvas (transform:translateX(100%)) WITHOUT that class,
+  // so the first tap computed "show=false" and hid an already hidden drawer --
+  // the button looked dead and a second tap was needed to open it.
+  var currentlyVisible;
+  try {
+    var cs = getComputedStyle(rb);
+    var r = rb.getBoundingClientRect();
+    currentlyVisible = cs.display !== 'none'
+      && cs.visibility !== 'hidden'
+      && parseFloat(cs.opacity || '1') > 0
+      && r.left < window.innerWidth - 4
+      && r.right > 4;
+  } catch(e) {
+    currentlyVisible = !rb.classList.contains('rb-hidden');
+  }
+  var show = (typeof force==='boolean') ? force : !currentlyVisible;
   rb.classList.toggle('rb-hidden', !show);
-  rb.classList.toggle('show', show);   // 兼容窄屏的滑入样式
+  rb.classList.toggle('show', show);
   if(btn) btn.classList.toggle('active', show);
   if(show){ try{ loadTaskMonitor(); }catch(e){} }
 }
