@@ -122,23 +122,82 @@ export function getTimezoneOffsetMinutes(date: Date, tz: string): number {
  * 把"某时区的墙钟时间"转换为真实 UTC 时间戳。
  * 用于 cron 计算"目标时区的 09:00"到底对应哪个 UTC 瞬间。
  *
- * 注意：夏令时"不存在的时刻"（如纽约 02:30 春季跳变）会被顺延到跳变后的时刻，
- * 这是与主流 cron 实现（Vixie cron）一致的行为。
+ * v5 修复（2026-10-22，根因级）：
+ *  旧实现对"不存在的墙钟时刻"是**回退**而不是**顺延**：
+ *    请求 2026-03-08 02:30 America/New_York → 实际得到 01:30（往前跳了 1 小时）
+ *    请求 2023-10-01 00:00 America/Asuncion  → 实际得到 09-30 23:00（跳到前一天）
+ *  这与函数自身文档承诺的"顺延到跳变后的时刻"直接矛盾，
+ *  也是 v4 "月进位死循环"的根因：月进位固定跳到"下月 1 号 00:00"，
+ *  而该墙钟在某些时区不存在 → zonedTimeToUtc 返回一个**更早**的时间戳
+ *  → 迭代器"前进"到过去 → 重新落入同一个月 → 永不前进 → 死循环。
+ *  实测 America/Asuncion + "0 0 1 10 *"：getNextCronRun 卡死 275 秒，
+ *  期间事件循环 setInterval tick=0，完全冻结。
+ *
+ * 修复：改为"先按 offset 估算，再校验 + 显式顺延"：
+ *  1. 估算 ts；
+ *  2. 校验 ts 在目标时区的墙钟是否 == 请求的墙钟；
+ *  3. 若不等（说明该墙钟不存在）→ 按 gap 大小显式**向后顺延**，
+ *     返回跳变后第一个真实存在的时刻（Vixie cron 语义）。
+ *  4. 顺延结果必须严格大于估算值，保证单调性。
  */
 export function zonedTimeToUtc(
   year: number, month: number, day: number,
   hour: number, minute: number, second: number,
   tz: string,
 ): number {
+  const wallAsUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+
   // 迭代法：先按猜测的 offset 换算，再用实际 offset 校正
-  let guessOffset = getTimezoneOffsetMinutes(new Date(Date.UTC(year, month - 1, day, hour, minute, second)), tz);
-  let ts = Date.UTC(year, month - 1, day, hour, minute, second) - guessOffset * 60000;
+  let guessOffset = getTimezoneOffsetMinutes(new Date(wallAsUtc), tz);
+  let ts = wallAsUtc - guessOffset * 60000;
   // 校正一轮（跨 DST 边界时 offset 可能变化）
   const actualOffset = getTimezoneOffsetMinutes(new Date(ts), tz);
   if (actualOffset !== guessOffset) {
-    ts = Date.UTC(year, month - 1, day, hour, minute, second) - actualOffset * 60000;
+    ts = wallAsUtc - actualOffset * 60000;
   }
-  return ts;
+
+  // ── v5 关键修复：校验墙钟是否真的落在目标时刻上 ──
+  const z = getZonedParts(new Date(ts), tz);
+  const matched =
+    z.year === year && z.month === month && z.day === day &&
+    z.hour === hour && z.minute === minute && z.second === second;
+
+  if (matched) return ts;
+
+  // 墙钟不存在（夏令时空档 / 历史时区规则变更）→ 显式向后顺延到跳变后
+  // 第一个真实存在的时刻。
+  //
+  // gap 的正确算法：把"请求墙钟"与"实际落在的墙钟"作差，得到需要跳过的幅度。
+  //   请求 2026-03-08 02:30 → 落在 01:30 → gap = +1h
+  //   请求 2023-10-01 00:00 → 落在 09-30 23:00 → gap = +1h
+  const landed = getZonedParts(new Date(ts), tz);
+  const landedAsUtc = Date.UTC(
+    landed.year, landed.month - 1, landed.day,
+    landed.hour, landed.minute, landed.second,
+  );
+  const gapMs = wallAsUtc - landedAsUtc;
+  const shift = gapMs > 0 ? gapMs : 3600000; // gap 异常时兜底 1 小时
+
+  // 逐分钟向前找第一个真实存在的墙钟（gap 内所有时刻都不存在）
+  // 最多找 24 小时（覆盖 Lord Howe 等 30 分钟跳变与历史大跳变）
+  for (let step = 0; step <= 24 * 60; step++) {
+    const candidate = ts + shift + step * 60000;
+    const cz = getZonedParts(new Date(candidate), tz);
+    // 找到"跳变之后"的第一个有效时刻：墙钟 >= 请求的墙钟
+    if (
+      cz.year > year ||
+      (cz.year === year && cz.month > month) ||
+      (cz.year === year && cz.month === month && cz.day > day) ||
+      (cz.year === year && cz.month === month && cz.day === day && cz.hour > hour) ||
+      (cz.year === year && cz.month === month && cz.day === day && cz.hour === hour && cz.minute > minute) ||
+      (cz.year === year && cz.month === month && cz.day === day && cz.hour === hour && cz.minute === minute && cz.second > second)
+    ) {
+      return candidate;
+    }
+  }
+
+  // 兜底：按估算值向后推 1 小时，保证严格单调（防止任何情况下的死循环）
+  return ts + 3600000;
 }
 
 /**

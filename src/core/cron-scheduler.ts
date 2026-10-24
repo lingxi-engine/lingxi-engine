@@ -270,6 +270,19 @@ export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Sha
   // → 任务"创建成功但永不执行"，正是本次审计要消灭的病根。
   const limit = new Date(after.getTime() + SEARCH_WINDOW_DAYS * 86400000);
 
+/**
+ * v5 修复：给 getNextCronRun 的"月进位"路径加单调性兜底
+ *
+ * 背景：v4 给 advanceToNextHour / advanceToNextDay 都加了单调性兜底，
+ * 但**月进位路径**（月份不匹配时跳到"下月 1 号 00:00"）没有。
+ * 该路径直接用 zonedTimeToUtc 的返回值，且没有"必须严格前进"的检查。
+ *
+ * 根因虽已在 timezone.ts 修复（zonedTimeToUtc 改为显式顺延），
+ * 但纵深防御原则下，任何跳转路径都应自带单调性保证 ——
+ * 否则将来任何一个新的边界（历史时区规则、非整点 offset 变更）
+ * 都可能重新引入"跳回过去 → 永不前进 → 死循环"的 P0。
+ */
+
   // ── 起点：after 的下一个整分钟 ──
   // 注意：不能用 "after + 1000ms" 作为起点，那会把"整点前 1 秒内触发"的
   // 场景直接推到整点之后，导致整点被整段跳过（v3 残留 bug）。
@@ -286,7 +299,14 @@ export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Sha
       // 跨年时年份必须 +1，否则会跳回过去的时间点（2026-12 → 2026-01）
       const nextYear = z.month === 12 ? z.year + 1 : z.year;
       const nextMonth = z.month === 12 ? 1 : z.month + 1;
-      d = new Date(zonedTimeToUtc(nextYear, nextMonth, 1, 0, 0, 0, tz));
+      // v5 修复：月进位必须严格前进。
+      // 原实现直接用 zonedTimeToUtc 的返回值，无单调性保证。
+      // 当时区规则变更使"1 号 00:00"不存在时（如 America/Asuncion 2023-10），
+      // 该值会落到"上个月" → 迭代器跳回过去 → 重新落入同一个月 → 永不前进。
+      // 实测 getNextCronRun 卡死 275 秒，事件循环完全冻结。
+      const candidate = zonedTimeToUtc(nextYear, nextMonth, 1, 0, 0, 0, tz);
+      const nextTs = candidate > d.getTime() ? candidate : d.getTime() + 86400000;
+      d = new Date(nextTs);
       continue;
     }
 

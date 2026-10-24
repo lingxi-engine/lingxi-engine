@@ -104,8 +104,7 @@ import { MCPManager } from './src/mcp/adapter.js';
 import { ProviderRegistry } from './src/ai/provider-registry.js';
 import { BrowserManager } from './src/tools/browser.js';
 import { PluginManager } from './src/plugins/plugin-manager.js';
-import { CronScheduler, createCronJob, validateSchedule, type JobPayload } from './src/core/cron-scheduler.js';
-import { WebhookScheduler, registerWebhookRoutes } from './src/core/webhook-scheduler.js';
+import { CronScheduler, createCronJob, type JobPayload } from './src/core/cron-scheduler.js';
 import { logger } from './src/core/logger.js';
 import { errorHandler, notFoundHandler } from './src/http/error.js';
 import { registerV17Routes } from './src/routes-v1.7.js';
@@ -139,7 +138,7 @@ import { createUploadRoutes } from './src/routes/upload.js';
 import { dataDir as resolveDataDir } from './src/core/paths.js';
 import { createEvaluationRoutes } from './src/routes/evaluation.js';
 import { registerFriendsChatsRoutes } from './src/routes/friends-chats.js';
-import { registerAgentGrantsRoutes, ensureAgentGrantsSchema, migrateLegacyAgentParticipants, canUseAgent, startGrantReminders } from './src/routes/agent-grants.js';
+import { registerAgentGrantsRoutes, ensureAgentGrantsSchema } from './src/routes/agent-grants.js';
 import { createAgiRoutes } from './src/routes/agi.js';
 // CLI 通过 bin 入口直接运行，不需要导入
 // import { startCLI } from './src/cli/chat.js';
@@ -306,10 +305,12 @@ async function main() {
     while (s.step()) orphans.push(s.get()[0]);
     s.free();
     for (const uid of orphans) {
-          const nid = nextNumericId();
-          raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END, status = CASE WHEN status = "offline" OR status IS NULL THEN "online" ELSE status END WHERE id = ?', [nid, '用户' + nid, uid]);
-          console.log('[DB] 迁移: 用户', uid, '-> numeric_id', nid);
-        }
+      const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL');
+      ms.step(); const max = ms.getAsObject().m || 9999; ms.free();
+      const nid = max + 1;
+      raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END, status = CASE WHEN status = "offline" OR status IS NULL THEN "online" ELSE status END WHERE id = ?', [nid, '用户' + nid, uid]);
+      console.log('[DB] 迁移: 用户', uid, '-> numeric_id', nid);
+    }
     if (orphans.length > 0) { saveToDisk(); console.log('[DB] 迁移完成，补分配', orphans.length, '个用户'); }
   } catch (e: any) { console.warn('[DB] 迁移失败:', e.message); }
   initGoalTrackerTable();   // v1.7.1: 项目目标追踪表
@@ -328,44 +329,47 @@ async function main() {
         platformAdminUser = data.users.find((u: any) => u.role === 'admin') || data.users[0];
         console.log('[Platform] admin 用户:', platformAdminUser.username, 'ID:', platformAdminUser.id, '积分:', platformAdminUser.points);
         // 在 main.db 中创建/更新对应的本地用户记录（用于聊天/消息外键引用）
-                const localId = String(platformAdminUser.id);
-                const existing = db.getUser(localId);
-                if (!existing) {
-                  db.createUser(localId, platformAdminUser.username || '管理员');
-                  const nid = nextNumericId();
-                  const raw2 = getDB();
-                  raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [nid, Date.now(), localId]);
-                  saveToDisk();
-                  console.log('[DB] 创建平台 admin 用户映射, id =', localId, 'numeric_id =', nid);
-                }
-                const raw2 = getDB();
-                raw2.run('UPDATE users SET status = "online", last_active_at = ?, display_name = ? WHERE id = ?', [Date.now(), platformAdminUser.username || '管理员', localId]);
-              }
-            } catch (e: any) {
-              console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
-            }
-          }
+        const localId = String(platformAdminUser.id);
+        const existing = db.getUser(localId);
+        if (!existing) {
+          db.createUser(localId, platformAdminUser.username || '管理员');
+          const raw2 = getDB();
+          raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [platformAdminUser.id, Date.now(), localId]);
+          saveToDisk();
+          console.log('[DB] 创建平台 admin 用户映射, id =', localId, 'numeric_id =', platformAdminUser.id);
+        } else {
+          const raw2 = getDB();
+          raw2.run('UPDATE users SET status = "online", last_active_at = ?, display_name = ? WHERE id = ?', [Date.now(), platformAdminUser.username || '管理员', localId]);
+        }
+      }
+    } catch (e: any) {
+      console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
+    }
+  }
   // P1-7: 缓存到全局，供 jwt-auth 中间件使用（deprecated: 后续应迁移到 app.locals）
   (globalThis as any).__platformAdminUser = platformAdminUser;
   (globalThis as any).__platformApiUrl = PLATFORM_API_URL;
   (globalThis as any).__platformAdminToken = PLATFORM_ADMIN_TOKEN;
 
   // 如果平台不可达，回退到旧的 admin-auto 逻辑
-    if (!platformAdminUser) {
-      try {
-        const adminUser = db.getUser('admin');
-        if (!adminUser) {
-          const adminNid = nextNumericId();
-          db.createUser('admin', '管理员');
-          const raw2 = getDB();
-          raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [adminNid, Date.now(), 'admin']);
-          console.log('[DB] 创建 admin-auto 用户(本地回退), numeric_id =', adminNid);
-          saveToDisk();
-        }
+  if (!platformAdminUser) {
+    try {
+      const adminUser = db.getUser('admin');
+      if (!adminUser) {
+        const raw2 = getDB();
+        const ms2 = raw2.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL');
+        ms2.step(); const maxNid = (ms2.getAsObject().m || 9999) as number; ms2.free();
+        const adminNid = maxNid + 1;
+        db.createUser('admin', '管理员');
+        raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [adminNid, Date.now(), 'admin']);
+        console.log('[DB] 创建 admin-auto 用户(本地回退), numeric_id =', adminNid);
+        saveToDisk();
+      } else {
         const raw2 = getDB();
         raw2.run('UPDATE users SET status = "online", last_active_at = ? WHERE id = ?', [Date.now(), 'admin']);
-      } catch (e: any) { console.warn('[DB] admin 用户初始化警告:', e.message); }
-    }
+      }
+    } catch (e: any) { console.warn('[DB] admin 用户初始化警告:', e.message); }
+  }
   const aiHub = new AIHub();
   (globalThis as any).__aiHub = aiHub;
   (globalThis as any).__aiHub_providers = [];
@@ -507,30 +511,6 @@ setSearchManager(searchManagerInstance);
     } catch (err: any) { console.error(`[Cron] 任务执行错误:`, err.message); }
   }, dataDir);
   cronScheduler.start();
-
-  // ── Webhook 触发器（外部系统主动唤醒）──
-  // 此前 WebhookScheduler 与 registerWebhookRoutes 均未接入主程序，
-  // 属于"写了但没生效"的死代码 —— 现在正式接线。
-  const webhookScheduler = new WebhookScheduler(async (hook, body) => {
-    console.log(`[Webhook] 触发: ${hook.name} (${hook.id})`);
-    const targetChat = hook.chatId || 'chat-default';
-    const payloadText = typeof body === 'string'
-      ? body
-      : JSON.stringify((body && body.payload) ?? body ?? '', null, 2);
-    const prompt = (hook.promptTemplate || '').replace('{payload}', payloadText);
-    try {
-      const agents = db.listAgents();
-      if (agents.length > 0) {
-        const reply = await router.generateReply(targetChat, agents[0].id || agents[0].agent_id, 'wh-' + hook.id);
-        if (reply) {
-          broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + (agents[0].id || agents[0].agent_id), senderType: 'agent', content: reply, timestamp: Date.now() });
-          inboxManager.add('webhook', `Webhook: ${hook.name}`, reply);
-        }
-      }
-      await hookManager.trigger('webhookTriggered', { event: 'webhookTriggered', timestamp: Date.now(), message: hook.name, chatId: targetChat });
-    } catch (err: any) { console.error('[Webhook] 执行失败:', err.message); }
-  }, dataDir);
-  webhookScheduler.start();
 
   // ── P1-2: 会话管理器 ──
   const sessionManager = new SessionManager(dataDir);
@@ -1418,20 +1398,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       // 角色白名单: 只允许 member/owner
       const allowedRoles = ['member', 'owner'];
       const finalRole = allowedRoles.includes(role) ? role : 'member';
-      // AI usage grant check (duplicate route kept in sync with routes/friends-chats.ts)
-      if (agentId) {
-        const actorId = String(userId || jwtUser?.sub || jwtUser?.id || jwtUser?.numeric_id || '');
-        const chk = canUseAgent(String(agentId), actorId, { chatId: String(chatId) });
-        if (!chk.allowed) {
-          return res.status(403).json({
-            error: chk.reason === 'pending_approval'
-              ? '\u8be5 AI \u7684\u6388\u6743\u7533\u8bf7\u6b63\u5728\u7b49\u5f85\u4e3b\u4eba\u540c\u610f'
-              : '\u8be5 AI \u5c1a\u672a\u6388\u6743\u7ed9\u4f60\u4f7f\u7528\uff0c\u8bf7\u5148\u7533\u8bf7\u6388\u6743',
-            code: 'AGENT_NOT_GRANTED',
-            reason: chk.reason,
-          });
-        }
-      }
       db.addParticipant(id, chatId, userId, agentId, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
@@ -1686,18 +1652,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const friends = db.listFriends(userId);
       const friendAgents = friends.map((f: any) => {
         const agent = db.getAgentByUserId(f.friendId);
-        if (!agent) return null;
-        const chk = canUseAgent(String(agent.id), String(userId), { chatId });
-        return {
-          id: agent.id,
-          displayName: agent.display_name || agent.displayName,
-          type: 'agent',
-          ownerId: f.friendId,
-          ownerName: f.friendName,
-          granted: chk.allowed,
-          grantStatus: chk.allowed ? 'accepted' : (chk.reason === 'pending_approval' ? 'pending' : 'locked'),
-          grantReason: chk.reason,
-        };
+        return agent ? { id: agent.id, displayName: agent.display_name || agent.displayName, type: 'agent' } : null;
       }).filter(Boolean);
       const myAgent = db.getAgentByUserId(userId);
       const myAI = myAgent ? [{ id: myAgent.id, displayName: myAgent.display_name || myAgent.displayName, type: 'my-ai' }] : [];
@@ -2482,9 +2437,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  // ── Webhook 路由（管理端需登录，触发端靠 token + IP 白名单鉴权）──
-  registerWebhookRoutes(app, webhookScheduler, requireAuth);
-
   // ────────────────────────────────────────
   // P1 REST API
   // ────────────────────────────────────────
@@ -2500,8 +2452,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { name, cron, prompt, chatId, timezone } = req.body || {};
       if (!name || !cron || !prompt) return res.status(400).json({ error: 'name/cron/prompt 必填' });
-      // P1-4 修复：先校验 cron 表达式与时区
-      validateSchedule({ kind: 'cron', expr: cron, tz: timezone || 'Asia/Shanghai' });
       const jobId = 'so-' + Date.now().toString(36);
       cronScheduler.addJob({
         id: jobId,
@@ -2532,8 +2482,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { name, schedule, payload, enabled } = req.body;
       if (!name || !schedule || !payload) return res.status(400).json({ error: 'name/schedule/payload 必填' });
-      // P1-4 修复：先校验表达式/时区/调度参数，非法直接 400，绝不落盘
-      validateSchedule(schedule);
       const job = createCronJob({ name, schedule, payload, enabled: enabled ?? true });
       cronScheduler.addJob(job);
       res.json({ ok: true, job });
@@ -2627,10 +2575,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // AI 浣跨敤鏉冩巿鏉冿紙鍔犲ソ鍙嬮粯璁ゆ棤鎺堟潈锛岄渶涓讳汉鍚屾剰锛汧EATURE_AGENT_GRANTS=off 鍙洖婊氾級
   ensureAgentGrantsSchema();
-  migrateLegacyAgentParticipants();
-  registerAgentGrantsRoutes(app, { requireAuth, broadcast, sendToUser });
-  // v1.2: 授权到期前 1 天提醒借用人与主人（每 30 分钟扫一次，重启即扫）
-  startGrantReminders(30 * 60 * 1000);
+  registerAgentGrantsRoutes(app, { requireAuth, broadcast });
 
   // ── AGI 能力（辩论/思考树/世界模型/人格）──
   app.use('/api', authIfMatch(/^\/agi(\/|$)/), createAgiRoutes({ router, manager } as any));
@@ -3414,26 +3359,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   const clients = new Map<string, Set<WebSocket>>();
 
   // V10 安全修复：按 chatId 过滤广播，只推送给订阅了该聊天的客户端
-  // 定向推送：只发给指定用户的所有连接（授权通知含隐私内容，不能全局广播）
-  function sendToUser(userId: string, event: any) {
-    const payload = JSON.stringify(event);
-    const keys = [String(userId)];
-    const num = Number(userId);
-    if (!isNaN(num)) keys.push(String(num));
-    keys.push('u:' + userId);
-    const seen = new Set<any>();
-    for (const k of keys) {
-      const set = clients.get(k);
-      if (!set) continue;
-      for (const ws of set) {
-        if (seen.has(ws)) continue;
-        seen.add(ws);
-        if (ws.readyState !== WebSocket.OPEN) continue;
-        try { ws.send(payload); } catch (_e) { /* ignore */ }
-      }
-    }
-  }
-
   function broadcast(event: any) {
     const payload = JSON.stringify(event);
     const eventChatId = event.chatId;
@@ -4391,7 +4316,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     _shuttingDown = true;
     console.log(`\n[Shutdown] 收到 ${sig}，开始优雅退出...`);
     try { cronScheduler.stop(); } catch(_e) {}
-    try { webhookScheduler.stop(); } catch(_e) {}
     try { sessionManager.close(); console.log('[Shutdown] 会话已保存'); } catch(_e) {}
     try { telegramAdapter?.stop(); } catch(_e) {}
     try { await channelManager.closeAll(); } catch(_e) {}
@@ -4453,14 +4377,14 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
     const existing = db.getUser(clientId);
     if (existing) {
       // 用户已存在：更新状态为在线 + 补 numeric_id
-            try {
-              const raw = getDB();
-              if (!existing.numeric_id) {
-                const nextId = nextNumericId();
-                raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END WHERE id = ?', [nextId, '用户' + nextId, clientId]);
-              }
-              raw.run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['online', Date.now(), clientId]);
-            } catch {}
+      try {
+        const raw = getDB();
+        if (!existing.numeric_id) {
+          const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL'); ms.step(); const max = ms.getAsObject().m || 9999; ms.free();
+          raw.run('UPDATE users SET numeric_id = ?, display_name = CASE WHEN display_name = "访客" OR display_name IS NULL THEN ? ELSE display_name END WHERE id = ?', [max + 1, '用户' + (max + 1), clientId]);
+        }
+        raw.run('UPDATE users SET status = ?, last_active_at = ? WHERE id = ?', ['online', Date.now(), clientId]);
+      } catch {}
       const chats = db.listChats();
       const userChats = chats.filter((c: any) => {
         const ps = db.getChatParticipants(c.id);
@@ -4478,10 +4402,11 @@ function ensureUserSetup(clientId: string, db: any, manager: any, toolRegistry?:
       return;
     }
     // 全新用户
-        const nextId = nextNumericId();
-        db.createUser(clientId, '用户' + nextId);
-        const raw = getDB();
-        raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', '用户' + nextId, clientId]);
+    const raw = getDB();
+    const ms = raw.prepare('SELECT MAX(numeric_id) as m FROM users WHERE numeric_id IS NOT NULL'); ms.step(); const maxId = ms.getAsObject().m || 9999; ms.free();
+    const nextId = maxId + 1;
+    db.createUser(clientId, '用户' + nextId);
+    raw.run('UPDATE users SET numeric_id = ?, status = ?, display_name = ? WHERE id = ?', [nextId, 'online', '用户' + nextId, clientId]);
     const agent = manager.register(clientId, 'AI助手', '你是一个友好实用的AI助手，可帮用户查信息、回答问题、搜索资料。文件操作在安全沙箱内进行。shell_exec仅在沙箱开启且命令在白名单内时才可用。', 'semi');
     const chatId = 'chat-' + clientId;
     db.createChat(chatId, 'private');
