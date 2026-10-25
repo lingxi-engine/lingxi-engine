@@ -815,6 +815,7 @@ function handleMessage(msg) {
       if (msg.msgId && recentStreamed[msg.msgId]) {
         // ⭐ 已按「段」流式渲染过：message.new 只把最后一段校正为最终正文，绝不重复追加气泡
         const rs = recentStreamed[msg.msgId];
+        if (rs.chatId && currentChat && rs.chatId !== currentChat) { delete recentStreamed[msg.msgId]; break; }
         const lastEl = rs.segments && rs.segments[rs.segments.length - 1];
         if (lastEl && msg.content) {
           const contentEl = lastEl.querySelector('.msg-content');
@@ -852,7 +853,12 @@ function handleMessage(msg) {
       // 总是注册流式状态（即使不在当前聊天），防止切走后丢。
       generatingChats[msg.chatId] = (generatingChats[msg.chatId] || 0) + 1;
       updateGenUI();
-      appendStreamingMsg(msg);
+      // ⭐ 会话隔离：不在当前会话时只记账，不往当前消息区塞气泡（否则会话 A 的回复会串到会话 B）。
+      //   注意：不能直接 break —— 否则下面的 Safety Net 超时清理不会注册，
+      //   一旦 end 事件丢失，generatingChats[chatId] 永远 >0，该会话会永久卡住排队。
+      if (!msg.chatId || msg.chatId === currentChat) {
+        appendStreamingMsg(msg);
+      }
       // ── Safety Net: 超时自动清理，防 end 事件丢失导致永久排队 ──
       // 阈值须高于后端 CHAT_TIMEOUT_SECONDS(1200s)，否则长回复会被误判结束、提前清状态
       (function(cid, mid){
@@ -873,7 +879,7 @@ function handleMessage(msg) {
       }
       break;
     case 'tool.result':
-      updateToolCallRow(msg);
+      if (!msg.chatId || msg.chatId === currentChat) updateToolCallRow(msg);
       break;
     case 'subagent.result':
       if (typeof loadSubAgents === 'function') loadSubAgents();
@@ -898,7 +904,8 @@ function handleMessage(msg) {
       }
       break;
     case 'task.progress':
-      handleTaskProgress(msg);
+      // ⭐ 会话隔离：任务拆解进度属于具体会话，非当前会话不应污染当前会话的面板。
+      if (!msg.chatId || msg.chatId === currentChat) handleTaskProgress(msg);
       break;
     case 'agent.streaming.end':
       if (generatingChats[msg.chatId] > 0) generatingChats[msg.chatId]--;
@@ -1074,6 +1081,25 @@ async function renameChat(chatId) {
 async function switchChat(chatId) {
   // 。v2.0.5: 保存上次打开的聊天到 localStorage（重启后可恢复）
   if (chatId) localStorage.setItem('lingxi-last-chat', chatId);
+  // ⭐ 会话隔离：切换前把「上一个会话」的流式气泡状态整体作废。
+  //   否则旧会话的迟到 chunk 会经 ensureStreamSegment 往当前容器塞气泡（串会话）。
+  const prevChat = currentChat;
+  if (prevChat && prevChat !== chatId) {
+    for (const mid in streamingMsgs) {
+      const s = streamingMsgs[mid];
+      if (s && s.chatId === prevChat) {
+        clearStreamTimers(s);
+        s._dead = true;
+        s.el = null;
+        s.thinkEl = null;
+        delete streamingMsgs[mid];
+      }
+    }
+    // 退订旧会话：服务端 wsSubscriptions 只增不减，不退订会把所有历史会话事件都推过来。
+    if (ws && ws.readyState === 1) {
+      try { ws.send(JSON.stringify({ type: 'unsubscribe', chatId: prevChat })); } catch (_e) {}
+    }
+  }
   currentChat = chatId;
   delete unreadCounts[chatId]; saveUnreadCounts();
   updateGenUI();
@@ -1369,6 +1395,8 @@ function streamAutoScroll(containerId) {
 
 // 构造一个流式气泡元素（首帧与 seal 后新建段共用，保证结构一致）
 function buildStreamBubble(s, container) {
+  // 切走后的迟到段：不要把气泡挂进当前会话的消息区
+  if (!container || (s && s.chatId && currentChat && s.chatId !== currentChat)) return null;
   const senderId = (s.from || '').replace(/^agent:/, '');
   const isMe = senderId.startsWith('agent-' + (clientId||'').replace(/^user-/,'') + '-');
   const el = document.createElement('div');
@@ -1462,9 +1490,11 @@ function collapseThinkEl(s) {
 //   此刻工具卡已排在前面，新气泡自然落在工具卡之后 → 严格时序，杜绝倒置。
 function ensureStreamSegment(s) {
   if (!s || s.el) return;
+  if (s.chatId && currentChat && s.chatId !== currentChat) return;
   const container = document.getElementById(s.containerId || 'messages');
   if (!container) return;
   const el = buildStreamBubble(s, container);
+  if (!el) return;
   s.el = el;
   s.thinkEl = el.querySelector('.msg-think');
   s.content = '';
@@ -1510,7 +1540,18 @@ function streamFinish(s) {
 }
 
 function appendStreamingMsg(msg) {
+  // ⭐ 会话隔离：别的 chat 的流式回复只登记状态，不往当前消息区塞气泡。
+  //   DOM 留给切回来后的历史加载（服务端已落库）。
+  if (msg && msg.chatId && currentChat && msg.chatId !== currentChat) {
+    streamingMsgs[msg.msgId] = {
+      el: null, content: '', think: '', thinkEl: null,
+      chatId: msg.chatId, containerId: 'messages', from: msg.from || '',
+      segments: [], _dead: false, _renderTimer: null, _thinkTimer: null, _offscreen: true
+    };
+    return;
+  }
   const container = document.getElementById('messages');
+  if (!container) return;
   const empty = container.querySelector('.empty'); if (empty) empty.remove();
   const senderId = (msg.from || '').replace(/^agent:/, '');
   const isMe = senderId.startsWith('agent-' + (clientId||'').replace(/^user-/,'') + '-');
@@ -2572,13 +2613,14 @@ async function setAgentModel(agentId, model) {
 }
 async function removeMember(mid, isAgent) {
   if (!currentChat || !mid) return;
+  if (!confirm(isAgent ? '确定把这个 AI 移出当前群？' : '确定把这个成员移出当前群？')) return;
   try {
-    // 后端 DELETE /api/participants：AI 成员。agentId，真人传 id
-    const body = isAgent ? { agentId: mid, chatId: currentChat } : { id: mid, chatId: currentChat };
-    await api('/api/participants', 'DELETE', body);
+    const body = isAgent ? { agentId: mid, chatId: currentChat } : { userId: mid, chatId: currentChat };
+    const removed = await api('/api/participants', 'DELETE', body);
+    if (removed && removed.ok === false) throw new Error('remove failed');
     renderMembers();
     toast(t('toast.removed'));
-  } catch(e) { toast(t('err.removeFail')); }
+  } catch (e) { toast(t('err.removeFail')); }
 }
 async function loadAvailableMembers() {
   if (!currentChat || !clientId) { toast(t('toast.connectAndSelect')); return; }

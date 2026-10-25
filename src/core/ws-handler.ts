@@ -104,6 +104,16 @@ export function handleWSMessage(
       broadcast({ type: "subscribed", chatId: event.chatId, clientId });
       break;
     }
+    case "unsubscribe": {
+      // ⭐ 会话隔离：前端切换会话时退订旧 chat。
+      //   不退订的话 wsSubscriptions 只增不减，服务端会把所有历史会话的事件
+      //   都推给这个连接，前端只能靠自己过滤（漏一处就串会话）。
+      if (ws && event.chatId) {
+        const subs = wsSubscriptions.get(ws);
+        if (subs) subs.delete(event.chatId);
+      }
+      break;
+    }
 
     case "register_user": {
       const raw = String(event.displayName || 'user');
