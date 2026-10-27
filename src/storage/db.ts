@@ -1095,12 +1095,24 @@ export function setChatMode(chatId: string, mode: string): boolean {
   markDirty();
 
 
-export function removeParticipant(chatId: string, userId: string, agentId?: string) {
+export function removeParticipant(chatId: string, userId: string, agentId?: string): boolean {
+  const countOf = () => {
+    const stmt = _db.prepare("SELECT COUNT(*) AS n FROM participants WHERE chat_id = ?");
+    stmt.bind([chatId]);
+    const n = stmt.step() ? Number(stmt.getAsObject().n || 0) : 0;
+    stmt.free();
+    return n;
+  };
+  const before = countOf();
   if (agentId) {
     _db.run("DELETE FROM participants WHERE chat_id = ? AND agent_id = ?", [chatId, agentId]);
+  } else if (userId) {
+    _db.run("DELETE FROM participants WHERE chat_id = ? AND (user_id = ? OR id = ?)", [chatId, userId, userId]);
   } else {
-    _db.run("DELETE FROM participants WHERE chat_id = ? AND user_id = ?", [chatId, userId]);
+    return false;
   }
+  markDirty();
+  return countOf() < before;
 }
 
 // ———— Messages ————

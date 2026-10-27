@@ -405,3 +405,89 @@ export class FactConflictDetector {
 
 // 导出单例
 export const globalConflictDetector = new FactConflictDetector();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 简化版 API：直接对比两组 key->value 事实，返回可读冲突列表。
+// 供主链路与测试使用（不依赖 FactEntry 的完整元数据）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FactConflict {
+  oldFact: string;
+  newFact: string;
+  type: 'numeric' | 'entity' | 'boolean';
+  resolution: 'replace' | 'keep_both' | 'ask_user';
+}
+
+export interface SimpleConflictResult {
+  hasConflict: boolean;
+  conflicts: FactConflict[];
+}
+
+/** 把 '是/否'、'喜欢/不喜欢'、'yes/no'、'true/false' 归一化成正反两面 */
+function booleanPolarity(value: string): 1 | -1 | 0 {
+  const v = String(value).trim().toLowerCase();
+  const positive = ['是', 'yes', 'true', '喜欢', '要', '开', '启用', 'on', '1'];
+  const negative = ['否', 'no', 'false', '不喜欢', '不要', '关', '禁用', 'off', '0'];
+  if (positive.includes(v)) return 1;
+  if (negative.includes(v)) return -1;
+  return 0;
+}
+
+/**
+ * 提取「纯数值」：整个字符串必须就是一个数字（允许小数、负号、千分位）。
+ *
+ * [FIX] 旧实现用 /-?\d+(?:\.\d+)?/ 取第一个数字段，导致版本号 "1.0.0" 被解析成 1、
+ * "2.0.0" 被解析成 2，于是版本升级被误判成「数值冲突」。
+ * 只有整串确实是数字时，才算数值型事实。
+ */
+function firstNumber(value: string): number | null {
+  const v = String(value).trim().replace(/,/g, '');
+  if (!/^-?\d+(?:\.\d+)?$/.test(v)) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * 对比现有事实与新事实，找出冲突。
+ *
+ * 判定规则：
+ *   1. 数值冲突 —— 同一 key，两边都能解析出数字且数字不同
+ *   2. 布尔取反 —— 同一 key，两边极性相反（是/否、喜欢/不喜欢、yes/no）
+ *   3. 实体替换 —— 同一 key，两边都是非空文本且值不同（兜底）
+ *
+ * 同 key 且值完全相同 → 不算冲突。
+ * 不同 key → 不算冲突（那是新增，不是冲突）。
+ */
+export async function detectConflicts(
+  existing: Record<string, string>,
+  incoming: Record<string, string>
+): Promise<SimpleConflictResult> {
+  const conflicts: FactConflict[] = [];
+
+  for (const [key, newValue] of Object.entries(incoming || {})) {
+    if (!(key in (existing || {}))) continue; // 新增 key，不是冲突
+    const oldValue = String(existing[key] ?? '');
+    const nv = String(newValue ?? '');
+    if (oldValue === nv) continue; // 完全相同
+
+    const oldNum = firstNumber(oldValue);
+    const newNum = firstNumber(nv);
+    const oldPol = booleanPolarity(oldValue);
+    const newPol = booleanPolarity(nv);
+
+    if (oldPol !== 0 && newPol !== 0 && oldPol !== newPol) {
+      conflicts.push({ oldFact: key, newFact: key, type: 'boolean', resolution: 'replace' });
+      continue;
+    }
+
+    if (oldNum !== null && newNum !== null && oldNum !== newNum) {
+      conflicts.push({ oldFact: key, newFact: key, type: 'numeric', resolution: 'replace' });
+      continue;
+    }
+
+    // 兜底：同 key 值不同 → 实体替换
+    conflicts.push({ oldFact: key, newFact: key, type: 'entity', resolution: 'replace' });
+  }
+
+  return { hasConflict: conflicts.length > 0, conflicts };
+}

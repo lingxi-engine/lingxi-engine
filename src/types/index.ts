@@ -92,6 +92,12 @@ export interface AgentManager {
   get(agentId: string): Agent | undefined;
   register(userId: string, displayName: string, personality?: string, autonomy?: string): Agent;
   update(agentId: string, updates: { model?: string; modelSource?: string; [key: string]: unknown }): void;
+  /**
+   * 追加记忆摘要（供反思/总结调用）。
+   * 实现见 src/agents/manager.ts —— 内部走去重 + 冲突检测。
+   * [TS FIX] 之前接口没声明这个方法，router.ts 调用时报 TS2339。
+   */
+  appendMemorySummary(agentId: string, newContent: string): Promise<void>;
 }
 
 // ── AI Hub ──

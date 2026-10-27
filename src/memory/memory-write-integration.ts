@@ -8,6 +8,17 @@ import { globalDedup, SemanticDedup } from './semantic-dedup.js';
 import { globalConflictDetector, FactEntry, FactConflictDetector } from './fact-conflict-detector.js';
 
 /**
+ * 去重索引的命名空间（scope）。
+ *
+ * [多用户隔离 FIX] 旧实现所有用户共用一个全局索引，key 只有 fact 名，
+ * 导致 A 用户的 "city=上海" 会让 B 用户的同名事实被判为重复而丢弃。
+ * 现在按 agentId / chatId:agentId 隔离，不同用户互不影响。
+ */
+export function dedupScopeFor(agentId: string, chatId?: string): string {
+  return chatId ? `chat:${chatId}:${agentId}` : `agent:${agentId}`;
+}
+
+/**
  * 从数据库加载现有 facts 到 Map（供冲突检测和去重索引重建）
  */
 export async function loadExistingFacts(agentId: string, chatId?: string): Promise<Map<string, FactEntry>> {
@@ -24,6 +35,7 @@ export async function loadExistingFacts(agentId: string, chatId?: string): Promi
       try {
         const facts = JSON.parse(String(row[0].values[0][0]));
         for (const [key, value] of Object.entries(facts)) {
+          if (key.startsWith('__')) continue; // 跳过内部元字段（__insights 等）
           factsMap.set(key, {
             key,
             value: String(value),
@@ -42,6 +54,7 @@ export async function loadExistingFacts(agentId: string, chatId?: string): Promi
       try {
         const facts = JSON.parse(agent.memory_facts);
         for (const [key, value] of Object.entries(facts)) {
+          if (key.startsWith('__')) continue;
           factsMap.set(key, {
             key,
             value: String(value),
@@ -65,7 +78,7 @@ export function initDedupSignaturesTable(): void {
   const db = getDB();
   db.run(`
     CREATE TABLE IF NOT EXISTS dedup_signatures (
-      key TEXT PRIMARY KEY,
+      scope_key TEXT PRIMARY KEY,
       signature TEXT NOT NULL,  -- JSON array of numbers
       created_at INTEGER NOT NULL
     );
@@ -76,81 +89,97 @@ export function initDedupSignaturesTable(): void {
  * [P1-4 FIX] 从持久化表重建去重索引（启动时调用）
  */
 export function rebuildDedupIndexFromDB(): void {
-  const db = getDB();
   initDedupSignaturesTable();
-  
-  const rows = db.exec(`SELECT key, signature FROM dedup_signatures`);
-  const entries: Array<{ key: string; value: string }> = [];
-  
-  for (const r of rows) {
-    if (r.values) {
-      for (const v of r.values) {
-        const key = String(v[0]);
-        // 我们只存签名，value 需要从 facts 表获取
-        // 这里先收集 key，后面统一从 facts 表加载 value
-        entries.push({ key, value: '' });
-      }
+
+  const entries: Array<{ key: string; value: string; scope: string }> = [];
+
+  // agent 级
+  for (const [agentId, raw] of dbExec(`SELECT id, memory_facts FROM agents WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`)) {
+    const scope = dedupScopeFor(String(agentId));
+    for (const [key, value] of parseFactPairs(raw)) {
+      entries.push({ key, value, scope });
     }
   }
-  
-  // 从 facts 表加载实际 value
-  const agentFacts = db.exec(`SELECT memory_facts FROM agents WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
-  const chatFacts = db.exec(`SELECT memory_facts FROM chat_memories WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
-  
-  const factMap = new Map<string, string>();
-  
-  for (const r of agentFacts) {
-    if (r.values) {
-      for (const v of r.values) {
-        try {
-          const facts = JSON.parse(String(v[0]));
-          for (const [k, val] of Object.entries(facts)) {
-            factMap.set(k, String(val));
-          }
-        } catch {}
-      }
+
+  // chat 级
+  for (const [chatId, agentId, raw] of dbExec(`SELECT chat_id, agent_id, memory_facts FROM chat_memories WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`)) {
+    const scope = dedupScopeFor(String(agentId), String(chatId));
+    for (const [key, value] of parseFactPairs(raw)) {
+      entries.push({ key, value, scope });
     }
   }
-  
-  for (const r of chatFacts) {
-    if (r.values) {
-      for (const v of r.values) {
-        try {
-          const facts = JSON.parse(String(v[0]));
-          for (const [k, val] of Object.entries(facts)) {
-            factMap.set(k, String(val));
-          }
-        } catch {}
+
+  globalDedup.rebuild(entries);
+  console.log(`[MemoryDedup] 去重索引已从 DB 重建：${entries.length} 条事实`);
+}
+
+/** 解析 memory_facts JSON 为 [key, value] 数组，跳过内部字段与数组形态 */
+function parseFactPairs(raw: unknown): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) {
+      for (const f of parsed) {
+        if (f && typeof f === 'object' && f.key && !String(f.key).startsWith('__')) {
+          out.push([String(f.key), String(f.value ?? '')]);
+        }
+      }
+    } else if (parsed && typeof parsed === 'object') {
+      for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+        if (key.startsWith('__')) continue;
+        out.push([key, String(value ?? '')]);
       }
     }
+  } catch {}
+  return out;
+}
+
+/** 执行查询并返回行数组（统一处理 sql.js 的 exec 返回结构） */
+function dbExec(sql: string): any[][] {
+  try {
+    const db = getDB();
+    const res = db.exec(sql);
+    return (res[0]?.values || []) as any[][];
+  } catch {
+    return [];
   }
-  
-  const entriesWithValue = entries
-    .map(e => ({ key: e.key, value: factMap.get(e.key) || '' }))
-    .filter(e => e.value);
-  
-  globalDedup.rebuild(entriesWithValue);
 }
 
 /**
  * [P1-4 FIX] 重建去重索引（启动时或批量导入后调用）
  */
-export function rebuildDedupIndex(entries: Array<{ key: string; value: string }>): void {
+export function rebuildDedupIndex(entries: Array<{ key: string; value: string; scope?: string }>): void {
   globalDedup.rebuild(entries);
-  
+
   // [P1-4 FIX] 持久化签名到数据库
   const db = getDB();
   initDedupSignaturesTable();
-  
-  for (const { key, value } of entries) {
-    const sig = globalDedup['lsh'].getSignature(key);
+
+  for (const { key, value, scope } of entries) {
+    const scopeKey = scope ? `${scope}::${key}` : key;
+    const sig = globalDedup['lsh'].getSignature(scopeKey);
     if (sig) {
       db.run(
-        `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
-        [key, JSON.stringify(sig), Date.now()]
+        `INSERT OR REPLACE INTO dedup_signatures (scope_key, signature, created_at) VALUES (?, ?, ?)`,
+        [scopeKey, JSON.stringify(sig), Date.now()]
       );
     }
   }
+}
+
+/** 持久化单个 fact 的去重签名（scope 隔离） */
+function persistSignature(scope: string, key: string): void {
+  try {
+    const db = getDB();
+    initDedupSignaturesTable();
+    const sig = globalDedup['lsh'].getSignature(`${scope}::${key}`);
+    if (sig) {
+      db.run(
+        `INSERT OR REPLACE INTO dedup_signatures (scope_key, signature, created_at) VALUES (?, ?, ?)`,
+        [`${scope}::${key}`, JSON.stringify(sig), Date.now()]
+      );
+    }
+  } catch {}
 }
 
 /**
@@ -168,6 +197,7 @@ export async function updateAgentMemoryWithChecks(
   } = {}
 ): Promise<{ success: boolean; conflicts?: any; skippedKeys?: string[] }> {
   const { source = 'assistant', confidence = 0.8, skipConflictCheck = false, skipDedup = false } = options;
+  const scope = dedupScopeFor(agentId);
 
   // 1. 加载现有 facts
   const existingFacts = await loadExistingFacts(agentId);
@@ -182,22 +212,13 @@ export async function updateAgentMemoryWithChecks(
       continue;
     }
 
-    const isDup = await globalDedup.checkAndAdd(key, value);
+    const isDup = await globalDedup.checkAndAdd(key, value, scope);
     if (isDup) {
       skippedKeys.push(key);
       console.log(`[MemoryDedup] 跳过重复 fact: ${key} = ${value.slice(0, 50)}`);
     } else {
       dedupedFacts[key] = value;
-      
-      // [P1-4 FIX] 持久化签名
-      const db = getDB();
-      const sig = globalDedup['lsh'].getSignature(key);
-      if (sig) {
-        db.run(
-          `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
-          [key, JSON.stringify(sig), Date.now()]
-        );
-      }
+      persistSignature(scope, key);
     }
   }
 
@@ -272,6 +293,7 @@ export async function upsertChatMemoryWithChecks(
   } = {}
 ): Promise<{ success: boolean; conflicts?: any; skippedKeys?: string[] }> {
   const { source = 'assistant', confidence = 0.8, skipConflictCheck = false, skipDedup = false } = options;
+  const scope = dedupScopeFor(agentId, chatId);
 
   // 1. 加载现有 facts
   const existingFacts = await loadExistingFacts(agentId, chatId);
@@ -286,22 +308,13 @@ export async function upsertChatMemoryWithChecks(
       continue;
     }
 
-    const isDup = await globalDedup.checkAndAdd(key, value);
+    const isDup = await globalDedup.checkAndAdd(key, value, scope);
     if (isDup) {
       skippedKeys.push(key);
       console.log(`[MemoryDedup] 跳过重复 chat fact: ${key} = ${value.slice(0, 50)}`);
     } else {
       dedupedFacts[key] = value;
-      
-      // [P1-4 FIX] 持久化签名
-      const db = getDB();
-      const sig = globalDedup['lsh'].getSignature(key);
-      if (sig) {
-        db.run(
-          `INSERT OR REPLACE INTO dedup_signatures (key, signature, created_at) VALUES (?, ?, ?)`,
-          [key, JSON.stringify(sig), Date.now()]
-        );
-      }
+      persistSignature(scope, key);
     }
   }
 
@@ -361,7 +374,8 @@ export async function bulkImportFacts(
   facts: Record<string, string>,
   chatId?: string
 ): Promise<void> {
-  const entries = Object.entries(facts).map(([key, value]) => ({ key, value }));
+  const scope = dedupScopeFor(agentId, chatId);
+  const entries = Object.entries(facts).map(([key, value]) => ({ key, value, scope }));
   rebuildDedupIndex(entries);
   
   if (chatId) {
@@ -388,11 +402,15 @@ export async function bulkImportFacts(
  * 删除 fact（软删除：标记 superseded，从去重索引移除）
  */
 export function forgetFact(agentId: string, key: string, chatId?: string): void {
-  globalDedup.remove(key);
-  
-  // [P1-4 FIX] 从持久化表删除签名
-  const db = getDB();
-  db.run(`DELETE FROM dedup_signatures WHERE key = ?`, [key]);
+  const scope = dedupScopeFor(agentId, chatId);
+  globalDedup.remove(key, scope);
+
+  // [P1-4 FIX] 从持久化表删除签名（scope 隔离）
+  try {
+    const db = getDB();
+    initDedupSignaturesTable();
+    db.run(`DELETE FROM dedup_signatures WHERE scope_key = ?`, [`${scope}::${key}`]);
+  } catch {}
   
   // 实际删除由上层决定是否物理移除，这里只演示标记
   // 可扩展：在 facts 中添加 _deleted: true 标记

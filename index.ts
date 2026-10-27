@@ -533,6 +533,36 @@ setSearchManager(searchManagerInstance);
   }, dataDir);
   webhookScheduler.start();
 
+  // 记忆去重索引：启动时从 DB 重建（多用户隔离版，按 scope 分组）
+  // [P1 FIX] 旧实现只在 memory-admin 手动触发时重建，进程重启后索引为空，
+  // 导致重启后去重失效或误判。这里在启动路径统一重建一次。
+  try {
+    const { rebuildDedupIndexFromDB } = await import('./src/memory/memory-write-integration.js');
+    rebuildDedupIndexFromDB();
+  } catch (e: any) {
+    console.warn('[MemoryDedup] 索引重建失败:', e?.message || e);
+  }
+  // 记忆睡眠周期：空闲 Dreamer 整理 + 凌晨压缩真正落库。对话中不再假装这两件事在跑。
+  try {
+    const { Dreamer } = await import('./src/core/dreamer.js');
+    if (defaultClientResult) {
+      const dreamer = new Dreamer(defaultClientResult.client, defaultClientResult.resolvedModel);
+      dreamer.start();
+      (globalThis as any).__dreamer = dreamer;
+      console.log('[Dreamer] 空闲整理已启动');
+    } else {
+      console.warn('[Dreamer] 无默认模型客户端，空闲整理未启动');
+    }
+  } catch (e: any) {
+    console.warn('[Dreamer] 启动失败:', e?.message || e);
+  }
+  try {
+    const { registerNightlyCompressionJob } = await import('./src/memory/memory-nightly-compress.js');
+    registerNightlyCompressionJob(3);
+  } catch (e: any) {
+    console.warn('[NightlyCompress] 注册失败:', e?.message || e);
+  }
+
   // ── P1-2: 会话管理器 ──
   const sessionManager = new SessionManager(dataDir);
   sessionManager.startAutoSave(10000);

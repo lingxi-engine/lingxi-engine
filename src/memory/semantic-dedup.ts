@@ -166,7 +166,18 @@ export class LSHIndex {
   }
 }
 
-// 主去重类：对外暴露 checkAndAdd(key, value) -> boolean (true=重复)
+/**
+ * 主去重类：对外暴露 checkAndAdd(key, value, scope?) -> boolean (true=重复)
+ *
+ * [多用户隔离 FIX] 旧实现把 fact 的裸 key（如 "city"）直接塞进全局 LSH 索引，
+ * 于是 A 用户的 "city=上海" 会让 B 用户的 "city=上海" 被判为语义重复而**直接丢弃**。
+ * 在几千用户规模下，这会导致大量用户的记忆凭空消失，而且没有任何报错。
+ *
+ * 现在引入 scope（命名空间，通常是 agentId 或 chatId:agentId）：
+ *   - 索引内部键 = scope + '::' + key
+ *   - 去重只在同一 scope 内比较，不同 scope 永远互不影响
+ *   - 不传 scope 时保持旧行为（全局域），兼容既有调用方
+ */
 export class SemanticDedup {
   private lsh: LSHIndex;
   private minHash: MinHash;
@@ -178,32 +189,42 @@ export class SemanticDedup {
     this.lsh = new LSHIndex(this.minHash, bands);
   }
 
+  /** 组合 scope 与 key，得到索引内部唯一键 */
+  private scopedKey(scope: string | undefined, key: string): string {
+    return scope ? `${scope}::${key}` : key;
+  }
+
   // 核心接口：检查是否重复，不重复则加入索引
-  async checkAndAdd(key: string, value: string): Promise<boolean> {
+  // scope: 命名空间（agentId 或 chatId:agentId）。同一 scope 内才判重。
+  async checkAndAdd(key: string, value: string, scope?: string): Promise<boolean> {
+    const scoped = this.scopedKey(scope, key);
     const candidates = this.lsh.query(value);
+    const newSig = this.minHash.signature(value);
     for (const candKey of candidates) {
+      // 只和同 scope 的候选比较，避免跨用户/跨会话误判
+      if (scope && !candKey.startsWith(`${scope}::`)) continue;
       const candSig = this.lsh.getSignature(candKey);
       if (!candSig) continue;
-      const newSig = this.minHash.signature(value);
       const sim = MinHash.jaccardSimilarity(candSig, newSig);
       if (sim >= this.threshold) {
         return true; // 重复
       }
     }
-    this.lsh.add(key, value);
+    this.lsh.add(scoped, value);
     return false; // 不重复，已入库
   }
 
   // 批量重建索引（用于启动时从 DB 加载现有 facts）
-  rebuild(entries: Array<{ key: string; value: string }>): void {
+  // entries 可带 scope 字段；不带时按 key 本身作为 scope（兼容旧调用）
+  rebuild(entries: Array<{ key: string; value: string; scope?: string }>): void {
     this.lsh = new LSHIndex(this.minHash, this.lsh['bands']); // 重置
-    for (const { key, value } of entries) {
-      this.lsh.add(key, value);
+    for (const { key, value, scope } of entries) {
+      this.lsh.add(this.scopedKey(scope, key), value);
     }
   }
 
-  remove(key: string): void {
-    this.lsh.remove(key);
+  remove(key: string, scope?: string): void {
+    this.lsh.remove(this.scopedKey(scope, key));
   }
 }
 
