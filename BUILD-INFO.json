@@ -1,18 +1,17 @@
 {
-    "version":  "2.0.35",
-    "commit":  "eff378b",
-    "buildTime":  "2026-10-19T13:08:26.9163407Z",
+    "version":  "2.0.36",
+    "commit":  "819d91e",
+    "buildTime":  "2026-10-29T14:54:31.1672566Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
-                       "聊天输入框：粘贴 / 拖拽 / 📎 选中的截图与文件先进入输入框上方预览条，可继续补充文字后再按 Enter 一起发送（不再一粘贴就直接发出去）",
-                       "预览条支持多附件、缩略图、单个移除，发送后自动清空",
-                       "右下角「任务」按钮修复：旧实现只切一个在桌面端无 CSS 的 .show 类，且 .rightbar 被 display:flex !important 钉死 → 点击完全无反应；新增 toggleRightbar() + .rb-hidden",
-                       "状态栏 / 任务监控自愈：引擎启动或重启期间 API 短暂不可达时不再永久显示红字，3~4 秒自动重试，恢复后自动消失",
-                       "任务列表加载失败改为中文提示 + 「重试」按钮，不再把浏览器的 Failed to fetch 原样贴给用户",
-                       "api() 的 GET 请求网络失败自动重试 3 次（0.4s / 1.2s 退避），错误文案中文化",
-                       "WS 连接成功、页面重新可见时自动刷新状态栏、任务监控、目标面板",
-                       "钱包功能已退役：前端按 /api/features 的 wallet 开关跳过 /api/wallet 调用，消除控制台 404 红字",
-                       "验证：puppeteer 端到端实测 —— 粘贴截图只进预览不发送、补字后回车图片+文字各发一条、任务按钮 display flex↔none 正常切换"
+                       "手机 App 通过云端中继接管 NAT 后的电脑：握手补上真鉴权与通道挂载",
+                       "修 server.on(upgrade) 被嵌在连接回调里导致 /ws 404 的错位",
+                       "修 ws 库 { server, path } 把非 /ws 升级请求直接 400 掐断的问题",
+                       "中继客户端改用 ws 包（Node 内置 WebSocket 带不了握手头 → close 1006）",
+                       "新增 /api/app/relay/x/\u003cid\u003e/... 前缀反向代理 + WebSocket 桥接（聊天流式回复可用）",
+                       "接管会话键 12 小时可复用；一次性票据仍只管开界面",
+                       "修 ensureLocalUser 的 NOT NULL numeric_id 报错（接管时 500）",
+                       "中英繁三语中继引导页 /app/relay.html（含 10 秒超时与失败提示）"
                    ],
     "notes":  "v2.0.35 = 聊天附件先预览后发送 + 右下角任务按钮修复 + 状态栏/任务监控自愈"
 }

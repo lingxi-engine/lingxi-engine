@@ -917,6 +917,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       directory: appDirectory,
     });
     appConnect.startHeartbeat();
+    appConnect.startRelayClient();
     console.log('[AppConnect] 手机连接层就绪 · 实例=' + appConnect.instanceId + ' · 云端入口=' + (appConnect.hubUrl || '(未配置)'));
   } catch (e: any) {
     console.warn('[AppConnect] 初始化失败（不影响引擎本体）:', e?.message || e);
@@ -1452,8 +1453,22 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
       if (userId && !isLocalAuto) {
         const reqUid = String(userId);
-        if (jwtSub && reqUid !== jwtSub && reqUid !== jwtNumericId) {
-          return res.status(403).json({ error: '无权以他人身份加入群聊' });
+        const isSelf = !jwtSub || reqUid === jwtSub || reqUid === jwtNumericId;
+        if (!isSelf) {
+          // v2.0.37: 好友私聊建聊需要「我把好友拉进同一聊天」。之前一律 403，
+          // 导致登录态下点好友💬时第二步加人必失败，私聊根本建不起来。
+          // 收紧后的规则：请求者必须已在该聊天里，且目标必须是请求者的好友。
+          let allowed = false;
+          try {
+            const meIds = [jwtSub, jwtNumericId].filter(Boolean).map(String);
+            const parts = (db as any).getChatParticipants(String(chatId)) as any[];
+            const meInChat = (parts || []).some((p: any) => meIds.includes(String(p.user_id)));
+            const myKey = jwtNumericId || jwtSub;
+            const friends = myKey ? ((db as any).listFriends(myKey) as any[]) : [];
+            const isFriend = (friends || []).some((f: any) => String(f.friendId || f.friend_id || f.id || '') === reqUid);
+            allowed = meInChat && isFriend;
+          } catch (_e) { allowed = false; }
+          if (!allowed) return res.status(403).json({ error: '无权以他人身份加入群聊' });
         }
       }
       // 角色白名单: 只允许 member/owner
@@ -1520,9 +1535,11 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const friendNumericId = Number(friendUserId);
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh
-      if (!friendNumericId || isNaN(friendNumericId)) {
-        const localFriend = db.listUsers().find((u: any) => u.id === friendUserId);
-        if (!localFriend) return res.status(404).json({ error: '好友用户不存在（ID: ' + friendUserId + '）' });
+      // v2.0.37: 本地用户同样带 numeric_id，原先用「有没有数字 ID」判断会把本机好友
+      // 误判成跨实例好友，未配置 Mesh 时直接 500「Mesh 未配置」。改为先查本地用户表。
+      const localFriend = db.listUsers().find((u: any) =>
+        String(u.id) === friendUserId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
+      if (localFriend) {
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: String(fromUserId), content, type: 'text', timestamp: Date.now() });
         broadcast({ type: 'message.new', chatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content, timestamp: Date.now() });
@@ -3450,7 +3467,11 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // WebSocket
   // ────────────────────────────────────────
   const server = createServer(app);
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  // 注意：不能写成 { server, path: '/ws' }。那样 ws 库会在内部挂一个
+  // upgrade 监听，把「所有不匹配 /ws 的升级请求」直接用 400 掐掉，
+  // 反向中继（/api/app/relay）永远握不上手（客户端只看到 close 1006）。
+  // 统一交给下面 server.on('upgrade') 分发。 __wssNoServer
+  const wss = new WebSocketServer({ noServer: true });
   // V10: WS 连接管理 — 用户 → 连接集合
   const clients = new Map<string, Set<WebSocket>>();
 
@@ -3496,6 +3517,79 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // 电脑主动出站连这里建立通道，Hub 再把手机的请求反向送回电脑。
   // 电脑无需公网 IP / 端口映射 / frp / cloudflared。
   const relayWss = new WebSocketServer({ noServer: true });
+  // 手机侧 WebSocket（接管后聊天流式回复要穿过中继）
+  const relayPhoneWss = new WebSocketServer({ noServer: true });
+
+  // ── 中继升级入口（顶层注册：必须早于任何连接建立，否则 /ws 会退化成普通请求走 404） __upgradeTopLevel（唯一入口，必须鉴权）──
+  // 历史坑：这里既不校验实例密钥、也没有 attachRelayChannel（只 emit 了一个
+  // 没人监听的 connection）。结果任何人连上来都能占住通道，而真正的电脑连上
+  // 之后永远收不到请求 —— 手机端表现为「设备在线，一点接管就报错」。
+  const eqToken = (x: string, y: string) => {
+    try {
+      const A = Buffer.from(String(x));
+      const B = Buffer.from(String(y));
+      if (!A.length || A.length !== B.length) return false;
+      return timingSafeEqual(A, B);
+    } catch { return false; }
+  };
+  const stripRt = (raw: string) => {
+    const qIdx = raw.indexOf('?');
+    if (qIdx < 0) return '';
+    const kept = raw.slice(qIdx + 1).split('&').filter((p) => p && !/^rt(=|$)/.test(p));
+    return kept.length ? '?' + kept.join('&') : '';
+  };
+  const handleRelayUpgrade = (req: any, socket: any, head: any) => {
+    const svc: any = (globalThis as any).__appConnect;
+    let sp: URLSearchParams;
+    try { sp = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`).searchParams; } catch { sp = new URLSearchParams(); }
+    const instanceId = String(sp.get('instanceId') || req.headers['x-instance-id'] || '').trim();
+    const secret = String(req.headers['x-instance-secret'] || '').trim();
+    const known = svc && typeof svc.getSecret === 'function' ? svc.getSecret(instanceId) : null;
+    if (!svc || !instanceId || !secret || !known || !eqToken(known, secret)) {
+      console.warn('[AppConnect] 中继握手被拒:', instanceId || '(no_instance_id)', known ? 'bad_secret' : 'unknown_instance');
+      try { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); } catch { /* ignore */ }
+      try { socket.destroy(); } catch { /* ignore */ }
+      return;
+    }
+    let ownerKey = '';
+    try {
+      const it = typeof svc.getInstance === 'function' ? svc.getInstance(instanceId) : null;
+      ownerKey = String(it?.ownerKey || '').toLowerCase();
+    } catch { /* ignore */ }
+    relayWss.handleUpgrade(req, socket, head, (ws: any) => {
+      try { svc.attachRelayChannel(instanceId, ownerKey, ws); } catch { try { ws.close(); } catch { /* ignore */ } }
+    });
+  };
+
+  // 手机侧：/api/app/relay/x/<instanceId>/ws —— 用会话键鉴权后桥接到电脑
+  const handlePhoneRelayUpgrade = (req: any, socket: any, head: any, instanceId: string) => {
+    const svc: any = (globalThis as any).__appConnect;
+    let sp: URLSearchParams;
+    try { sp = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`).searchParams; } catch { sp = new URLSearchParams(); }
+    const key = String(sp.get('rt') || req.headers['x-relay-key'] || '');
+    if (!svc || !instanceId || typeof svc.verifyRelayKey !== 'function' || !svc.verifyRelayKey(key, instanceId)) {
+      try { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); } catch { /* ignore */ }
+      try { socket.destroy(); } catch { /* ignore */ }
+      return;
+    }
+    const targetPath = '/ws' + stripRt(String(req.url || ''));
+    relayPhoneWss.handleUpgrade(req, socket, head, (ws: any) => {
+      try { svc.bridgePhoneWs(ws, instanceId, key, targetPath); } catch { try { ws.close(); } catch { /* ignore */ } }
+    });
+  };
+
+  server.on('upgrade', (req, socket, head) => {
+    let pathname = '';
+    try { pathname = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`).pathname; } catch { /* ignore */ }
+    if (pathname === '/api/app/relay') { handleRelayUpgrade(req, socket, head); return; }
+    const m = pathname.match(/^\/api\/app\/relay\/x\/([^/]+)\/ws$/);
+    if (m) { handlePhoneRelayUpgrade(req, socket, head, decodeURIComponent(m[1])); return; }
+    if (pathname === '/ws') {
+      wss.handleUpgrade(req, socket, head, (ws: any) => { wss.emit('connection', ws, req); });
+      return;
+    }
+    socket.destroy();
+  });
   (globalThis as any).__appRelayUpgrade = (req: any, res: any, instanceId: string, ownerKey: string) => {
     try {
       // ws 包的 handleUpgrade(request, socket, head, callback) —— head 必须透传，
@@ -3554,17 +3648,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     clients.get(clientId)!.add(ws);
     broadcast({ type: 'user.online', userId: clientId, message: clientId + ' 上线了' })
 
-  server.on('upgrade', (req, socket, head) => {
-    const url = new URL(req.url || "", `http://${req.headers.host}`);
-    if (url.pathname === "/api/app/relay") {
-      relayWss.handleUpgrade(req, socket, head, (ws) => {
-        relayWss.emit("connection", ws, req);
-      });
-    } else if (url.pathname === "/ws") {
-    } else {
-      socket.destroy();
-    }
-  });
 ;
     // 自动为访客创建用户 + 聊天 + Agent（如果还没有）
     ensureUserSetup(clientId, db, manager, toolRegistry);
@@ -3894,7 +3977,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const jwtSub = (req as any).user?.sub;
       // 如果 JWT 是 auto-admin 回退模式（sid=admin-auto/admin-token），不用 admin 作为 fromUserId
       const isAutoAdmin = (req as any).user?.sid === 'admin-auto' || (req as any).user?.sid === 'admin-token' || jwtSub === 'admin';
-      const fromUserId = bodyFromUserId || (!isAutoAdmin ? jwtSub : '');
+      const selfId = lanUserId(req, bodyFromUserId) || '';
+      const _bs = (() => { const u: any = (req as any).user || {}; const sid = String(u.sid || ''); return sid === 'admin-auto' || sid === 'platform-admin' || sid === 'admin-token' || u.sub === 'admin'; })();
+      if (bodyFromUserId && !_bs && String(bodyFromUserId) !== String(selfId)) {
+        return res.status(403).json({ error: '\u4e0d\u80fd\u4ee5\u4ed6\u4eba\u8eab\u4efd\u53d1\u8d77\u597d\u53cb\u7533\u8bf7' });
+      }
+      const fromUserId = selfId;
       if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
       const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '');
       res.json(r);
@@ -3902,11 +3990,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   });
 
   app.get('/api/lan/friend-requests', requireAuth, (req, res) => {
-    let userId = (req.query.userId as string) || '';
-    // v2.0.10: userId 为空时从 JWT 中获取（platformApi 不带 query param 的场景）
-    if (!userId && (req as any).user) {
-      userId = String((req as any).user.sub || '');
-    }
+    const userId = lanUserId(req, req.query.userId as string) || '';
     res.json({ ok: true, ...lanSocial.friendRequests(userId) });
   });
 
@@ -3914,17 +3998,23 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { requestId, action } = req.body || {};
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
+      const _selfId = lanUserId(req, (req.body || {}).userId) || '';
+      const _u: any = (req as any).user || {};
+      const _sid = String(_u.sid || '');
+      const _bs2 = _sid === 'admin-auto' || _sid === 'platform-admin' || _sid === 'admin-token' || _u.sub === 'admin';
+      if (!_bs2) {
+        const _box: any = (lanSocial.friendRequests as any)(_selfId) || {};
+        const _all: any[] = [...(_box.incoming || []), ...(_box.pendingIncoming || [])];
+        const _mine = _all.some((x: any) => String(x.id || x.requestId) === String(requestId));
+        if (!_mine) return res.status(403).json({ error: '\u65e0\u6743\u5904\u7406\u8be5\u597d\u53cb\u7533\u8bf7' });
+      }
       const r = await lanSocial.respondFriendRequest(requestId, action);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
   app.get('/api/lan/friends', requireAuth, (req, res) => {
-    let userId = (req.query.userId as string) || '';
-    // v2.0.10: userId 为空时从 JWT 中获取
-    if (!userId && (req as any).user) {
-      userId = String((req as any).user.sub || '');
-    }
+    const userId = lanUserId(req, req.query.userId as string) || '';
     res.json({ ok: true, friends: lanSocial.friends(userId) });
   });
 
@@ -4017,6 +4107,16 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   });
 
   // ── 新增：删除好友/群组 API ──
+  app.delete('/api/lan/friends/:friendId', requireAuth, async (req, res) => {
+    try {
+      const userId = lanUserId(req, ((req.body || {}).userId || (req.query.userId as string))) || '';
+      const friendId = String(req.params.friendId || '');
+      if (!userId || !friendId) return res.status(401).json({ error: '\u672a\u767b\u5f55\u6216\u8eab\u4efd\u65e0\u6548' });
+      const r = await lanSocial.removeFriend!(userId, friendId);
+      res.json(r);
+    } catch (err: any) { res.status(400).json({ error: err.message }); }
+  });
+
   app.post('/api/lan/remove-friend', requireAuth, async (req, res) => {
     try {
       const { friendId } = req.body || {};
@@ -4362,44 +4462,127 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
 
 
-  // ── 系统升级 API（git pull + pm2 重启）──
+  // ── 系统升级 API（git 仓库走 git pull；tar 安装版从发布地址下载整包覆盖）──
+  // v2.0.37: 修复 tar 安装版一键升级不可用（旧实现要求 .git，且报错文案硬编码已失效的 IP:8080）
+  // 安全策略：admin 角色 / 单用户自建实例（users<=1）/ 本机访问（可用 UPDATE_ALLOW_LOCAL=0 关闭）
   app.post('/api/update', requireAuth, async (req, res) => {
     try {
       const jwtUser = (req as any).user;
-      const isAdmin = (jwtUser?.roles || []).includes('admin');
-      if (!isAdmin) return res.status(403).json({ error: '仅管理员可执行升级' });
-      if (!existsSync(join(process.cwd(), '.git'))) {
-        return res.json({ ok: false, error: '当前部署不是 git 仓库（tar 包安装），无法用升级按钮自动更新。请到浏览器重新运行安装命令完成升级：iwr -useb http://47.93.157.83:8080/install.ps1 | iex' });
+      const roles: string[] = (jwtUser && jwtUser.roles) || [];
+      const isAdmin = roles.includes('admin');
+      const ra = String((req.socket && req.socket.remoteAddress) || '').replace('::ffff:', '');
+      const isLocal = ra === '127.0.0.1' || ra === '::1' || ra === '';
+      const allowLocal = String(process.env.UPDATE_ALLOW_LOCAL || '1') !== '0';
+      let userCount = 0;
+      try { const r0 = getDB().exec('SELECT COUNT(*) AS c FROM users'); userCount = Number(r0[0].values[0][0]) || 0; } catch {}
+      const singleUser = userCount <= 1;
+      if (!isAdmin && !(allowLocal && isLocal) && !singleUser) {
+        return res.status(403).json({ ok: false, code: 'forbidden', error: '仅管理员可执行升级（自建单用户实例或本机访问可直接升级）' });
       }
+
       const { execSync } = await import('child_process');
-      const out = execSync('git pull --ff-only', { cwd: process.cwd(), timeout: 120000, encoding: 'utf8' });
-      console.log('[Update] git pull 完成:', String(out).slice(0, 500));
-      // v2.0.19: 拉取后补跑 npm install（幂等），防止新版本新增依赖没装导致重启后起不来
-      let npmOut = '';
-      try {
-        npmOut = String(execSync('npm install --no-audit --no-fund', { cwd: process.cwd(), timeout: 240000, encoding: 'utf8' }));
-      } catch (e: any) {
-        console.error('[Update] npm install 失败:', e?.message || e);
-        return res.status(500).json({ ok: false, error: '升级中断: npm install 未成功，服务未重启（代码已拉取，可重试或手动 npm install）' });
+      const nfs = await import('fs');
+      const { join: pjoin } = await import('path');
+      const cwd = process.cwd();
+      const readVer = (p: string) => { try { return JSON.parse(nfs.readFileSync(p, 'utf8')).version || '0.0.0'; } catch { return '0.0.0'; } };
+      const cmpVer = (a: string, b: string) => {
+        const pa = String(a).replace(/[^0-9.].*$/, '').split('.').map(Number);
+        const pb = String(b).replace(/[^0-9.].*$/, '').split('.').map(Number);
+        for (let i = 0; i < 3; i++) { const x = pa[i] || 0, y = pb[i] || 0; if (x !== y) return x - y; }
+        return 0;
+      };
+      const currentVersion = readVer(pjoin(cwd, 'package.json'));
+      const hasGit = nfs.existsSync(pjoin(cwd, '.git'));
+
+      const scheduleRestart = () => {
+        setTimeout(async () => {
+          try {
+            const { exec, spawn } = await import('child_process');
+            const custom = process.env.LINGXI_RESTART_CMD;
+            if (custom) { exec(custom, { cwd }); return; }
+            if (process.platform === 'win32') {
+              const ps1 = pjoin(cwd, 'scripts', 'restart-engine.ps1');
+              const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1], { cwd, detached: true, windowsHide: true, stdio: 'ignore' });
+              child.unref();
+            } else {
+              exec('(npx pm2 restart lingxi 2>/dev/null || true)', { cwd });
+            }
+          } catch (e: any) { console.error('[Update] 重启失败:', (e && e.message) || e); }
+        }, 1200);
+      };
+
+      if (hasGit) {
+        const out = execSync('git pull --ff-only', { cwd, timeout: 120000, encoding: 'utf8' });
+        let npmOut = '';
+        try { npmOut = String(execSync('npm install --no-audit --no-fund', { cwd, timeout: 300000, encoding: 'utf8' })); }
+        catch (e: any) { return res.status(500).json({ ok: false, code: 'npm_failed', error: 'git 已更新，但 npm install 失败：' + ((e && e.message) || e) }); }
+        const newVersion = readVer(pjoin(cwd, 'package.json'));
+        res.json({ ok: true, mode: 'git', fromVersion: currentVersion, version: newVersion, output: (String(out) + '\n' + npmOut).slice(0, 1200), restarting: process.platform === 'win32' ? 'restart-engine.ps1' : 'pm2 restart lingxi' });
+        scheduleRestart();
+        return;
       }
-      // v2.0.19: 重启按平台分流——Windows 桌面版引擎不在 pm2 下，旧逻辑 npx pm2 restart lingxi 静默失败，
-      // 导致「升级成功」但服务仍跑旧代码。Windows 改调已验证的 restart-engine.ps1（精准杀旧进程+重启+HTTP 验证）。
-      res.json({ ok: true, output: (String(out) + '\n' + npmOut).slice(0, 1000), restarting: process.platform === 'win32' ? 'restart-engine.ps1' : 'pm2 restart lingxi' });
-      setTimeout(async () => {
-        try {
-          const { exec } = await import('child_process');
-          if (process.platform === 'win32') {
-            const ps1 = join(process.cwd(), 'scripts', 'restart-engine.ps1');
-            const { spawn } = await import('child_process');
-            const child = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1], { cwd: process.cwd(), detached: true, windowsHide: true, stdio: 'ignore' });
-            child.unref();
-          } else {
-            exec('npx pm2 restart lingxi', { cwd: process.cwd() });
-          }
-        } catch (e: any) { console.error('[Update] 重启失败:', e?.message || e); }
-      }, 1500);
+
+      // tar 安装版：下载整包 -> 解压 -> 版本比较 -> 备份 -> 覆盖代码 -> npm install -> 重启
+      const updateUrl = process.env.UPDATE_URL || 'https://www.lingxi-engine.com/public/lingxi-engine.tar.gz';
+      const tmpDir = pjoin(cwd, '_update_tmp');
+      nfs.rmSync(tmpDir, { recursive: true, force: true });
+      nfs.mkdirSync(tmpDir, { recursive: true });
+      const tarPath = pjoin(tmpDir, 'update.tar.gz');
+      console.log('[Update] 下载更新包:', updateUrl);
+      const resp = await fetch(updateUrl, { redirect: 'follow' });
+      if (!resp.ok) throw new Error('下载失败 HTTP ' + resp.status + '：' + updateUrl);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      if (buf.length < 1024 || buf[0] !== 0x1f || buf[1] !== 0x8b) throw new Error('下载内容不是有效的 tar.gz（' + buf.length + ' 字节）');
+      nfs.writeFileSync(tarPath, buf);
+
+      const gitTar = 'C:\\Program Files\\Git\\usr\\bin\\tar.exe';
+      let tarCmd: string;
+      if (process.platform === 'win32') {
+        const tarExe = nfs.existsSync(gitTar) ? gitTar : 'tar';
+        tarCmd = '"' + tarExe + '" -xzf "' + tarPath + '" -C "' + tmpDir + '"';
+      } else {
+        tarCmd = 'tar -xzf "' + tarPath + '" -C "' + tmpDir + '"';
+      }
+      execSync(tarCmd, { cwd: tmpDir, timeout: 180000, stdio: 'pipe' });
+
+      const entries = nfs.readdirSync(tmpDir).filter((n: string) => n !== 'update.tar.gz' && !n.startsWith('.'));
+      let srcRoot = tmpDir;
+      if (entries.length === 1) {
+        const cand = pjoin(tmpDir, entries[0]);
+        if (nfs.statSync(cand).isDirectory()) srcRoot = cand;
+      }
+      if (!nfs.existsSync(pjoin(srcRoot, 'package.json'))) throw new Error('更新包结构异常：找不到 package.json');
+      const newVersion = readVer(pjoin(srcRoot, 'package.json'));
+
+      if (cmpVer(newVersion, currentVersion) <= 0) {
+        nfs.rmSync(tmpDir, { recursive: true, force: true });
+        return res.json({ ok: true, upToDate: true, mode: 'tar', version: currentVersion, message: '已是最新版本 v' + currentVersion });
+      }
+
+      const backupDir = pjoin(cwd, '_backup_preupdate_' + Date.now());
+      nfs.mkdirSync(backupDir, { recursive: true });
+      for (const b of ['index.ts', 'package.json', 'package-lock.json', 'version.txt', 'src', 'web', 'skills', 'scripts', 'mobile-app']) {
+        const s = pjoin(cwd, b);
+        if (nfs.existsSync(s)) { try { nfs.cpSync(s, pjoin(backupDir, b), { recursive: true, force: true }); } catch {} }
+      }
+
+      // 只覆盖代码，绝不触碰 data/、.env、node_modules
+      const copyList = ['src', 'web', 'skills', 'scripts', 'mobile-app', 'docs', 'deploy', 'tests', 'package.json', 'package-lock.json', 'index.ts', 'version.txt', 'tsconfig.json', 'README.md', 'LICENSE', 'BUILD-INFO.json', 'MOBILE-RELAY-SELFHOST.md'];
+      const copied: string[] = [];
+      for (const item of copyList) {
+        const s = pjoin(srcRoot, item);
+        if (nfs.existsSync(s)) { nfs.cpSync(s, pjoin(cwd, item), { recursive: true, force: true }); copied.push(item); }
+      }
+      nfs.rmSync(tmpDir, { recursive: true, force: true });
+
+      let npmOut = '';
+      try { npmOut = String(execSync('npm install --no-audit --no-fund', { cwd, timeout: 300000, encoding: 'utf8' })); }
+      catch (e: any) { return res.status(500).json({ ok: false, code: 'npm_failed', error: '代码已更新到 v' + newVersion + '，但 npm install 失败：' + ((e && e.message) || e) + '；备份在 ' + backupDir }); }
+
+      res.json({ ok: true, mode: 'tar', fromVersion: currentVersion, version: newVersion, copied, backup: backupDir, output: npmOut.slice(0, 800), restarting: process.platform === 'win32' ? 'restart-engine.ps1' : 'pm2 restart lingxi' });
+      scheduleRestart();
     } catch (err: any) {
-      res.status(500).json({ error: '升级失败: ' + (err?.message || err) });
+      res.status(500).json({ ok: false, code: 'update_failed', error: '升级失败: ' + ((err && err.message) || err) });
     }
   });
   // 标签 API

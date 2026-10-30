@@ -201,8 +201,22 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
       if (userId && !isLocalAuto) {
         const reqUid = String(userId);
-        if (jwtSub && reqUid !== jwtSub && reqUid !== jwtNumericId) {
-          return res.status(403).json({ error: '无权以他人身份加入群聊' });
+        const isSelf = !jwtSub || reqUid === jwtSub || reqUid === jwtNumericId;
+        if (!isSelf) {
+          // v2.0.37: 好友私聊建聊需要「我把好友拉进同一聊天」。之前一律 403，
+          // 导致登录态下点好友💬时第二步加人必失败，私聊根本建不起来。
+          // 收紧后的规则：请求者必须已在该聊天里，且目标必须是请求者的好友。
+          let allowed = false;
+          try {
+            const meIds = [jwtSub, jwtNumericId].filter(Boolean).map(String);
+            const parts = (db as any).getChatParticipants(String(chatId)) as any[];
+            const meInChat = (parts || []).some((p: any) => meIds.includes(String(p.user_id)));
+            const myKey = jwtNumericId || jwtSub;
+            const friends = myKey ? ((db as any).listFriends(myKey) as any[]) : [];
+            const isFriend = (friends || []).some((f: any) => String(f.friendId || f.friend_id || f.id || '') === reqUid);
+            allowed = meInChat && isFriend;
+          } catch (_e) { allowed = false; }
+          if (!allowed) return res.status(403).json({ error: '无权以他人身份加入群聊' });
         }
       }
       // 角色白名单: 只允许 member/owner
@@ -267,9 +281,11 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       const friendNumericId = Number(friendUserId);
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh
-      if (!friendNumericId || isNaN(friendNumericId)) {
-        const localFriend = db.listUsers().find((u: any) => u.id === friendUserId);
-        if (!localFriend) return res.status(404).json({ error: '好友用户不存在（ID: ' + friendUserId + '）' });
+      // v2.0.37: 本地用户同样带 numeric_id，原先用「有没有数字 ID」判断会把本机好友
+      // 误判成跨实例好友，未配置 Mesh 时直接 500「Mesh 未配置」。改为先查本地用户表。
+      const localFriend = db.listUsers().find((u: any) =>
+        String(u.id) === friendUserId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
+      if (localFriend) {
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: String(fromUserId), content, type: 'text', timestamp: Date.now() });
         broadcast({ type: 'message.new', chatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content, timestamp: Date.now() });

@@ -7,6 +7,20 @@
 (function () {
   'use strict';
 
+  // ── 中继接管收尾 ────────────────────────────────────────────────
+  // 接管自己电脑时，localStorage.authToken 会被换成「那台电脑签发的 token」。
+  // 回到设备列表（本页）必须还原成云端 token，否则列表接口全 401。
+  try {
+    var _hubToken = localStorage.getItem('lingxi-hub-authToken');
+    if (_hubToken) {
+      localStorage.setItem('authToken', _hubToken);
+      localStorage.removeItem('lingxi-hub-authToken');
+    }
+    localStorage.removeItem('lingxi-relay-base');
+    localStorage.removeItem('lingxi-relay-key');
+    localStorage.removeItem('lingxi-relay-instance');
+  } catch (e) { }
+
   // ───────────────────────── i18n ─────────────────────────
   var DICT = {
     zh: {

@@ -37,6 +37,7 @@ import { join } from 'path';
 import { hostname, networkInterfaces } from 'node:os';
 import { randomBytes, randomUUID, timingSafeEqual } from 'crypto';
 import { signAccessToken } from '../auth/index.js';
+import { WebSocket as WsClient } from 'ws';
 import {
   AppDirectoryStore,
   ONLINE_WINDOW_MS,
@@ -56,6 +57,9 @@ export interface AppConnectDeps {
   /** Hub 侧使用：设备目录存储（SQLite）。桌面端可传 null，退化为内存模式。 */
   directory?: AppDirectoryStore | null;
 }
+
+/** 手机接管会话键有效期（12 小时）：一次性票据用完就废，会话键要撑着整场接管 */
+const RELAY_SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 
 interface TicketRecord {
   ticket: string;
@@ -127,10 +131,19 @@ export class AppConnectService {
   private linkFile: string;
   private link: LinkStore | null = null;
   private heartbeatTimer: any = null;
+  private relaySocket: any = null;
+  private relayGen = 0;
+  private lastRecoveryAt = 0;
+  private lastHeartbeatOk = 0;
+  private lastHeartbeatError = '';
   private pruneTimer: any = null;
   private relayTimer: any = null;
   /** Hub 侧：电脑 → Hub 的中继通道表 */
   private relayChannels: Map<string, RelayChannel> = new Map();
+  /** Hub 侧：手机 WebSocket ↔ 电脑 WebSocket 的桥接会话 */
+  private phoneBridges: Map<string, { ws: any; instanceId: string }> = new Map();
+  /** 电脑侧：本机 WS 连接表（Hub 桥接过来时使用） */
+  private localBridges: Map<string, any> = new Map();
   public instanceId: string;
 
   constructor(deps: AppConnectDeps) {
@@ -236,12 +249,12 @@ export class AppConnectService {
 
   // ---------- 目录读写（SQLite 优先，内存兜底） ----------
 
-  private getInstance(instanceId: string): AppInstanceRecord | null {
+  public getInstance(instanceId: string): AppInstanceRecord | null {
     if (this.directory) return this.directory.get(instanceId);
     return this.memInstances.get(instanceId) || null;
   }
 
-  private getSecret(instanceId: string): string | null {
+  public getSecret(instanceId: string): string | null {
     if (this.directory) return this.directory.getSecret(instanceId);
     return this.memSecrets.get(instanceId) || null;
   }
@@ -497,10 +510,29 @@ export class AppConnectService {
     }
     const name = info.displayName || info.email || 'User';
     const id = (info.id && !db.getUser(info.id)) ? info.id : ('ext-' + randomUUID().slice(0, 8));
-    u = db.createUser(id, name, info.email || '', info.email || '');
-    try {
-      if (raw && nid) raw.run('UPDATE users SET numeric_id = ?, display_name = ?, status = ? WHERE id = ?', [nid, name, 'online', id]);
-    } catch { /* ignore */ }
+    // users.numeric_id 是 NOT NULL：必须 INSERT 时就带上。
+    // 旧代码「先 createUser 再 UPDATE」在建表为 NOT NULL 的库上第一步就失败，
+    // 手机端表现为：点「接管」→ redeem 500 → 提示连不上电脑。
+    const nowMs = Date.now();
+    let created: any = null;
+    if (raw) {
+      for (let attempt = 0; attempt < 3 && !created; attempt += 1) {
+        const useNid = attempt === 0 ? nid : ((nid + attempt * 7919) % 900000000) + 100000000;
+        try {
+          raw.run('INSERT INTO users (id, numeric_id, display_name, email, username, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [id, useNid, name, info.email || '', info.email || '', 'online', nowMs]);
+          created = db.getUser(id);
+          if (created) nid = useNid;
+        } catch { created = null; }
+      }
+    }
+    if (!created) {
+      try { created = db.createUser(id, name, info.email || '', info.email || ''); } catch { created = null; }
+      try {
+        if (raw && nid) raw.run('UPDATE users SET numeric_id = ?, display_name = ?, status = ? WHERE id = ?', [nid, name, 'online', id]);
+      } catch { /* ignore */ }
+    }
+    u = created || db.getUser(id);
     try {
       const mgr = (globalThis as any).__agentManager;
       if (mgr && !db.getAgentByUserId(id)) mgr.register(id, 'AI助手', '你是一个友好实用的AI助手。', 'semi');
@@ -600,6 +632,85 @@ export class AppConnectService {
     } catch { return 0; }
   }
 
+  /** 心跳 401 自愈：云端目录里的实例记录/密钥失效（云端重启换库、目录被清、instanceId 变化）。
+   *  用本机保存的账号 token 重新登记，拿新密钥，重建反向中继。 */
+  async recoverInstance(hub: string): Promise<boolean> {
+    const acct = this.link?.accounts?.[0];
+    if (!acct || !this.link) return false;
+    const now = Date.now();
+    if (now - (this.lastRecoveryAt || 0) < 60_000) return false;
+    this.lastRecoveryAt = now;
+
+    const doRegister = async (tk: string) => {
+      const r = await fetch(hub + '/api/app/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tk },
+        body: JSON.stringify({
+          instanceId: this.instanceId,
+          name: this.deviceName(),
+          endpoint: this.publicEndpoint(),
+          platform: platformName(),
+          version: this.deps.version,
+          agentCount: this.safeAgentCount(),
+          relayCapable: true,
+        }),
+        signal: AbortSignal.timeout(8000),
+      });
+      let d: any = null;
+      try { d = await r.json(); } catch { d = null; }
+      return { status: r.status, d };
+    };
+
+    try {
+      let token = acct.accessToken || '';
+      let { status, d } = await doRegister(token);
+      if ((status === 401 || status === 403) && acct.refreshToken) {
+        const rr = await fetch(hub + '/api/auth/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: acct.refreshToken }),
+          signal: AbortSignal.timeout(8000),
+        });
+        let rd: any = null;
+        try { rd = await rr.json(); } catch { rd = null; }
+        const nt = rd?.accessToken || rd?.token;
+        if (rr.ok && nt) {
+          token = String(nt);
+          acct.accessToken = token;
+          if (rd?.refreshToken) acct.refreshToken = String(rd.refreshToken);
+          this.saveLink();
+          const again = await doRegister(token);
+          status = again.status;
+          d = again.d;
+        }
+      }
+      if (status !== 200 || !d?.ok || !d?.secret) {
+        this.lastHeartbeatError = 'reregister_' + status;
+        console.warn('[AppConnect] 重登记失败 · HTTP ' + status + ' · ' + (d?.error || ''));
+        return false;
+      }
+      this.link.secret = String(d.secret);
+      this.saveLink();
+      this.lastHeartbeatError = '';
+      console.log('[AppConnect] 实例密钥已重新登记 · ' + this.instanceId + ' · 重建反向中继');
+      this.restartRelay();
+      return true;
+    } catch (e: any) {
+      this.lastHeartbeatError = 'reregister_error:' + (e?.message || e);
+      return false;
+    }
+  }
+
+  /** 密钥变了：关旧通道，按新密钥重连（用代号防止旧闭包抢着重连） */
+  private restartRelay(): void {
+    this.relayGen = (this.relayGen || 0) + 1;
+    try { if (this.relayTimer) clearInterval(this.relayTimer); } catch { /* ignore */ }
+    this.relayTimer = null;
+    try { this.relaySocket?.close?.(); } catch { /* ignore */ }
+    this.relaySocket = null;
+    setTimeout(() => { try { this.startRelayClient(); } catch { /* ignore */ } }, 500);
+  }
+
   startHeartbeat(): void {
     if (this.heartbeatTimer) return;
     const tick = async () => {
@@ -625,6 +736,8 @@ export class AppConnectService {
           }),
           signal: AbortSignal.timeout(8000),
         });
+        if (r.ok) { this.lastHeartbeatOk = Date.now(); this.lastHeartbeatError = ''; }
+        if (r.status === 401) { try { await this.recoverInstance(hub); } catch { /* ignore */ } }
         if (r.status === 401 && acct.refreshToken) {
           // 尝试刷新
           const rr = await fetch(hub + '/api/auth/refresh', {
@@ -661,6 +774,9 @@ export class AppConnectService {
       relayConnected: this.relayChannels.has(this.instanceId),
       /** 本机是否已建立到 Hub 的反向中继（出站长连接） */
       relayClientActive: !!this.relayTimer,
+      lastHeartbeatOk: this.lastHeartbeatOk,
+      lastHeartbeatAgoMs: this.lastHeartbeatOk ? Date.now() - this.lastHeartbeatOk : -1,
+      lastHeartbeatError: this.lastHeartbeatError,
     };
   }
 
@@ -700,6 +816,10 @@ export class AppConnectService {
       let msg: any;
       try { msg = JSON.parse(String(raw)); } catch { return; }
       if (msg?.type === 'pong') { ch.lastPing = Date.now(); if (this.directory) this.directory.markRelayPing(instanceId); return; }
+      if (msg?.type === 'ws-ack' || msg?.type === 'ws-data' || msg?.type === 'ws-close') {
+        this.handleRelayBridgeFrame(msg);
+        return;
+      }
       if (msg?.type === 'response') {
         const p = ch.pending.get(String(msg.id));
         if (!p) return;
@@ -725,8 +845,124 @@ export class AppConnectService {
     socket.on('error', cleanup);
   }
 
+  // ---------- 反向中继：会话键 / 前缀代理 / WS 桥接 ----------
+
+  /**
+   * 手机接管时签发的会话键。
+   * 一次性票据只负责「打开界面」那一下；界面里的每一个接口、每一条聊天流
+   * 都要带着会话键穿过中继，所以有效期 12 小时且可重复使用。
+   */
+  public issueRelayKey(instanceId: string, userId: string): { key: string; exp: number } {
+    const key = randomBytes(24).toString('hex');
+    const exp = Date.now() + RELAY_SESSION_TTL_MS;
+    this.tickets.set(key, {
+      ticket: key,
+      instanceId,
+      exp,
+      used: false,
+      user: { id: userId, numericId: 0, email: '', displayName: '' },
+    });
+    return { key, exp };
+  }
+
+  public verifyRelayKey(key: string, instanceId: string): boolean {
+    if (!key || !instanceId) return false;
+    const rec = this.tickets.get(String(key));
+    if (!rec) return false;
+    if (rec.exp < Date.now()) return false;
+    return rec.instanceId === instanceId;
+  }
+
+  /** Hub 侧：手机 WebSocket → 电脑 WebSocket 的桥接（打字机回复必须走这条） */
+  public bridgePhoneWs(phoneWs: any, instanceId: string, key: string, targetPath: string): void {
+    if (!this.verifyRelayKey(key, instanceId)) {
+      try { phoneWs.close(4001, 'relay_key_invalid'); } catch { /* ignore */ }
+      return;
+    }
+    const ch = this.relayChannels.get(instanceId);
+    if (!ch) {
+      try { phoneWs.close(4009, 'instance_relay_offline'); } catch { /* ignore */ }
+      return;
+    }
+    const sid = randomUUID();
+    this.phoneBridges.set(sid, { ws: phoneWs, instanceId });
+    const sendFrame = (frame: any) => {
+      const c = this.relayChannels.get(instanceId);
+      if (!c) return false;
+      try { c.socket.send(JSON.stringify(frame)); return true; } catch { return false; }
+    };
+    if (!sendFrame({ type: 'ws-open', sid, path: targetPath })) {
+      this.phoneBridges.delete(sid);
+      try { phoneWs.close(4009, 'relay_send_failed'); } catch { /* ignore */ }
+      return;
+    }
+    phoneWs.on('message', (raw: any) => {
+      const data = typeof raw === 'string' ? raw : Buffer.from(raw).toString('utf8');
+      sendFrame({ type: 'ws-data', sid, data, binary: false });
+    });
+    const done = () => {
+      if (!this.phoneBridges.delete(sid)) return;
+      sendFrame({ type: 'ws-close', sid });
+    };
+    phoneWs.on('close', done);
+    phoneWs.on('error', done);
+  }
+
+  /** Hub 侧：电脑回传的桥接帧 → 手机 */
+  private handleRelayBridgeFrame(msg: any): void {
+    const sid = String(msg?.sid || '');
+    const b = this.phoneBridges.get(sid);
+    if (!b) return;
+    if (msg.type === 'ws-ack') {
+      if (msg.ok === false) {
+        this.phoneBridges.delete(sid);
+        try { b.ws.close(4014, String(msg.error || 'relay_ws_failed')); } catch { /* ignore */ }
+      }
+      return;
+    }
+    if (msg.type === 'ws-data') {
+      try { b.ws.send(String(msg.data ?? '')); } catch { /* ignore */ }
+      return;
+    }
+    if (msg.type === 'ws-close') {
+      this.phoneBridges.delete(sid);
+      try { b.ws.close(); } catch { /* ignore */ }
+    }
+  }
+
+  /** 电脑侧：Hub 要求开一条本机 WebSocket（手机聊天流） */
+  private openRelayBridge(msg: any): void {
+    const sid = String(msg?.sid || '');
+    const rawPath = String(msg?.path || '/ws');
+    const path = rawPath.startsWith('/') ? rawPath : '/' + rawPath;
+    const sendFrame = (frame: any) => {
+      const ws = this.relaySocket;
+      if (!ws) return;
+      try { ws.send(JSON.stringify(frame)); } catch { /* ignore */ }
+    };
+    try {
+      const conn = new WsClient('ws://127.0.0.1:' + this.deps.port + path, { handshakeTimeout: 15000 });
+      this.localBridges.set(sid, conn);
+      conn.on('open', () => sendFrame({ type: 'ws-ack', sid, ok: true }));
+      conn.on('message', (d: any) => {
+        const data = typeof d === 'string' ? d : Buffer.from(d).toString('utf8');
+        sendFrame({ type: 'ws-data', sid, data, binary: false });
+      });
+      conn.on('close', () => {
+        this.localBridges.delete(sid);
+        sendFrame({ type: 'ws-close', sid });
+      });
+      conn.on('error', (e: any) => {
+        this.localBridges.delete(sid);
+        sendFrame({ type: 'ws-ack', sid, ok: false, error: e?.message || 'local_ws_failed' });
+      });
+    } catch (e: any) {
+      sendFrame({ type: 'ws-ack', sid, ok: false, error: e?.message || 'local_ws_failed' });
+    }
+  }
+
   /** Hub 侧：通过中继通道把请求送到目标电脑 */
-  private relayRequest(instanceId: string, method: string, path: string, headers: any, body: any): Promise<any> {
+  private relayRequest(instanceId: string, method: string, path: string, headers: any, body: any, opts?: { keepAuth?: boolean }): Promise<any> {
     const ch = this.relayChannels.get(instanceId);
     if (!ch) return Promise.reject(new Error('relay_not_connected'));
     if (ch.pending.size >= MAX_RELAY_PENDING) return Promise.reject(new Error('relay_overloaded'));
@@ -744,7 +980,7 @@ export class AppConnectService {
           id,
           method,
           path,
-          headers: sanitizeRelayHeaders(headers),
+          headers: sanitizeRelayHeaders(headers, !!opts?.keepAuth),
           body: body ?? null,
         }));
       } catch (e: any) {
@@ -756,28 +992,32 @@ export class AppConnectService {
   }
 
   /** 电脑侧：主动出站连 Hub，建立中继通道 */
-  private startRelayClient(): void {
+  public startRelayClient(): void {
     if (this.relayTimer) return;
     const hub = this.hubUrl;
     if (!hub || !this.link?.secret) return;
     if (hub === this.publicEndpoint()) return; // 自己就是 Hub，不需要中继
 
     const wsUrl = hub.replace(/^http/i, 'ws') + '/api/app/relay?instanceId=' + encodeURIComponent(this.instanceId);
+    const gen = ++this.relayGen;
     let ws: any = null;
     let closed = false;
 
     const connect = () => {
-      if (closed) return;
+      if (closed || gen !== this.relayGen) return;
       try {
         const headers: any = {
           'X-Instance-Id': this.instanceId,
           'X-Instance-Secret': this.link?.secret || '',
           'Authorization': 'Bearer ' + (this.link?.accounts?.[0]?.accessToken || ''),
         };
-        // Node 18+ 内置 WebSocket；老版本回退到 ws 包
-        const WS = (globalThis as any).WebSocket;
-        if (!WS) { console.warn('[AppConnect] 当前 Node 不支持 WebSocket 客户端，跳过反向中继'); closed = true; return; }
-        ws = new WS(wsUrl, { headers });
+        // 【必须用 ws 包】Node 内置的 globalThis.WebSocket 不支持自定义握手头：
+        // 第二个参数只认 subprotocol，传 { headers } 会被静默丢弃 →
+        // 服务端拿不到实例密钥，握手被拒，客户端只能看到一个 close 1006。
+        // 这就是「手机显示电脑在线、一点接管就报错」的直接原因。
+        if (!WsClient) { console.warn('[AppConnect] 缺少 ws 包，无法建立反向中继'); closed = true; return; }
+        ws = new WsClient(wsUrl, { headers, handshakeTimeout: 15000 });
+        this.relaySocket = ws;
       } catch (e: any) {
         console.warn('[AppConnect] 反向中继连接失败:', e?.message || e);
         return;
@@ -789,6 +1029,20 @@ export class AppConnectService {
       ws.onmessage = async (ev: any) => {
         let msg: any;
         try { msg = JSON.parse(String(ev.data)); } catch { return; }
+        // WS 桥接帧：手机在 Hub 那边开 WebSocket，Hub 转给本机执行
+        if (msg?.type === 'ws-open') { this.openRelayBridge(msg); return; }
+        if (msg?.type === 'ws-data') {
+          const c = this.localBridges.get(String(msg.sid || ''));
+          try { c?.send(String(msg.data ?? '')); } catch { /* ignore */ }
+          return;
+        }
+        if (msg?.type === 'ws-close') {
+          const sid = String(msg.sid || '');
+          const c = this.localBridges.get(sid);
+          this.localBridges.delete(sid);
+          try { c?.close(); } catch { /* ignore */ }
+          return;
+        }
         if (msg?.type !== 'request') return;
         try {
           const data = await this.handleRelayRequest(msg);
@@ -798,7 +1052,10 @@ export class AppConnectService {
         }
       };
       ws.onclose = () => {
-        if (closed) return;
+        // 通道断了，本机所有桥接连接一起回收，避免泄漏
+        for (const [, c] of this.localBridges) { try { c?.close?.(); } catch { /* ignore */ } }
+        this.localBridges.clear();
+        if (closed || gen !== this.relayGen) return;
         console.warn('[AppConnect] 反向中继断开，5 秒后重连');
         setTimeout(connect, 5000);
       };
@@ -958,9 +1215,18 @@ export class AppConnectService {
         // 有中继通道 → 走 Hub 中继（公网可达）；否则直连 endpoint（局域网场景）
         const viaRelay = self.relayChannels.has(instanceId);
         const hubBase = self.publicEndpoint();
-        const connectUrl = viaRelay
-          ? hubBase + '/api/app/relay/proxy?instanceId=' + encodeURIComponent(instanceId) + '&ticket=' + encodeURIComponent(t.ticket)
-          : it.endpoint.replace(/\/+$/, '') + '/app/connect?ticket=' + encodeURIComponent(t.ticket) + '&hub=' + encodeURIComponent(hubBase);
+        let connectUrl: string;
+        let relayKey = '';
+        if (viaRelay) {
+          // 有中继通道：手机留在 Hub 上，所有请求经 /api/app/relay/x/<id>/ 转发到电脑
+          const rk = self.issueRelayKey(instanceId, String(req.user?.sub || req.user?.id || ''));
+          relayKey = rk.key;
+          connectUrl = hubBase + '/app/relay.html?instanceId=' + encodeURIComponent(instanceId)
+            + '&rt=' + encodeURIComponent(rk.key)
+            + '&t=' + encodeURIComponent(t.ticket);
+        } else {
+          connectUrl = it.endpoint.replace(/\/+$/, '') + '/app/connect?ticket=' + encodeURIComponent(t.ticket) + '&hub=' + encodeURIComponent(hubBase);
+        }
         res.json({
           ok: true,
           ticket: t.ticket,
@@ -968,6 +1234,7 @@ export class AppConnectService {
           instanceId,
           endpoint: it.endpoint,
           viaRelay,
+          relayKey,
           connectUrl,
         });
       } catch (e: any) {
@@ -1090,6 +1357,49 @@ export class AppConnectService {
       }
     });
 
+    // Hub → 电脑：前缀式反向代理。
+    // 手机接管后，界面仍然由 Hub 提供（同版本静态资源），但每一个 /api/ 请求
+    // 都改走 /api/app/relay/x/<instanceId>/api/... 转发到用户自己的电脑。
+    // 这样手机不需要公网 IP、不需要端口映射，电脑在 NAT 后面也能被操控。
+    app.all('/api/app/relay/x/:instanceId/*', async (req: any, res: any) => {
+      const instanceId = String(req.params.instanceId || '');
+      const key = String(req.query?.rt || req.headers['x-relay-key'] || '');
+      if (!self.verifyRelayKey(key, instanceId)) {
+        return res.status(401).json({ ok: false, error: 'relay_key_invalid_or_expired' });
+      }
+      const rest = String(req.params[0] || '');
+      const qIdx = String(req.originalUrl || '').indexOf('?');
+      let query = qIdx >= 0 ? String(req.originalUrl).slice(qIdx + 1) : '';
+      if (query) {
+        query = query.split('&').filter((p: string) => p && !/^rt(=|$)/.test(p)).join('&');
+      }
+      const target = '/' + rest + (query ? '?' + query : '');
+      try {
+        const body = ['GET', 'HEAD'].includes(req.method) ? null : req.body;
+        // keepAuth：转发用户自己的 token（电脑端签发的），否则每个接口都会 401
+        const out = await self.relayRequest(instanceId, req.method, target, req.headers, body, { keepAuth: true });
+        const headers = out?.headers || {};
+        const passthrough: any = {};
+        for (const k of ['content-type', 'cache-control', 'etag', 'last-modified', 'location']) {
+          if (headers[k]) passthrough[k] = headers[k];
+        }
+        if (passthrough['location']) {
+          const loc = String(passthrough['location']);
+          if (loc.startsWith('/')) {
+            passthrough['location'] = '/api/app/relay/x/' + encodeURIComponent(instanceId) + loc
+              + (loc.includes('?') ? '&' : '?') + 'rt=' + encodeURIComponent(key);
+          }
+        }
+        res.status(Number(out?.status || 502));
+        if (Object.keys(passthrough).length) res.set(passthrough);
+        res.send(out?.body ?? '');
+      } catch (e: any) {
+        const msg = String(e?.message || 'relay_failed');
+        const code = msg === 'relay_not_connected' ? 409 : msg === 'relay_timeout' ? 504 : 502;
+        res.status(code).json({ ok: false, error: msg });
+      }
+    });
+
     // 电脑端界面：查这台机器有没有绑定云端
     app.get('/api/app/link', self.deps.requireAuth, (_req: any, res: any) => {
       res.json({
@@ -1115,15 +1425,16 @@ export class AppConnectService {
 }
 
 /** 过滤中继转发的请求头：去掉 hop-by-hop 与敏感头 */
-function sanitizeRelayHeaders(headers: any): any {
+function sanitizeRelayHeaders(headers: any, keepAuth = false): any {
   const out: any = {};
   const blocked = new Set([
     'host', 'connection', 'keep-alive', 'transfer-encoding', 'upgrade',
     'proxy-authenticate', 'proxy-authorization', 'te', 'trailer',
-    'content-length', 'cookie', 'authorization', 'x-instance-secret',
+    'content-length', 'cookie', 'x-instance-secret',
   ]);
   try {
-    for (const [k, v] of Object.entries(headers || {})) {
+    if (!keepAuth) blocked.add('authorization');
+  for (const [k, v] of Object.entries(headers || {})) {
       const lk = String(k).toLowerCase();
       if (blocked.has(lk)) continue;
       if (typeof v === 'string' || typeof v === 'number') out[k] = v;

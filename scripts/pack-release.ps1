@@ -22,7 +22,7 @@ New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
 $excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2','stage')
 $excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_|^archive[_-]'  # v2.0.35: exclude archive_scratch_* junk (3.9MB screenshots)
-$excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
+$excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.err$|^e2e-|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
 
 # 只锟斤拷锟斤拷锟斤拷些 env 模锟斤拷锟斤拷锟斤拷锟斤拷锟斤拷锟?.env* 一锟缴帮拷锟斤拷
 $keptEnvNames = @('.env.example', '.env.template')

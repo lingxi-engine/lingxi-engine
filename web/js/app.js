@@ -40,7 +40,7 @@ function switchPanel(name) {
   document.querySelectorAll('.content-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + name));
   if (name === 'market') loadMarket();
   if (name === 'tools') loadTools();
-  if (name === 'social') loadSocial();
+  if (name === 'social') { if (typeof PLATFORM_SOCIAL_ON !== 'undefined' && !PLATFORM_SOCIAL_ON) return; loadSocial(); }
 }
 
 let marketTab = 'browse';
@@ -644,7 +644,7 @@ document.addEventListener('visibilitychange', function () {
   try { loadTaskMonitor().catch(function () {}); } catch (e) {}
 });
 
-// ── i18n 语言切换回调：刷新所有动态文本（状态栏 / 顶栏状。/ 登录弹窗。──
+// ── i18n 语言切换回调：刷新所有动态文本（状态栏 / 顶栏状态 / 登录弹窗）──
 window.onLanguageChange = function() {
   try {
     reapplyDynamicStatus();
@@ -1264,7 +1264,7 @@ function appendMessage(msg) {
   }
   
   // 消息操作菜单
-  const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑。/button></div>';
+  const actions = '<div class="msg-actions"><button onclick="copyMsg(this)" title="'+t('chat.copyTitle')+'">📋</button><button onclick="replyMsg(this)" title="'+t('chat.replyTitle')+'">↩️</button><button onclick="forwardMsg(this)" title="'+t('chat.forwardTitle')+'">📤</button><button onclick="deleteMsg(this)" title="'+t('common.delete')+'">🗑</button></div>';
   
   // v2.0.18: 渲染持久化推理过程（刷新后仍可见；双键兼容: 历史用 reasoning_content, 新数据用 reasoning）
   let _thinkBlock = '';
@@ -1563,7 +1563,7 @@ function appendStreamingMsg(msg) {
   el.classList.add('streaming');
   const displayName = senderId.replace(/^agent-|^user-/, '').charAt(0).toUpperCase() || '?';
   el.innerHTML = '<div class="msg-avatar ai">🤖</div>' +
-    '<div style="max-width:70%">' + _agentNameLine(senderId) + '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot" style="animation:blink 1s infinite;color:#4a9eff">。/span></div></div>' +
+    '<div style="max-width:70%">' + _agentNameLine(senderId) + '<div class="msg-bubble"><div class="msg-think" style="display:none;font-size:12px;color:#8b949e;font-style:italic;padding-bottom:6px;border-bottom:1px solid #30363d;margin-bottom:6px"></div><div class="msg-content"><span class="typing-dot" style="animation:blink 1s infinite;color:#4a9eff"></span></div></div>' +
     '<div class="msg-meta">' + new Date(msg.timestamp || Date.now()).toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}) + '</div></div>';
   container.appendChild(el);
   container.scrollTop = container.scrollHeight;
@@ -1734,7 +1734,7 @@ function updateCtxInfo() {
 function isChatGenerating(chatId) {
   return (generatingChats[chatId] || 0) > 0;
 }
-// 强制重置某聊天的生成状态（安全。/ 手动恢复。
+// 强制重置某聊天的生成状态（安全 / 手动恢复）
 function forceResetGenerating(chatId) {
   if (generatingChats[chatId]) {
     console.warn('[ForceReset] chatId=' + chatId + ' generating=' + generatingChats[chatId] + ' 。0');
@@ -1747,7 +1747,7 @@ function forceResetGenerating(chatId) {
     maybeFlushQueue(chatId);
   }
 }
-// 根据"当前聊天是否生成。/ 队列是否有消。刷新停止按钮和排队提。
+// 根据"当前聊天是否生成 / 队列是否有消息，刷新停止按钮和排队提示。
 function updateGenUI() {
   const stopBar = document.getElementById('stopBar');
   const queueBar = document.getElementById('queueBar');
@@ -2126,10 +2126,10 @@ async function searchUsers() {
     if (authToken) {
       data = await platformApi('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
       // v2.0.9: token 失效。01/ok:false）时清除。token 并回退本地免登录搜。
-      if (!data || data.ok === false) { authToken = null; localStorage.removeItem('authToken'); data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET'); }
+      if (!data || data.ok === false) { data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET'); }
       searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     } else {
-      // v2.0.9: 未登录也统一走免鉴权。/api/lan/search，避。/api/users 需要登录。
+      // v2.0.9: 未登录也统一走免鉴权 /api/lan/search，避免 /api/users 需要登录。
       data = await api('/api/lan/search?q=' + encodeURIComponent(q), 'GET');
       searchResults = (data.results || []).map(u => ({ id: String(u.numericId), displayName: u.displayName, numericId: u.numericId }));
     }
@@ -2168,7 +2168,7 @@ async function sendRequest(to) {
     let d;
     if (authToken) {
       d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
-      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' }); }
+      if (!d || d.ok === false) { d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' }); }
     } else {
       d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
     }
@@ -2187,7 +2187,7 @@ async function loadFriends() {
       d = await platformApi('/api/lan/friends', 'GET');
       // v2.0.11: platformApi 失败时回退到本。API
       if (!d || d.ok === false) {
-        authToken = null; localStorage.removeItem('authToken');
+        // 平台失败只回退本地接口，不清 token
         d = await api('/api/friends/list?userId=' + encodeURIComponent(clientId));
       }
     } else {
@@ -2219,7 +2219,7 @@ function renderFriends() {
       '</div>' +
       '<div style="display:flex;gap:4px;flex-shrink:0">' +
         '<button class="btn-sm" style="background:var(--accent);color:#fff;padding:4px 10px;font-size:11px" onclick="openChatFriend(\''+fid+'\',\''+esc(fname)+'\')" title="'+t('friends.sendMsg')+'">💬</button>' +
-        '<button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="confirmDeleteFriend(\''+fid+'\',\''+esc(fname)+'\')" title="'+t('friends.deleteFriend')+'">。/button>' +
+        '<button class="btn-sm" style="background:var(--bg3);color:var(--text3);padding:4px 8px;font-size:11px" onclick="confirmDeleteFriend(\''+fid+'\',\''+esc(fname)+'\')" title="'+t('friends.deleteFriend')+'">🗑</button>' +
       '</div></div>';
   }).join('');
 }
@@ -2244,12 +2244,14 @@ function confirmDeleteFriend(fid, fname) {
 async function deleteFriend(fid) {
   try {
     if (authToken) {
-      const d = await platformApi('/api/lan/friends/' + fid, 'DELETE');
-      // v2.0.11: platformApi 失败时回退本地 API
-      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE'); }
-      else if (d.error) { toast(d.error); return; }
+      let d = null;
+      try { d = await platformApi('/api/lan/remove-friend', 'POST', { friendId: fid }); } catch (_pe) { d = null; }
+      if (!d || d.ok === false) { try { d = await platformApi('/api/lan/friends/' + fid, 'DELETE'); } catch (_pe2) { d = null; } }
+      if (!d || d.ok === false) {
+        // 平台失败只回退本地删除，绝不清空 authToken（否则用户被莫名踢下线）
+        await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE');
+      } else if (d.error) { toast(d.error); return; }
     } else {
-      // v2.0.11: 本地 API 删除好友（后端用 DELETE /api/friends/:id?userId=xxx。
       const d = await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE');
       if (d.error) { toast(d.error); return; }
     }
@@ -2274,7 +2276,7 @@ async function loadRequests() {
       // v2.0.11: platformApi 失败。01/token无效/空响应）时回退到本。API
       // 修复：回退查询必须。lanMeId（本机真。DB 用户 ID），clientId 。friendships.to_user_id 不匹配会导致收不到请。
       if (!d || d.ok === false) {
-        authToken = null; localStorage.removeItem('authToken');
+        // 平台失败只回退本地接口，不清 token
         d = await api('/api/friends/requests?userId=' + encodeURIComponent(lanMeId || clientId));
       }
     } else {
@@ -2376,7 +2378,7 @@ async function respondReq(rid, action) {
     if (authToken) {
       d = await platformApi('/api/lan/friend-respond', 'POST', { requestId: rid, action });
       // v2.0.11: platformApi 失败时回退本地 API
-      if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); d = await api('/api/friends/respond', 'POST', { requestId: rid, action }); }
+      if (!d || d.ok === false) { d = await api('/api/friends/respond', 'POST', { requestId: rid, action }); }
       if (d.error) { toast(d.error); return; }
     } else {
       d = await api('/api/friends/respond', 'POST', { requestId: rid, action });
@@ -2409,7 +2411,7 @@ async function searchUser() {
     if (authToken) {
       const d = await platformApi('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
       // v2.0.9: token 失效时清除旧 token 并回退本地免登录搜。
-      const d2 = (!d || d.ok === false) ? await ((authToken = null, localStorage.removeItem('authToken')), api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET')) : d;
+      const d2 = (!d || d.ok === false) ? await (api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET')) : d;
       results = (d2.results || []).map(u => ({ numericId: u.numericId, displayName: u.displayName }));
     } else {
       const d = await api('/api/lan/search?q=' + encodeURIComponent(q.trim()), 'GET');
@@ -2484,7 +2486,7 @@ function showAgentPicker(chatId) {
     '<div style="padding:12px 16px;border-bottom:1px solid #333;font-size:14px;font-weight:600">🤖 选择AI加入团队（勾选，可多选）</div>' +
     '<div id="agentPickerList" style="flex:1;overflow-y:auto;padding:6px 0;min-height:120px"></div>' +
     '<div style="padding:10px 16px;border-top:1px solid #333;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-    '<button class="btn-sm" onclick="agentPickerAll(true)">全。/button>' +
+    '<button class="btn-sm" onclick="agentPickerAll(true)">全选</button>' +
     '<button class="btn-sm" onclick="agentPickerAll(false)">' + t('common.clear') + '</button>' +
     '<span id="agentPickerCount" style="flex:1;font-size:12px;color:#999"></span>' +
     '<button class="btn-sm btn-accept" onclick="agentPickerAdd()">确定添加</button>' +
@@ -2686,7 +2688,7 @@ async function loadAvailableMembers() {
     if (!rows.length) { box.innerHTML = '<div style="padding:6px;color:#555;font-size:11px">' + t('members.noneAvailable') + '</div>'; return; }
     box.innerHTML = rows.join('') +
       '<div style="display:flex;align-items:center;gap:6px;padding:8px 10px">' +
-      '<button class="btn-sm" onclick="availMemberAll(true)">全。/button>' +
+      '<button class="btn-sm" onclick="availMemberAll(true)">全选</button>' +
       '<button class="btn-sm" onclick="availMemberAll(false)">' + t('common.clear') + '</button>' +
       '<span id="availMemberCount" style="flex:1;font-size:11px;color:#999"></span>' +
       '<button class="btn-sm btn-accept" onclick="batchAddMembers()">批量添加</button></div>';
@@ -2818,7 +2820,7 @@ async function renameAgent(btn) {
   try {
     const r = await api('/api/agents/' + encodeURIComponent(id), 'PATCH', { displayName: name.trim() });
     if (r && r.ok) {
-      toast('。已改名：' + name.trim());
+      toast('✅ 已改名：' + name.trim());
       _agentInfoMap = null;
       _ensureAgentInfoMap();
       loadAvailableMembers();
@@ -2983,7 +2985,7 @@ async function loadModels() {
     if (models.length === 0 && d.providers) {
       models = d.providers.flatMap(p => (p.models||[]).map(m => ({id:m.id||m.name||m, provider:p.id, providerName:p.name})));
     }
-    // 也尝。/api/models 作为补充
+    // 也尝试 /api/models 作为补充
     if (models.length === 0) {
       try { const md = await api('/api/models'); if (md.models) models = md.models; } catch(e) {}
     }
@@ -3081,7 +3083,7 @@ function updateRouteTag() {
     // 同步设置面板里的下拉。
     const replySel = document.getElementById('replyModelSelect');
     if (replySel && reply) replySel.value = reply;
-    tag.textContent = '🔧' + toolName + ' 。💬' + replyName;
+    tag.textContent = '🔧' + toolName + ' → 💬' + replyName;
     tag.style.cssText = 'display:inline;background:#4ade8022;color:#4ade80;border:1px solid #4ade8044';
   } else {
     tag.style.display = 'none';
@@ -3132,16 +3134,16 @@ async function loadProviders() {
             '<div>' +
               '<span style="font-size:10px;color:' + (p.enabled?'var(--green)':'var(--text3)') + ';margin-right:8px">' + (p.enabled?t('settings.enabled'):t('settings.disabled')) + '</span>' +
               '<button onclick="toggleEditKey(\''+esc(p.id)+'\')" title="'+t('settings.editKey')+'" style="background:none;border:1px solid var(--accent);color:var(--accent);border-radius:4px;cursor:pointer;font-size:11px;padding:2px 8px;line-height:1;margin-right:4px">🔑</button>' +
-              '<button onclick="deleteProvider(\''+esc(p.id)+'\')" title="'+t('settings.deleteProviderTitle')+'" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-size:11px;padding:2px 8px;line-height:1">。/button>' +
+              '<button onclick="deleteProvider(\''+esc(p.id)+'\')" title="'+t('settings.deleteProviderTitle')+'" style="background:none;border:1px solid var(--red);color:var(--red);border-radius:4px;cursor:pointer;font-size:11px;padding:2px 8px;line-height:1">🗑</button>' +
             '</div>' +
           '</div>' +
           (p.models||[]).map(m => '<span class="model-tag" style="display:inline-flex;align-items:center;background:var(--bg2);border:1px solid var(--border);color:var(--text);padding:3px 4px 3px 8px;border-radius:3px;font-size:11px;margin:2px">' + esc(m) + '<button onclick="removeModel(\''+esc(p.id)+'\',\''+esc(m)+'\')" title="'+t('settings.removeModel')+'" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;line-height:1;margin-left:4px;padding:0 4px" class="model-del-btn">×</button></span>').join('') +
-          '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" title="添加模型" style="display:inline-flex;align-items:center;background:var(--bg2);border:1px dashed var(--accent);color:var(--accent);padding:3px 8px;border-radius:3px;font-size:11px;margin:2px;cursor:pointer">。模型</button>' +
+          '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" title="添加模型" style="display:inline-flex;align-items:center;background:var(--bg2);border:1px dashed var(--accent);color:var(--accent);padding:3px 8px;border-radius:3px;font-size:11px;margin:2px;cursor:pointer">＋ 添加模型</button>' +
           '<div id="addModelBox-' + esc(p.id) + '" style="display:none;margin-top:6px">' +
             '<div style="display:flex;gap:4px;align-items:center">' +
               '<input id="addModelInput-' + esc(p.id) + '" placeholder="输入模型名称，逗号分隔多个" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px">' +
               '<button onclick="addModelToProvider(\''+esc(p.id)+'\')" class="btn" style="font-size:11px;padding:4px 10px">添加</button>' +
-              '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">。/button>' +
+              '<button onclick="toggleAddModel(\''+esc(p.id)+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">＋</button>' +
             '</div>' +
             '<div id="addModelMsg-' + esc(p.id) + '" style="font-size:10px;margin-top:4px;min-height:14px"></div>' +
           '</div>' +
@@ -3150,7 +3152,7 @@ async function loadProviders() {
             '<div style="display:flex;gap:4px;align-items:center">' +
               '<input type="password" id="keyInput-' + esc(p.id) + '" placeholder="'+t('settings.newKeyPh')+'" style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:11px">' +
               '<button onclick="saveProviderKey(\''+esc(p.id)+'\')" class="btn" style="font-size:11px;padding:4px 10px">' + t('common.save') + '</button>' +
-              '<button onclick="toggleEditKey(\''+esc(p.id)+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">。/button>' +
+              '<button onclick="toggleEditKey(\''+esc(p.id)+'\')" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px">🔑</button>' +
             '</div>' +
             '<div id="keyMsg-' + esc(p.id) + '" style="font-size:10px;margin-top:4px;min-height:14px"></div>' +
           '</div>' +
@@ -3268,7 +3270,7 @@ async function addModelToProvider(id) {
   var modelsStr = inp.value.trim();
   if (!modelsStr) { if (msgEl) { msgEl.textContent = '请输入模型名'; msgEl.style.color = '#ef4444'; } return; }
   var newModels = modelsStr.split(',').map(function(x){return x.trim()}).filter(Boolean);
-  if (msgEl) { msgEl.textContent = '添加。..'; msgEl.style.color = '#faad14'; }
+  if (msgEl) { msgEl.textContent = '添加中...'; msgEl.style.color = '#faad14'; }
   try {
     // 先获取当。provider 信息（拿到已。models。
     var provData = await api('/api/providers');
@@ -3538,8 +3540,13 @@ let FEATURES = {};  // v2.0.35: 后端能力开关（market/credits/wallet/hire/
 function applyFeatureFlags(f) {
   FEATURES = f || {};
   PLATFORM_SOCIAL_ON = !!f.platform;
+  // v2.0.37: 按开关双向切换——以前只隐藏不显示，而入口在 HTML 里写死 display:none，
+  // 导致 platform/market 打开后入口仍然永远看不见。
+  document.querySelectorAll('[data-feature]').forEach(function (el) {
+    var key = el.getAttribute('data-feature');
+    el.style.display = (FEATURES && FEATURES[key]) ? '' : 'none';
+  });
   if (!PLATFORM_SOCIAL_ON) {
-    document.querySelectorAll('[data-feature="platform"]').forEach(function (el) { el.style.display = 'none'; });
     var fp = document.getElementById('friendPanel');
     if (fp) fp.style.display = 'none';
     var lp = document.getElementById('lanPanel');
@@ -4035,7 +4042,7 @@ async function loadProfile() {
       return;
     }
     const userId = u.id || u.sub || '';
-    // ── 组装资料数据：本。/api/profile 优先，云账号回退云平。──
+    // ── 组装资料数据：本机 /api/profile 优先，云账号回退云平台──
     let name = u.display_name || u.username || t('profile.defaultUser'), idShow = userId, credits = 0, rating = t('common.none'), tokens = 0, calls = 0, createdAt = '-', status = t('profile.online'), ratingsHtml = '';
     let pr = null;
     if (!fromCloud) {
@@ -4064,7 +4071,7 @@ async function loadProfile() {
       }
     } else {
       // 云账号（本地无此用户）→ 从云平台拉取完整资料
-      // 注意：云平台 /api/user/profile 。/api/user/:id 路由遮蔽(。04)，须。/api/auth/me
+      // 注意：云平台 /api/user/profile （/api/user/:id 路由遮蔽(404)，须用 /api/auth/me
       let cu = u;
       try {
         const cpr = await platformApi('/api/user/me', 'GET');
@@ -4622,7 +4629,7 @@ function renderUsageTimeline(items, keyField, title) {
     return '<div title="' + esc(label) + '" style="flex:1;min-width:2px;height:' + h + 'px;background:' + color + ';border-radius:2px 2px 0 0"></div>';
   }).join('');
   var total = items.reduce(function(a, i){ return a + i.totalTokens; }, 0);
-  return '<div style="margin-top:8px"><b>' + title + '</b> <span style="color:var(--text3);font-size:10px">。' + total.toLocaleString() + ' tokens</span>' +
+  return '<div style="margin-top:8px"><b>' + title + '</b> <span style="color:var(--text3);font-size:10px">共 ' + total.toLocaleString() + ' tokens</span>' +
     '<div style="display:flex;align-items:flex-end;gap:2px;height:60px;padding:6px 4px 2px;background:rgba(0,0,0,.25);border-radius:6px;margin-top:4px">' + bars + '</div></div>';
 }
 async function loadUsage() {
@@ -4682,10 +4689,10 @@ async function loadGoals() {
     el.innerHTML = goals.map(g => {
       const acts = [];
       if (g.status === 'pending') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'in_progress\')" title="' + t('admin.goalStart') + '" style="cursor:pointer;font-size:16px">▶️</a>');
-      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">。/a>');
+      if (g.status !== 'done' && g.status !== 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">✅</a>');
       if (g.status === 'done' || g.status === 'cancelled') acts.push('<a onclick="setGoalStatus(\'' + g.id + '\',\'pending\')" title="' + t('admin.goalRestore') + '" style="cursor:pointer;font-size:16px">↩️</a>');
-      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">。/a>');
-      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑。/a>');
+      acts.push('<a onclick="askAIAboutGoal(\'' + g.id + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">🤖</a>');
+      acts.push('<a onclick="removeGoal(\'' + g.id + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑</a>');
       const style = g.status === 'done' ? 'text-decoration:line-through;color:var(--text3)' : (g.status === 'cancelled' ? 'color:var(--text3)' : '');
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3)">' + esc(g.acceptanceCriteria) + '</div>' : '';
       return '<div style="padding:4px 0;border-bottom:1px solid var(--border)">' +
@@ -4857,7 +4864,7 @@ async function adminCron() {
       const expr = j.schedule?.expr || j.schedule || '-';
       const next = j.nextRun ? new Date(j.nextRun).toLocaleString() : '-';
       return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:12px">' +
-        '。<b>' + esc(name) + '</b>' +
+        '• <b>' + esc(name) + '</b>' +
         ' <span style="color:var(--text3)">' + esc(String(expr)) + '</span>' +
         ' <span style="color:var(--text3);font-size:10px">' + t('admin.nextRunShort', {time: next}) + '</span>' +
         '<span style="float:right">' +
@@ -5027,6 +5034,7 @@ let lanMeId = null;              // 真实登录用户 id（user-xxxx。
 function lanMyId() { return lanMeId || clientId; }
 
 async function loadSocial() {
+  if (typeof PLATFORM_SOCIAL_ON !== 'undefined' && !PLATFORM_SOCIAL_ON) return;
   // 解析真实登录用户 id（从云平台获取，引擎 JWT_SECRET 与平台不同，相对路径会验签失败）
   if (!lanMeId && authToken) {
     try {
@@ -5078,7 +5086,7 @@ function lanSearch() {
     if (authToken) {
       platformApi(url, 'GET').then(d => {
         // v2.0.9: token 失效时清除旧 token 并回退本地免登录搜。
-        if (!d || d.ok === false) { authToken = null; localStorage.removeItem('authToken'); return api(url, 'GET'); }
+        if (!d || d.ok === false) { return api(url, 'GET'); }
         return d;
       }).then(d => lanRenderSearch((d && d.results) || []));
     } else {
@@ -5093,7 +5101,7 @@ function lanRenderPeers(peers) {
   let html = '';
   for (const p of peers) {
     html += '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">';
-    html += '<div style="font-size:12px;color:var(--accent);margin-bottom:4px">🖥。' + esc(p.lanIp) + ':' + p.port + ' <span style="color:var(--text3);font-size:10px">v' + esc(p.version) + '</span></div>';
+    html += '<div style="font-size:12px;color:var(--accent);margin-bottom:4px">🖥️ ' + esc(p.lanIp) + ':' + p.port + ' <span style="color:var(--text3);font-size:10px">v' + esc(p.version) + '</span></div>';
     for (const u of (p.users || [])) {
       html += '<div style="display:flex;align-items:center;justify-content:space-between;padding:3px 0;font-size:12px">' +
         '<span>👤 ' + esc(u.displayName) + ' <span style="color:var(--text3)">#' + u.numericId + '</span></span>' +
@@ -5194,10 +5202,10 @@ function showLanMemberPicker(name) {
     '<div style="padding:12px 16px;border-bottom:1px solid #333;font-size:14px;font-weight:600">👥 选择群成员（勾选，可多选）</div>' +
     '<div id="lanPickerList" style="flex:1;overflow-y:auto;padding:6px 0;min-height:120px"></div>' +
     '<div style="padding:10px 16px;border-top:1px solid #333;display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-    '<button class="btn-sm" onclick="lanPickerAll(true)">全。/button>' +
+    '<button class="btn-sm" onclick="lanPickerAll(true)">全选</button>' +
     '<button class="btn-sm" onclick="lanPickerAll(false)">' + t('common.clear') + '</button>' +
     '<span id="lanPickerCount" style="flex:1;font-size:12px;color:#999"></span>' +
-    '<button class="btn-sm btn-accept" onclick="lanPickerCreate()">。创建群组</button>' +
+    '<button class="btn-sm btn-accept" onclick="lanPickerCreate()">＋ 创建群组</button>' +
     '<button class="btn-sm" onclick="hideLanPicker()">' + t('common.cancel') + '</button>' +
     '</div></div>';
   wrap.addEventListener('click', function(e) { if (e.target === wrap) hideLanPicker(); });
@@ -5220,7 +5228,7 @@ async function loadLanPickerList() {
       for (var ui = 0; ui < (p.users || []).length; ui++) {
         var u = p.users[ui];
         if (String(u.numericId) === myId) continue;
-        rows.push({ numericId: u.numericId, label: '🖥。' + esc(p.lanIp) + ':' + p.port + ' · ' + esc(u.displayName) + ' #' + u.numericId });
+        rows.push({ numericId: u.numericId, label: '🖥️ ' + esc(p.lanIp) + ':' + p.port + ' · ' + esc(u.displayName) + ' #' + u.numericId });
       }
     }
   } catch(e) {}
@@ -5474,7 +5482,7 @@ function handleLanMessage(msg) {
     if (lanCurrentGroup && msg.chatId === lanCurrentGroup.agentChatId) {
       toast('⚠' + (msg.message || t('social.orchestrateFail')));
       const c = document.getElementById('lanAgentMessages');
-      if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--red);margin:4px 0">。' + esc(msg.message || t('social.orchestrateFailShort')) + '</div>'); c.scrollTop = c.scrollHeight; }
+      if (c) { const empty = c.querySelector('.empty'); if (empty) empty.remove(); c.insertAdjacentHTML('beforeend', '<div style="text-align:center;font-size:11px;color:var(--red);margin:4px 0">⚠ ' + esc(msg.message || t('social.orchestrateFailShort')) + '</div>'); c.scrollTop = c.scrollHeight; }
     }
   }
 }
@@ -5682,7 +5690,7 @@ async function loadRightGoals() {
   try {
     const project = currentChat ? ('project-' + currentChat) : 'default';
     const d = await api('/api/goals?project=' + encodeURIComponent(project));
-    if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">。' + esc(_errMsg(d, t('err.loadFail'))) + '</span>'; return; }
+    if (!d.ok) { el.innerHTML = '<span style="color:var(--red)">⚠ ' + esc(_errMsg(d, t('err.loadFail'))) + '</span>'; return; }
     const goals = d.goals || [];
     if (!goals.length) {
       el.innerHTML = '<span style="color:var(--text3)">' + t('right.noGoals') + '</span>';
@@ -5700,10 +5708,10 @@ async function loadRightGoals() {
       const gid = esc(g.id);
       let acts = '';
       if (st === 'pending') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'in_progress\')" title="' + t('admin.goalStart') + '" style="cursor:pointer;font-size:16px">▶️</a> ';
-      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">。/a> ';
+      if (st !== 'done' && st !== 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'done\')" title="' + t('admin.goalDone') + '" style="cursor:pointer;font-size:16px">✅</a> ';
       if (st === 'done' || st === 'cancelled') acts += '<a onclick="setRightGoalStatus(\'' + gid + '\',\'pending\')" title="' + t('admin.goalRestore') + '" style="cursor:pointer;font-size:16px">↩️</a> ';
-      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">。/a> ';
-      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑。/a>';
+      acts += '<a onclick="askAIAboutGoal(\'' + gid + '\',\'' + esc(g.title).replace(/'/g, "\\'") + '\')" title="' + t('admin.aiAskTitle') + '" style="cursor:pointer;font-size:16px">🤖</a> ';
+      acts += '<a onclick="deleteRightGoal(\'' + gid + '\')" title="' + t('common.delete') + '" style="cursor:pointer;font-size:16px">🗑</a>';
       const criteria = g.acceptanceCriteria ? '<div style="font-size:10px;color:var(--text3);margin-top:3px">' + esc(g.acceptanceCriteria) + '</div>' : '';
       const barColor = st === 'done' ? 'var(--green)' : 'var(--accent)';
       const barWidth = st === 'done' ? 100 : (st === 'in_progress' ? 50 : 0);
@@ -5717,7 +5725,7 @@ async function loadRightGoals() {
         criteria + '</div>';
     }).join('');
   } catch(e) {
-    el.innerHTML = '<span style="color:var(--red)">。' + esc(e.message || t('err.networkError')) + '</span>';
+    el.innerHTML = '<span style="color:var(--red)">⚠ ' + esc(e.message || t('err.networkError')) + '</span>';
   }
 }
 async function addRightGoal() {
@@ -5763,7 +5771,7 @@ async function loadLogBody() {
     }).join('');
     el.scrollTop = el.scrollHeight;
   } catch(e) {
-    el.innerHTML = '<div class="log-line"><span style="color:var(--red)">。' + esc(e.message || '') + '</span></div>';
+    el.innerHTML = '<div class="log-line"><span style="color:var(--red)">⚠ ' + esc(e.message || '') + '</span></div>';
   }
 }
 var _autoLogTimer = null;
@@ -5775,12 +5783,12 @@ function toggleAutoLog() {
   } else {
     loadLogBody();
     _autoLogTimer = setInterval(loadLogBody, 3000);
-    toast('自动刷新已开。· 3s');
+    toast('自动刷新已开启 · 3s');
   }
 }
 function clearLogBody() {
   var el = document.getElementById('logBody');
-  if (el) el.innerHTML = '<div class="log-line"><span class="info">日志已清。/span></div>';
+  if (el) el.innerHTML = '<div class="log-line"><span class="info">日志已清空</span></div>';
 }
 
 // ── 子任务面板（右侧。SubAgents）──
@@ -5796,7 +5804,7 @@ function loadSubAgents(){
       return '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:8px">'+
         '<div style="font-weight:600;font-size:12px">'+st+' '+esc((t.taskName||'').slice(0,30))+'</div>'+
         '<div style="font-size:11px;color:var(--text3);margin:2px 0">目标: '+esc((t.objective||'').slice(0,100))+'</div>'+
-        '<div style="font-size:11px;color:'+stc+'">状。 '+t.status+(t.model?' · '+esc(t.model):'')+'</div>'+
+        '<div style="font-size:11px;color:'+stc+'">状态 '+t.status+(t.model?' · '+esc(t.model):'')+'</div>'+
         (t.result?'<div style="font-size:11px;color:var(--text3);margin-top:4px;word-break:break-all">'+esc(t.result.slice(0,300))+'</div>':'')+
         (t.error?'<div style="font-size:11px;color:#c62828;margin-top:2px">'+esc(t.error)+'</div>':'')+
         '</div>';
