@@ -1,7 +1,7 @@
 {
-    "version":  "2.0.36",
-    "commit":  "819d91e",
-    "buildTime":  "2026-10-29T14:54:31.1672566Z",
+    "version":  "2.0.37",
+    "commit":  "6674633",
+    "buildTime":  "2026-10-30T14:21:25.7462905Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
                        "手机 App 通过云端中继接管 NAT 后的电脑：握手补上真鉴权与通道挂载",
