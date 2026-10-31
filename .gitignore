@@ -357,3 +357,11 @@ data-verify/
 data-platform/
 *.bak_*
 *.bak-*
+*.ps1 
+*.cjs 
+_data_*/ 
+_tmp_*/ 
+_release-*/ 
+data-e2e*/ 
+deploy/ 
+*.bak* 
