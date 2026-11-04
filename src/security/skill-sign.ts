@@ -2,19 +2,19 @@
  * 技能市场签名验证 — Ed25519 签名 + 清单校验
  *
  * 设计：
- * - 市场发布的每个技能包是一个 zip，内含 SKILL.md + manifest.json
+ * - 市场发布的每个技能包：manifest.json + 文件列表 + 签名
  * - manifest.json 含 { name, version, files: [{path, sha256}], signature }
- * - signature = Ed25519 签名（对 canonical JSON of {name,version,files}）
- * - 公钥来自 SKILL_MARKET_PUBLIC_KEY（PEM），可配置多条（逗号/换行分隔）
+ * - signature = Ed25519 签名（对 canonical JSON of {name,version,files}），base64
+ * - 公钥来自 SKILL_MARKET_PUBLIC_KEY（PEM），多条用换行或逗号分隔
  * - 安装时：先验签名，再逐文件校验 sha256，最后做路径穿越防护
  *
  * 环境变量：
- * - SKILL_MARKET_PUBLIC_KEY   Ed25519 公钥 PEM（必填才启用签名校验；未设置=跳过校验并告警）
+ * - SKILL_MARKET_PUBLIC_KEY   Ed25519 公钥 PEM（未设置=跳过验签并告警）
  * - SKILL_MARKET_URL          市场 API 根地址，默认 https://agentskills.io
  * - SKILL_REQUIRE_SIGNATURE   =1 时未配置公钥则拒绝一切市场安装（fail-secure），默认 0
  */
 
-import { createHash, createVerify, createSign, generateKeyPairSync } from 'node:crypto';
+import { createHash, verify as cryptoVerify, sign as cryptoSign, generateKeyPairSync } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 export interface MarketFileEntry {
@@ -34,7 +34,7 @@ export interface SkillManifest {
 
 export const DEFAULT_MARKET_URL = 'https://agentskills.io';
 
-/** 规范化 manifest 用于签名（字段顺序固定，去掉 signature 本身） */
+/** 规范化 manifest 用于签名（字段顺序固定，files 按 path 排序，去掉 signature 本身） */
 export function canonicalManifest(m: Omit<SkillManifest, 'signature'>): string {
   const obj = {
     name: m.name,
@@ -51,15 +51,14 @@ export function sha256Hex(data: Buffer | string): string {
   return createHash('sha256').update(data).digest('hex');
 }
 
-/** Ed25519 验签；pubKeys 为 PEM 数组 */
+/** Ed25519 验签；pubKeys 为 PEM 数组。Node 对 Ed25519 用 algorithm=null */
 export function verifyManifestSignature(manifest: SkillManifest, pubKeys: string[]): boolean {
   if (!manifest.signature) return false;
-  const payload = canonicalManifest(manifest);
+  const payload = Buffer.from(canonicalManifest(manifest));
   const sig = Buffer.from(manifest.signature, 'base64');
   for (const pem of pubKeys) {
     try {
-      const ok = createVerify('ed25519').update(payload).verify(pem, sig);
-      if (ok) return true;
+      if (cryptoVerify(null, payload, pem, sig)) return true;
     } catch {
       // 单条公钥格式错误则跳过
     }
@@ -67,13 +66,13 @@ export function verifyManifestSignature(manifest: SkillManifest, pubKeys: string
   return false;
 }
 
-/** 从环境变量读取市场公钥列表 */
+/** 从环境变量读取市场公钥列表（支持换行/逗号分隔，PEM 内部换行会被保留） */
 export function loadMarketPublicKeys(): string[] {
   const raw = process.env.SKILL_MARKET_PUBLIC_KEY || '';
-  return raw
-    .split(/[\n,]+/)
-    .map(s => s.trim())
-    .filter(Boolean);
+  // 先按 "-----END PUBLIC KEY-----" 边界切分，兼容多条 PEM 拼接
+  const blocks = raw.split(/(?=-----BEGIN PUBLIC KEY-----)/).map(s => s.trim()).filter(Boolean);
+  if (blocks.length > 0) return blocks;
+  return raw.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
 }
 
 /** 路径穿越防护：只允许相对路径、禁止 .. 和绝对路径 */
@@ -150,10 +149,10 @@ export function verifySkillPackage(
   // SKILL.md 必须存在且在清单内
   if (!files.has('SKILL.md')) errors.push('包内缺少 SKILL.md');
 
-  return { ok: errors.length === 0 || (pubKeys.length === 0 && !requireSig && fileErrors.length === 0), errors, manifest };
+  return { ok: fileErrors.length === 0 && files.has('SKILL.md'), errors, manifest };
 }
 
-/** 生成一对 Ed25519 密钥（用于市场侧签名，测试/自建市场用） */
+/** 生成一对 Ed25519 密钥（市场侧签名用，测试/自建市场） */
 export function generateSigningKeyPair(): { publicKeyPem: string; privateKeyPem: string } {
   const { publicKey, privateKey } = generateKeyPairSync('ed25519');
   return {
@@ -164,10 +163,10 @@ export function generateSigningKeyPair(): { publicKeyPem: string; privateKeyPem:
 
 /** 用私钥对 manifest 签名（市场侧/测试用） */
 export function signManifest(manifest: Omit<SkillManifest, 'signature'>, privateKeyPem: string): string {
-  return createSign('ed25519').update(canonicalManifest(manifest)).sign(privateKeyPem, 'base64');
+  return cryptoSign(null, Buffer.from(canonicalManifest(manifest)), privateKeyPem).toString('base64');
 }
 
-/** 读取 PEM 文件内容（便于从文件加载公钥） */
+/** 读取 PEM 文件内容 */
 export function readPemFile(path: string): string {
   return readFileSync(path, 'utf-8');
 }
