@@ -1,37 +1,30 @@
 {
-  "id": "/",
-  "name": "灵犀引擎 - AI 智能体平台",
+  "id": "/app/",
+  "name": "灵犀 · LingXi",
   "short_name": "灵犀",
-  "description": "AI-native 即时通讯 + 个人 Agent 平台，本地运行，隐私安全",
-  "start_url": "/",
-  "scope": "/",
+  "description": "登录账号即可操控电脑或云端的灵犀引擎（简体中文 / 繁體中文 / English）",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
-  "display_override": ["standalone", "minimal-ui"],
-  "background_color": "#0d1117",
-  "theme_color": "#0d1117",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "background_color": "#0b0f14",
+  "theme_color": "#0b0f14",
   "orientation": "portrait-primary",
-  "lang": "zh",
+  "lang": "zh-CN",
   "dir": "ltr",
   "categories": ["productivity", "utilities"],
   "icons": [
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "maskable"
-    }
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "shortcuts": [
     {
-      "name": "新建对话",
-      "url": "/?action=new-chat",
-      "icons": [{ "src": "/icon.svg", "sizes": "any" }]
+      "name": "我的灵犀",
+      "short_name": "设备",
+      "url": "/app/",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }

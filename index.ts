@@ -92,7 +92,7 @@ import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
 import { AgentManager } from './src/agents/manager.js';
 import { handleWSMessage, wsSubscriptions, processUserMessage, setSubAgentManagerForWS } from './src/core/ws-handler.js';
-import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, type PeerMessage } from './src/core/instance-mesh.js';
+import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, getP2PStats, p2pConnect, isP2PConnected, initP2P, bootstrapP2P, type PeerMessage } from './src/core/instance-mesh.js';
 import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
 import { verifyLanRequest } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
@@ -126,6 +126,8 @@ import { HookManager, type HookEvent } from './src/core/hooks.js';
 import { InboxManager, type InboxItem, type InboxType } from './src/core/inbox.js';
 import { ChannelManager } from './src/channels/manager.js';
 import { SkillManager } from './src/skills/skill-manager.js';
+import { SecureSkillMarket } from './src/skills/skill-market-secure.js';
+import { getIdentityPublicKeyB64 } from './src/security/e2ee.js';
 import { TTSManager } from './src/voice/tts.js';
 import { STTManager } from './src/voice/stt.js';
 import { CustomProviderManager, INFERENCE_BACKENDS } from './src/ai/custom-providers.js';
@@ -2992,6 +2994,21 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       res.json({ ok: true });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
+  // 鈹€鈹€ 鎶€鑳藉競鍦猴紙Ed25519 绛惧悕鏍￠獙鐗堬紝admin only锛夆攢鈹€
+  const secureMarket = new SecureSkillMarket(skillsDir, (n: string) => skillManager.list().some(s => s.id === n));
+  app.get("/api/skills/market", adminAuth, async (_req, res) => {
+    try { res.json({ ok: true, items: await secureMarket.browse() }); }
+    catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+  app.post("/api/skills/market/install", adminAuth, async (req, res) => {
+    try {
+      const { name } = req.body;
+      if (!name) return res.status(400).json({ error: "name 蹇呭～" });
+      const result = await secureMarket.install(String(name));
+      if (result.ok) skillManager.scanLocal();
+      res.status(result.ok ? 200 : 422).json(result);
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
 
 
 
@@ -3772,6 +3789,19 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const agentIds = manager.list().map((a: any) => a.id);
       startInstanceMesh(meshPlatformUrl, meshToken, port, agentIds, pkgVersion);
       console.log(`[Mesh] 已启用，平台: ${meshPlatformUrl}`);
+      // WebRTC P2P 直连层：信令走平台 relay，DataChannel 打通后 peer 消息自动直走 P2P（MESH_P2P=0 关闭，缺 node-datachannel 自动降级 relay）
+      (async () => {
+        try {
+          const stun = (process.env.P2P_STUN || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+          const ok = await initP2P({
+            getPublicKey: () => { try { return getIdentityPublicKeyB64(getDB()); } catch { return ''; } },
+            enabled: (process.env.MESH_P2P || '1') !== '0',
+            stunServers: stun.length ? stun : undefined,
+          });
+          if (ok) { bootstrapP2P(); console.log('[Mesh] P2P 直连层已启用'); }
+          else console.log('[Mesh] P2P 不可用（MESH_P2P=0 或 node-datachannel 缺失），保持 relay 模式');
+        } catch (e: any) { console.warn('[Mesh] P2P 初始化失败，保持 relay 模式:', e?.message || e); }
+      })();
       // 自动把本机所有带 numeric_id 的用户注册到平台，供其他实例搜索加好友/聊天
       try {
         const allUsers = db.listUsers() as any[];
@@ -3791,7 +3821,15 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     // ── Mesh REST API ──
     app.get('/api/mesh/status', requireAuth, (_req, res) => {
-      res.json({ ok: true, ...getMeshInfo() });
+      res.json({ ok: true, ...getMeshInfo(), p2p: getP2PStats() });
+    });
+
+    // P2P 直连：主动向某实例打通 WebRTC DataChannel（打通后 peer 消息自动改走 P2P，平台仅作信令+兜底）
+    app.post('/api/mesh/p2p-connect', requireAuth, async (req, res) => {
+      const { toInstance } = req.body || {};
+      if (!toInstance) return res.status(400).json({ ok: false, error: '需要 toInstance' });
+      const ok = await p2pConnect(String(toInstance));
+      res.json({ ok, connected: isP2PConnected(String(toInstance)), p2p: getP2PStats() });
     });
 
     // 在线实例列表（代理平台 /api/instances/list）

@@ -28,7 +28,6 @@ type(scope): 简短描述
 feat(router): 支持推理过程流式展示
 fix(auth): 修复 refresh token 比对逻辑
 docs(readme): 补充 API Key 配置指南
-...
 ```
 
 ## 类型检查
@@ -39,7 +38,7 @@ npm run typecheck    # 必须通过（exit 0）
 
 ## 技术栈
 
-| 层 | 技术 |
+| 项 | 技术 |
 |---|---|
 | 运行时 | Node.js 24+ |
 | 语言 | TypeScript (ESM) |
@@ -56,14 +55,14 @@ npm run typecheck    # 必须通过（exit 0）
 src/
 ├── ai/          # 多 Provider AI 接入
 ├── agents/      # Agent 生命周期管理
-├── auth/        # 认证与 Token
+├── auth/        # 认证 + Token
 ├── channels/    # 渠道适配 (Telegram, Signal, iMessage)
 ├── core/        # 核心逻辑 (路由/记忆/搜索/Cron/沙箱)
 ├── mcp/         # MCP 协议
 ├── middleware/  # Express 中间件
 ├── plugins/     # 插件系统
-├── storage/     # SQLite 数据层
-├── tools/       # 工具系统 (内置/浏览器/搜索)
+├── storage/     # SQLite 数据库
+├── tools/       # 工具系统 (内置/浏览/搜索)
 └── voice/       # TTS + STT
 ```
 
@@ -71,8 +70,7 @@ src/
 
 - [ ] `tsc --noEmit` 通过
 - [ ] `npm start` 启动正常
-- [ ] 无 `require()` 残留 (项目是 ESM)
+- [ ] 无 `require()` 残留（项目是 ESM）
 - [ ] 新增路由需鉴权或显式标注免鉴权
 - [ ] 敏感操作有白名单/沙箱
 - [ ] 错误用 `AppError` 统一格式
-

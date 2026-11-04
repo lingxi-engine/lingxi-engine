@@ -115,7 +115,7 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
   app.get('/api/friends/requests', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      if (!userId) return res.status(401).json({ error: '未登录或身份无效' });
       // P1-2: verify userId is JWT holder
       const jwtUser2 = (req as any).user;
       const jwtUserId2 = jwtUser2?.sub || jwtUser2?.id || '';
@@ -135,7 +135,8 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
   app.get('/api/friends/list', requireAuth, (req, res) => {
     try {
       const userId = (req.query.userId as string) || '';
-      if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      // FIX-ALL(2026-11-04): 缺参统一 401，前端据此判断登录态而非误判成参数错误
+      if (!userId) return res.status(401).json({ error: '未登录或身份无效' });
       // P1-2: verify userId is JWT holder
       const jwtUser3 = (req as any).user;
       const jwtUserId3 = jwtUser3?.sub || jwtUser3?.id || '';

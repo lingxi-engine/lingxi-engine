@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 局域网社交中枢 (LAN Social Hub)
  *
  * 把「发现层 + 传输层 + 本地 DB + 消息编排」粘合成完整的局域网社交能力：
@@ -21,7 +21,7 @@ import {
   getFriendshipById, getFriendshipByPair,
   createLanGroup, getLanGroup, listLanGroups, setLanGroupMode,
   addLanGroupMember, getLanGroupMembers, removeLanGroup,
-  upsertLanRemoteIdentity, getLanRemoteIdentity, listLanRemoteIdentities,
+  upsertLanRemoteIdentity, getLanRemoteIdentity, getLanRemoteIdentityByNumericId, listLanRemoteIdentities,
   getAgentByUserId, getUser, getUserByNumericId,
   saveLanGroupInvite, getLanGroupInvite, listLanGroupInvites,
   updateLanGroupInviteStatus, getLanGroupInviteByGroup,
@@ -36,6 +36,7 @@ import {
   type LanPeer, type LanUser,
 } from './lan-discovery.js';
 import { sendToPeer } from './lan-transport.js';
+import { encryptForPeer, decryptFromPeer, getPeerPublicKey, setPeerPublicKey, getIdentityPublicKeyB64, isE2EE } from '../security/e2ee.js';
 
 /** 社交面板订阅的专用频道（WS chatId） */
 export const LAN_SOCIAL_CHANNEL = '__lan_social__';
@@ -343,12 +344,20 @@ export class LanSocialHub {
   }
 
   friendRequests(userId: string) {
+    // FIX-ALL(2026-11-04): userId 可能是 numeric_id 字符串，getFriendRequests 内部已做双形态匹配
     const { incoming, outgoing, pendingIncoming } = getFriendRequests(userId);
     const resolve = (uid: string) => {
-      const local = this.localUsers().find((u) => u.id === uid);
+      const local = this.localUsers().find((u) => u.id === uid || String(u.numericId) === String(uid));
       if (local) return { displayName: local.displayName, numericId: local.numericId };
-      const r = getLanRemoteIdentity(uid);
-      return r ? { displayName: r.displayName, numericId: r.numericId } : { displayName: uid };
+      const r = getLanRemoteIdentity(uid)
+        || (uid.startsWith('remote-') ? getLanRemoteIdentityByNumericId(parseInt(uid.slice(7), 10)) : undefined);
+      if (r) return { displayName: r.displayName, numericId: r.numericId };
+      const n = parseInt(String(uid), 10);
+      if (!isNaN(n)) {
+        const byNid = getUserByNumericId(n);
+        if (byNid) return { displayName: byNid.display_name || String(uid), numericId: n };
+      }
+      return { displayName: uid };
     };
     return {
       incoming: incoming.map((r: any) => ({ ...r, fromName: resolve(r.fromUserId).displayName, fromNumericId: resolve(r.fromUserId).numericId })),
@@ -571,7 +580,11 @@ export class LanSocialHub {
 
   /** 本地建群：写 lan_groups/members + 两个聊天 + 参与者 */
   private materializeGroupLocally(groupId: string, name: string, ownerInstance: string, chatMode: string, members: AgentRosterEntry[] | any[]) {
-    if (!getLanGroup(groupId)) createLanGroup(groupId, name, ownerInstance, chatMode);
+    // FIX-ALL(2026-11-04): 本机创建的群，ownerInstance 一律用当前实例 ID，
+    // 避免历史脏数据残留旧 instanceId 导致本机成员显示成"跨实例、离线"。
+    const selfId = getLanInstanceId();
+    const normalizedOwner = ownerInstance && ownerInstance !== selfId && !getLanPeer(ownerInstance) ? selfId : (ownerInstance || selfId);
+    if (!getLanGroup(groupId)) createLanGroup(groupId, name, normalizedOwner, chatMode);
     const hChat = humanChatId(groupId);
     const aChat = agentChatId(groupId);
     if (!getChatById(hChat)) createChat(hChat, 'group');
@@ -583,6 +596,8 @@ export class LanSocialHub {
       this.safeAddParticipant(`p-${hChat}-${m.userId}`, hChat, m.userId, undefined, 'member');
       // 智能体聊天：加该成员的 agent
       if (m.agentId) this.safeAddParticipant(`p-${aChat}-${m.agentId}`, aChat, m.userId, m.agentId, 'agent');
+      // FIX-ALL: ensure human participant exists in agents chat too (so human msgs visible)
+      this.safeAddParticipant(`p-${aChat}-u-${m.userId}`, aChat, m.userId, undefined, 'member');
     }
   }
 
@@ -639,23 +654,93 @@ export class LanSocialHub {
 
     // 本地落库 + 广播
     addMessage({ id: msgId, chatId, senderType: 'user', senderId: senderUserId, content, type: 'text', timestamp: ts });
+    // FIX-ALL: human message also mirrors into agents chat so AI sees it
+    try {
+      const aChat = agentChatId(groupId);
+      const mirrorId = msgId + '-mirror';
+      if (!messageExists(mirrorId)) {
+        addMessage({ id: mirrorId, chatId: aChat, senderType: 'user', senderId: senderUserId, content, type: 'text', timestamp: ts });
+        this.broadcast({ type: 'message.new', chatId: aChat, from: senderUserId, senderId: senderUserId, senderType: 'user', senderName: sender?.displayName, content, msgId: mirrorId, timestamp: ts });
+      }
+    } catch (_e) {}
     this.broadcast({ type: 'message.new', chatId, from: senderUserId, senderId: senderUserId, senderType: 'user', senderName: sender?.displayName, content, msgId, timestamp: ts });
 
     // 同步到其他成员引擎
-    const payload = { groupId, chatId, box: 'human', msg: { id: msgId, senderId: senderUserId, senderName: sender?.displayName, content, ts } };
     for (const peer of this.groupRemotePeers(groupId)) {
-      sendToPeer(peer, '/api/lan/peer/group-message', payload).catch((e) => console.error('[LAN] 群消息同步失败:', e.message));
+      const db = getDB();
+      let wireContent = content;
+      try {
+        if (db && getPeerPublicKey(db, peer.instanceId)) {
+          const enc = encryptForPeer(db, peer.instanceId, content);
+          if (enc) wireContent = enc;
+        }
+      } catch (_e) {}
+      const payload = { groupId, chatId, box: 'human', fromInstance: getLanInstanceId(), msg: { id: msgId, senderId: senderUserId, senderName: sender?.displayName, content: wireContent, ts } };
+      sendToPeer(peer, '/api/lan/peer/group-message', payload).catch((e) => console.error('[LAN] group-message sync failed:', e.message));
     }
     return { ok: true, msgId };
+  }
+
+  /** 收到对方的公钥交换请求：保存其公钥并回传本机公钥 */
+  handleKeyExchange(body: any): any {
+    const { fromInstance, publicKey } = body || {};
+    if (!fromInstance || !publicKey) return { error: 'missing fromInstance/publicKey' };
+    try {
+      const db = getDB();
+      if (db) {
+        setPeerPublicKey(db, String(fromInstance), String(publicKey));
+        return { ok: true, publicKey: getIdentityPublicKeyB64(db) };
+      }
+    } catch (e: any) { return { error: e.message }; }
+    return { error: 'DB not initialized' };
+  }
+
+  /** 主动向某邻居交换公钥 */
+  async exchangeKeyWithPeer(peer: LanPeer): Promise<boolean> {
+    try {
+      const db = getDB();
+      if (!db) return false;
+      const resp = await sendToPeer(peer, '/api/lan/peer/key-exchange', {
+        fromInstance: getLanInstanceId(),
+        publicKey: getIdentityPublicKeyB64(db),
+      });
+      if (resp && resp.publicKey) {
+        setPeerPublicKey(db, peer.instanceId, String(resp.publicKey));
+        console.log('[E2EE] key exchange done with peer', peer.instanceId);
+        return true;
+      }
+    } catch (e: any) { console.warn('[E2EE] key exchange failed:', e.message); }
+    return false;
   }
 
   /** 收到群消息（对方引擎调用）：落库 + 本地广播（按 msgId 去重） */
   handleGroupMessage(body: any): any {
     const { groupId, chatId, msg } = body || {};
     if (!chatId || !msg) return { error: '缺少消息' };
+    // E2EE: 加密消息用发送方实例公钥解密
+    try {
+      const fromInst = String((body as any).fromInstance || '');
+      if (fromInst && msg.content && isE2EE(msg.content)) {
+        const db = getDB();
+        if (db) msg.content = decryptFromPeer(db, fromInst, msg.content);
+      }
+    } catch (_e) {}
     // 去重：已落库则直接返回，不再重复广播（否则前端会收到重复消息）
     if (msg.id && messageExists(msg.id)) return { ok: true, dedup: true };
     try {
+    // FIX-ALL: route human-box messages into agents chat mirror too
+    try {
+      const box = (body as any).box || '';
+      if (box === 'human' && chatId.endsWith('-human')) {
+        const gid = chatId.replace(/^langroup-/, '').replace(/-human$/, '');
+        const aChat = agentChatId(gid);
+        const mirrorId = (msg.id || '') + '-mirror';
+        if (mirrorId && !messageExists(mirrorId)) {
+          addMessage({ id: mirrorId, chatId: aChat, senderType: msg.senderType || 'user', senderId: msg.senderId, content: msg.content, type: 'text', timestamp: msg.ts, metadata: msg.reasoning ? { reasoning: msg.reasoning } : undefined });
+          this.broadcast({ type: 'message.new', chatId: aChat, from: msg.senderId, senderId: msg.senderId, senderType: msg.senderType || 'user', senderName: msg.senderName, content: msg.content, msgId: mirrorId, timestamp: msg.ts });
+        }
+      }
+    } catch (_e) {}
       addMessage({ id: msg.id, chatId, senderType: msg.senderType || 'user', senderId: msg.senderId, content: msg.content, type: 'text', timestamp: msg.ts, metadata: msg.reasoning ? { reasoning: msg.reasoning } : undefined });
     } catch (_e) {
       // 并发写入触发主键冲突时兜底，视为已去重，避免向 peer 返回 500
@@ -954,7 +1039,7 @@ export class LanSocialHub {
     this.broadcast({ type: 'message.new', chatId, from: agentSenderId, senderId: agentSenderId, senderType: 'agent', senderName: entry.displayName, content, msgId, replyTo: triggerMsgId, timestamp: ts, reasoning });
     // 同步给其他成员引擎（同一 msgId，落库去重）
     const groupId = chatId.replace(/^langroup-/, '').replace(/-agents$/, '');
-    const payload = { groupId, chatId, box: 'agents', msg: { id: msgId, senderType: 'agent', senderId: agentId, senderName: entry.displayName, content, ts, reasoning } };
+    const payload = { groupId, chatId, box: 'agents', fromInstance: getLanInstanceId(), msg: { id: msgId, senderType: 'agent', senderId: agentId, senderName: entry.displayName, content, ts, reasoning } };
     this.broadcastToGroup(groupId, '/api/lan/peer/group-message', payload);
     return content;
   }
@@ -1050,9 +1135,17 @@ export class LanSocialHub {
     const online = this.groupRemotePeers(groupId);
     const onlineIds = new Set(online.map((p) => p.instanceId));
     for (const peer of online) {
-      sendToPeer(peer, path, body).catch(() => {
+      let wireBody = body;
+      try {
+        const db = getDB();
+        if (db && body && body.msg && typeof body.msg.content === 'string' && !isE2EE(body.msg.content) && getPeerPublicKey(db, peer.instanceId)) {
+          const enc = encryptForPeer(db, peer.instanceId, body.msg.content);
+          if (enc) wireBody = { ...body, msg: { ...body.msg, content: enc } };
+        }
+      } catch (_e) {}
+      sendToPeer(peer, path, wireBody).catch(() => {
         // 直发失败（可能刚掉线）→ 入队补发
-        this.enqueueForPeer(peer.instanceId, path, body);
+        this.enqueueForPeer(peer.instanceId, path, wireBody);
       });
     }
     for (const instanceId of this.groupRemoteInstanceIds(groupId)) {
@@ -1065,7 +1158,15 @@ export class LanSocialHub {
     const now = Date.now();
     let q = this.outbox.get(instanceId);
     if (!q) { q = []; this.outbox.set(instanceId, q); }
-    q.push({ path, body, ts: now });
+    let wireBody = body;
+    try {
+      const db = getDB();
+      if (db && body && body.msg && typeof body.msg.content === 'string' && !isE2EE(body.msg.content) && getPeerPublicKey(db, instanceId)) {
+        const enc = encryptForPeer(db, instanceId, body.msg.content);
+        if (enc) wireBody = { ...body, msg: { ...body.msg, content: enc }, fromInstance: body.fromInstance || getLanInstanceId() };
+      }
+    } catch (_e) {}
+    q.push({ path, body: wireBody, ts: now });
     // 去重：同一 msg.id 只留最新（避免重复补发同一条群消息）
     const seen = new Set<string>();
     const dedup: typeof q = [];
@@ -1162,6 +1263,66 @@ export class LanSocialHub {
       userId: m.user_id, numericId: m.numeric_id, displayName: m.display_name, agentId: m.agent_id,
       instanceId: m.instance_id, isLocal: m.instance_id === getLanInstanceId(),
     }));
+  }
+
+  // ════════════════════════════════════════════
+  // 私聊（好友 1v1）消息同步 —— E2EE 加密传输
+  // ════════════════════════════════════════════
+
+  /** 本机用户给远程好友发私聊：落库 + 广播 + E2EE 加密后发给对方引擎 */
+  async sendPrivateMessage(senderUserId: string, friendUserId: string, content: string): Promise<any> {
+    const remote = getLanRemoteIdentity(friendUserId);
+    if (!remote) throw new Error('对方不是远程好友');
+    const chatId = this.ensurePrivateChat(senderUserId, friendUserId, remote.agentId);
+    const sender = this.localUsers().find((u) => u.id === senderUserId);
+    const msgId = 'lmsg-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    const ts = Date.now();
+
+    addMessage({ id: msgId, chatId, senderType: 'user', senderId: senderUserId, content, type: 'text', timestamp: ts });
+    this.broadcast({ type: 'message.new', chatId, from: senderUserId, senderId: senderUserId, senderType: 'user', senderName: sender?.displayName, content, msgId, timestamp: ts });
+
+    const peer = getLanPeer(remote.instanceId);
+    if (!peer) {
+      this.enqueueForPeer(remote.instanceId, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content, ts } });
+      return { ok: true, msgId, queued: true };
+    }
+    const db = getDB();
+    let wireContent = content;
+    try {
+      if (db && getPeerPublicKey(db, remote.instanceId)) {
+        const enc = encryptForPeer(db, remote.instanceId, content);
+        if (enc) wireContent = enc;
+      }
+    } catch (_e) {}
+    try {
+      await sendToPeer(peer, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content: wireContent, ts } });
+    } catch (e: any) {
+      this.enqueueForPeer(remote.instanceId, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content: wireContent, ts } });
+      return { ok: true, msgId, queued: true };
+    }
+    return { ok: true, msgId };
+  }
+
+  /** 收到对方引擎的私聊消息：E2EE 解密 + 落库 + 广播 */
+  handlePrivateMessage(body: any): any {
+    const { chatId, fromInstance, fromUserId, toUserId, msg } = body || {};
+    if (!chatId || !msg || !fromInstance) return { error: '缺少私聊消息字段' };
+    try {
+      if (msg.content && isE2EE(msg.content)) {
+        const db = getDB();
+        if (db) msg.content = decryptFromPeer(db, String(fromInstance), msg.content);
+      }
+    } catch (_e) {}
+    if (msg.id && messageExists(msg.id)) return { ok: true, dedup: true };
+    const localChatId = chatId || makePrivateChatId(String(fromUserId), String(toUserId));
+    if (!getChatById(localChatId)) {
+      createChat(localChatId, 'private');
+      this.safeAddParticipant(`p-${localChatId}-1`, localChatId, String(toUserId), undefined, 'member');
+      this.safeAddParticipant(`p-${localChatId}-2`, localChatId, String(fromUserId), undefined, 'member');
+    }
+    addMessage({ id: String(msg.id || ('rmt-' + Date.now().toString(36))), chatId: localChatId, senderType: 'user', senderId: String(fromUserId), content: String(msg.content || ''), type: 'text', timestamp: Number(msg.ts) || Date.now() });
+    this.broadcast({ type: 'message.new', chatId: localChatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content: String(msg.content || ''), msgId: String(msg.id), timestamp: Number(msg.ts) || Date.now() });
+    return { ok: true };
   }
 
   /** 建/取私聊（双方用户 + 双方 agent） */

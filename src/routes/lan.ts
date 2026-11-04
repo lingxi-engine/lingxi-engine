@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LAN 社交路由 — 从根 index.ts 巨石原样抽取（巨石拆分迁移 批次 9/N）
  *
  * 抽取范围: 原 index.ts L2426-L2808（迁移前坐标），共 383 行
@@ -17,9 +17,10 @@ import type { Express, RequestHandler } from 'express';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { getDB } from '../storage/db.js';
-import { startLanDiscovery, getLanPeers, getLanSelfInfo, type LanUser } from '../net/lan-discovery.js';
+import { startLanDiscovery, getLanPeers, getLanSelfInfo, getLanIps, directedBroadcastAddrs, type LanUser } from '../net/lan-discovery.js';
 import { verifyLanRequest } from '../net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from '../net/lan-social.js';
+import { ensureIdentityKey } from '../security/e2ee.js';
 
 export function registerLanRoutes(app: Express, deps: {
   db: any;
@@ -62,6 +63,14 @@ export function registerLanRoutes(app: Express, deps: {
       dataDir,
       getUsers: getLocalLanUsers,
       discoveryPort: process.env.LAN_DISCOVERY_PORT ? Number(process.env.LAN_DISCOVERY_PORT) : undefined,
+      // E2EE: 鍙戠幇鏂伴偦灞呮椂鑷姩浜ゆ崲鍏挜
+      onPeerSeen: (peer) => {
+        try {
+          const _db = getDB();
+          if (_db) ensureIdentityKey(_db); // 确保 e2ee_keys 表存在且本机身份密钥已生成
+        } catch (_e) {}
+        lanSocial.exchangeKeyWithPeer(peer).catch(() => {});
+      },
     });
   }
 
@@ -77,7 +86,8 @@ export function registerLanRoutes(app: Express, deps: {
 
   // ── 前端用：状态 / 邻居 / 搜索 ──
   app.get('/api/lan/status', requireAuth, (_req, res) => {
-    res.json({ ok: true, ...getLanSelfInfo(), socialChannel: LAN_SOCIAL_CHANNEL });
+    // FIX-ALL(2026-11-04): 暴露全部网卡 IP 与定向广播地址，前端/诊断可判断跨网段发现是否可达
+    res.json({ ok: true, ...getLanSelfInfo(), lanIps: getLanIps(), broadcastAddrs: directedBroadcastAddrs(), socialChannel: LAN_SOCIAL_CHANNEL });
   });
 
   app.get('/api/lan/peers', requireAuth, (_req, res) => {
@@ -285,6 +295,15 @@ export function registerLanRoutes(app: Express, deps: {
     if (verifyLanRequest(req, res) === null) return;
     sendPeerResult(res, lanSocial.handleGroupInvite(req.body));
   });
+  // E2EE: peer key exchange (X25519 public keys)
+  app.post('/api/lan/peer/key-exchange', (req, res) => {
+    if (verifyLanRequest(req, res) === null) return;
+    sendPeerResult(res, lanSocial.handleKeyExchange(req.body));
+  });
+  app.post('/api/lan/peer/private-message', (req, res) => {
+    if (verifyLanRequest(req, res) === null) return;
+    sendPeerResult(res, lanSocial.handlePrivateMessage(req.body));
+  });
   app.post('/api/lan/peer/group-message', (req, res) => {
     if (verifyLanRequest(req, res) === null) return;
     sendPeerResult(res, lanSocial.handleGroupMessage(req.body));
@@ -414,5 +433,6 @@ export function registerLanRoutes(app: Express, deps: {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
+  });
+
 }

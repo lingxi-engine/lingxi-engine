@@ -77,7 +77,24 @@ function safeArr(v: any): string[] {
 }
 function safeObj(v: any): Record<string, any> {
   if (!v) return {};
-  try { const r = JSON.parse(v); return r && typeof r === 'object' ? r : {}; } catch { return {}; }
+  try {
+    const r = JSON.parse(v);
+    if (!r || typeof r !== 'object') return {};
+    // FIX-ALL(2026-11-04): 兼容历史上被写成数组 [{key,value,...}] 的 memory_facts，
+    // 以及值被序列化成 "[object Object]" 的损坏记录，统一收敛成 Record<string,string>。
+    if (Array.isArray(r)) {
+      const out: Record<string, any> = {};
+      for (const f of r) {
+        if (f && typeof f === 'object' && f.key) out[String(f.key)] = String(f.value ?? '');
+      }
+      return out;
+    }
+    const out: Record<string, any> = {};
+    for (const [k, val] of Object.entries(r)) {
+      out[k] = (val && typeof val === 'object') ? JSON.stringify(val) : String(val);
+    }
+    return out;
+  } catch { return {}; }
 }
 
 export class AgentManager {
@@ -98,7 +115,8 @@ export class AgentManager {
 
   list(): AgentDTO[] {
     const rows = this.db.listAgents();
-    return rows.map((r: any) => rowToDTO(r));
+    // FIX-ALL: agents are local processes, always online while engine runs
+    return rows.map((r: any) => { const dto = rowToDTO(r); dto.status = 'online'; return dto; });
   }
 
   async update(id: string, updates: Partial<AgentDTO>): Promise<AgentDTO> {

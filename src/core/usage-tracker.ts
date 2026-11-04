@@ -1,3 +1,4 @@
+import { inc, observe } from '../middleware/metrics.js';
 /**
  * Token 使用统计
  * 
@@ -52,6 +53,14 @@ class UsageTrackerClass {
     existing.completionTokens += completionTokens;
     existing.totalTokens += totalTokens;
     this.totals.set(key, existing);
+
+    // 同步到 Prometheus 指标
+    try {
+      inc('lingxi_ai_calls_total', { model: usage.model, type: usage.type });
+      inc('lingxi_ai_prompt_tokens_total', { model: usage.model });
+      inc('lingxi_ai_completion_tokens_total', { model: usage.model });
+      inc('lingxi_ai_tokens_total', { model: usage.model });
+    } catch { /* 指标失败不影响主流程 */ }
   }
 
   /** 获取统计概览 */

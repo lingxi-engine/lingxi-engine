@@ -365,3 +365,49 @@ _release-*/
 data-e2e*/ 
 deploy/ 
 *.bak* 
+
+# ---- 2026-11-02 cleanup: stray root artifacts & release binaries ----
+/deploy/site.zip
+/web/public/*.tar.gz
+/index.html
+/$null
+/%*
+/ERR
+/_*.cmd
+/_*.py
+/_*.json
+/_*.log
+/*.err
+/*.err.log
+/agents.json
+/chats.json
+/friends.json
+/groups.json
+/models.json
+/routes.json
+/msg*.json
+/*.json;
+/_trash_*/
+
+
+# session-generated skill dumps (tracked ones unaffected)
+/skills/
+
+# DB encryption key (generated at runtime, NEVER commit)
+.dbkey
+
+# ---- internal ops records (not for public repo) ----
+DEPLOY_RECORD_*.md
+docs/F-drive-backup-manifest-*.md
+SECURITY-3456-EXPOSURE-*.md
+docs/server-env-audit-*.md
+docs/AUDIT-*.md
+docs/ci-fix-report-*.md
+docs/full-verify-*.md
+docs/reasoning-stream-verify-*.md
+COFOUNDER-*.md
+DEFERRED-TASKS-*.md
+ARCHIVE-NOTES.md
+MEMORY-OFFICIAL-SITE.md
+MOBILE-RELAY-SELFHOST.md
+deploy/PASTE-HOTFIX-*.txt

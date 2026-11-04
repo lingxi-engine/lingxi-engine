@@ -7,10 +7,14 @@
  *   - 连接到平台 WebSocket mesh
  *   - 发送/接收 peer 消息
  *   - 与本地的 ws-handler 集成
+ *   - WebRTC P2P 直连（src/net/p2p-link.ts）：信令走平台 relay，
+ *     DataChannel 打通后 peer.message/peer.task/peer.response 直走 P2P，
+ *     断开自动回退 relay。开关 MESH_P2P=0 关闭。
  */
 
 import WebSocket from 'ws';
 import { hostname, networkInterfaces } from 'os';
+import { P2PManager, type P2PSignal } from '../net/p2p-link.js';
 
 let wsSocket: WebSocket | null = null;
 let instanceId: string = '';
@@ -19,11 +23,17 @@ let onPeerMessage: ((msg: PeerMessage) => void) | null = null;
 let onPeerTask: ((msg: PeerMessage) => void) | null = null;
 let meshVersion: string = '0.0.0';
 let meshPlatformUrl: string = '';
+let meshToken: string = '';
 let reconnectAttempt: number = 0;
 const MAX_RECONNECT_DELAY = 60_000;
 
+// ── P2P（WebRTC DataChannel）状态 ──
+let p2p: P2PManager | null = null;
+let p2pKeyProvider: (() => string) | null = null;
+let p2pBootstrapped = false;
+
 export interface PeerMessage {
-  type: 'peer.message' | 'peer.task' | 'peer.response' | 'peer.broadcast';
+  type: 'peer.message' | 'peer.task' | 'peer.response' | 'peer.broadcast' | 'peer.key' | 'peer.signal';
   fromInstance: string;
   toInstance?: string;
   chatId?: string;
@@ -33,6 +43,8 @@ export interface PeerMessage {
   context?: string;     // for task
   replyTo?: string;     // for response
   taskId?: string;      // for task
+  publicKey?: string;   // for peer.key (E2EE X25519 public key exchange)
+  signal?: P2PSignal;   // for peer.signal (WebRTC offer/answer/candidate)
   timestamp: number;
 }
 
@@ -97,6 +109,75 @@ async function sendHeartbeat(
   }
 }
 
+// ── P2P 管理 ──────────────────────────────────────────────
+
+/**
+ * 初始化 WebRTC P2P 层（node-datachannel 缺失时整体降级为纯 relay）
+ * 必须在 startInstanceMesh 之后调用；getPublicKey 用于 peer.key 广播（E2EE 公钥交换）
+ */
+export async function initP2P(opts: {
+  getPublicKey?: () => string;
+  enabled?: boolean;
+  stunServers?: string[];
+}): Promise<boolean> {
+  p2pKeyProvider = opts.getPublicKey || null;
+  const enabled = opts.enabled !== false;
+  p2p = new P2PManager({
+    selfId: instanceId || 'pending',
+    sendSignal: (to, signal) => sendPeerMessage({ type: 'peer.signal', fromInstance: instanceId, toInstance: to, signal, timestamp: Date.now() }),
+    onMessage: (from, payload) => {
+      // DataChannel 收到的 peer 消息，与 relay 收到的走同一入口
+      if (payload && payload.type === 'peer.task' && onPeerTask) onPeerTask(payload as PeerMessage);
+      else if (onPeerMessage) onPeerMessage(payload as PeerMessage);
+    },
+    stunServers: opts.stunServers,
+    enabled,
+  });
+  // selfId 在 startInstanceMesh 里生成，这里可能已存在；保险再设一次
+  if (instanceId) (p2p as any).selfId = instanceId;
+  const ok = await p2p.init();
+  if (ok && instanceId) console.log('[Mesh] P2P 层已就绪（WebRTC DataChannel 直连）');
+  return ok;
+}
+
+/** 向所有在线实例广播自己的 E2EE 公钥，并对每个在线 peer 发起 DataChannel 连接 */
+export function bootstrapP2P(): void {
+  if (!p2p || !p2p.isReady() || p2pBootstrapped) return;
+  p2pBootstrapped = true;
+  // 1) 广播公钥（peer.key 走 relay 广播，index.ts 收到后会回复并落库）
+  try {
+    const pub = p2pKeyProvider ? p2pKeyProvider() : '';
+    if (pub) {
+      sendPeerMessage({ type: 'peer.key', fromInstance: instanceId, publicKey: pub, timestamp: Date.now() });
+    }
+  } catch { /* ignore */ }
+  // 2) 拉取在线实例列表，逐个尝试打通 DataChannel（glare 规则在 P2PManager 内处理）
+  if (!meshPlatformUrl || !meshToken) return;
+  fetch(`${meshPlatformUrl.replace(/\/$/, '')}/api/instances/list`, {
+    headers: { 'Authorization': `Bearer ${meshToken}` },
+  })
+    .then((r) => r.json() as any)
+    .then((d) => {
+      for (const inst of d.instances || []) {
+        if (inst.instanceId && inst.instanceId !== instanceId) {
+          p2p!.connectTo(inst.instanceId).catch(() => {});
+        }
+      }
+    })
+    .catch(() => { /* 平台暂时不可达，等下次心跳/手动触发 */ });
+}
+
+/** 主动向某个 peer 建立 DataChannel */
+export function connectP2PTo(toInstance: string): Promise<boolean> {
+  if (!p2p || !p2p.isReady()) return Promise.resolve(false);
+  return p2p.connectTo(toInstance);
+}
+
+/** P2P 状态摘要（给 /api/mesh/status） */
+export function getP2PStats(): { ready: boolean; peers: Record<string, { state: string; initiator: boolean; lastActivity: number }> } {
+  return { ready: !!p2p?.isReady(), peers: p2p?.stats() || {} };
+}
+
 /**
  * 连接到平台的 WebSocket mesh
  */
@@ -129,6 +210,14 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
       // 握手成功后立即发一次心跳
       const platformUrl = platformWsUrl.replace('/mesh', '').replace('ws://', 'http://').replace('wss://', 'https://');
       sendHeartbeat(platformUrl, token, port, agents);
+      // P2P：握手完成后尝试广播公钥 + 向在线 peers 建 DataChannel
+      if (p2p?.isReady()) bootstrapP2P();
+    }
+    else if (msg.type === 'peer.signal') {
+      // WebRTC 信令（offer/answer/candidate）→ 交给 P2PManager
+      if (p2p?.isReady() && msg.fromInstance && msg.signal) {
+        p2p.handleSignal(String(msg.fromInstance), msg.signal as P2PSignal);
+      }
     }
     else if (msg.type === 'peer.message') {
       console.log(`[Mesh] 收到 peer 消息: ${msg.fromInstance} -> ${msg.toInstance}`, msg.content?.slice(0, 50));
@@ -161,9 +250,24 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
 }
 
 /**
- * 发送 peer 消息
+ * 发送 peer 消息。
+ * peer.message / peer.task / peer.response 且与对端已有 DataChannel 时优先直走 P2P，
+ * 否则回退到平台 relay（业务无感知）。
  */
 export function sendPeerMessage(msg: PeerMessage): boolean {
+  // P2P 直连优先（仅点对点业务消息；peer.key/peer.signal 必须走 relay）
+  if (
+    p2p?.isReady() &&
+    msg.toInstance &&
+    (msg.type === 'peer.message' || msg.type === 'peer.task' || msg.type === 'peer.response') &&
+    p2p.isConnected(msg.toInstance)
+  ) {
+    if (p2p.send(msg.toInstance, msg)) {
+      console.log(`[Mesh] P2P 直发 ${msg.type}: ${instanceId} -> ${msg.toInstance}`);
+      return true;
+    }
+    // send 失败（如超大消息）→ 落回 relay
+  }
   if (!wsSocket || wsSocket.readyState !== WebSocket.OPEN) {
     console.error('[Mesh] 未连接，无法发送消息');
     return false;
@@ -173,7 +277,7 @@ export function sendPeerMessage(msg: PeerMessage): boolean {
     fromInstance: instanceId,
     timestamp: Date.now(),
   }));
-  console.log(`[Mesh] 发送 ${msg.type}: ${msg.fromInstance} -> ${msg.toInstance || 'broadcast'}`);
+  console.log(`[Mesh] relay 发送 ${msg.type}: ${msg.fromInstance} -> ${msg.toInstance || 'broadcast'}`);
   return true;
 }
 
@@ -219,6 +323,7 @@ export function startInstanceMesh(
   instanceId = generateInstanceId();
   meshVersion = version || '0.0.0';
   meshPlatformUrl = platformUrl;
+  meshToken = token;
   console.log(`[Mesh] 实例 ID: ${instanceId}`);
   console.log(`[Mesh] 局域网 IP: ${getLanIp()}`);
   console.log(`[Mesh] AI agents: ${agents.join(', ') || '无'}`);
@@ -253,6 +358,7 @@ export function getMeshInfo() {
     lanIp: getLanIp(),
     hostname: hostname(),
     version: meshVersion,
+    p2p: getP2PStats(),
   };
 }
 
@@ -264,9 +370,16 @@ export function stopInstanceMesh() {
     clearInterval(heartbeatTimer);
     heartbeatTimer = null;
   }
+  try { p2p?.shutdown(); } catch { /* ignore */ }
+  p2p = null;
+  p2pBootstrapped = false;
   if (wsSocket) {
     wsSocket.close(1000, 'shutdown');
     wsSocket = null;
   }
   console.log('[Mesh] 已停止');
 }
+
+// ── 别名（兼容 index.ts 旧接线名）──
+export const p2pConnect = connectP2PTo;
+export const isP2PConnected = (peerId: string): boolean => !!p2p && p2p.isConnected(peerId);

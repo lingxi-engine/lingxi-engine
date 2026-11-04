@@ -356,7 +356,7 @@ export function getNextCronRun(expr: string, after: Date, tz: string = 'Asia/Sha
  * 单调性保证：目标墙钟时刻可能落在 DST 空档里（春季跳变日不存在的时刻），
  * 此时 zonedTimeToUtc 会反向解析回上一个存在的时刻，导致时间不前进。
  * 因此这里循环尝试"下一个存在的整点"，并最终用真实时间 +1 小时兜底，
- * 确保返回的��间戳严格大于 currentTs —— 这是防止死循环的最后一道防线。
+ * 确保返回的时间戳严格大于 currentTs —— 这是防止死循环的最后一道防线。
  */
 function advanceToNextHour(
   z: { year: number; month: number; day: number; hour: number },

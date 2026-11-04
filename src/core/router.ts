@@ -1,4 +1,5 @@
 import { runToolsLoop } from "../tools/executor.js";
+import OpenAI from "openai";
 import type { ChatMessage } from "../tools/executor.js";
 import type { ToolRegistry } from "../tools/registry.js";
 import type { ToolRegistryInterface, Agent, Database, AgentManager, AIClientResult } from "../types/index.js";
@@ -16,7 +17,7 @@ import { RAGEngine, type RAGDocument, type RAGSearchResult } from "./rag-engine.
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
-import { getChatMemory, getDB, getChatMode, sanitizeMemoryInput, trimMemoryText, getDataDir } from "../storage/db.js";
+import { getChatMemory, getDB, getChatMode, sanitizeMemoryInput, trimMemoryText, getDataDir, queryObjects } from "../storage/db.js";
 import { upsertChatMemoryWithChecks, updateAgentMemoryWithChecks } from "../memory/memory-write-integration.js";
 import { scheduleMemoryForReply, formatScheduledMemory, type SchedulableFact } from "../memory/memory-scheduler.js";
 import { GoalTracker } from "./goal-tracker.js";
@@ -319,7 +320,7 @@ export class MessageRouter {
     onBroadcast?: (event: any) => void,
     customPrompt?: string,
     signal?: AbortSignal,
-    options?: { skipPersist?: boolean; bench?: any }
+    options?: { skipPersist?: boolean; bench?: any; signal?: AbortSignal }
   ): Promise<string> {
     const agent = this.agentManager.get(agentId);
     if (!agent) throw new Error('Agent not found: ' + agentId);
@@ -456,8 +457,8 @@ export class MessageRouter {
     const compactResult = await compactMessages(messages, {
       client: toolClient.client,
       model: toolClient.resolvedModel,
-      maxTokens: 30000,
-      keepRecent: 10,
+      maxTokens: parseInt(process.env.COMPACT_MAX_TOKENS || '80000', 10),
+      keepRecent: parseInt(process.env.COMPACT_KEEP_RECENT || '12', 10),
       keepSystem: true,
     });
     const messagesFinal = compactResult.messages as ChatMessage[];
@@ -880,6 +881,22 @@ export class MessageRouter {
     if (options?.skipPersist) {
       return finalContent;
     }
+    // FIX-ALL: never persist empty reply into chat history (pollutes context)
+    if (!finalContent || !finalContent.trim()) { console.warn(`[Router] skip persisting empty reply (agent=${agentId})`); return finalContent; }
+    // FIX-ALL(2026-11-04): 模型把"调用失败/限流/超时"之类的错误说明当成正常回复时，
+    // 不允许落库污染上下文（否则下一轮会把错误文本当历史继续读）。
+    {
+      const _fc = finalContent.trim();
+      const _errReply = _fc.length < 400 && (
+        /^AI\s*(本次未返回有效内容|调用失败)/.test(_fc) ||
+        /^任务执行超出时限被中断/.test(_fc) ||
+        /^⚠️\s*任务(仍未做完|已中断)/.test(_fc)
+      );
+      if (_errReply) {
+        console.warn(`[Router] skip persisting error-text reply (agent=${agentId}): ${_fc.slice(0, 80)}`);
+        return finalContent;
+      }
+    }
     this.db.addMessage({ id: replyId, chatId, senderType: 'agent', senderId: agent.id, content: finalContent, type: 'text', replyTo: triggerMsgId, timestamp: Date.now(), metadata: thinkAccum ? { reasoning: thinkAccum } : undefined });
 
     // 更新记忆（P0-1: 写入前过滤指令性内容，防止对话中的 Prompt 注入持久化为记忆）
@@ -912,8 +929,15 @@ export class MessageRouter {
       for (const pattern of factPatterns) {
         let m;
         while ((m = pattern.exec(allText)) !== null) {
-          const key = m[0].split(/[\s：:]/)[0].slice(0, 20);
-          mergedFacts[key] = sanitizeMemoryInput(m[0].slice(0, 50));
+          // FIX-ALL: build a clean, bounded key instead of slicing the whole matched string
+          // FIX-ALL(2026-11-04): key 只取捕获组/首个词并清洗，不再把整段匹配塞进 key，
+          // 避免出现 "[2026/11/1 18"、"| 服务监听 | `0.0.0.0`" 这类碎片 key。
+          const rawKey = m[1] !== undefined ? String(m[1]) : String(m[0]).split(/[\s,:：，]/)[0];
+          const key = rawKey.replace(/[^\p{L}\p{N}_-]/gu, "").slice(0, 30) || ("fact-" + String(allText.length % 1000));
+          // value 只保留捕获组（如有），截断 80 字，并丢弃 "[object Object]" 之类的序列化垃圾
+          const rawVal = m[1] !== undefined ? String(m[1]) : String(m[0]);
+          const val = sanitizeMemoryInput(rawVal.slice(0, 80));
+          if (val && val !== "[object Object]") mergedFacts[key] = val;
         }
       }
       // P2-6: facts 条数上限 50，超出保留最近添加的
@@ -1500,10 +1524,10 @@ export class MessageRouter {
     } catch (e: unknown) { console.warn('[Router] 群聊记忆索引构建失败:', (e as Error)?.message || e); }
     // P1-2: 补全最近 500 条 agent 消息
     try {
-      const db = getDB();
-      const msgStmt = db.prepare("SELECT id, chat_id, sender_id, content, timestamp FROM messages WHERE sender_type = 'agent' ORDER BY timestamp DESC LIMIT 500");
-      while (msgStmt.step()) {
-        const m = msgStmt.getAsObject() as { id: string; chat_id: string; sender_id: string; content: string; timestamp: number };
+      // [FIX P0-1] 裸 prepare 会读到密文 content（绕过 queryObjects 的 decRow 解密），
+      // 导致密文被灌进记忆检索索引。改用 queryObjects 走统一解密路径。
+      const rows = queryObjects("SELECT id, chat_id, sender_id, content, timestamp FROM messages WHERE sender_type = 'agent' ORDER BY timestamp DESC LIMIT 500");
+      for (const m of rows as Array<{ id: string; chat_id: string; sender_id: string; content: string; timestamp: number }>) {
         if (m.content) {
           this.memorySearch.addDocument({
             id: m.id,
@@ -1513,7 +1537,6 @@ export class MessageRouter {
           });
         }
       }
-      msgStmt.free();
     } catch (e: unknown) { console.warn('[Router] 消息索引构建失败:', (e as Error)?.message || e); }
     this.memorySearch.buildIndex();
     console.log(`[Router] 搜索索引已重建: ${this.memorySearch.size} 条文档`);
@@ -1532,6 +1555,21 @@ export class MessageRouter {
    * 初始化 RAG 引擎（从数据库加载已存在的文档）
    */
   initRAG(): void {
+    // P1: 本地 embedding（Ollama nomic-embed-text），RAG_EMBED=ollama 开启，
+    // 避免默认 hash 向量导致中文语义检索不准。失败自动回退 hash。
+    try {
+      const embedMode = (process.env.RAG_EMBED || '').toLowerCase();
+      if (embedMode === 'ollama') {
+        const base = (process.env.OLLAMA_BASE_URL || 'http://localhost:11434/v1').replace(/\/$/, '');
+        const model = process.env.RAG_EMBED_MODEL || 'nomic-embed-text';
+        const client = new OpenAI({ baseURL: base, apiKey: 'ollama-local' });
+        this.ragEngine.setEmbeddingClient(client, model);
+        console.log(`[RAG] 本地 embedding 已启用: ${base} model=${model}`);
+      }
+    } catch (e: any) {
+      console.warn('[RAG] 本地 embedding 启用失败，回退 hash 向量:', e?.message || e);
+    }
+
     // 从数据库加载文档和块
     const docs = (this.db as Database).listRagDocuments?.() || [];
     if (docs.length > 0) {

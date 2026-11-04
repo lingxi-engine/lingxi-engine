@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 局域网发现层 (LAN Discovery)
  *
  * 通过 UDP 广播在同一局域网内自动发现其他灵犀引擎实例。
@@ -17,6 +17,37 @@ import { networkInterfaces } from 'os';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
+
+// mDNS（Bonjour）可选增强：LAN_MDNS=1 开启后除 UDP 广播外再发布 _lingxi._tcp 服务，
+// 跨子网/VLAN/访客网络场景下比纯广播更可靠。依赖 bonjour-service 包，缺失时自动降级到纯 UDP。
+let mdnsService: any = null;
+let mdnsAnnouncer: any = null;
+async function startMdns(port: number, version: string): Promise<void> {
+  if ((process.env.LAN_MDNS || '1') === '0') return;
+  try {
+    const mod: any = await import('bonjour-service');
+    const Bonjour = mod.default || mod;
+    const bonjour = new Bonjour();
+    const ips = getLanIps();
+    mdnsService = bonjour.publish({
+      name: `lingxi-${selfInstanceId.slice(-6)}`,
+      type: 'lingxi',
+      port,
+      txt: { instanceId: selfInstanceId, version, ips: ips.join(',') },
+    });
+    mdnsAnnouncer = bonjour;
+    console.log(`[LAN] mDNS 已发布 _lingxi._tcp (port=${port}, ips=${ips.join(',') || '127.0.0.1'})`);
+  } catch (e: any) {
+    console.warn('[LAN] mDNS 不可用（缺少 bonjour-service 依赖），仅使用 UDP 广播:', e?.message || e);
+  }
+}
+function stopMdns(): void {
+  try { mdnsService?.stop?.(); } catch { /* ignore */ }
+  try { mdnsAnnouncer?.destroy?.(); } catch { /* ignore */ }
+  mdnsService = null;
+  mdnsAnnouncer = null;
+}
+
 
 /** 灯塔广播端口（UDP）。可用环境变量 LAN_DISCOVERY_PORT 覆盖。 */
 const DEFAULT_DISCOVERY_PORT = 3457;
@@ -39,6 +70,7 @@ export interface LanBeacon {
   proto: number;            // 协议版本，便于将来升级
   instanceId: string;       // 稳定实例 ID
   lanIp: string;
+  lanIps?: string[];        // FIX-ALL(2026-11-04): 多网卡全部地址
   port: number;             // 引擎 HTTP 端口（传输层用）
   version: string;          // 引擎版本
   users: LanUser[];         // 本机用户列表
@@ -66,6 +98,8 @@ export interface LanDiscoveryConfig {
   getUsers: () => LanUser[];
   /** 可选：自定义发现端口 */
   discoveryPort?: number;
+  /** 鍙€夛細鍙戠幇鏂伴偦灞呮椂鍥炶皟锛堢敤浜?E2EE 鑷姩鍏挜浜ゆ崲锛?*/
+  onPeerSeen?: (peer: LanPeer) => void;
 }
 
 let socket: dgram.Socket | null = null;
@@ -79,17 +113,36 @@ const peers = new Map<string, LanPeer>();
 
 /** 获取本机局域网 IPv4 地址（取第一个非内部回环） */
 export function getLanIp(): string {
+  return getLanIps()[0] || '127.0.0.1';
+}
+
+/** FIX-ALL(2026-11-04): 返回本机所有非内部 IPv4 地址（多网卡/多 VLAN 场景） */
+export function getLanIps(): string[] {
+  const out: string[] = [];
   const interfaces = networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     const iface = interfaces[name];
     if (!iface) continue;
     for (const addr of iface) {
-      if (addr.family === 'IPv4' && !addr.internal) {
-        return addr.address;
+      if (addr.family === 'IPv4' && !addr.internal && !out.includes(addr.address)) {
+        out.push(addr.address);
       }
     }
   }
-  return '127.0.0.1';
+  return out;
+}
+
+/** FIX-ALL(2026-11-04): 计算每个网卡的定向广播地址（a.b.c.255），
+ *  仅 255.255.255.255 在跨子网/VLAN/访客网络时会被路由丢弃，定向广播能穿透同网段内的不同子网掩码。 */
+export function directedBroadcastAddrs(): string[] {
+  const out: string[] = [BROADCAST_ADDR];
+  for (const ip of getLanIps()) {
+    const parts = ip.split('.').map(Number);
+    if (parts.length === 4 && parts.every((n) => n >= 0 && n <= 255)) {
+      out.push(`${parts[0]}.${parts[1]}.${parts[2]}.255`);
+    }
+  }
+  return [...new Set(out)];
 }
 
 /** 读取或生成持久化的实例 ID */
@@ -119,6 +172,7 @@ function buildBeacon(): LanBeacon {
     proto: 1,
     instanceId: selfInstanceId,
     lanIp: getLanIp(),
+    lanIps: getLanIps(), // FIX-ALL(2026-11-04): 多网卡时携带全部地址
     port: config!.port,
     version: config!.version,
     // P0-1 fix: 恢复 users 字段但只含 numericId + displayName（不含 agentId 等敏感信息）
@@ -133,9 +187,13 @@ function sendBeacon() {
   const beacon = buildBeacon();
   const buf = Buffer.from(JSON.stringify(beacon));
   const port = config!.discoveryPort || DEFAULT_DISCOVERY_PORT;
-  socket.send(buf, 0, buf.length, port, BROADCAST_ADDR, (err) => {
-    if (err) console.error('[LAN] 广播失败:', err.message);
-  });
+  // FIX-ALL(2026-11-04): 同时发 255.255.255.255 + 各网卡定向广播地址，
+  // 跨子网/VLAN 时至少有一条能到达对方。
+  for (const addr of directedBroadcastAddrs()) {
+    socket.send(buf, 0, buf.length, port, addr, (err) => {
+      if (err && addr === BROADCAST_ADDR) console.error('[LAN] 广播失败:', err.message);
+    });
+  }
 }
 
 function handlePacket(msg: Buffer, rinfo: dgram.RemoteInfo) {
@@ -149,17 +207,25 @@ function handlePacket(msg: Buffer, rinfo: dgram.RemoteInfo) {
   if (beacon.proto !== 1) return; // 协议版本不匹配，忽略
   if (!beacon.instanceId || beacon.instanceId === selfInstanceId) return; // 忽略自己
 
+  // FIX-ALL(2026-11-04): 多网卡时优先选与本机同网段的地址；否则回退来源地址
+  const myIps = new Set(getLanIps());
+  const sameSubnet = (Array.isArray((beacon as any).lanIps) ? (beacon as any).lanIps as string[] : [])
+    .find((ip: string) => {
+      const a = String(ip).split('.').slice(0, 3).join('.');
+      return [...myIps].some((m) => m.split('.').slice(0, 3).join('.') === a);
+    });
   peers.set(beacon.instanceId, {
     instanceId: beacon.instanceId,
     // 优先用灯塔里声明的 IP；若为 0.0.0.0/127.0.0.1 则回退到来源地址
-    lanIp: (beacon.lanIp && beacon.lanIp !== '0.0.0.0' && !beacon.lanIp.startsWith('127.'))
+    lanIp: sameSubnet || ((beacon.lanIp && beacon.lanIp !== '0.0.0.0' && !beacon.lanIp.startsWith('127.'))
       ? beacon.lanIp
-      : rinfo.address,
+      : rinfo.address),
     port: beacon.port,
     version: beacon.version,
     users: Array.isArray(beacon.users) ? beacon.users : [],
     lastSeen: Date.now(),
   });
+  try { config?.onPeerSeen?.(peers.get(beacon.instanceId)!); } catch (_e) {}
 }
 
 function pruneStalePeers() {
@@ -182,6 +248,7 @@ export function startLanDiscovery(cfg: LanDiscoveryConfig): void {
     return;
   }
   config = cfg;
+  startMdns(cfg.port, cfg.version).catch(() => {});
   selfInstanceId = loadOrCreateInstanceId(cfg.dataDir);
   const port = cfg.discoveryPort || DEFAULT_DISCOVERY_PORT;
 
@@ -211,6 +278,7 @@ export function startLanDiscovery(cfg: LanDiscoveryConfig): void {
 
 /** 停止局域网发现 */
 export function stopLanDiscovery(): void {
+  stopMdns();
   if (beaconTimer) { clearInterval(beaconTimer); beaconTimer = null; }
   if (pruneTimer) { clearInterval(pruneTimer); pruneTimer = null; }
   if (socket) {

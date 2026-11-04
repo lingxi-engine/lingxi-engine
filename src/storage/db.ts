@@ -3,11 +3,53 @@
  *  DB 
  */
 import initSqlJs from "sql.js";
+import { encryptField, decryptField, isEncrypted, cryptoStatus } from './field-crypto.js';
+
+// P0-1: 敏感列落盘加密配置（写入加密 / 读取解密）
+const ENC_WRITE: Record<string, Set<string>> = {
+  messages: new Set(['content']),
+  chat_memories: new Set(['memory_summary', 'memory_facts']),
+  agents: new Set(['memory_summary', 'memory_facts', 'personality']),
+  inbox: new Set(['content']),
+  revoked_memory: new Set(['pattern', 'reason']),
+  users: new Set(['password_hash']),
+  user_sessions: new Set(['refresh_token_hash']),
+  user_verifications: new Set(['token']),
+  verification_codes: new Set(['code']),
+  app_instance_secrets: new Set(['secret']),
+  lan_outbox: new Set(['body']),
+};
+
+function encCol(table: string, col: string, v: any): any {
+  if (v === null || v === undefined) return v;
+  const cols = ENC_WRITE[table];
+  if (!cols || !cols.has(col)) return v;
+  return encryptField(String(v));
+}
+
+function decRow(table: string, row: any): any {
+  if (!row || typeof row !== 'object') return row;
+  const cols = ENC_WRITE[table];
+  if (!cols) return row;
+  for (const key of Object.keys(row)) {
+    if (cols.has(key)) row[key] = decryptField(row[key] as any) as any;
+  }
+  return row;
+}
+
 import bcrypt from 'bcryptjs';
 let _db: any = null;
 let _dbPath: string = "";
 let _saveTimer: ReturnType<typeof setInterval> | null = null;
 let _dirty = false;  // P1-4: 脏标记，仅在有写入时才触发磁盘保存
+
+/** 标记 DB 已变脏（供自动保存判断；当前自动保存为无条件执行，此函数保留供未来按需保存使用） */
+/** P0-1: 暴露加密层状态（供 /api/health） */
+export function getCryptoStatus() {
+  return cryptoStatus();
+}
+
+export function markDirty(): void { _dirty = true; }
 
 /**
  * ?30 
@@ -280,10 +322,23 @@ export function applyRevocations(text: string, patterns: string[]): string {
   return out.trim();
 }
 
-/** P1-4: 标记数据库有变更，下次自动保存时写入磁盘 */
-export function markDirty(): void { _dirty = true; }
+export function searchMessages(keyword: string, opts: { chatId?: string; limit?: number } = {}): any[] {
+  const limit = Math.min(Math.max(opts.limit || 50, 1), 500);
+  const kw = String(keyword || '');
+  if (!kw) return [];
+  // content is encrypted at rest, so SQL-side matching is impossible:
+  // fetch candidates (decrypted via queryObjects) and filter in JS.
+  let sql = 'SELECT * FROM messages';
+  const params: any[] = [];
+  if (opts.chatId) { sql += ' WHERE chat_id = ?'; params.push(opts.chatId); }
+  sql += ' ORDER BY timestamp DESC LIMIT ?';
+  params.push(Math.max(limit * 20, 500));
+  const rows = queryObjects(sql, params);
+  const hits = rows.filter((r: any) => typeof r.content === 'string' && r.content.includes(kw));
+  return hits.slice(0, limit).reverse();
+}
 
-/**  DB ?*/
+/** DB facade object (raw access + helpers) */
 export const db = {
   get raw() { return _db; },
   exec: (...args: any[]) => _db.exec(...args),
@@ -843,7 +898,20 @@ function queryAll(sql: string, params: any[] = []): any[][] {
 export function queryOne(sql: string, params: any[] = []): any | null {
   const stmt = _db.prepare(sql);
   if (params.length) stmt.bind(params);
+  // [FIX] keep array return (callers use row[0]); decrypt sensitive cols by column index
   const result = stmt.step() ? stmt.get() : null;
+  if (result) {
+    const _m = sql.match(/\b(?:FROM|JOIN)\s+([a-z_]+)/gi) || [];
+    const _tables = _m.map((x) => x.replace(/.*\s+/i, '').toLowerCase());
+    const _hit = _tables.find((t) => ENC_WRITE[t] !== undefined);
+    if (_hit) {
+      const cols = ENC_WRITE[_hit];
+      const names = stmt.getColumnNames();
+      names.forEach((n: string, i: number) => {
+        if (cols.has(String(n))) result[i] = decryptField(result[i] as any);
+      });
+    }
+  }
   stmt.free();
   return result;
 }
@@ -852,7 +920,16 @@ export function queryObjects(sql: string, params: any[] = []): any[] {
   const stmt = _db.prepare(sql);
   if (params.length) stmt.bind(params);
   const rows: any[] = [];
-  while (stmt.step()) rows.push(stmt.getAsObject());
+  // [FIX] 解密命中表：ENC_WRITE 是 Record<表名, Set<列>>，按 FROM/JOIN 里的表名直接查
+  const _m = sql.match(/\b(?:FROM|JOIN)\s+([a-z_]+)/gi) || [];
+  const _tables = _m.map((x) => x.replace(/.*\s+/i, '').toLowerCase());
+  const _hitTables = new Set(_tables.filter((t) => ENC_WRITE[t] !== undefined));
+  while (stmt.step()) {
+    const row = stmt.getAsObject();
+    // decRow 需要表名；多表 JOIN 时对每个命中表解密其敏感列（列名不冲突时安全）
+    for (const t of _hitTables) decRow(t, row);
+    rows.push(row);
+  }
   stmt.free();
   return rows;
 }
@@ -871,13 +948,13 @@ export function getUser(id: string) {
   // 导致同一用户在不同路径下 id 格式不一致，按单一格式查询必然 404。
   let stmt = _db.prepare("SELECT * FROM users WHERE id = ?");
   stmt.bind([id]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('users', row); }
   stmt.free();
   const nid = Number(id);
   if (!Number.isNaN(nid) && String(nid) === String(id).trim()) {
     stmt = _db.prepare("SELECT * FROM users WHERE numeric_id = ?");
     stmt.bind([nid]);
-    if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+    if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('users', row); }
     stmt.free();
   }
   return undefined;
@@ -886,7 +963,7 @@ export function getUser(id: string) {
 export function getUserByEmail(email: string) {
   const stmt = _db.prepare("SELECT * FROM users WHERE email = ?");
   stmt.bind([email]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('users', row); }
   stmt.free();
   return undefined;
 }
@@ -896,7 +973,7 @@ export function getUserByDisplayName(displayName: string) {
   markDirty();
   const stmt = _db.prepare("SELECT * FROM users WHERE display_name = ?");
   stmt.bind([displayName]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('users', row); }
   stmt.free();
   return undefined;
 }
@@ -919,7 +996,7 @@ export function createAgent(id: string, userId: string, displayName: string, per
   const now = Date.now();
   _db.run(
     "INSERT INTO agents (id, user_id, display_name, model, personality, autonomy, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-    [id, userId, displayName, model || '', personality, autonomy, now]
+    [id, userId, displayName, model || '', encCol('agents','personality',personality), autonomy, now]
   );
   return getAgent(id);
 }
@@ -927,7 +1004,7 @@ export function createAgent(id: string, userId: string, displayName: string, per
 export function getAgent(id: string) {
   const stmt = _db.prepare("SELECT * FROM agents WHERE id = ?");
   stmt.bind([id]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('agents', row); }
   stmt.free();
   return undefined;
 }
@@ -944,7 +1021,8 @@ export function updateAgent(agentId: string, updates: Record<string, any>) {
   for (const [k, v] of Object.entries(updates)) {
     if (allowed.includes(k) && v !== undefined) {
       sets.push(`${k} = ?`);
-      vals.push(typeof v === 'object' ? JSON.stringify(v) : v);
+      const raw = typeof v === 'object' ? JSON.stringify(v) : v;
+      vals.push(encCol('agents', k, raw));
     }
   }
   if (!sets.length) return;
@@ -955,7 +1033,7 @@ export function updateAgent(agentId: string, updates: Record<string, any>) {
 }
 
 export function updateAgentMemory(agentId: string, summary: string, facts: Record<string, string>) {
-  _db.run("UPDATE agents SET memory_summary = ?, memory_facts = ? WHERE id = ?", [summary, JSON.stringify(facts), agentId]);
+  _db.run("UPDATE agents SET memory_summary = ?, memory_facts = ? WHERE id = ?", [encCol('agents','memory_summary',summary), encCol('agents','memory_facts',JSON.stringify(facts)), agentId]);
 }
 
 // v1.4.0: 群聊独立记忆
@@ -966,14 +1044,14 @@ export function upsertChatMemory(chatId: string, agentId: string, summary: strin
     `INSERT INTO chat_memories (id, chat_id, agent_id, memory_summary, memory_facts, updated_at)
      VALUES (?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET memory_summary = ?, memory_facts = ?, updated_at = ?`,
-    [id, chatId, agentId, summary, JSON.stringify(facts), now, summary, JSON.stringify(facts), now]
+    [id, chatId, agentId, encCol('chat_memories','memory_summary',summary), encCol('chat_memories','memory_facts',JSON.stringify(facts)), now, encCol('chat_memories','memory_summary',summary), encCol('chat_memories','memory_facts',JSON.stringify(facts)), now]
   );
 }
 
 export function getChatMemory(chatId: string, agentId: string) {
   const stmt = _db.prepare("SELECT * FROM chat_memories WHERE chat_id = ? AND agent_id = ?");
   stmt.bind([chatId, agentId]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('chat_memories', row); }
   stmt.free();
   return undefined;
 }
@@ -986,7 +1064,8 @@ export function listChatMemoryPairs(): Array<{ chat_id: string; agent_id: string
   return queryObjects("SELECT DISTINCT chat_id, agent_id FROM chat_memories WHERE memory_summary IS NOT NULL AND length(memory_summary) >= 100");
 }
 
-  markDirty();
+
+  markDirty();
 
 export function appendMemorySummary(agentId: string, newContent: string) {
   const agent = getAgent(agentId);
@@ -1024,7 +1103,7 @@ export function appendMemorySummary(agentId: string, newContent: string) {
   const updated = base ? base + '\n' + safeContent : safeContent;
   // 首尾兼顾截断（保留最早的摘要 + 最近的增量）
   const trimmed = trimMemoryText(updated, 2000);
-  _db.run("UPDATE agents SET memory_summary = ? WHERE id = ?", [trimmed, agentId]);
+  _db.run("UPDATE agents SET memory_summary = ? WHERE id = ?", [encCol('agents','memory_summary',trimmed), agentId]);
   markDirty();
 }
 
@@ -1121,7 +1200,7 @@ export function addMessage(msg: DBMessage) {
     "INSERT INTO messages (id, chat_id, sender_type, sender_id, content, type, reply_to, metadata, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
     [
       msg.id, msg.chatId, msg.senderType, msg.senderId,
-      msg.content, msg.type, msg.replyTo ?? null,
+      encCol('messages', 'content', msg.content), msg.type, msg.replyTo ?? null,
       JSON.stringify(msg.metadata ?? {}), msg.timestamp
     ]
   )
@@ -1131,7 +1210,9 @@ export function addMessage(msg: DBMessage) {
 }
 
 export function listMessages(chatId: string, limit = 100) {
-  return queryObjects("SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?", [chatId, limit]).reverse();
+  return queryObjects("SELECT * FROM messages WHERE chat_id = ? ORDER BY timestamp DESC LIMIT ?", [chatId, limit])
+    .map((r) => decRow('messages', r))
+    .reverse();
 }
 
 /** 获取指定 Agent 最近的消息 */
@@ -1150,7 +1231,7 @@ export function saveVerificationCode(email: string, code: string, username?: str
   const exp = expiresAtMs ?? now + 5 * 60 * 1000;
   _db.run(
     "INSERT OR REPLACE INTO verification_codes (email, code, username, expires_at, created_at) VALUES (?, ?, ?, ?, ?)",
-    [email, code, username ?? null, exp, now]
+    [email, encCol('verification_codes','code',code), username ?? null, exp, now]
   )
   markDirty();
 }
@@ -1158,7 +1239,7 @@ export function saveVerificationCode(email: string, code: string, username?: str
 export function getVerificationCode(email: string) {
   const stmt = _db.prepare("SELECT * FROM verification_codes WHERE email = ?");
   stmt.bind([email]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('verification_codes', row); }
   stmt.free();
   return undefined;
 }
@@ -1187,7 +1268,7 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
   if (fromUserId === toUserId) return { error: '不能添加自己为好友' };
   // 对方必须是本地用户、或远程 LAN 用户（remote- 前缀 / lan_remote_identities 表中有记录）
     markDirty();
-  const targetUser = getUser(toUserId);
+  const targetUser = getUser(toUserId) || (() => { const n = parseInt(String(toUserId), 10); return isNaN(n) ? undefined : getUserByNumericId(n); })();
   if (!targetUser && !toUserId.startsWith('remote-') && !getLanRemoteIdentity(toUserId)) {
     return { error: '对方用户不存在' };
   }
@@ -1239,9 +1320,27 @@ export function respondFriendRequest(requestId: string, action: 'accept' | 'reje
   }
   return { ok: true, status };
 }
+/** FIX-ALL(2026-11-04): 把一个 userId 扩展成所有等价形态（users.id + numeric_id 字符串），
+ *  避免「LAN 层用 users.id 写入、前端用 numericId 查询」互相看不到好友申请。 */
+export function userIdVariants(userId: string): string[] {
+  const out = new Set<string>([String(userId)]);
+  try {
+    const u = getUser(String(userId));
+    if (u?.numeric_id != null) out.add(String(u.numeric_id));
+    const n = parseInt(String(userId), 10);
+    if (!isNaN(n)) {
+      const byNid = getUserByNumericId(n);
+      if (byNid?.id) out.add(String(byNid.id));
+    }
+  } catch {}
+  return [...out];
+}
+
 export function getFriendRequests(userId: string) {
-  const incoming = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as from_name FROM friendships f LEFT JOIN users u ON f.from_user_id = u.id WHERE f.to_user_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC", [userId]);
-  const outgoing = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as to_name FROM friendships f LEFT JOIN users u ON f.to_user_id = u.id WHERE f.from_user_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC", [userId]);
+  const ids = userIdVariants(userId);
+  const ph = ids.map(() => '?').join(',');
+  const incoming = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as from_name FROM friendships f LEFT JOIN users u ON f.from_user_id = u.id WHERE f.to_user_id IN (" + ph + ") AND f.status = 'pending' ORDER BY f.created_at DESC", ids);
+  const outgoing = queryObjects("SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as to_name FROM friendships f LEFT JOIN users u ON f.to_user_id = u.id WHERE f.from_user_id IN (" + ph + ") AND f.status = 'pending' ORDER BY f.created_at DESC", ids);
   return {
     incoming: incoming.map((r: any) => ({ id: r.id, fromUserId: r.from_user_id, toUserId: r.to_user_id, status: r.status, message: r.message, createdAt: r.created_at, fromName: r.from_name })),
     // 红点修复(2026-09-14 重部署善后): incoming 已在 SQL 层过滤为 pending，
@@ -1251,13 +1350,15 @@ export function getFriendRequests(userId: string) {
   };
 }
 export function listFriends(userId: string) {
+  const ids = userIdVariants(userId);
+  const ph = ids.map(() => '?').join(',');
   const rows = queryObjects(
     `SELECT f.id, f.from_user_id, f.to_user_id, f.status, f.message, f.created_at, f.updated_at, u.display_name as friend_name, u.agent_id as friend_agent_id
      FROM friendships f
-     LEFT JOIN users u ON (CASE WHEN f.from_user_id = ? THEN f.to_user_id ELSE f.from_user_id END) = u.id
-     WHERE (f.from_user_id = ? OR f.to_user_id = ?) AND f.status = 'accepted'
+     LEFT JOIN users u ON (CASE WHEN f.from_user_id IN (` + ph + `) THEN f.to_user_id ELSE f.from_user_id END) = u.id
+     WHERE (f.from_user_id IN (` + ph + `) OR f.to_user_id IN (` + ph + `)) AND f.status = 'accepted'
      ORDER BY f.updated_at DESC`,
-    [userId, userId, userId]
+    [...ids, ...ids, ...ids]
   );
   return rows.map((row: any) => ({
     id: row.id,
@@ -1330,11 +1431,17 @@ export function listLanRemoteIdentities(): any[] {
   return queryObjects("SELECT * FROM lan_remote_identities ORDER BY updated_at DESC");
 }
 
-  markDirty();
+/** FIX-ALL(2026-11-04): 按 numeric_id 查远程身份（remote-{nid} 占位 ID 反查真实身份用） */
+export function getLanRemoteIdentityByNumericId(numericId: number): any {
+  return queryObjects("SELECT * FROM lan_remote_identities WHERE numeric_id = ?", [numericId])[0] || null;
+}
+
+
+  markDirty();
 export function getAgentByUserId(userId: string) {
   const stmt = _db.prepare("SELECT * FROM agents WHERE user_id = ?");
   stmt.bind([userId]);
-  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return row; }
+  if (stmt.step()) { const row = stmt.getAsObject(); stmt.free(); return decRow('agents', row); }
   stmt.free();
   return null;
 }
@@ -1572,7 +1679,7 @@ export function addInboxItem(item: {
 }): void {
   _db.run(
     "INSERT INTO inbox (id, agent_id, type, title, content, file_path, read, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [item.id, item.agentId, item.type, item.title, item.content, item.filePath, item.read ? 1 : 0, item.createdAt]
+    [item.id, item.agentId, item.type, item.title, encCol('inbox','content',item.content), item.filePath, item.read ? 1 : 0, item.createdAt]
   );
 }
 
@@ -1583,7 +1690,8 @@ export function listInbox(agentId?: string): any[] {
   return queryObjects("SELECT * FROM inbox ORDER BY created_at DESC");
 }
 
-  markDirty();
+
+  markDirty();
 export function markInboxRead(id: string): void {
   _db.run("UPDATE inbox SET read = 1 WHERE id = ?", [id]);
 }
@@ -1657,10 +1765,13 @@ export function initNumericIdSeq(): void {
  * 单线程 JS 下读取+自增之间不会有其它分配者插入，故无竞态。
  */
 export function nextNumericId(): number {
+  // 每次从 DB 读实时 MAX（单线程 JS 下无竞态），保证返回值严格大于库内 MAX，
+  // 杜绝「访客直写 MAX+1 绕过分配器」导致的 UNIQUE 撞号。
   const row = queryOne(`SELECT MAX(numeric_id) FROM users WHERE numeric_id IS NOT NULL`);
   const dbMax = (row && typeof row[0] === 'number') ? (row[0] as number) : 9999;
-  if (dbMax + 1 > _nextNumericId) _nextNumericId = dbMax + 1;
-  return _nextNumericId++;
+  const next = Math.max(_nextNumericId, dbMax + 1);
+  _nextNumericId = next + 1;
+  return next;
 }
 
 /** (encoding fix) */
@@ -1672,7 +1783,7 @@ export function createFullUser(params: {
   _db.run(
     `INSERT INTO users (id, numeric_id, email, email_verified, password_hash, display_name, status, legacy_user_id, invite_code, created_at, updated_at)
      VALUES (?, ?, ?, 0, ?, ?, 'offline', ?, ?, ?, ?)`,
-    [params.id, params.numericId, params.email, params.passwordHash, params.displayName, params.legacyUserId || null, params.inviteCode || null, now, now]
+    [params.id, params.numericId, params.email, encCol('users','password_hash',params.passwordHash), params.displayName, params.legacyUserId || null, params.inviteCode || null, now, now]
   );
   // 消费邀请码
   if (params.inviteCode) {
@@ -1690,7 +1801,7 @@ export function verifyUserEmail(userId: string): void {
 /** 更新用户密码 */
   markDirty();
 export function updateUserPassword(userId: string, newPasswordHash: string): void {
-  _db.run(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, [newPasswordHash, Date.now(), userId]);
+  _db.run(`UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?`, [encCol('users','password_hash',newPasswordHash), Date.now(), userId]);
 }
 
 /** 更新用户状态 */
@@ -1711,7 +1822,7 @@ export function createVerificationToken(params: {
 }): void {
   _db.run(
     `INSERT INTO user_verifications (id, user_id, token, type, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [params.id, params.userId, params.token, params.type, params.expiresAtMs, Date.now()]
+    [params.id, params.userId, encCol('user_verifications','token',params.token), params.type, params.expiresAtMs, Date.now()]
   );
 }
 
@@ -1757,11 +1868,12 @@ export function createUserSession(params: {
 }): void {
   _db.run(
     `INSERT INTO user_sessions (id, user_id, refresh_token_hash, device_info, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)`,
-    [params.id, params.userId, params.refreshTokenHash, params.deviceInfo || null, Date.now(), params.expiresAtMs]
+    [params.id, params.userId, encCol('user_sessions','refresh_token_hash',params.refreshTokenHash), params.deviceInfo || null, Date.now(), params.expiresAtMs]
   );
 }
 
-  markDirty();
+
+  markDirty();
 /** 通过 refreshToken 找活跃会话（遍历 + bcrypt 比对）*/
 export function getActiveSessionByToken(refreshToken: string): any {
   // 安全：限制最多检查 1000 条，防 DoS
@@ -1785,7 +1897,7 @@ export function getActiveSessionByToken(refreshToken: string): any {
 
 /** 滚动刷新：替换会话里的 refresh_token_hash */
 export function rotateUserSession(sessionId: string, newRefreshTokenHash: string): void {
-  _db.run(`UPDATE user_sessions SET refresh_token_hash = ? WHERE id = ?`, [newRefreshTokenHash, sessionId]);
+  _db.run(`UPDATE user_sessions SET refresh_token_hash = ? WHERE id = ?`, [encCol('user_sessions','refresh_token_hash',newRefreshTokenHash), sessionId]);
 }
 
 /** 撤销会话 */
@@ -1869,7 +1981,8 @@ export function listLanGroups(): any[] {
 }
 
 export function setLanGroupMode(groupId: string, mode: string): boolean {
-  const validModes = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote', 'brainstorm'];
+  // FIX-ALL(2026-11-04): 与 CHAT_MODES 保持同一枚举，LAN 群不再只有 free
+  const validModes = [...CHAT_MODES] as string[];
   if (!validModes.includes(mode)) return false;
   _db.run("UPDATE lan_groups SET chat_mode = ? WHERE id = ?", [mode, groupId]);
   return true;
@@ -1879,7 +1992,8 @@ export function deleteLanGroup(id: string): void {
   _db.run("DELETE FROM lan_groups WHERE id = ?", [id]);
 }
 
-  markDirty();
+
+  markDirty();
 export function removeLanGroup(id: string): void {
   deleteLanGroup(id);
 }
@@ -2210,6 +2324,18 @@ const MIGRATIONS: Migration[] = [
     id: '20260918_004_lan_groups_owner_user_id',
     description: 'lan_groups 增加 owner_user_id（代码声明列；真实库缺失）',
     up: (db) => { addColumnIfMissing(db, 'lan_groups', 'owner_user_id', 'TEXT'); },
+  },
+  {
+    id: '20261103_001_e2ee_keys',
+    description: 'E2EE key store table (instance X25519 identity + peer public keys)',
+    up: (db) => {
+      db.run(`CREATE TABLE IF NOT EXISTS e2ee_keys (
+        id TEXT PRIMARY KEY,
+        public_key TEXT NOT NULL,
+        private_key TEXT,
+        created_at INTEGER NOT NULL
+      )`);
+    },
   },
 ];
 

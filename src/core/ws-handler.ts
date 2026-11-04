@@ -815,7 +815,9 @@ async function triggerAgentReply(
     }, 3000);
     if (heartbeatId.unref) heartbeatId.unref();
 
-    const reply = await router.generateReply(
+    let reply: string;
+    try {
+      reply = await router.generateReply(
       chatId,
       agentId,
       triggerMsgId,
@@ -862,7 +864,16 @@ async function triggerAgentReply(
       ctrl.signal,
       // ⭐ bench 对照组开关（G0–G4）
       { bench }
-    );
+      );
+    } catch (genErr: any) {
+      // FIX-ALL: empty/failed generation must NOT be persisted as a normal agent message
+      if (!ctrl.signal.aborted) {
+        console.error(`[WS] Agent ${agentId} generateReply returned empty/failed:`, genErr?.message || '(empty reply)');
+        broadcast({ type: 'agent.streaming.end', chatId, from: agentSenderId, msgId, error: genErr?.message || 'AI 未返回有效内容' });
+        broadcast({ type: 'error', message: 'AI 调用失败: ' + (genErr?.message || '未返回有效内容') });
+      }
+      return '';
+    }
 
     // 如果 generateReply 内部已经拼接了 fullContent（工具调用场景），用返回值
     if (reply && !fullContent) fullContent = reply;
@@ -887,6 +898,8 @@ async function triggerAgentReply(
       replyTo: triggerMsgId,
       timestamp: Date.now(),
     });
+    // FIX-ALL: do not persist empty reply as a normal message
+    if (!fullContent && !reply) return '';
     return fullContent || reply || '';
   } catch (err: any) {
     // ⭐ 用户主动停止：不当作错误，关闭打字气泡并标记 stopped（前端显示"已停止"）
@@ -914,6 +927,7 @@ async function triggerAgentReply(
     }
     if (err.error?.message) errorDetail += ' | ' + err.error.message;
     if (err.code) errorDetail += ' | code: ' + err.code;
+    // FIX-ALL: never persist error text as agent message; only broadcast
     const fullError = errorDetail ? `${errorMsg} (${errorDetail})` : errorMsg;
     // 流式失败也要关闭打字气泡
     broadcast({
