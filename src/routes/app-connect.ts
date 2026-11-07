@@ -488,8 +488,14 @@ export class AppConnectService {
     const it = this.getInstance(instanceId);
     const known = this.getSecret(instanceId);
     if (!it || !known || !safeEq(known, secret)) return null;
+    return this.consumeTicket(ticket, instanceId);
+  }
+
+  /** 只凭 ticket 消费（ticket 自带 instanceId，用于 /app/connect 页无凭据兑换） */
+  consumeTicket(ticket: string, expectInstanceId?: string): TicketRecord | null {
     const t = this.tickets.get(String(ticket || ''));
-    if (!t || t.used || t.exp < Date.now() || t.instanceId !== instanceId) return null;
+    if (!t || t.used || t.exp < Date.now()) return null;
+    if (expectInstanceId && t.instanceId !== expectInstanceId) return null;
     t.used = true;
     this.tickets.delete(t.ticket);
     return t;
@@ -1249,7 +1255,7 @@ export class AppConnectService {
         const secret = String(req.headers['x-instance-secret'] || req.body?.secret || '');
         const ticket = String(req.body?.ticket || '');
         // 情况 A：票据就在本机（云端就是目标）
-        let info = self.verifyTicket(id, secret, ticket);
+        let info = self.consumeTicket(ticket) || self.verifyTicket(id, secret, ticket);
         // 情况 B：本机是电脑端，票据在 Hub 上 → 用实例密钥回源校验
         if (!info) {
           const hub = (self.hubUrl || String(req.body?.hub || '')).replace(/\/+$/, '');

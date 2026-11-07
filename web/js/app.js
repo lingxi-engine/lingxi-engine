@@ -1,12 +1,60 @@
 // ── Error Guard ──
-window.onerror = function(msg, url, line) {
-  console.error('[GlobalError]', msg, 'at', url + ':' + line);
-  toast(t('err.jsError', { msg: String(msg).slice(0, 60) }));
-  return false;
-};
-window.addEventListener('unhandledrejection', function(e) {
-  console.error('[Unhandled]', e.reason);
-});
+// fix: onerror must not depend on t()/toast() (i18n.js may not be ready -> secondary throw floods console)
+(function () {
+  function _safeToast(msg) {
+    try {
+      var el = document.getElementById('toast');
+      if (el) {
+        el.textContent = msg;
+        el.classList.add('show');
+        clearTimeout(_safeToast._t);
+        _safeToast._t = setTimeout(function () { el.classList.remove('show'); }, 3500);
+        return;
+      }
+    } catch (e) {}
+    try { console.error('[JS Error]', msg); } catch (e) {}
+  }
+  window.onerror = function (msg, url, line) {
+    var text = String(msg || 'unknown error');
+    var label;
+    try {
+      label = (typeof window.t === 'function')
+        ? window.t('err.jsError', { msg: text.slice(0, 60) })
+        : ('JS error: ' + text.slice(0, 60));
+    } catch (e) { label = 'JS error: ' + text.slice(0, 60); }
+    _safeToast(label);
+    try { console.error('[GlobalError]', msg, 'at', (url || '') + ':' + line); } catch (e) {}
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function (e) {
+    try { console.error('[Unhandled]', e && e.reason); } catch (err) {}
+  });
+})();
+
+
+// ── Hardened uncaught-error capture (2026-11-06): surface real JS errors in App WebView ──
+// The /app/ console page has no onerror handler; any throw here is invisible on the phone.
+// We log to console AND keep a ring buffer readable via window.__lastErrors for debugging.
+(function () {
+  try {
+    window.__lastErrors = [];
+    function _push(kind, msg, src, line) {
+      try {
+        window.__lastErrors.push({ kind: kind, msg: String(msg).slice(0, 300), src: String(src || '').slice(-120), line: line, t: Date.now() });
+        if (window.__lastErrors.length > 30) window.__lastErrors.shift();
+      } catch (e) {}
+    }
+    var _prevOnerror = window.onerror;
+    window.onerror = function (msg, src, line, col, err) {
+      _push('error', msg, src, line);
+      try { if (typeof _prevOnerror === 'function') return _prevOnerror.apply(this, arguments); } catch (e) {}
+      return false;
+    };
+    window.addEventListener('unhandledrejection', function (e) {
+      _push('unhandledrejection', e && e.reason && (e.reason.stack || e.reason.message || e.reason), '', 0);
+    });
+  } catch (e) {}
+})();
 
 // ── State ──
 let ws = null, clientId = null, currentChat = null;
@@ -604,13 +652,14 @@ function scheduleReconnect() {
 
 function setStatus(text, cls) {
   const el = document.getElementById('status');
+  if (!el) return;
   el.textContent = text;
   el.style.color = cls === 'ok' ? '#4ade80' : cls === 'err' ? '#ef4444' : '#888';
 }
 
 function enableInput(on) {
-  document.getElementById('input').disabled = !on;
-  document.getElementById('sendBtn').disabled = !on;
+  const inp = document.getElementById('input'); if (inp) inp.disabled = !on;
+  const sb = document.getElementById('sendBtn'); if (sb) sb.disabled = !on;
 }
 
 // auto-connect on load
@@ -683,7 +732,7 @@ var _audioCtx = null;
 function playNotifySound() {
   try {
     if (localStorage.getItem('lingxi-notify') !== '1') return;
-    _audioCtx = _audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!_audioCtx) { var AC = window.AudioContext || window.webkitAudioContext; if (AC) { try { _audioCtx = new AC(); } catch(e) { _audioCtx = null; } } } if (!_audioCtx) return;
     if (_audioCtx.state === 'suspended') _audioCtx.resume();
     var osc = _audioCtx.createOscillator();
     var gain = _audioCtx.createGain();
@@ -1640,9 +1689,11 @@ function playVoice(btn, url) {
 // V5 通知
 let notificationPermission = false;
 function requestNotificationPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission().then(p => { notificationPermission = p === 'granted'; });
-  } else { notificationPermission = Notification.permission === 'granted'; }
+  try {
+    if (typeof Notification !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(p => { notificationPermission = p === 'granted'; });
+    } else { notificationPermission = (typeof Notification !== 'undefined') && Notification.permission === 'granted'; }
+  } catch (e) { notificationPermission = false; }
 }
 function showNotification(title, body) {
   // 仅在用户开启通知偏好（localStorage lingxi-notify === '1'）时弹出。
@@ -1651,7 +1702,7 @@ function showNotification(title, body) {
   if (!notificationPermission) return;
   var always = localStorage.getItem('lingxi-notify-always') === '1';
   if (!always && !document.hidden) return;
-  new Notification(title, { body, icon: '/favicon.ico' });
+  if (typeof Notification !== 'undefined') { try { new Notification(title, { body, icon: '/favicon.ico' }); } catch(e){} }
 }
 requestNotificationPermission();
 
@@ -2245,8 +2296,7 @@ async function deleteFriend(fid) {
   try {
     if (authToken) {
       let d = null;
-      try { d = await platformApi('/api/lan/remove-friend', 'POST', { friendId: fid }); } catch (_pe) { d = null; }
-      if (!d || d.ok === false) { try { d = await platformApi('/api/lan/friends/' + fid, 'DELETE'); } catch (_pe2) { d = null; } }
+      try { d = await platformApi('/api/lan/friends/' + fid, 'DELETE'); } catch (_pe) { d = null; }
       if (!d || d.ok === false) {
         // 平台失败只回退本地删除，绝不清空 authToken（否则用户被莫名踢下线）
         await api('/api/friends/' + fid + '?userId=' + encodeURIComponent(lanMeId || clientId), 'DELETE');
@@ -3657,7 +3707,11 @@ async function submitAuth() {
   const username = document.getElementById('authUsername').value.trim();
   const password = document.getElementById('authPassword').value;
   if (!username) { document.getElementById('authMsg').textContent = t('auth.errNoUser'); return; }
-  if (username.length < 2 || username.length > 20) { document.getElementById('authMsg').textContent = t('auth.errUserLen'); return; }
+  if (authMode === 'login') {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username)) { document.getElementById('authMsg').textContent = t('auth.errNoUser'); return; }
+  } else if (username.length < 2 || username.length > 20) {
+    document.getElementById('authMsg').textContent = t('auth.errUserLen'); return;
+  }
   if (!password || password.length < 6) { document.getElementById('authMsg').textContent = t('auth.errPwdLen'); return; }
   document.getElementById('authMsg').textContent = t('auth.processing');
   document.getElementById('authSubmitBtn').disabled = true;
@@ -4492,6 +4546,7 @@ async function refreshStatusBar() {
   try {
     const h = await api('/api/health');
     const aEl = document.getElementById('apiHealth');
+    if (!aEl) return;
     const healthy = h.status === 'ok';
     aEl.textContent = healthy ? t('status.apiOk') : '⚠' + (h.status || t('admin.abnormal'));
     aEl.className = healthy ? 'ok' : 'err';
@@ -4522,6 +4577,7 @@ async function refreshStatusBar() {
     const cmdEl = document.getElementById('currentModelDisplay'); if (cmdEl) cmdEl.textContent = curModel ? '🧠 ' + (curModel.split('/').pop() || curModel) : '';
   } catch(e){}
   const wsEl = document.getElementById('wsState');
+  if (!wsEl) return;
   if (ws && ws.readyState === 1) { wsEl.textContent = t('status.wsConnected'); wsEl.className = 'ok'; }
   else { wsEl.textContent = t('status.wsNotConnected'); wsEl.className = 'err'; }
 }

@@ -14,6 +14,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { createServer } from 'http';
 import { existsSync, mkdirSync } from 'fs';
 import { randomBytes, timingSafeEqual } from 'crypto';
+import bcrypt from 'bcryptjs';
 import { join } from 'path';
 
 import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, getChatMode, setChatMode, CHAT_MODES } from '../storage/db.js';
@@ -91,7 +92,7 @@ async function main() {
   setSearchManager(searchManagerInstance);
 
   const manager = new AgentManager(db, aiHub);
-  const router = new MessageRouter(db, manager, aiHub);
+  const router = new MessageRouter(db as any, manager, aiHub);
 
   // ── 工具系统（排除浏览器工具）──
   const toolRegistry = new ToolRegistry();
@@ -224,7 +225,7 @@ async function main() {
       const body = req.body || {};
       const code = String(body.code || ('LX-' + randomBytes(4).toString('hex').toUpperCase()));
       const maxUses = Number(body.max_uses) || 1;
-      getDB().createInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
+      (getDB() as any).createInviteCode(code, 'admin-api', maxUses, body.expires_at ? Number(body.expires_at) : undefined);
       res.json({ ok: true, code, maxUses });
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -269,8 +270,14 @@ async function main() {
     try {
       const { email, password, display_name } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: '需要 email 和 password' });
+      if (String(password).length < 6) return res.status(400).json({ error: '密码至少 6 位' });
       const userId = 'user-' + Date.now();
       db.createUser(userId, display_name || email.split('@')[0], email);
+      // 修复：注册时写入 bcrypt 密码哈希，与主引擎 /api/auth/register 一致
+      try {
+        const hash = bcrypt.hashSync(String(password), 12);
+        (getDB() as any).run('UPDATE users SET password_hash = ? WHERE id = ?', [hash, userId]);
+      } catch (e) { console.error('[Mobile] 写入密码哈希失败:', (e as Error).message); }
       const token = auth.signAccessToken({ sub: userId, numeric_id: 0, sid: 'mobile-' + Date.now() });
       res.json({ ok: true, userId, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -280,9 +287,15 @@ async function main() {
     try {
       const { email, password } = req.body || {};
       if (!email || !password) return res.status(400).json({ error: '需要 email 和 password' });
-      const user = db.getUserByEmail(email);
-      if (!user) return res.status(401).json({ error: '用户不存在' });
-      const token = auth.signAccessToken({ sub: user.id, numeric_id: 0, sid: 'mobile-' + Date.now() });
+      const user: any = db.getUserByEmail(email);
+      // 修复：必须校验密码（此前任何密码都能签发 token）
+      const pwHash = (user && (user as any).password_hash) || '';
+      let pwOk = false;
+      if (pwHash) {
+        try { pwOk = await bcrypt.compare(String(password), pwHash); } catch { pwOk = false; }
+      }
+      if (!user || !pwOk) return res.status(401).json({ error: '邮箱或密码不正确' });
+      const token = auth.signAccessToken({ sub: user.id, numeric_id: (user as any).numeric_id || 0, sid: 'mobile-' + Date.now() });
       res.json({ ok: true, userId: user.id, token });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });

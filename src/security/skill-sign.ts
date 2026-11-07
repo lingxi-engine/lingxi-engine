@@ -70,7 +70,10 @@ export function verifyManifestSignature(manifest: SkillManifest, pubKeys: string
 export function loadMarketPublicKeys(): string[] {
   const raw = process.env.SKILL_MARKET_PUBLIC_KEY || '';
   // 先按 "-----END PUBLIC KEY-----" 边界切分，兼容多条 PEM 拼接
-  const blocks = raw.split(/(?=-----BEGIN PUBLIC KEY-----)/).map(s => s.trim()).filter(Boolean);
+  const blocks = raw
+    .split(/(?=-----BEGIN PUBLIC KEY-----)/)
+    .map(s => s.trim().replace(/[,\s]+$/, ''))
+    .filter(Boolean);
   if (blocks.length > 0) return blocks;
   return raw.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
 }
@@ -81,6 +84,13 @@ export function isSafeRelativePath(p: string): boolean {
   if (p.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(p)) return false;
   const parts = p.split(/[\\/]/);
   return parts.every(part => part !== '..' && part !== '');
+}
+
+/** 技能名校验：技能名将直接作为安装目录名，禁止路径分隔符、..、空白与控制字符 */
+export function isSafeSkillName(name: unknown): boolean {
+  return typeof name === 'string'
+    && /^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$/.test(name)
+    && !name.includes('..');
 }
 
 /** 校验文件内容与清单 sha256 一致；返回违规列表 */
@@ -130,6 +140,11 @@ export function verifySkillPackage(
   }
   if (!manifest.name || !manifest.version || !Array.isArray(manifest.files)) {
     return { ok: false, errors: ['manifest.json 缺少 name/version/files 字段'] };
+  }
+
+  // 技能名将直接作为安装目录名，必须严格校验（防路径穿越写任意目录 / name='..' 删除项目根）
+  if (!isSafeSkillName(manifest.name)) {
+    return { ok: false, errors: [`非法技能名: ${JSON.stringify(manifest.name)}`] };
   }
 
   const pubKeys = loadMarketPublicKeys();

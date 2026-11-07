@@ -15,6 +15,7 @@ import {
   DEFAULT_MARKET_URL,
   verifySkillPackage,
   isSafeRelativePath,
+  isSafeSkillName,
   type SkillManifest,
 } from '../security/skill-sign.js';
 
@@ -100,6 +101,10 @@ export class SecureSkillMarket {
       }
       const manifest: SkillManifest = verdict.manifest;
       const skillId = manifest.name;
+      // 双保险：落盘前再校验技能名（防路径穿越写任意目录）
+      if (!isSafeSkillName(skillId)) {
+        return { ok: false, errors: [`非法技能名: ${skillId}`] };
+      }
 
       // 临时目录写入 -> 原子重命名
       const tmp = join(tmpdir(), `lingxi-skill-${skillId}-${Date.now()}`);

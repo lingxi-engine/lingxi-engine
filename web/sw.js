@@ -1,6 +1,6 @@
 // 灵犀引擎 Service Worker - PWA 离线支持 (v2.0.38) // v24: 预缓存 /app/ 移动端 + PNG 图标，强刷旧缓存 // v23: 会话流式隔离，强刷 app.js
-const CACHE_NAME = 'lingxi-v24-app'; // v22: 前端缓存版本号统一(20261002a) 修复刷新后样式错乱 // v21: 工具层/评测/部署治理(v2.0.22) 强刷旧缓存 // v20: 积分/钱包修复(v2.0.20) // v19: 好友红点修复(v2.1.7) // v18: LAN 推理过程持久化
-const STATIC_ASSETS = ['/', '/index.html', '/install.html', '/manifest.json', '/css/style.css', '/css/mobile.css', '/js/app.js', '/js/i18n.js', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/app/', '/app/index.html', '/app/app.css', '/app/app.js'];
+const CACHE_NAME = 'lingxi-v26-notif-guard'; // v26: requestNotificationPermission guarded for Android WebView (Notification undefined) // v22: 前端缓存版本号统一(20261002a) 修复刷新后样式错乱 // v21: 工具层/评测/部署治理(v2.0.22) 强刷旧缓存 // v20: 积分/钱包修复(v2.0.20) // v19: 好友红点修复(v2.1.7) // v18: LAN 推理过程持久化
+const STATIC_ASSETS = ['/', '/index.html', '/install.html', '/manifest.json', '/css/style.css', '/css/mobile.css', '/js/app.js', '/js/i18n.js', '/icon.svg', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/app/', '/app/index.html', '/app/app.css', '/app/app.js' /* kept for PWA installs served by platform-server; mobile engine 404s are tolerated by catch */];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
