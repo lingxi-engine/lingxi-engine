@@ -294,7 +294,7 @@ async function requestCompletion(
     }
   }
   return {
-    choices: [{ message: { role: 'assistant', content, tool_calls: toolAcc.length ? toolAcc : undefined } }],
+    choices: [{ message: { role: 'assistant', content, tool_calls: toolAcc.length ? toolAcc : undefined, ...(reasoning ? { reasoning_content: reasoning } : {}) } }],
     usage: (resp as any).usage,
   };
 }
@@ -468,6 +468,14 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<any> {
       role: 'assistant',
       content: assistantMsg.content ?? '',
     };
+    // 2026-11-11 FIX-REASONING-REPLAY：DeepSeek 等思考型模型（deepseek-flash / R1 系列）
+    // 多轮工具调用时**必须**把上一轮的 reasoning_content 原样回传，否则下一轮直接 400：
+    //   "The `reasoning_content` in the thinking mode must be passed back to the API."
+    // 老实现只存 role+content+tool_calls，reasoning 被丢掉 → 第二次工具调用必挂 →
+    // executor 拿到空 content 反复判「未调工具」，idle 轮次耗尽后用户什么都看不到。
+    if (reasoningContent) {
+      (assistantEntry as any).reasoning_content = reasoningContent;
+    }
 
     // ── 提取工具调用 (3 层 fallback) ──
     let toolCalls: Array<{ id: string; type: 'function'; function: { name: string; arguments: string } }> = [];
@@ -717,13 +725,19 @@ export async function runToolsLoop(options: RunToolsOptions): Promise<any> {
   // 兜底：若 finalContent 为空，强制再调一次 AI 让它给出文字回复
   if (!result.finalContent) {
     try {
+      // 2026-11-11 FIX-FINAL-REPLY：这次兜底调用**绝对不能带 tools**。
+      // 带 tools 时模型往往又发一轮 tool_calls（finish_reason=tool_calls、content 为空），
+      // 于是 finalContent 仍是空 → 用户一个字都看不到，日志里却显示"工具调用完成"。
+      // 这里明确禁用工具，强制它只用文字作答。
       const finalResp = await client.chat.completions.create({
         model,
-        messages: [...result.messages, { role: 'user', content: '请根据以上工具返回的结果，给出最终回复。如果工具没有返回有用信息，请说明情况。' }],
+        messages: [...result.messages, { role: 'user', content: '请根据以上工具返回的结果，给出最终回复。直接输出文字答案，不要调用任何工具。如果工具没有返回有用信息，请说明情况。' }],
         temperature,
         max_tokens: maxTokens,
-      }) as OpenAIChatResponse;
-      result.finalContent = stripDsmlMarkup(finalResp.choices[0]?.message?.content || '');
+        tools: [],
+      } as any) as OpenAIChatResponse;
+      const fm = finalResp.choices[0]?.message;
+      result.finalContent = stripDsmlMarkup(fm?.content || '');
       if (finalResp.usage) {
         UsageTracker.record({
           model,

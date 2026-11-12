@@ -83,6 +83,30 @@ export function initDedupSignaturesTable(): void {
       created_at INTEGER NOT NULL
     );
   `);
+  // ★ FIX-DEDUP(2026-11-09): 老库（sql.js 时代）建的是 key 列，新代码读写 scope_key，
+  //   导致每次持久化都报 "table dedup_signatures has no column named scope_key"，
+  //   去重签名永远存不进库。这里做一次幂等重建：key → scope_key 并保留数据。
+  try {
+    const cols = (db.exec('PRAGMA table_info(dedup_signatures)') as any[])[0]?.values?.map((r: any[]) => String(r[1])) || [];
+    if (cols.length && !cols.includes('scope_key')) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS dedup_signatures_new (
+          scope_key TEXT PRIMARY KEY,
+          signature TEXT NOT NULL,
+          created_at INTEGER NOT NULL
+        );
+      `);
+      if (cols.includes('key')) {
+        db.exec(`INSERT OR REPLACE INTO dedup_signatures_new (scope_key, signature, created_at)
+                 SELECT key, signature, created_at FROM dedup_signatures`);
+      }
+      db.exec('DROP TABLE dedup_signatures');
+      db.exec('ALTER TABLE dedup_signatures_new RENAME TO dedup_signatures');
+      console.log('[MemoryDedup] dedup_signatures 已迁移：key → scope_key');
+    }
+  } catch (e: any) {
+    console.warn('[MemoryDedup] dedup_signatures 迁移失败:', e.message);
+  }
 }
 
 /**
@@ -362,6 +386,13 @@ export async function upsertChatMemoryWithChecks(
   }
   const mergedFacts = { ...existingFactsRecord, ...dedupedFacts };
   rawUpsertChatMemory(chatId, agentId, summary, mergedFacts);
+
+  // 2026-11-12 FIX-DREAM-COST：记忆真的写进去了 → 通知 Dreamer 解除该对的「成功抑制」，
+  // 否则新事实会被 24 小时抑制期挡在外面，等于对新内容失效。
+  try {
+    const g: any = globalThis as any;
+    g.__dreamer?.touchMemoryPair?.(chatId, agentId);
+  } catch { /* Dreamer 未启动时忽略 */ }
 
   return { success: true, skippedKeys };
 }
