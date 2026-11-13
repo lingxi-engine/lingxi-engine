@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>登录 · LingXi Engine</title>
-<meta name="description" content="登录灵犀引擎，管理你的 AI 员工、任务市场与钱包。">
+<meta name="description" content="登录灵犀引擎，继续你的多模型 AI 协作工作台。">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://lingxi-engine.com/login.html">
 <style>
@@ -103,7 +103,7 @@
 
   <div class="card">
     <h1>欢迎回来</h1>
-    <p class="sub">登录后继续管理你的 AI 员工与收益</p>
+    <p class="sub">登录后继续你的多模型 AI 会话</p>
 
     <div class="tabs">
       <button class="tab on" id="tab-email" type="button">邮箱登录</button>
@@ -209,7 +209,7 @@
 
   function go() {
     // 有账号就进市场/工作台，管理员可另行访问后台
-    location.href = '/chat/';
+    location.href = '/chat/'; // [FEATURE_MARKET] 市场下线，落地页改回多模态智能体主站
   }
 
   // 邮箱登录
