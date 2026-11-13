@@ -740,8 +740,8 @@ export function processUserMessage(
     // ── 后续轮次编排（辩论汇总 / 圆桌多轮 / 投票开票）──
         let followUp = result.needsFollowUp ? result.followUpContext : undefined;
         let guard = 0;
-        // 递归深度限制：防止异常 followUp 导致无限循环（最多 6 轮，每轮最多 3 个子轮次）
-        const MAX_FOLLOWUP_ROUNDS = 6;
+        // 递归深度限制：防止异常 followUp 导致无限循环（B8: 外层绝对上限 12；圆桌子轮次跟随 maxRounds，brainstorm 固定 3 阶段）
+        const MAX_FOLLOWUP_ROUNDS = 12; // B8: 外层安全上限提高到 12，支持用户配置的更大轮次
         const MAX_FOLLOWUP_SUBROUNDS = 3;
         let subRoundGuard = 0;
         while (followUp && guard++ < MAX_FOLLOWUP_ROUNDS) {
@@ -750,12 +750,15 @@ export function processUserMessage(
             next = dispatchDebateSummary(chatId, collected, agents);
             followUp = undefined; // 一次性汇总
           } else if (followUp.type === 'roundtable') {
-            next = dispatchRoundtableNext(chatId, agents, followUp.round, followUp.maxRounds);
+            // B8: 子轮次上限跟随用户配置的 maxRounds（绝对安全上限 12 防失控），不再一刀切截断为 3
+            const configuredSub = Number(followUp.maxRounds);
+            const roundtableCap = Number.isFinite(configuredSub) && configuredSub >= 1 ? Math.min(Math.floor(configuredSub), 12) : MAX_FOLLOWUP_SUBROUNDS;
+            next = dispatchRoundtableNext(chatId, agents, followUp.round, roundtableCap);
             followUp = next?.needsFollowUp ? next.followUpContext : undefined;
             // 圆桌每轮计入 subRoundGuard
             subRoundGuard++;
-            if (subRoundGuard >= MAX_FOLLOWUP_SUBROUNDS) {
-              console.warn(`[WS] roundtable 超过子轮次限制 (${MAX_FOLLOWUP_SUBROUNDS})，强制结束`);
+            if (followUp && subRoundGuard >= roundtableCap) {
+              console.warn(`[WS] roundtable 超过子轮次限制 (${roundtableCap})，强制结束`);
               followUp = undefined;
             }
           } else if (followUp.type === 'brainstorm') {
@@ -775,7 +778,7 @@ export function processUserMessage(
           if (!next || !next.responses?.length) break;
           await runResponses(chatId, senderId, next.responses, broadcast, router, nameOf, false);
         }
-        if (guard >= MAX_FOLLOWUP_ROUNDS) {
+        if (followUp && guard >= MAX_FOLLOWUP_ROUNDS) { // B8: 仅在仍有后续轮次时告警，自然收尾不误报
           console.warn(`[WS] followUp 轮次达到上限 (${MAX_FOLLOWUP_ROUNDS})，可能存在异常循环，强制结束`);
         }
   }).catch((err: any) => {

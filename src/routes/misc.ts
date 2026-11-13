@@ -8,11 +8,22 @@ import { processUserMessage } from '../core/ws-handler.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { ServerContext } from '../server/context.js';
-import { verifyMeshSignature, meshMessageRateLimit } from '../core/mesh-security.js';
+import { verifyMeshSignature, meshMessageRateLimit, loadOrCreateFederationKeyPair, signMeshMessage, toBase64URL, fromBase64URL } from '../core/mesh-security.js';
+import { createPublicKey } from 'crypto';
+import { timingSafeTokenEqual } from '../security/token-compare.js';
 
 export function createMiscRoutes(ctx: ServerContext): Router {
   const router = Router();
   const { db, manager, router: msgRouter, broadcast, dataDir } = ctx;
+
+  // B4: 联邦专用 Ed25519 签名密钥对（与 E2EE X25519 身份密钥严格分离，持久化到 dataDir）
+  const fedKeys = loadOrCreateFederationKeyPair(dataDir || join(process.cwd(), 'data'));
+  const getFederationPublicKey = (instanceId: string): Buffer | null => {
+    const peers = (globalThis as any).__federationPeers as Map<string, any> | undefined;
+    const rec = peers?.get(instanceId);
+    if (!rec || typeof rec.signPublicKey !== 'string') return null;
+    try { return fromBase64URL(rec.signPublicKey); } catch { return null; }
+  };
 
   // ── 群聊协作模式 ──
   router.get('/chats/:id/mode', (req, res) => {
@@ -56,31 +67,43 @@ export function createMiscRoutes(ctx: ServerContext): Router {
   });
 
   // ── 联邦通信 ──
-  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || 'lingxi-federation-default';
+  const FEDERATION_SECRET = process.env.FEDERATION_SECRET || ''; // fail-secure：未设置时禁用联邦通信，不再使用硬编码默认密钥
   function federationAuth(req: any, res: any, next: any) {
     const secret = req.headers['x-federation-secret'] || req.body?.secret;
-    if (secret !== FEDERATION_SECRET) return res.status(403).json({ error: '联邦通信密钥错误' });
+    if (!FEDERATION_SECRET) return res.status(503).json({ error: 'FEDERATION_SECRET 未设置，联邦通信已禁用' });
+    if (typeof secret !== 'string' || !timingSafeTokenEqual(secret, FEDERATION_SECRET)) return res.status(403).json({ error: '联邦通信密钥错误' });
     next();
   }
 
   router.post('/federation/register', federationAuth, (req, res) => {
     try {
-      const { instanceId, baseUrl, name } = req.body || {};
+      const { instanceId, baseUrl, name, signPublicKey } = req.body || {};
       if (!instanceId || !baseUrl) return res.status(400).json({ error: 'instanceId/baseUrl 必填' });
       if (!(globalThis as any).__federationPeers) (globalThis as any).__federationPeers = new Map();
-      (globalThis as any).__federationPeers.set(instanceId, { id: instanceId, baseUrl, name: name || instanceId, lastSeen: Date.now() });
-      console.log(`[Federation] 实例已注册: ${name} (${baseUrl})`);
-      res.json({ ok: true, ourId: process.env.INSTANCE_ID || 'local', ourUrl: 'http://' + req.headers.host });
+      // B4: 钉住对端 Ed25519 签名公钥（base64url SPKI DER），格式非法拒绝注册
+      let pinnedKey: string | undefined;
+      if (signPublicKey !== undefined) {
+        try {
+          const k = createPublicKey({ key: fromBase64URL(String(signPublicKey)), format: 'der', type: 'spki' });
+          if ((k as any).asymmetricKeyType !== 'ed25519') throw new Error('not ed25519');
+          pinnedKey = String(signPublicKey);
+        } catch {
+          return res.status(400).json({ error: 'signPublicKey 格式非法（需 base64url 编码的 Ed25519 SPKI DER 公钥）' });
+        }
+      }
+      (globalThis as any).__federationPeers.set(instanceId, { id: instanceId, baseUrl, name: name || instanceId, lastSeen: Date.now(), signPublicKey: pinnedKey });
+      console.log(`[Federation] 实例已注册: ${name} (${baseUrl})` + (pinnedKey ? ' [签名公钥已钉住]' : ' [未提供签名公钥，消息验签将拒绝]'));
+      res.json({ ok: true, ourId: process.env.INSTANCE_ID || 'local', ourUrl: 'http://' + req.headers.host, ourSignPublicKey: toBase64URL(fedKeys.publicKey) });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
-  router.get('/federation/peers', (_req, res) => {
+  router.get('/federation/peers', federationAuth, (_req, res) => {
     const peers = (globalThis as any).__federationPeers;
     if (!peers) return res.json({ ok: true, peers: [] });
     res.json({ ok: true, peers: Array.from(peers.values()) });
   });
 
-  router.post('/federation/message', federationAuth, meshMessageRateLimit(30), async (req, res) => {
+  router.post('/federation/message', federationAuth, meshMessageRateLimit(30), verifyMeshSignature(getFederationPublicKey), async (req, res) => {
     try {
       const { chatId, content, senderId, senderName, fromInstance } = req.body || {};
       if (!chatId || !content) return res.status(400).json({ error: 'chatId/content 必填' });
@@ -100,7 +123,11 @@ export function createMiscRoutes(ctx: ServerContext): Router {
       const peers = (globalThis as any).__federationPeers;
       if (!peers || !peers.has(targetInstance)) return res.status(404).json({ error: '目标实例未注册' });
       const peer = peers.get(targetInstance);
-      const resp = await fetch(peer.baseUrl + '/api/federation/message', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chatId, content, senderId, senderName, fromInstance: process.env.INSTANCE_ID || 'local' }), signal: AbortSignal.timeout(15000) });
+      // B4: 补联邦密钥头 + Ed25519 签名 + 时间戳（旧实现未带密钥头，对端必 403，链路从未通过）
+      const ourId = process.env.INSTANCE_ID || 'local';
+      const payload = { type: 'federation.message', chatId, content, senderId, senderName, fromInstance: ourId, toInstance: targetInstance, timestamp: Date.now() };
+      const signature = signMeshMessage(payload, fedKeys.privateKey);
+      const resp = await fetch(peer.baseUrl + '/api/federation/message', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-federation-secret': FEDERATION_SECRET, 'x-instance-id': ourId, 'x-signature': signature }, body: JSON.stringify(payload), signal: AbortSignal.timeout(15000) });
       const data = await resp.json();
       res.json(data);
     } catch (err: any) { res.status(500).json({ error: err.message }); }

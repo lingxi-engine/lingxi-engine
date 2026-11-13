@@ -1,6 +1,11 @@
 /**
  * RBAC 权限检查工具
  * 用于好友/群聊的动作级权限控制
+ *
+ * 2026-11-14 B2 修复：getUserChatRole/getUserFriendshipRole 原为 async（返回 Promise），
+ * 但同步的 checkChatPermission/checkFriendshipPermission 未 await，导致 role 恒为 Promise
+ * 对象 → actionPerms[Promise] 恒 undefined → 任何角色任何动作都被拒绝（连 owner 也不例外）。
+ * 两个 getter 内部本就是同步 DB 调用，去掉 async 即可；接线前必须补测试（见 tests/rbac.test.ts）。
  */
 
 import type { DB } from '../storage/db.js';
@@ -62,8 +67,8 @@ export const FRIENDSHIP_ACTIONS = {
 
 export type FriendshipAction = keyof typeof FRIENDSHIP_ACTIONS;
 
-/** 获取用户在群聊中的角色 */
-export async function getUserChatRole(db: any, chatId: string, userId: string): Promise<ChatRole | null> {
+/** 获取用户在群聊中的角色（B2 修复：同步函数，内部为同步 DB 调用，不得加 async） */
+export function getUserChatRole(db: any, chatId: string, userId: string): ChatRole | null {
   const participant = db.prepare(`SELECT role FROM participants WHERE chat_id = ? AND user_id = ?`).get(chatId, userId) as { role: string } | undefined;
   if (participant) return participant.role as ChatRole;
   
@@ -74,8 +79,8 @@ export async function getUserChatRole(db: any, chatId: string, userId: string): 
   return null;
 }
 
-/** 获取用户在好友关系中的角色 */
-export async function getUserFriendshipRole(db: any, userId1: string, userId2: string): Promise<FriendshipRole | null> {
+/** 获取用户在好友关系中的角色（B2 修复：同步函数，内部为同步 DB 调用，不得加 async） */
+export function getUserFriendshipRole(db: any, userId1: string, userId2: string): FriendshipRole | null {
   const row = db.prepare(
     `SELECT role, status, from_user_id FROM friendships WHERE (from_user_id = ? AND to_user_id = ?) OR (from_user_id = ? AND to_user_id = ?)`
   ).get(userId1, userId2, userId2, userId1) as { role: string; status: string; from_user_id: string } | undefined;

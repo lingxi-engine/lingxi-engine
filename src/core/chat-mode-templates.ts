@@ -355,6 +355,63 @@ const EXTERNAL_CONFIG_PATH = join(CONFIG_DIR, 'chat-mode-templates.json');
 
 // 模板缓存
 let templateCache: ChatModeTemplates = { ...DEFAULT_TEMPLATES };
+
+// B5: 墓碑集合 — 记录已删除的 `${mode}.${templateKey}`，持久化到配置文件 __deleted__ 字段，
+// 阻止重启/热重载/渲染回退时内置默认模板"复活"
+let deletedTemplates: Set<string> = new Set();
+
+// B12: 模式/阶段白名单（与 web/admin.html 的 phasesByMode 逐字一致），阻断 '__proto__' 等原型污染
+const MODE_PHASES: Record<string, readonly string[]> = {
+  free: ['fallback'],
+  route: ['analyze', 'fallback'],
+  debate: ['stance', 'summary'],
+  chain: ['first', 'step'],
+  roundtable: ['round', 'summary'],
+  vote: ['vote', 'summary'],
+  brainstorm: ['diverge', 'converge', 'summary'],
+};
+
+/** B12: 校验模式合法性（自有属性检查，拒绝 __proto__/constructor 等） */
+export function isValidTemplateMode(mode: string): boolean {
+  return typeof mode === 'string' && Object.prototype.hasOwnProperty.call(MODE_PHASES, mode);
+}
+
+/** B12: 校验指定模式下的阶段合法性 */
+export function isValidTemplatePhase(mode: string, phase: string): boolean {
+  return isValidTemplateMode(mode) && MODE_PHASES[mode].includes(phase);
+}
+
+/** B12: 输入校验（setTemplate/updateTemplate 共用），非法输入抛 TypeError */
+function assertValidTemplateInput(mode: string, templateKey: string, template: ChatModeTemplate): void {
+  if (!isValidTemplateMode(mode)) throw new TypeError(`非法模板模式: ${String(mode)}`);
+  if (!isValidTemplatePhase(mode, templateKey)) throw new TypeError(`非法模板阶段: ${String(mode)}.${String(templateKey)}`);
+  if (!template || typeof template.template !== 'string') throw new TypeError('template.template 必须为字符串');
+}
+
+/** B5: 应用墓碑 — 从缓存剔除对应键（只接受合法 mode.phase，防恶意配置文件注入；克隆后删除避免污染 DEFAULT_TEMPLATES） */
+function applyTombstones(tombstones: unknown): void {
+  deletedTemplates = new Set();
+  if (Array.isArray(tombstones)) {
+    for (const t of tombstones) {
+      if (typeof t !== 'string') continue;
+      const dot = t.indexOf('.');
+      if (dot <= 0) continue;
+      const mode = t.slice(0, dot);
+      const key = t.slice(dot + 1);
+      if (isValidTemplateMode(mode) && isValidTemplatePhase(mode, key)) deletedTemplates.add(t);
+    }
+  }
+  for (const tomb of deletedTemplates) {
+    const dot = tomb.indexOf('.');
+    const mode = tomb.slice(0, dot);
+    const key = tomb.slice(dot + 1);
+    const modeConfig = (templateCache as any)[mode];
+    if (modeConfig && typeof modeConfig === 'object') {
+      (templateCache as any)[mode] = { ...modeConfig };
+      delete (templateCache as any)[mode][key];
+    }
+  }
+}
 let configWatchers: Map<string, () => void> = new Map();
 let isDevMode = process.env.NODE_ENV !== 'production';
 
@@ -364,7 +421,7 @@ let isDevMode = process.env.NODE_ENV !== 'production';
 function renderTemplate(template: string, variables: Record<string, any>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
     const value = variables[key];
-    if (value === undefined || value === null) return match;
+    if (value === undefined || value === null) return ''; // B11: 缺失变量替换为空串，不把 {{var}} 原样发给模型
     if (Array.isArray(value)) return value.join(', ');
     if (typeof value === 'object') return JSON.stringify(value, null, 2);
     return String(value);
@@ -395,7 +452,7 @@ function loadExternalConfig(): ChatModeTemplates | null {
 function mergeTemplates(base: ChatModeTemplates, override: ChatModeTemplates): ChatModeTemplates {
   const result = { ...base };
   for (const [mode, modeConfig] of Object.entries(override)) {
-    if (!modeConfig) continue;
+    if (!modeConfig || mode === '__deleted__') continue; // B5: 墓碑清单不是模式，不参与合并
     result[mode as keyof ChatModeTemplates] = {
       ...(base[mode as keyof ChatModeTemplates] || {}),
       ...modeConfig,
@@ -411,6 +468,7 @@ export function initChatModeTemplates(): void {
   const external = loadExternalConfig();
   if (external) {
     templateCache = mergeTemplates(DEFAULT_TEMPLATES, external);
+    applyTombstones((external as any).__deleted__); // B5: 恢复删除墓碑，防内置模板复活
   }
   
   // 开发模式：监听配置文件变化，热重载
@@ -420,6 +478,7 @@ export function initChatModeTemplates(): void {
       const newExternal = loadExternalConfig();
       if (newExternal) {
         templateCache = mergeTemplates(DEFAULT_TEMPLATES, newExternal);
+        applyTombstones((newExternal as any).__deleted__); // B5: 热重载同步墓碑
         console.log('[ChatModeTemplates] 热重载完成');
       }
     });
@@ -445,7 +504,11 @@ export function renderPrompt(
   templateKey: string,
   variables: TemplateVariables
 ): { prompt: string; forceJson?: boolean; jsonSchema?: object; functionCalling?: any } {
-  const template = getTemplate(mode, templateKey) || DEFAULT_TEMPLATES[mode]?.[templateKey as keyof typeof DEFAULT_TEMPLATES[keyof ChatModeTemplates]];
+  // B5: 已墓碑化的模板不再回退到内置默认，否则删除会被回退绕过
+  let template = getTemplate(mode, templateKey);
+  if (!template && !deletedTemplates.has(`${mode}.${templateKey}`)) {
+    template = DEFAULT_TEMPLATES[mode]?.[templateKey as keyof typeof DEFAULT_TEMPLATES[keyof ChatModeTemplates]];
+  }
   
   if (!template) {
     console.warn(`[ChatModeTemplates] 模板不存在: ${mode}.${templateKey}，使用空字符串`);
@@ -477,10 +540,12 @@ export function updateTemplate(
   templateKey: string,
   template: ChatModeTemplate
 ): void {
+  assertValidTemplateInput(mode as string, templateKey, template); // B12: 白名单+类型校验
   if (!templateCache[mode]) {
     templateCache[mode] = {} as any;
   }
   (templateCache[mode] as Record<string, ChatModeTemplate>)[templateKey] = template;
+  deletedTemplates.delete(`${mode}.${templateKey}`); // B5: 重新设置模板即清除其墓碑
   console.log(`[ChatModeTemplates] 运行时更新模板: ${mode}.${templateKey}`);
 }
 
@@ -500,12 +565,14 @@ export function setTemplate(
   template: ChatModeTemplate,
   persist = false
 ): void {
+  assertValidTemplateInput(mode as string, templateKey, template); // B12: 白名单+类型校验，阻断 __proto__ 污染
   if (!templateCache[mode]) {
     templateCache[mode] = {} as any;
   }
   (templateCache[mode] as Record<string, ChatModeTemplate>)[templateKey] = template;
+  deletedTemplates.delete(`${mode}.${templateKey}`); // B5: 重新设置模板即清除其墓碑
   console.log(`[ChatModeTemplates] 更新模板: ${mode}.${templateKey}${persist ? ' (持久化)' : ''}`);
-  
+
   if (persist) {
     saveTemplates();
   }
@@ -519,13 +586,20 @@ export function deleteTemplate(
   templateKey: string,
   persist = false
 ): boolean {
+  // B12: 删除同样校验，防 '__proto__.x' 之类墓碑注入
+  if (!isValidTemplateMode(mode as string) || !isValidTemplatePhase(mode as string, templateKey)) {
+    throw new TypeError(`非法模板模式/阶段: ${String(mode)}.${String(templateKey)}`);
+  }
   const modeConfig = templateCache[mode] as Record<string, ChatModeTemplate> | undefined;
   if (!modeConfig || !modeConfig[templateKey]) {
     return false;
   }
-  delete modeConfig[templateKey];
+  // B5: 克隆后再删，避免共享引用污染内置 DEFAULT_TEMPLATES
+  (templateCache as any)[mode] = { ...modeConfig };
+  delete (templateCache as any)[mode][templateKey];
+  deletedTemplates.add(`${mode}.${templateKey}`); // B5: 记录墓碑，阻断重启/回退复活
   console.log(`[ChatModeTemplates] 删除模板: ${mode}.${templateKey}${persist ? ' (持久化)' : ''}`);
-  
+
   if (persist) {
     saveTemplates();
   }
@@ -551,6 +625,16 @@ export function saveTemplates(): void {
     
     // 合并：运行时更新覆盖文件
     const merged = mergeTemplates(existing, templateCache);
+    // B5: 显式剔除已墓碑化的键，防止文件旧键经合并"复活"已删除模板
+    for (const tomb of deletedTemplates) {
+      const dot = tomb.indexOf('.');
+      const m = tomb.slice(0, dot);
+      const k = tomb.slice(dot + 1);
+      const mc = (merged as any)[m];
+      if (mc && typeof mc === 'object') delete mc[k];
+    }
+    // B5: 持久化墓碑清单（重启/热重载时恢复删除状态）
+    (merged as any).__deleted__ = Array.from(deletedTemplates);
     
     // 写入
     const json = JSON.stringify(merged, null, 2);

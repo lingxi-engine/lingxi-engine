@@ -1219,9 +1219,13 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     app.post('/api/admin/chat-mode-templates', (req, res) => {
       try {
-        const { setTemplate, addAuditLog } = require('./src/core/chat-mode-templates.js');
+        const { setTemplate, isValidTemplateMode, isValidTemplatePhase } = require('./src/core/chat-mode-templates.js');
+        const { addAuditLog } = require('./src/core/inbox.js');
         const { mode, phase, template, forceJson, jsonSchema } = req.body;
         if (!mode || !phase || !template) return res.status(400).json({ error: 'mode/phase/template 必填' });
+        // B12: 白名单校验，阻断 '__proto__' 等原型污染与非法阶段；template 必须为字符串
+        if (!isValidTemplateMode(mode) || !isValidTemplatePhase(mode, phase)) return res.status(400).json({ error: '非法的 mode/phase（白名单校验失败）' });
+        if (typeof template !== 'string') return res.status(400).json({ error: 'template 必须为字符串' });
         setTemplate(mode, phase, { template, forceJson, jsonSchema }, true);
         // 审计日志
         if (inboxManager) addAuditLog(inboxManager, 'template_created', { mode, phase, forceJson, hasSchema: !!jsonSchema });
@@ -1233,8 +1237,11 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     app.delete('/api/admin/chat-mode-templates/:mode/:phase', (req, res) => {
       try {
-        const { deleteTemplate, addAuditLog } = require('./src/core/chat-mode-templates.js');
+        const { deleteTemplate, isValidTemplateMode, isValidTemplatePhase } = require('./src/core/chat-mode-templates.js');
+        const { addAuditLog } = require('./src/core/inbox.js');
         const { mode, phase } = req.params;
+        // B12: 删除同样走白名单，防 '__proto__.x' 之类路径注入
+        if (!isValidTemplateMode(mode) || !isValidTemplatePhase(mode, phase)) return res.status(400).json({ error: '非法的 mode/phase（白名单校验失败）' });
         const ok = deleteTemplate(mode, phase, true);
         if (!ok) return res.status(404).json({ error: '模板不存在' });
         // 审计日志

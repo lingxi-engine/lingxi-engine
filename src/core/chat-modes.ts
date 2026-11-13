@@ -339,7 +339,9 @@ function dispatchRoundtable(
     return dispatchFree(chatId, senderId, 'user', content, agents, null as any);
   }
 
-  const maxRounds = 3;
+  // B8: 轮次可配置 — ROUNDTABLE_MAX_ROUNDS 环境变量（默认 3 不变，绝对上限 12 防失控）
+  const configuredRounds = Number(process.env.ROUNDTABLE_MAX_ROUNDS);
+  const maxRounds = Number.isFinite(configuredRounds) && configuredRounds >= 1 ? Math.min(Math.floor(configuredRounds), 12) : 3;
   const responses: ModeDispatchResult['responses'] = [];
 
   // 第一轮：大家依次发言
