@@ -33,7 +33,7 @@
  * 核心理念：持续性由引擎层强制保证，不靠提示词。
  */
 
-import { getDB, listChats } from '../storage/db.js';
+import { getDB, listChats, addMessage, getChatParticipants } from '../storage/db.js';
 import { GoalTracker } from './goal-tracker.js';
 import type { ProjectGoal } from './goal-tracker.js';
 import type { MessageRouter } from './router.js';
@@ -365,7 +365,7 @@ export class GoalExecutor {
     }
 
     // 注入指令消息（聊天可见）
-    db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-executor', content, type: 'text', timestamp: Date.now() });
+    addMessage({ id: msgId, chatId, senderType: 'user', senderId: 'goal-executor', content, type: 'text', timestamp: Date.now() });
     GoalExecutor.broadcast?.({ type: 'message.new', chatId, from: 'goal-executor', senderId: 'goal-executor', senderType: 'user', content, timestamp: Date.now() });
 
     // 执行：taskGoal 模式（工具循环，v2.0 支持更长迭代）
@@ -454,7 +454,7 @@ ${roundOutput.slice(0, 6000)}
   private static resolveAgentId(chatId: string): string | null {
     try {
       const db = getDB();
-      const participants = db.getChatParticipants(chatId) as any[];
+      const participants = getChatParticipants(chatId) as any[];
       for (const p of participants) {
         if (p.agent_id) return p.agent_id;
       }

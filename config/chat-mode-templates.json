@@ -1,0 +1,154 @@
+{
+  "free": {
+    "fallback": {
+      "template": "你是 {{agentDisplayName}}。用户发消息：{{content}}\n\n请根据你的性格回复：{{agentPersonality}}",
+      "forceJson": false
+    }
+  },
+  "route": {
+    "analyze": {
+      "template": "你是一个路由助手。用户发的消息需要被分派给最合适的 AI 处理。\n\n【用户消息】{{content}}\n\n【可用的 AI】\n{{agentNames}}\n\n请直接回复你要 @ 的 AI 名字（可以多个，用逗号分隔），不要任何解释。如果都不合适，回复\"none\"。",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "selectedAgents": { "type": "array", "items": { "type": "string" } },
+          "reason": { "type": "string" }
+        },
+        "required": ["selectedAgents"]
+      }
+    },
+    "fallback": {
+      "template": "你是路由助手。分析用户消息：'{{content}}'，决定应该通知哪个 AI 处理。\n可选的 AI：{{agentNames}}\n请用 '@AI名字' 的格式告知需要呼叫的 AI，并简要说明原因。",
+      "forceJson": false
+    }
+  },
+  "debate": {
+    "stance": {
+      "template": "【辩论模式 - 你是{{stance}}】\n\n议题：{{content}}\n\n请从「{{stance}}」的立场出发，进行论述。要求：\n1. 清晰表明立场\n2. 给出 2-3 个论据\n3. 引用事实或逻辑支撑\n4. 避免人身攻击，针对议题不针对人\n\n请直接开始你的发言。",
+      "forceJson": false
+    },
+    "summary": {
+      "template": "【辩论总结】\n\n以下是各方观点：\n{{allReplies}}\n\n请作为中立的总结者，归纳各方主要观点，指出共识和分歧，给出综合评价。",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "consensus": { "type": "array", "items": { "type": "string" } },
+          "disagreements": { "type": "array", "items": { "type": "string" } },
+          "evaluation": { "type": "string" }
+        },
+        "required": ["consensus", "disagreements", "evaluation"]
+      }
+    }
+  },
+  "chain": {
+    "first": {
+      "template": "【链式协作 - 第 1 步：{{stage}}】\n\n任务：{{content}}\n\n你是链式协作的第一步（{{stage}}）。请完成你的任务并输出结果，你的输出将交给下一步的 AI 继续处理。",
+      "forceJson": false
+    },
+    "step": {
+      "template": "【链式协作 - 第 {{stepIndex}} 步：{{stage}}】\n\n原始任务：{{content}}\n上一环节（{{prevAgentName}}）的产出请见上方消息。\n\n你是{{stage}}环节，请基于上一步的结果继续推进任务。如有不满意的部分请标注出来。",
+      "forceJson": false
+    }
+  },
+  "roundtable": {
+    "round": {
+      "template": "【圆桌讨论 - 第 {{round}} 轮 / 共 {{maxRounds}} 轮】\n\n议题：{{content}}\n\n你是参与者之一。请发表你的看法：\n1. 对这个问题的理解\n2. 你的建议或方案\n3. 对其他成员可能的质疑点\n\n稍后其他成员会回复你。保持开放态度。",
+      "forceJson": false
+    },
+    "summary": {
+      "template": "圆桌讨论已结束。请作为主持人对本次讨论做一个简洁的总结，归纳各方达成的共识和主要分歧。",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "consensus": { "type": "array", "items": { "type": "string" } },
+          "disagreements": { "type": "array", "items": { "type": "string" } },
+          "actionItems": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["consensus", "disagreements", "actionItems"]
+      }
+    }
+  },
+  "vote": {
+    "vote": {
+      "template": "【投票模式】\n\n议题：{{content}}\n选项：{{options}}\n\n请投出你的一票。回复格式：\n{\n  \"choice\": \"选项X\",\n  \"reason\": \"一句话说明为什么\"\n}",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "choice": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "required": ["choice", "reason"]
+      }
+    },
+    "summary": {
+      "template": "【投票开票】\n\n以下是各位 AI 的投票结果：\n{{allVotes}}\n\n可选选项：{{options}}\n\n请作为计票员：\n1. 统计每个选项的得票数\n2. 用表格或清单列出开票结果\n3. 宣布得票最高的方案，并简述各方理由",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "results": { "type": "object", "additionalProperties": { "type": "integer" } },
+          "winner": { "type": "string" },
+          "analysis": { "type": "string" }
+        },
+        "required": ["results", "winner", "analysis"]
+      }
+    }
+  },
+  "brainstorm": {
+    "diverge": {
+      "template": "【头脑风暴 - 第 1 阶段：发散】\n\n议题：{{content}}\n\n规则（必须遵守）：\n1. 只输出点子，不要解释过程\n2. 禁止批评、禁止否定（包括自我否定）\n3. 质大于量：给出 3-5 个具体、可执行的点子\n4. 欢迎大胆、非常规的想法\n5. 每个点子以「- 」开头，一句话说清\n\n直接开始。",
+      "forceJson": false
+    },
+    "converge": {
+      "template": "【头脑风暴 - 第 2 阶段：收敛】\n\n议题：{{topic}}\n\n上方消息是各成员的第一轮点子。请：\n1. 从【别人的点子】中挑 1-2 个你认为最有潜力、最值得做的\n2. 各用一句话说明：为什么值得做 + 怎么补全它（补什么关键细节）\n3. 也可以合并两个点子成一个更强的方案\n4. 不要重复罗列自己的点子，不要客套\n\n直接输出。",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "selectedIdeas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "idea": { "type": "string" },
+                "why": { "type": "string" },
+                "howToComplete": { "type": "string" }
+              },
+              "required": ["idea", "why", "howToComplete"]
+            }
+          },
+          "mergedIdeas": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["selectedIdeas"]
+      }
+    },
+    "summary": {
+      "template": "【头脑风暴 - 第 3 阶段：汇总】\n\n议题：{{topic}}\n\n以下是各位成员的发散与收敛意见：\n{{allIdeas}}\n\n请作为主持人输出一份头脑风暴成果：\n1. 去重合并所有点子（明显重复的合并，保留表述更好的）\n2. 按「可行性 × 创新性」挑出 Top 3\n3. 每个入选点子给出一句落地建议（第一步做什么）\n4. 最后输出「行动项」清单：编号 + 一句话\n\n格式清晰，直接输出。",
+      "forceJson": true,
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "topIdeas": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "idea": { "type": "string" },
+                "feasibility": { "type": "number", "minimum": 1, "maximum": 10 },
+                "innovation": { "type": "number", "minimum": 1, "maximum": 10 },
+                "firstStep": { "type": "string" }
+              },
+              "required": ["idea", "feasibility", "innovation", "firstStep"]
+            }
+          },
+          "actionItems": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["topIdeas", "actionItems"]
+      }
+    }
+  }
+}

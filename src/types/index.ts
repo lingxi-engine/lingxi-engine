@@ -84,6 +84,20 @@ export interface Database {
   insertRagDocument?(doc: unknown): void;
   insertRagChunk?(chunk: unknown): void;
   deleteRagDocument?(docId: string): void;
+
+  // Chat modes
+  getChatMode(chatId: string): string;
+  setChatMode(chatId: string, mode: string): boolean;
+
+  // Friendships
+  listFriends(userId: string): Array<{ friendId: string; friendName: string; friendAgentId?: string; status: string; createdAt: number }>;
+  getFriendRequests(userId: string): { incoming: any[]; outgoing: any[]; pendingIncoming: any[] };
+  respondFriendRequest(friendshipId: string, action: 'accept' | 'reject'): { ok: boolean; status: string };
+  getAgentByUserId(userId: string): any;
+
+  // Other
+  deleteFriendshipByPair(userId1: string, userId2: string): void;
+  syncAgentToPrivateChats(userId: string): void;
 }
 
 // ── Agent Manager ──

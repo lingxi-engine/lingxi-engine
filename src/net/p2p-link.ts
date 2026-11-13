@@ -11,6 +11,8 @@
  * STUN：P2P_STUN 环境变量逗号分隔，默认 Google 公共 STUN
  */
 
+import { verifyMeshMessage } from '../core/mesh-security.js';
+
 export type P2PSignal =
   | { kind: 'offer'; sdp: string }
   | { kind: 'answer'; sdp: string }
@@ -56,6 +58,8 @@ export class P2PManager {
   private peers = new Map<string, PeerConn>();
   private ready = false;
   private dcLib: any = null;
+  // 签名提供器：外部注入，返回 { signature, publicKey }
+  getSignData?: (payload: any) => { signature: string; publicKey: string } | null;
 
   constructor(opts: P2PManagerOptions) {
     this.selfId = opts.selfId;
@@ -133,6 +137,14 @@ export class P2PManager {
         const env = JSON.parse(typeof raw === 'string' ? raw : raw.toString('utf8'));
         // 防篡改：校验来源实例 ID 与信令对端一致
         if (env && env.type === 'p2p.data' && env.fromInstance === peerId) {
+          // 签名验证（可选，需要对端公钥）
+          if (env.signature && env.publicKey) {
+            const valid = verifyMeshMessage(env.payload, env.signature, Buffer.from(env.publicKey, 'base64url'));
+            if (!valid) {
+              console.warn(`[P2P] 签名验证失败，丢弃消息 from=${peerId}`);
+              return;
+            }
+          }
           this.onMessageFn(peerId, env.payload);
         } else {
           console.warn(`[P2P] 丢弃来源不匹配的消息 from=${env?.fromInstance} expected=${peerId}`);
@@ -234,7 +246,13 @@ export class P2PManager {
     const c = this.peers.get(peerId);
     if (!c || !c.dc || c.state !== 'connected') return false;
     try {
-      const env = JSON.stringify({ type: 'p2p.data', fromInstance: this.selfId, payload });
+      const env = JSON.stringify({ 
+        type: 'p2p.data', 
+        fromInstance: this.selfId, 
+        payload,
+        // 附带签名和公钥（需要外部通过 setSignProvider 注入）
+        ...this.getSignData?.(payload)
+      });
       if (env.length > MAX_MSG) {
         console.warn(`[P2P] 消息过大丢弃 (${env.length}B) -> ${peerId}，回退 relay`);
         return false;

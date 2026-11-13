@@ -7,7 +7,7 @@
  *    （index.ts 的 /api/admin/* 走 adminAuth，本文件的 router 自身不含鉴权）。
  */
 import { Router } from 'express';
-import { getDB, deleteUser } from '../storage/db.js';
+import { getDB } from '../storage/db.js';
 import { createCronJob, validateSchedule } from '../core/cron-scheduler.js';
 import { INFERENCE_BACKENDS } from '../ai/custom-providers.js';
 import { UsageTracker } from '../core/usage-tracker.js';
@@ -245,6 +245,34 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   router.post('/skills/install', async (req, res) => {
     try { const { name } = req.body; if (!name) return res.status(400).json({ error: 'name 必填' }); const ok = await skillManager.installFromMarket(name); res.json({ ok }); }
     catch (err: any) { res.status(500).json({ error: err.message }); }
+  });
+
+  // ── 同步已安装技能到 ToolRegistry（供 Agent 使用）──
+  router.post('/skills/sync-to-registry', async (req, res) => {
+    try {
+      if (!toolRegistry) return res.status(500).json({ error: 'ToolRegistry 未初始化' });
+      let synced = 0;
+      for (const skill of skillManager.list()) {
+        if (!skill.installed || !skill.enabled) continue;
+        try {
+          // 从 SkillManager 的 Skill 转换为 ToolRegistry 的 Skill 格式
+          const toolsMatch = skill.content.match(/tools:\s*\[([^\]]+)\]/);
+          const tools = toolsMatch ? toolsMatch[1].split(',').map(s => s.trim().replace(/['"]/g, '')) : [];
+          const regSkill = {
+            id: skill.id,
+            name: skill.name,
+            description: skill.description,
+            prompt: skill.content,
+            tools
+          };
+          toolRegistry.registerSkill(regSkill);
+          synced++;
+        } catch (e: any) {
+          console.warn(`[Skills] 同步技能 ${skill.id} 到 Registry 失败:`, e.message);
+        }
+      }
+      res.json({ ok: true, synced });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   // ── MCP ──
@@ -495,8 +523,19 @@ export function createAdminRoutes(ctx: ServerContext): Router {
   router.get('/dashboard', async (req, res) => {
     try {
       const db = getDB();
-      const totalUsers = db.exec('SELECT COUNT(*) as c FROM users')[0].values[0][0];
-      const bannedUsers = db.exec("SELECT COUNT(*) as c FROM users WHERE status = 'banned'")[0].values[0][0];
+      // 合并所有 COUNT 查询为单次查询，使用子查询
+      const statsResult = db.exec(`
+        SELECT
+          (SELECT COUNT(*) FROM users) as totalUsers,
+          (SELECT COUNT(*) FROM users WHERE status = 'banned') as bannedUsers,
+          (SELECT COUNT(*) FROM agents) as totalAgents,
+          (SELECT COUNT(*) FROM agent_market) as marketListings,
+          (SELECT COUNT(*) FROM market_orders) as totalOrders,
+          (SELECT COUNT(*) FROM chats) as totalChats
+      `);
+      const stats = statsResult[0]?.values[0] || [0,0,0,0,0,0];
+      const [totalUsers, bannedUsers, totalAgents, marketListings, totalOrders, totalChats] = stats;
+
       const usersResult = db.exec('SELECT id, numeric_id, email, nickname, status, points, total_earned, total_spent, created_at, last_active_at FROM users ORDER BY created_at DESC LIMIT 100');
       const cols = usersResult[0].columns;
       const users = usersResult[0].values.map((row: any[]) => {
@@ -504,10 +543,6 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
         return obj;
       });
-      const totalAgents = db.exec('SELECT COUNT(*) as c FROM agents')[0].values[0][0];
-      const marketListings = db.exec('SELECT COUNT(*) as c FROM agent_market')[0].values[0][0];
-      const totalOrders = db.exec('SELECT COUNT(*) as c FROM market_orders')[0].values[0][0];
-      const totalChats = db.exec('SELECT COUNT(*) as c FROM chats')[0].values[0][0];
       const usage = UsageTracker.getStats();
       // invite codes
       let inviteCodes = [];
@@ -572,7 +607,14 @@ export function createAdminRoutes(ctx: ServerContext): Router {
         return;
       }
       const userId = req.params.id;
-      deleteUser(userId);
+      // 2026-11-11 FIX：db.ts 从来没导出过 deleteUser（TS2305，死代码导错名）。
+      // 这里按外键关系显式级联删除，避免孤儿行。
+      const d = getDB();
+      d.run('DELETE FROM participants WHERE user_id = ?', [userId]);
+      d.run('DELETE FROM messages WHERE sender_id = ?', [userId]);
+      d.run('DELETE FROM agents WHERE user_id = ?', [userId]);
+      d.run('DELETE FROM friendships WHERE from_user_id = ? OR to_user_id = ?', [userId, userId]);
+      d.run('DELETE FROM users WHERE id = ?', [userId]);
       res.json({ ok: true, message: 'User deleted with all related data' });
     } catch (err: any) {
       res.status(500).json({ error: err.message });

@@ -107,6 +107,8 @@ export class MemorySearch {
   private documents: SearchableDocument[] = [];
   private idf: Map<string, number> = new Map();
   private built = false;
+  // 向量缓存：文档 ID -> 向量，避免重复计算
+  private vectorCache = new Map<string, number[]>();
 
   // 外部 Embedding API（可选）
   private embeddingClient?: any;
@@ -126,6 +128,8 @@ export class MemorySearch {
     const idx = this.documents.findIndex(d => d.id === doc.id);
     if (idx >= 0) {
       this.documents[idx] = doc;
+      // 清除旧缓存
+      this.vectorCache.delete(doc.id);
     } else {
       this.documents.push(doc);
     }
@@ -137,7 +141,7 @@ export class MemorySearch {
   }
 
   /**
-   * 重建索引：IDF + 文档向量
+   * 重建索引：IDF + 文档向量（使用缓存）
    */
   buildIndex() {
     const N = this.documents.length;
@@ -156,11 +160,15 @@ export class MemorySearch {
       this.idf.set(term, Math.log((N + 1) / (df + 1)) + 1);
     }
 
-    // 文档向量（已存在的不重算）
+    // 文档向量（已存在缓存的不重算）
     for (const doc of this.documents) {
-      if (!doc.vector) {
+      if (!doc.vector && !this.vectorCache.has(doc.id)) {
         const tokens = tokenize(doc.text);
-        doc.vector = idfWeightedHashVectorize(tokens, this.idf, EMBEDDING_DIM);
+        const vec = idfWeightedHashVectorize(tokens, this.idf, EMBEDDING_DIM);
+        this.vectorCache.set(doc.id, vec);
+        doc.vector = vec;
+      } else if (doc.vector && !this.vectorCache.has(doc.id)) {
+        this.vectorCache.set(doc.id, doc.vector);
       }
     }
 
@@ -178,14 +186,16 @@ export class MemorySearch {
     if (!this.built) this.buildIndex();
     if (this.documents.length === 0) return [];
 
-    // 1. 向量相似度
+    // 1. 向量相似度（使用缓存的向量）
     const queryTokens = tokenize(query);
     const queryVector = idfWeightedHashVectorize(queryTokens, this.idf, EMBEDDING_DIM);
     const vectorScores = new Map<string, number>();
     for (let i = 0; i < this.documents.length; i++) {
       const doc = this.documents[i];
-      if (!doc.vector) continue;
-      const sim = cosineSimilarity(queryVector, doc.vector);
+      // 优先使用缓存
+      const cachedVec = this.vectorCache.get(doc.id) || doc.vector;
+      if (!cachedVec) continue;
+      const sim = cosineSimilarity(queryVector, cachedVec);
       vectorScores.set(doc.id, sim);
     }
 
@@ -243,24 +253,25 @@ export class MemorySearch {
   clear() {
     this.documents = [];
     this.idf = new Map();
+    this.vectorCache.clear();
     this.built = false;
   }
 
   get size() { return this.documents.length; }
 
-  /**
-   * 导出所有文档（用于持久化）
-   */
-  exportDocs(): SearchableDocument[] {
-    return [...this.documents];
-  }
+    /**
+     * 导出所有文档（用于持久化）
+     */
+    exportDocs(): SearchableDocument[] {
+      return [...this.documents];
+    }
 
-  /**
-   * 导入文档
-   */
-  importDocs(docs: SearchableDocument[]) {
-    this.documents = docs;
-    this.built = false;
-    this.buildIndex();
+    /**
+     * 导入文档
+     */
+    importDocs(docs: SearchableDocument[]) {
+      this.documents = docs;
+      this.built = false;
+      this.buildIndex();
+    }
   }
-}

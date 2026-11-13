@@ -15,16 +15,20 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { AppConnectService } from '../routes/app-connect.js';
 import { AppDirectoryStore } from '../storage/app-directory.js';
+import { initDB, closeDB, db as dbApi } from '../storage/db.js';
 
 /**
- * 用【真实 sql.js】建库。
+ * 用【真实数据库】建库（better-sqlite3，经 db.ts 的 sql.js 兼容层）。
  * 之前用假 DB（正则解析 SQL）导致测试在测「正则写对没有」而不是「产品逻辑对不对」，
  * 一旦 app-directory.ts 的 SQL 换行/字段顺序调整，假 DB 就静默失效 —— 比没有测试更危险。
+ * 2026-11-09：DB 层已从 sql.js 迁到 better-sqlite3，这里改用同一套封装，避免依赖已移除的 sql.js。
  */
+let _dbSeq = 0;
 async function makeDb(): Promise<any> {
-  const initSqlJs = (await import('sql.js')).default;
-  const SQL = await initSqlJs();
-  return new SQL.Database();
+  try { await closeDB(); } catch { /* 上一轮可能没开 */ }
+  const f = join(mkdtempSync(join(tmpdir(), 'lingxi-appdb-')), `db${_dbSeq++}.db`);
+  await initDB(f);
+  return dbApi;
 }
 
 function makeDeps(dataDir: string, db: any, over: any = {}) {

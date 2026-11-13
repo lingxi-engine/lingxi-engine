@@ -14,6 +14,7 @@ import type { Express, RequestHandler } from 'express';
 import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, type DB } from '../storage/db.js';
 import { sendPeerMessage, getInstanceId } from '../core/instance-mesh.js';
 import { canUseAgent, grantDeniedMessage } from './agent-grants.js';
+import { friendRequestRateLimit } from '../core/mesh-security.js';
 
 export interface FriendsChatsRouteDeps {
   db: DB;
@@ -57,7 +58,7 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
     }
   });
 
-  app.post('/api/friends/request', requireAuth, (req, res) => {
+  app.post('/api/friends/request', requireAuth, friendRequestRateLimit(5), (req, res) => {
     try {
       const { fromUserId, toUserId, message } = req.body;
       if (!fromUserId || !toUserId) return res.status(400).json({ error: 'fromUserId 和 toUserId 必填' });
@@ -104,9 +105,9 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
           return res.status(403).json({ error: '无法验证好友请求归属' });
         }
       }
-      const result = db.respondFriendRequest(requestId, action);
+      const result = db.respondFriendRequest(requestId, action) as { ok: boolean; status: string; error?: string };
       if (result.error) return res.status(400).json(result);
-      res.json({ ok: true, ...result });
+      res.json({ ...result, ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -275,10 +276,10 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
           return res.status(403).json({ error: '无权向此聊天发送消息' });
         }
       }
-      const friendParticipant = parts.find((p: any) => String(p.user_id) !== String(fromUserId));
+      const friendParticipant = parts.find((p: any) => String((p as any).userId ?? (p as any).user_id) !== String(fromUserId));
       if (!friendParticipant) return res.status(400).json({ error: '无法确定好友' });
 
-      const friendUserId = String(friendParticipant.user_id);
+      const friendUserId = String((friendParticipant as any).userId ?? (friendParticipant as any).user_id);
       const friendNumericId = Number(friendUserId);
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh

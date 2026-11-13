@@ -32,46 +32,103 @@ export interface ProviderEntry {
 
 export class ProviderRegistry {
   private providers = new Map<string, ProviderEntry>();
+  // 反向索引：模型名 -> provider 条目数组（按优先级排序：非本地优先）
+  private modelIndex: Map<string, { providerId: string; entry: ProviderEntry; isLocal: boolean }[]> = new Map();
+  private indexBuilt = false;
 
-  /** 从磁盘恢复已保存的 Provider */
-  restore(): number {
-    try {
-      if (!existsSync(PROVIDERS_STORE_PATH)) return 0;
-      const raw = readFileSync(PROVIDERS_STORE_PATH, 'utf8');
-      const entries: PersistedProvider[] = JSON.parse(raw);
-      for (const e of entries) {
-        // 持久化的条目覆盖 env 注册的（用户在前端修改的 API Key 优先）
-        if (this.providers.has(e.id)) {
-          // 用持久化的 apiKey 覆盖 env 注册的
-          const old = this.providers.get(e.id)!;
-          old.apiKey = e.apiKey || old.apiKey;
-          old.baseUrl = e.baseUrl || old.baseUrl;
-          old.models = e.models && e.models.length ? e.models : old.models;
-          old.name = e.name || old.name;
-          old.enabled = e.enabled !== undefined ? e.enabled : old.enabled;
-          // 重建 client（apiKey 可能变了）
-          old.client = new OpenAI({ apiKey: old.apiKey || 'dummy', baseURL: old.baseUrl });
-          continue;
+  /** 从磁盘恢复已保存的 Provider（异步读取） */
+    restore(): Promise<number> {
+      return (async () => {
+        try {
+          const { readFile } = await import('fs/promises');
+          const { existsSync } = await import('fs');
+          if (!existsSync(PROVIDERS_STORE_PATH)) return 0;
+          const raw = await readFile(PROVIDERS_STORE_PATH, 'utf8');
+          const entries: PersistedProvider[] = JSON.parse(raw);
+          for (const e of entries) {
+            // 持久化的条目覆盖 env 注册的（用户在前端修改的 API Key 优先）
+            if (this.providers.has(e.id)) {
+              // 用持久化的 apiKey 覆盖 env 注册的
+              const old = this.providers.get(e.id)!;
+              old.apiKey = e.apiKey || old.apiKey;
+              old.baseUrl = e.baseUrl || old.baseUrl;
+              old.models = e.models && e.models.length ? e.models : old.models;
+              old.name = e.name || old.name;
+              old.enabled = e.enabled !== undefined ? e.enabled : old.enabled;
+              // 重建 client（apiKey 可能变了）
+              old.client = new OpenAI({ apiKey: e.apiKey || 'dummy', baseURL: old.baseUrl });
+              continue;
+            }
+            const client = new OpenAI({ apiKey: e.apiKey || 'dummy', baseURL: e.baseUrl });
+            this.providers.set(e.id, { ...e, client });
+          }
+          console.log(`[ProviderRegistry] 从磁盘恢复 ${entries.length} 个 Provider`);
+          this.buildModelIndex();
+          this.persist(); // 合并 env + 用户覆盖后统一存盘
+          return entries.length;
+        } catch (e) { console.warn('[ProviderRegistry] 恢复失败:', (e as Error).message); return 0; }
+      })();
+    }
+
+    /** 建立/重建模型名 -> provider 反向索引 */
+    private buildModelIndex(): void {
+      this.modelIndex.clear();
+      for (const [providerId, entry] of this.providers) {
+        if (!entry.enabled || !entry.models) continue;
+        const isLocal = entry.isLocal;
+        for (const model of entry.models) {
+          if (!model) continue;
+          const list = this.modelIndex.get(model) || [];
+          list.push({ providerId, entry, isLocal });
+          this.modelIndex.set(model, list);
         }
-        const client = new OpenAI({ apiKey: e.apiKey || 'dummy', baseURL: e.baseUrl });
-        this.providers.set(e.id, { ...e, client });
       }
-      console.log(`[ProviderRegistry] 从磁盘恢复 ${entries.length} 个 Provider`);
-      this.persist(); // 合并 env + 用户覆盖后统一存盘
-      return entries.length;
-    } catch (e) { console.warn('[ProviderRegistry] 恢复失败:', (e as Error).message); return 0; }
-  }
+      for (const [model, list] of this.modelIndex) {
+        list.sort((a, b) => a.isLocal ? 1 : -1);
+      }
+      this.indexBuilt = true;
+    }
 
-  /** 保存所有 Provider 到磁盘 */
-  private persist() {
-    try {
-      const _dd = dataDir(); if (!existsSync(_dd)) mkdirSync(_dd, { recursive: true });
-      const entries: PersistedProvider[] = [];
-      for (const [, p] of this.providers) {
-        entries.push({ id: p.id, type: p.type, name: p.name, apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, isLocal: p.isLocal, enabled: p.enabled });
+    /** 增量更新索引 */
+    private updateModelIndex(providerId: string, entry: ProviderEntry): void {
+      if (!entry.enabled || !entry.models) return;
+      const isLocal = entry.isLocal;
+      for (const model of entry.models) {
+        if (!model) continue;
+        const list = this.modelIndex.get(model) || [];
+        const filtered = list.filter(x => x.providerId !== providerId);
+        filtered.push({ providerId, entry, isLocal });
+        filtered.sort((a, b) => a.isLocal ? 1 : -1);
+        this.modelIndex.set(model, filtered);
       }
-      writeFileSync(PROVIDERS_STORE_PATH, JSON.stringify(entries, null, 2), 'utf8');
-    } catch (e) { console.warn('[ProviderRegistry] 保存失败:', (e as Error).message); }
+    }
+
+    private removeFromModelIndex(providerId: string): void {
+      for (const [model, list] of this.modelIndex) {
+        const filtered = list.filter(x => x.providerId !== providerId);
+        if (filtered.length === 0) {
+          this.modelIndex.delete(model);
+        } else {
+          this.modelIndex.set(model, filtered);
+        }
+      }
+    }
+
+  /** 保存所有 Provider 到磁盘（异步，不阻塞） */
+  private persist(): void {
+    (async () => {
+      try {
+        const { writeFile, mkdir } = await import('fs/promises');
+        const { dataDir } = await import('../core/paths.js');
+        const _dd = dataDir();
+        await mkdir(_dd, { recursive: true });
+        const entries: PersistedProvider[] = [];
+        for (const [, p] of this.providers) {
+          entries.push({ id: p.id, type: p.type, name: p.name, apiKey: p.apiKey, baseUrl: p.baseUrl, models: p.models, isLocal: p.isLocal, enabled: p.enabled });
+        }
+        await writeFile(PROVIDERS_STORE_PATH, JSON.stringify(entries, null, 2), 'utf8');
+      } catch (e) { console.warn('[ProviderRegistry] 保存失败:', (e as Error).message); }
+    })();
   }
 
   /**
@@ -94,11 +151,14 @@ export class ProviderRegistry {
       apiKey: entry.apiKey || 'dummy',
       baseURL: entry.baseUrl,
     });
-    this.providers.set(entry.id, {
+    const newEntry = {
       ...entry,
       enabled: entry.enabled ?? true,
       client,
-    });
+    };
+    this.providers.set(entry.id, newEntry);
+    // 增量更新索引
+    this.updateModelIndex(entry.id, newEntry);
     if (!options?.skipPersist) this.persist();  // env 注册阶段跳过，restore 后再统一存
     console.log(`[ProviderRegistry] 注册: ${entry.id} (${entry.name}), ${entry.models.length} 个模型`);
   }
@@ -108,7 +168,10 @@ export class ProviderRegistry {
    */
   unregister(id: string): boolean {
     const ok = this.providers.delete(id);
-    if (ok) this.persist();  // 自动存盘
+    if (ok) {
+      this.removeFromModelIndex(id);
+      this.persist();  // 自动存盘
+    }
     return ok;
   }
 
@@ -119,6 +182,11 @@ export class ProviderRegistry {
     const entry = this.providers.get(id);
     if (entry) {
       entry.enabled = enabled;
+      if (enabled) {
+        this.updateModelIndex(id, entry);
+      } else {
+        this.removeFromModelIndex(id);
+      }
       this.persist();
     }
   }
@@ -156,19 +224,22 @@ export class ProviderRegistry {
    * 优先精确匹配 → 模糊匹配 → fallback
    */
   getClient(model: string): { client: OpenAI; resolvedModel: string; providerId: string } | null {
-    // 1. 精确匹配
-    for (const [providerId, entry] of this.providers) {
-      if (!entry.enabled || !entry.models) continue;
-      if (entry.models.some(m => model === m)) {
-        return { client: entry.client, resolvedModel: model, providerId };
-      }
+    // 确保索引已建立
+    if (!this.indexBuilt) this.buildModelIndex();
+
+    // 1. 精确匹配：直接从索引查找 O(1)
+    const exactList = this.modelIndex.get(model);
+    if (exactList && exactList.length > 0) {
+      // 索引已按非本地优先排序
+      const pick = exactList[0];
+      return { client: pick.entry.client, resolvedModel: model, providerId: pick.providerId };
     }
 
-    // 2. 模糊匹配
-    for (const [providerId, entry] of this.providers) {
-      if (!entry.enabled || !entry.models) continue;
-      if (entry.models.some(m => model.includes(m) || m.includes(model))) {
-        return { client: entry.client, resolvedModel: model, providerId };
+    // 2. 模糊匹配：遍历索引中的所有模型名
+    for (const [indexedModel, list] of this.modelIndex) {
+      if (model.includes(indexedModel) || indexedModel.includes(model)) {
+        const pick = list[0]; // 已按非本地优先排序
+        return { client: pick.entry.client, resolvedModel: indexedModel, providerId: pick.providerId };
       }
     }
 
@@ -188,6 +259,8 @@ export class ProviderRegistry {
     const entry = this.providers.get(providerId);
     if (entry && entry.models && !entry.models.includes(model)) {
       entry.models.push(model);
+      // 增量更新索引
+      this.updateModelIndex(providerId, entry);
       this.persist();
     }
   }
@@ -201,6 +274,8 @@ export class ProviderRegistry {
     const idx = entry.models.indexOf(model);
     if (idx === -1) return false;
     entry.models.splice(idx, 1);
+    // 增量更新索引
+    this.updateModelIndex(providerId, entry);
     this.persist();
     console.log(`[ProviderRegistry] 移除模型: ${providerId}/${model}`);
     return true;

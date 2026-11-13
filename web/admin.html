@@ -88,17 +88,19 @@ tr:hover td { background:#1c2128; }
   <div class="cards" id="cards"></div>
 
   <div class="tabs">
-    <button class="active" onclick="switchTab('users')">👥 用户管理</button>
-    <button onclick="switchTab('usage')">📊 用量统计</button>
-    <button onclick="switchTab('invites')">🎫 邀请码</button>
-    <button onclick="switchTab('recent')">📋 最近调用</button>
-  </div>
+      <button class="active" onclick="switchTab('users')">👥 用户管理</button>
+      <button onclick="switchTab('usage')">📊 用量统计</button>
+      <button onclick="switchTab('invites')">🎫 邀请码</button>
+      <button onclick="switchTab('recent')">📋 最近调用</button>
+      <button onclick="switchTab('templates')">📝 模板管理</button>
+    </div>
 
-  <div class="panel active" id="panel-users"></div>
-  <div class="panel" id="panel-usage"></div>
-  <div class="panel" id="panel-invites"></div>
-  <div class="panel" id="panel-recent"></div>
-</div>
+    <div class="panel active" id="panel-users"></div>
+    <div class="panel" id="panel-usage"></div>
+    <div class="panel" id="panel-invites"></div>
+    <div class="panel" id="panel-recent"></div>
+    <div class="panel" id="panel-templates"></div>
+  </div>
 
 <script>
 let adminToken = localStorage.getItem('adminToken') || '';
@@ -147,6 +149,7 @@ function showDashboard(data) {
   renderUsage(data.usage);
   renderInvites(data.inviteCodes);
   loadRecent();
+  loadTemplates();
 }
 
 function renderCards(d) {
@@ -304,6 +307,244 @@ function renderRecent(records) {
   });
   html += '</tbody></table></div>';
   document.getElementById('panel-recent').innerHTML = html;
+}
+
+async function loadRecent() {
+  try {
+    const r = await fetch(API + '/api/admin/usage?limit=50', { headers: headers() });
+    const d = await r.json();
+    if (d.ok && d.recent) renderRecent(d.recent);
+  } catch(e) {}
+}
+
+// ── 模板管理 ──
+async function loadTemplates() {
+  try {
+    const r = await fetch(API + '/api/admin/chat-mode-templates', { headers: headers() });
+    const d = await r.json();
+    if (d.ok) renderTemplates(d.templates);
+  } catch(e) {
+    document.getElementById('panel-templates').innerHTML = '<p style="color:#f85149">加载失败: ' + e.message + '</p>';
+  }
+}
+
+function renderTemplates(templates) {
+  if (!templates) {
+    document.getElementById('panel-templates').innerHTML = '<p style="color:#8b949e">暂无模板数据</p>';
+    return;
+  }
+  
+  const modeNames = {
+    free: '自由模式',
+    route: '路由模式',
+    debate: '辩论模式',
+    chain: '链式模式',
+    roundtable: '圆桌模式',
+    vote: '投票模式',
+    brainstorm: '头脑风暴'
+  };
+  
+  let html = `
+    <div style="margin-bottom:16px">
+      <button class="act-btn" style="background:#238636;color:#fff" onclick="showTemplateForm()">➕ 新建模板</button>
+    </div>
+  `;
+  
+  for (const [mode, modeConfig] of Object.entries(templates)) {
+    if (!modeConfig || typeof modeConfig !== 'object') continue;
+    const phaseKeys = Object.keys(modeConfig);
+    if (!phaseKeys.length) continue;
+    
+    html += `
+      <details style="background:#161b22;border:1px solid #30363d;border-radius:10px;margin-bottom:12px;padding:16px">
+        <summary style="cursor:pointer;font-weight:600;color:#58a6ff;font-size:14px">
+          ${modeNames[mode] || mode} (${phaseKeys.length} 个阶段)
+        </summary>
+        <div style="margin-top:12px">
+    `;
+    
+    for (const [phase, tpl] of Object.entries(modeConfig)) {
+      if (!tpl || !tpl.template) continue;
+      const forceJson = tpl.forceJson ? ' 🔒' : '';
+      const hasSchema = tpl.jsonSchema ? ' 📋' : '';
+      const preview = tpl.template.length > 80 ? tpl.template.slice(0, 80) + '...' : tpl.template;
+      
+      html += `
+        <div style="border:1px solid #30363d;border-radius:8px;padding:12px;margin-bottom:8px;background:#0d1117">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong>${phase}${forceJson}${hasSchema}</strong>
+            <div>
+              <button class="act-btn" onclick="editTemplate('${mode}', '${phase}')">✏️ 编辑</button>
+              <button class="act-btn act-btn-del" onclick="deleteTemplate('${mode}', '${phase}')">删除</button>
+            </div>
+          </div>
+          <pre style="color:#8b949e;font-size:12px;white-space:pre-wrap;max-height:120px;overflow:auto">${esc(preview)}</pre>
+        </div>
+      `;
+    }
+    
+    html += '</div></details>';
+  }
+  
+  document.getElementById('panel-templates').innerHTML = html;
+}
+
+// 编辑/新建模板表单
+function showTemplateForm(mode = '', phase = '', existing = null) {
+  const modes = ['free', 'route', 'debate', 'chain', 'roundtable', 'vote', 'brainstorm'];
+  const modeOptions = modes.map(m => `<option value="${m}" ${m === mode ? 'selected' : ''}>${m}</option>`).join('');
+  
+  const phasesByMode = {
+    free: ['fallback'],
+    route: ['analyze', 'fallback'],
+    debate: ['stance', 'summary'],
+    chain: ['first', 'step'],
+    roundtable: ['round', 'summary'],
+    vote: ['vote', 'summary'],
+    brainstorm: ['diverge', 'converge', 'summary']
+  };
+  
+  const phases = phasesByMode[mode] || [];
+  const phaseOptions = phases.map(p => `<option value="${p}" ${p === phase ? 'selected' : ''}>${p}</option>`).join('');
+  
+  const template = existing?.template || '';
+  const forceJson = existing?.forceJson ? 'checked' : '';
+  const jsonSchema = existing?.jsonSchema ? JSON.stringify(existing.jsonSchema, null, 2) : '';
+  
+  const html = `
+    <div id="templateForm" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px">
+      <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:24px;width:100%;max-width:700px;max-height:90vh;overflow:auto">
+        <h3 style="margin-bottom:20px;color:#58a6ff">${existing ? '编辑' : '新建'}模板</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+          <div>
+            <label style="display:block;margin-bottom:4px;font-size:12px;color:#8b949e">模式</label>
+            <select id="formMode" onchange="updatePhaseOptions()" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9">${modeOptions}</select>
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:4px;font-size:12px;color:#8b949e">阶段</label>
+            <select id="formPhase" style="width:100%;padding:8px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9">${phaseOptions}</select>
+          </div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;margin-bottom:4px;font-size:12px;color:#8b949e">模板内容 (支持 {{variable}} 插值)</label>
+          <textarea id="formTemplate" rows="12" style="width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-family:monospace;font-size:13px;resize:vertical">${esc(template)}</textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="formForceJson" ${forceJson}> 强制 JSON 输出
+            </label>
+          </div>
+          <div></div>
+        </div>
+        <div style="margin-bottom:16px">
+          <label style="display:block;margin-bottom:4px;font-size:12px;color:#8b949e">JSON Schema (可选)</label>
+          <textarea id="formJsonSchema" rows="6" style="width:100%;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-family:monospace;font-size:12px;resize:vertical">${esc(jsonSchema)}</textarea>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="act-btn" onclick="closeTemplateForm()">取消</button>
+          <button class="act-btn" style="background:#238636;color:#fff" onclick="saveTemplateForm('${mode}', '${phase}')">${existing ? '保存修改' : '创建'}</button>
+        </div>
+      </div>
+    </div>
+  `;
+  
+  document.body.insertAdjacentHTML('beforeend', html);
+  window._editingMode = mode;
+  window._editingPhase = phase;
+}
+
+function updatePhaseOptions() {
+  const mode = document.getElementById('formMode').value;
+  const phasesByMode = {
+    free: ['fallback'],
+    route: ['analyze', 'fallback'],
+    debate: ['stance', 'summary'],
+    chain: ['first', 'step'],
+    roundtable: ['round', 'summary'],
+    vote: ['vote', 'summary'],
+    brainstorm: ['diverge', 'converge', 'summary']
+  };
+  const phases = phasesByMode[mode] || [];
+  const select = document.getElementById('formPhase');
+  select.innerHTML = phases.map(p => `<option value="${p}">${p}</option>`).join('');
+}
+
+function closeTemplateForm() {
+  const form = document.getElementById('templateForm');
+  if (form) form.remove();
+}
+
+async function saveTemplateForm(oldMode, oldPhase) {
+  const mode = document.getElementById('formMode').value;
+  const phase = document.getElementById('formPhase').value;
+  const template = document.getElementById('formTemplate').value;
+  const forceJson = document.getElementById('formForceJson').checked;
+  const jsonSchemaRaw = document.getElementById('formJsonSchema').value;
+  
+  if (!mode || !phase || !template) {
+    alert('模式/阶段/模板内容 必填');
+    return;
+  }
+  
+  let jsonSchema = null;
+  if (jsonSchemaRaw.trim()) {
+    try {
+      jsonSchema = JSON.parse(jsonSchemaRaw);
+    } catch(e) {
+      alert('JSON Schema 格式错误: ' + e.message);
+      return;
+    }
+  }
+  
+  try {
+    const r = await fetch(API + '/api/admin/chat-mode-templates', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ mode, phase, template, forceJson, jsonSchema })
+    });
+    const d = await r.json();
+    if (d.ok) {
+      closeTemplateForm();
+      loadTemplates();
+    } else {
+      alert('保存失败: ' + (d.error || '未知错误'));
+    }
+  } catch(e) {
+    alert('请求失败: ' + e.message);
+  }
+}
+
+async function editTemplate(mode, phase) {
+  try {
+    const r = await fetch(API + '/api/admin/chat-mode-templates/' + mode + '/' + phase, { headers: headers() });
+    const d = await r.json();
+    if (d.ok && d.template) {
+      showTemplateForm(mode, phase, d.template);
+    } else {
+      alert('加载失败: ' + (d.error || '未知错误'));
+    }
+  } catch(e) {
+    alert('请求失败: ' + e.message);
+  }
+}
+
+async function deleteTemplate(mode, phase) {
+  if (!confirm('确认删除模板 ' + mode + '.' + phase + '？')) return;
+  try {
+    const r = await fetch(API + '/api/admin/chat-mode-templates/' + mode + '/' + phase, {
+      method: 'DELETE',
+      headers: headers()
+    });
+    const d = await r.json();
+    if (d.ok) {
+      loadTemplates();
+    } else {
+      alert('删除失败: ' + (d.error || '未知错误'));
+    }
+  } catch(e) {
+    alert('请求失败: ' + e.message);
+  }
 }
 
 function switchTab(name) {

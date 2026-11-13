@@ -98,36 +98,62 @@ function safeObj(v: any): Record<string, any> {
 }
 
 export class AgentManager {
-  constructor(private db: any, private aiHub: any) {}
+  constructor(private db: any, private aiHub: any, private toolRegistry?: any) {}
 
   register(userId: string, displayName: string, personality = '', autonomy: AutonomyLevel = 'semi'): AgentDTO {
     const agentId = 'agent-' + userId + '-' + uuid().slice(0, 6);
     const defaultModel = this.aiHub?.getDefaultModel?.() || '';
     const agent = this.db.createAgent(agentId, userId, displayName, personality, autonomy, defaultModel);
     console.log('[AgentManager] register:', agentId, 'model=' + defaultModel);
-    return rowToDTO(agent);
+    const dto = rowToDTO(agent);
+    // 同步技能到 ToolRegistry
+    if (this.toolRegistry && dto.skills?.length) {
+      this.toolRegistry.bindSkills(agentId, dto.skills);
+      console.log('[AgentManager] 技能已绑定:', agentId, dto.skills);
+    }
+    return dto;
   }
 
   get(id: string): AgentDTO | undefined {
     const row = this.db.getAgent(id);
-    return row ? rowToDTO(row) : undefined;
+    const dto = row ? rowToDTO(row) : undefined;
+    // 同步技能到 ToolRegistry（如果是首次加载）
+    if (dto && this.toolRegistry && dto.skills?.length) {
+      this.toolRegistry.bindSkills(id, dto.skills);
+    }
+    return dto;
   }
 
   list(): AgentDTO[] {
     const rows = this.db.listAgents();
     // FIX-ALL: agents are local processes, always online while engine runs
-    return rows.map((r: any) => { const dto = rowToDTO(r); dto.status = 'online'; return dto; });
+    return rows.map((r: any) => {
+      const dto = rowToDTO(r);
+      dto.status = 'online';
+      // 同步技能到 ToolRegistry
+      if (this.toolRegistry && dto.skills?.length) {
+        this.toolRegistry.bindSkills(dto.id, dto.skills);
+      }
+      return dto;
+    });
   }
 
   async update(id: string, updates: Partial<AgentDTO>): Promise<AgentDTO> {
     const agent: AgentRow | undefined = this.db.getAgent(id);
     if (!agent) throw new Error('Agent not found: ' + id);
     if (updates.displayName) agent.display_name = updates.displayName;
-    if (updates.model) agent.model = updates.model;
+    if (updates.model !== undefined) agent.model = updates.model;
     if (updates.modelSource) agent.model_source = updates.modelSource;
     if (updates.personality) agent.personality = updates.personality as string;
     if (updates.autonomy) agent.autonomy = updates.autonomy as string;
-    if (updates.skills) agent.skills = JSON.stringify(updates.skills);
+    if (updates.skills) {
+      agent.skills = JSON.stringify(updates.skills);
+      // 同步技能到 ToolRegistry
+      if (this.toolRegistry) {
+        this.toolRegistry.bindSkills(id, updates.skills);
+        console.log('[AgentManager] 技能已更新绑定:', id, updates.skills);
+      }
+    }
     if (updates.status) agent.status = updates.status;
 
     const dbRef: any = this.db;

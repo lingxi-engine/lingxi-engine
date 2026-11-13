@@ -7,7 +7,7 @@
 import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';
 
-export type InboxType = 'cron' | 'subagent' | 'hook' | 'system' | 'webhook';
+export type InboxType = 'cron' | 'subagent' | 'hook' | 'system' | 'webhook' | 'audit';
 
 export interface InboxItem {
   id: string;
@@ -227,4 +227,12 @@ export class InboxManager {
       console.error('[Inbox] 加载失败:', err.message);
     }
   }
+}
+
+/**
+ * 审计日志辅助函数
+ * 记录 RBAC 变更、模板修改、权限调整等安全相关操作
+ */
+export function addAuditLog(inbox: InboxManager, action: string, details: Record<string, any>, agentId?: string) {
+  return inbox.add('audit', `审计: ${action}`, JSON.stringify(details, null, 2), agentId);
 }

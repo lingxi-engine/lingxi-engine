@@ -3,11 +3,12 @@
  */
 import { Router } from 'express';
 import { getDB, getChatMode, setChatMode, CHAT_MODES, listUsers, addMessage } from '../storage/db.js';
-import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, setUsersProvider, type PeerMessage } from '../core/instance-mesh.js';
+import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, setPeerKeyHandler, sendPeerMessage, getMeshInfo, getInstanceId, setUsersProvider, type PeerMessage } from '../core/instance-mesh.js';
 import { processUserMessage } from '../core/ws-handler.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import type { ServerContext } from '../server/context.js';
+import { verifyMeshSignature, meshMessageRateLimit } from '../core/mesh-security.js';
 
 export function createMiscRoutes(ctx: ServerContext): Router {
   const router = Router();
@@ -79,7 +80,7 @@ export function createMiscRoutes(ctx: ServerContext): Router {
     res.json({ ok: true, peers: Array.from(peers.values()) });
   });
 
-  router.post('/federation/message', federationAuth, async (req, res) => {
+  router.post('/federation/message', federationAuth, meshMessageRateLimit(30), async (req, res) => {
     try {
       const { chatId, content, senderId, senderName, fromInstance } = req.body || {};
       if (!chatId || !content) return res.status(400).json({ error: 'chatId/content 必填' });
@@ -119,68 +120,81 @@ export function setupMesh(ctx: ServerContext, port: number) {
   try { pkgVersion = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8')).version || '0.0.0'; } catch {}
 
   setPeerMessageHandler((msg: PeerMessage) => {
-    try {
-      if (!msg.content) return;
+      try {
+        if (!msg.content) return;
 
-      // 跨平台好友聊天消息
-      const anyMsg = msg as any;
-      if (msg.chatId && String(msg.chatId).startsWith('chat-platform-') && anyMsg.fromUserId !== undefined) {
-        const chatId = msg.chatId;
-        const fromUserId = String(anyMsg.fromUserId);
-        const toUserId = String(anyMsg.toUserId || '');
+        // 跨平台好友聊天消息
+        const anyMsg = msg as any;
+        if (msg.chatId && String(msg.chatId).startsWith('chat-platform-') && anyMsg.fromUserId !== undefined) {
+          const chatId = msg.chatId;
+          const fromUserId = String(anyMsg.fromUserId);
+          const toUserId = String(anyMsg.toUserId || '');
 
-        // 自动创建聊天和参与者
-        const existing = db.listChats().find((c: any) => c.id === chatId);
-        if (!existing) {
-          db.createChat(chatId, 'private');
-          db.addParticipant('p-' + chatId + '-from', chatId, fromUserId, undefined, 'member');
-          db.addParticipant('p-' + chatId + '-to', chatId, toUserId, undefined, 'member');
-          console.log('[Mesh] 自动创建跨平台聊天 ' + chatId);
+          // 自动创建聊天和参与者
+          const existing = db.listChats().find((c: any) => c.id === chatId);
+          if (!existing) {
+            db.createChat(chatId, 'private');
+            db.addParticipant('p-' + chatId + '-from', chatId, fromUserId, undefined, 'member');
+            db.addParticipant('p-' + chatId + '-to', chatId, toUserId, undefined, 'member');
+            console.log('[Mesh] 自动创建跨平台聊天 ' + chatId);
+          }
+
+          // 存储消息
+          addMessage({
+            id: 'msg-mesh-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+            chatId,
+            senderType: 'user',
+            senderId: fromUserId,
+            content: msg.content,
+            type: 'text',
+            replyTo: undefined,
+            metadata: { fromInstance: msg.fromInstance },
+            timestamp: Date.now(),
+          });
+
+          // 广播给前端
+          broadcast({ type: 'message.new', chatId, from: fromUserId, senderId: fromUserId, senderType: 'user', content: msg.content, timestamp: Date.now() });
+          console.log('[Mesh] 好友消息注入聊天 ' + chatId + ': ' + msg.content.slice(0, 40));
+          return;
         }
 
-        // 存储消息
-        addMessage({
-          id: 'msg-mesh-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-          chatId,
-          senderType: 'user',
-          senderId: fromUserId,
-          content: msg.content,
-          type: 'text',
-          replyTo: undefined,
-          metadata: { fromInstance: msg.fromInstance },
-          timestamp: Date.now(),
-        });
-
-        // 广播给前端
-        broadcast({ type: 'message.new', chatId, from: fromUserId, senderId: fromUserId, senderType: 'user', content: msg.content, timestamp: Date.now() });
-        console.log('[Mesh] 好友消息注入聊天 ' + chatId + ': ' + msg.content.slice(0, 40));
-        return;
-      }
-
-      // 普通 peer 消息（AI 对话）
-      const chatId = resolveMeshChat(msg.chatId, db, manager);
-      const senderId = 'peer:' + (msg.fromInstance || 'unknown');
-      console.log('[Mesh] peer 消息注入聊天 ' + chatId + ': ' + msg.content.slice(0, 40));
-      processUserMessage(chatId, senderId, msg.content, undefined, msgRouter, broadcast);
-    } catch (err: any) { console.error('[Mesh] 处理 peer 消息失败:', err.message); }
-  });
-
-  setPeerTaskHandler((msg: PeerMessage) => {
-    (async () => {
-      try {
-        const agents = manager.list();
-        const agent = agents.find((a: any) => a.id === msg.fromAgent) || agents[0];
-        if (!agent) { sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '本实例没有可用的 AI Agent', taskId: msg.taskId, timestamp: Date.now() }); return; }
+        // 普通 peer 消息（AI 对话）
         const chatId = resolveMeshChat(msg.chatId, db, manager);
-        const goal = msg.goal || msg.content || '';
-        console.log(`[Mesh] 执行 peer 任务 (agent=${agent.id}): ${goal.slice(0, 40)}`);
-        const reply = await msgRouter.generateReply(chatId, agent.id, 'mesh-task-' + Date.now(), undefined, undefined, goal);
-        sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: reply, taskId: msg.taskId, timestamp: Date.now() });
-      } catch (err: any) { console.error('[Mesh] peer 任务执行失败:', err.message); sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '任务执行失败: ' + err.message, taskId: msg.taskId, timestamp: Date.now() }); }
-    })();
-  });
+        const senderId = 'peer:' + (msg.fromInstance || 'unknown');
+        console.log('[Mesh] peer 消息注入聊天 ' + chatId + ': ' + msg.content.slice(0, 40));
+        processUserMessage(chatId, senderId, msg.content, undefined, msgRouter, broadcast);
+      } catch (err: any) { console.error('[Mesh] 处理 peer 消息失败:', err.message); }
+    });
 
-  if (meshPlatformUrl && meshToken) {
+    setPeerTaskHandler((msg: PeerMessage) => {
+      (async () => {
+        try {
+          const agents = manager.list();
+          const agent = agents.find((a: any) => a.id === msg.fromAgent) || agents[0];
+          if (!agent) { sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '本实例没有可用的 AI Agent', taskId: msg.taskId, timestamp: Date.now() }); return; }
+          const chatId = resolveMeshChat(msg.chatId, db, manager);
+          const goal = msg.goal || msg.content || '';
+          console.log(`[Mesh] 执行 peer 任务 (agent=${agent.id}): ${goal.slice(0, 40)}`);
+          const reply = await msgRouter.generateReply(chatId, agent.id, 'mesh-task-' + Date.now(), undefined, undefined, goal);
+          sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: reply, taskId: msg.taskId, timestamp: Date.now() });
+        } catch (err: any) { console.error('[Mesh] peer 任务执行失败:', err.message); sendPeerMessage({ type: 'peer.response', fromInstance: getInstanceId(), toInstance: msg.fromInstance, content: '任务执行失败: ' + err.message, taskId: msg.taskId, timestamp: Date.now() }); }
+      })();
+    });
+
+    // 接收对端公钥（用于 P2P 签名验证）
+    setPeerKeyHandler((fromInstance: string, publicKey: string) => {
+      try {
+        console.log(`[Mesh] 存储 peer 公钥: ${fromInstance}`);
+        // 这里可以存储到 DB 或内存缓存，供 P2PManager.getSignData 使用
+        // 暂存到 global
+        if (!(globalThis as any).__meshPeerKeys) (globalThis as any).__meshPeerKeys = new Map();
+        (globalThis as any).__meshPeerKeys.set(fromInstance, publicKey);
+      } catch (e: any) {
+        console.warn('[Mesh] 存储 peer 公钥失败:', e.message);
+      }
+    });
+
+    if (meshPlatformUrl && meshToken) {
     const agentIds = manager.list().map((a: any) => a.id);
     // 注入用户列表提供器（心跳时带上用户列表）
     setUsersProvider(() => {

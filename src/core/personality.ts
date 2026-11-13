@@ -31,6 +31,20 @@ const MAX_STEP = 0.05;
  */
 export function formatPersonalityForPrompt(dims: PersonalityDims): string {
   const traits: string[] = [];
+  // ★ FIX(2026-11-09): personality_dims 从 DB 读回来可能是字符串（JSON 里存成 "0.5"），
+  //   直接调 .toFixed() 会抛 "dims.formalness.toFixed is not a function"，
+  //   导致整个 system prompt 的性格注入被跳过。这里统一数字化为兜底。
+  const num = (v: any, d: number) => {
+    const n = typeof v === 'number' ? v : Number(v);
+    return Number.isFinite(n) ? n : d;
+  };
+  dims = {
+    ...dims,
+    formalness: num(dims?.formalness, 0.5),
+    proactiveness: num(dims?.proactiveness, 0.5),
+    humor: num(dims?.humor, 0.5),
+    warmth: num(dims?.warmth, 0.7),
+  } as PersonalityDims;
 
   if (dims.formalness < 0.3) traits.push('非常随和，多用口语和网络梗');
   else if (dims.formalness < 0.5) traits.push('语气随和，接地气');

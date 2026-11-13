@@ -337,12 +337,12 @@ async function main() {
                   db.createUser(localId, platformAdminUser.username || '管理员');
                   const nid = nextNumericId();
                   const raw2 = getDB();
-                  raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [nid, Date.now(), localId]);
+                  raw2.run("UPDATE users SET numeric_id = ?, status = 'online', last_active_at = ? WHERE id = ?", [nid, Date.now(), localId]);
                   saveToDisk();
                   console.log('[DB] 创建平台 admin 用户映射, id =', localId, 'numeric_id =', nid);
                 }
                 const raw2 = getDB();
-                raw2.run('UPDATE users SET status = "online", last_active_at = ?, display_name = ? WHERE id = ?', [Date.now(), platformAdminUser.username || '管理员', localId]);
+                raw2.run("UPDATE users SET status = 'online', last_active_at = ?, display_name = ? WHERE id = ?", [Date.now(), platformAdminUser.username || '管理员', localId]);
               }
             } catch (e: any) {
               console.warn('[Platform] 无法连接平台 API，回退到本地 admin-auto 模式:', e.message);
@@ -361,42 +361,45 @@ async function main() {
           const adminNid = nextNumericId();
           db.createUser('admin', '管理员');
           const raw2 = getDB();
-          raw2.run('UPDATE users SET numeric_id = ?, status = "online", last_active_at = ? WHERE id = ?', [adminNid, Date.now(), 'admin']);
+          raw2.run("UPDATE users SET numeric_id = ?, status = 'online', last_active_at = ? WHERE id = ?", [adminNid, Date.now(), 'admin']);
           console.log('[DB] 创建 admin-auto 用户(本地回退), numeric_id =', adminNid);
           saveToDisk();
         }
         const raw2 = getDB();
-        raw2.run('UPDATE users SET status = "online", last_active_at = ? WHERE id = ?', [Date.now(), 'admin']);
+        raw2.run("UPDATE users SET status = 'online', last_active_at = ? WHERE id = ?", [Date.now(), 'admin']);
       } catch (e: any) { console.warn('[DB] admin 用户初始化警告:', e.message); }
     }
   const aiHub = new AIHub();
-  (globalThis as any).__aiHub = aiHub;
-  (globalThis as any).__aiHub_providers = [];
-const searchManagerInstance = new SearchManager();
-// v2 修复：单例注入到 builtin.ts，避免双实例问题
-setSearchManager(searchManagerInstance);
-  const manager = new AgentManager(db, aiHub);
-  const router = new MessageRouter(db, manager, aiHub);
+    (globalThis as any).__aiHub = aiHub;
+    (globalThis as any).__aiHub_providers = [];
+  const searchManagerInstance = new SearchManager();
+  // v2 修复：单例注入到 builtin.ts，避免双实例问题
+  setSearchManager(searchManagerInstance);
+    const toolRegistry = new ToolRegistry();
+    for (const { tool, handler } of BUILTIN_TOOLS) {
+      toolRegistry.registerTool(tool, handler);
+    }
+    // A1: 注册 ExecutorTool 实例（ITool 路径，支持 dryRun/审批/超时/错误分类）
+    toolRegistry.registerToolInstance({
+      name: 'executor',
+      description: 'Run the agent tool-execution loop (supports dry-run, timeout, abort, error classification)',
+      parameters: { type: 'object', properties: {} },
+    }, new ExecutorTool());
+    for (const skill of BUILTIN_SKILLS) {
+      toolRegistry.registerSkill(skill);
+    }
+    console.log('[Tools] 注册', toolRegistry.listTools().length, '个工具,', toolRegistry.listSkills().length, '个技能');
 
-  // ── 初始化工具系统 ──
-  const toolRegistry = new ToolRegistry();
-  for (const { tool, handler } of BUILTIN_TOOLS) {
-    toolRegistry.registerTool(tool, handler);
-  }
-  // A1: 注册 ExecutorTool 实例（ITool 路径，支持 dryRun/审批/超时/错误分类）
-  toolRegistry.registerToolInstance({
-    name: 'executor',
-    description: 'Run the agent tool-execution loop (supports dry-run, timeout, abort, error classification)',
-    parameters: { type: 'object', properties: {} },
-  }, new ExecutorTool());
-  for (const skill of BUILTIN_SKILLS) {
-    toolRegistry.registerSkill(skill);
-  }
-  router.setToolRegistry(toolRegistry);
-  console.log('[Tools] 注册', toolRegistry.listTools().length, '个工具,', toolRegistry.listSkills().length, '个技能');
-
-  // ── 注入 AI 客户端给记忆反思 ──
-  const defaultModelForReflection = aiHub.getDefaultModel();
+    // ── 注入 AI 客户端给记忆反思 ──
+    const defaultModelForReflection = aiHub.getDefaultModel();
+    // 传入 toolRegistry 到 AgentManager
+    const manager = new AgentManager(db, aiHub, toolRegistry);
+    const router = new MessageRouter(db, manager, aiHub);
+    // ★ FIX-TOOLS(2026-11-09): 必须把 toolRegistry 注入 router。
+    // 缺这一行时 router.toolRegistry === undefined → generateReply 里
+    // agentTools 恒为 [] → 日志「tools=0」→ 工具调用循环根本不启动。
+    router.setToolRegistry(toolRegistry);
+    console.log('[Tools] toolRegistry 已注入 MessageRouter（工具调用已启用）');
   const defaultClientResult = aiHub.getClient(defaultModelForReflection);
   if (defaultClientResult) {
     router.setAIClient(defaultClientResult.client, defaultClientResult.resolvedModel);
@@ -420,7 +423,7 @@ setSearchManager(searchManagerInstance);
   // ── P2-3: Provider 注册表 ──
   const providerRegistry = new ProviderRegistry();
   providerRegistry.registerFromEnv();
-  providerRegistry.restore();  // 恢复用户通过 UI 添加的 Provider
+  await providerRegistry.restore();  // 恢复用户通过 UI 添加的 Provider（FIX: 必须 await，否则下方同步循环跑空）
   // ── 启动同步：providers.json → AIHub（修复 .env 未配置但 UI 保存过的 provider 丢失问题）
   const hubIds = new Set((aiHub.listProviders?.() || []).map((h: any) => h.id));
   for (const p of providerRegistry.list()) {
@@ -498,13 +501,13 @@ setSearchManager(searchManagerInstance);
         const targetChat = job.payload.chatId || 'chat-default';
         console.log(`[Cron] Standing Order: ${job.name} → ${targetChat}`);
         const agents = db.listAgents();
-        if (agents.length > 0) {
-          const reply = await router.generateReply(targetChat, agents[0].id || agents[0].agent_id, 'so-' + job.id);
-          if (reply) {
-            broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + (agents[0].id || agents[0].agent_id), senderType: 'agent', content: reply, timestamp: Date.now() });
-            inboxManager.add('cron', `Standing Order: ${job.name}`, reply);
-          }
-        }
+                if (agents.length > 0) {
+                  const reply = await router.generateReply(targetChat, agents[0].id, 'so-' + job.id);
+                  if (reply) {
+                    broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + agents[0].id, senderType: 'agent', content: reply, timestamp: Date.now() });
+                    inboxManager.add('cron', `Standing Order: ${job.name}`, reply);
+                  }
+                }
       }
       await hookManager.trigger('cronExecuted', { event: 'cronExecuted', timestamp: Date.now(), message: job.name });
     } catch (err: any) { console.error(`[Cron] 任务执行错误:`, err.message); }
@@ -523,13 +526,13 @@ setSearchManager(searchManagerInstance);
     const prompt = (hook.promptTemplate || '').replace('{payload}', payloadText);
     try {
       const agents = db.listAgents();
-      if (agents.length > 0) {
-        const reply = await router.generateReply(targetChat, agents[0].id || agents[0].agent_id, 'wh-' + hook.id);
-        if (reply) {
-          broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + (agents[0].id || agents[0].agent_id), senderType: 'agent', content: reply, timestamp: Date.now() });
-          inboxManager.add('webhook', `Webhook: ${hook.name}`, reply);
-        }
-      }
+            if (agents.length > 0) {
+              const reply = await router.generateReply(targetChat, agents[0].id, 'wh-' + hook.id);
+              if (reply) {
+                broadcast({ type: 'message.new', chatId: targetChat, from: 'agent:' + agents[0].id, senderType: 'agent', content: reply, timestamp: Date.now() });
+                inboxManager.add('webhook', `Webhook: ${hook.name}`, reply);
+              }
+            }
       await hookManager.trigger('webhookTriggered', { event: 'webhookTriggered', timestamp: Date.now(), message: hook.name, chatId: targetChat });
     } catch (err: any) { console.error('[Webhook] 执行失败:', err.message); }
   }, dataDir);
@@ -1191,6 +1194,57 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     res.json({ ok: true, codes: listInviteCodes() });
   });
 
+  // ── 管理后台：聊天模式模板 CRUD ──
+    app.get('/api/admin/chat-mode-templates', (req, res) => {
+      try {
+        const { getAllTemplates } = require('./src/core/chat-mode-templates.js');
+        const templates = getAllTemplates();
+        res.json({ ok: true, templates });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.get('/api/admin/chat-mode-templates/:mode/:phase', (req, res) => {
+      try {
+        const { getTemplate } = require('./src/core/chat-mode-templates.js');
+        const { mode, phase } = req.params;
+        const template = getTemplate(mode, phase);
+        if (!template) return res.status(404).json({ error: '模板不存在' });
+        res.json({ ok: true, template });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.post('/api/admin/chat-mode-templates', (req, res) => {
+      try {
+        const { setTemplate, addAuditLog } = require('./src/core/chat-mode-templates.js');
+        const { mode, phase, template, forceJson, jsonSchema } = req.body;
+        if (!mode || !phase || !template) return res.status(400).json({ error: 'mode/phase/template 必填' });
+        setTemplate(mode, phase, { template, forceJson, jsonSchema }, true);
+        // 审计日志
+        if (inboxManager) addAuditLog(inboxManager, 'template_created', { mode, phase, forceJson, hasSchema: !!jsonSchema });
+        res.json({ ok: true, message: '模板已保存，热重载已生效' });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.delete('/api/admin/chat-mode-templates/:mode/:phase', (req, res) => {
+      try {
+        const { deleteTemplate, addAuditLog } = require('./src/core/chat-mode-templates.js');
+        const { mode, phase } = req.params;
+        const ok = deleteTemplate(mode, phase, true);
+        if (!ok) return res.status(404).json({ error: '模板不存在' });
+        // 审计日志
+        if (inboxManager) addAuditLog(inboxManager, 'template_deleted', { mode, phase });
+        res.json({ ok: true, message: '模板已删除，热重载已生效' });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
   // ── 旧版兼容：验证码发送（保留 demo 模式） ──
   app.post('/api/auth/send-code', (req, res) => {
     const { email } = req.body;
@@ -1359,8 +1413,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
         }
       }
       const result = db.respondFriendRequest(requestId, action);
-      if (result.error) return res.status(400).json(result);
-      res.json({ ok: true, ...result });
+            if (!result.ok) return res.status(400).json(result);
+            res.json({ ...result, ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -1530,10 +1584,10 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           return res.status(403).json({ error: '无权向此聊天发送消息' });
         }
       }
-      const friendParticipant = parts.find((p: any) => String(p.user_id) !== String(fromUserId));
+      const friendParticipant = parts.find((p: any) => String((p as any).userId ?? (p as any).user_id) !== String(fromUserId));
       if (!friendParticipant) return res.status(400).json({ error: '无法确定好友' });
 
-      const friendUserId = String(friendParticipant.user_id);
+      const friendUserId = String((friendParticipant as any).userId ?? (friendParticipant as any).user_id);
       const friendNumericId = Number(friendUserId);
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh
@@ -2404,7 +2458,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           const newModel = req.body.models[0];
           const agents = db.listAgents();
           for (const agent of agents) {
-            manager.update(agent.id || agent.agent_id, { model: newModel });
+            manager.update((agent as any).id || (agent as any).agent_id, { model: newModel });
           }
           console.log(`[Providers] ${agents.length} 个 Agent 已切换到模型: ${newModel}`);
         } catch(e) { /* 切换失败不影响 */ }
@@ -4696,7 +4750,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try { await browserManager.close(); } catch(_e) {}
     try { await mcpManager.closeAll(); } catch(_e) {}
     try { await saveToDisk(); console.log('[Shutdown] 数据库已保存'); } catch (e: any) { console.error('[Shutdown] DB保存失败:', e.message); }
-    try { await closeDB(dbPath); console.log('[Shutdown] 数据库已关闭'); } catch(_e) {}
+    try { await closeDB(); console.log('[Shutdown] 数据库已关闭'); } catch(_e) {}
     try { server.close(); } catch(_e) {}
     console.log('[Shutdown] 退出完成');
     process.exit(0);

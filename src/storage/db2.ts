@@ -738,7 +738,8 @@ export function createAgent(id: string, userId: string, displayName: string, per
 
 export function getAgent(id: string) {
   if (!_db) return undefined;
-  return _db.prepare(`SELECT * FROM agents WHERE id = ?`).get(id);
+  // better-sqlite3 的 get() 返回 unknown；这个文件里到处当对象用，统一断言
+  return _db.prepare(`SELECT * FROM agents WHERE id = ?`).get(id) as any;
 }
 
 export function listAgents() {
@@ -942,7 +943,7 @@ export function getRecentMessages(agentId: string, limit = 20): Array<{ content:
   if (!_db) return [];
   return _db.prepare(
     `SELECT content, timestamp FROM messages WHERE sender_id = ? OR (sender_type = 'agent' AND sender_id = ?) ORDER BY timestamp DESC LIMIT ?`
-  ).all(agentId, agentId, limit).reverse();
+  ).all(agentId, agentId, limit).reverse() as Array<{ content: string; timestamp: number }>;
 }
 
 export function messageExists(msgId: string): boolean {
@@ -1023,11 +1024,12 @@ export function removeFriendship(userId1: string, userId2: string) { }
 // ===== 导出查询辅助 =====
 export function queryAll(sql: string, params: any[] = []): any[][] {
   if (!_db) return [];
+  // better-sqlite3 的 all() 返回对象数组，这里保持 sql.js 的二维数组语义
   const stmt = _db.prepare(sql);
-  if (params.length) stmt.bind(params);
-  const rows: any[][] = [];
-  for (const row of stmt.iterate()) rows.push(row);
-  return rows;
+  const rows = (params.length ? stmt.all(...params) : stmt.all()) as any[];
+  if (!rows.length) return [];
+  const cols = Object.keys(rows[0]);
+  return rows.map(r => cols.map(c => r[c]));
 }
 
 export function queryOne(sql: string, params: any[] = []): any | null {

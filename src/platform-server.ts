@@ -21,7 +21,9 @@ import { WebSocketServer, WebSocket } from 'ws';
 import { randomBytes, createHash } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import initSqlJs from 'sql.js';
+// 2026-11-11 FIX：sql.js 已从依赖里移除（package.json 无此包），platform-server 一启动就
+// TS2307 编译失败 / 运行时 MODULE_NOT_FOUND。改为与主引擎一致的 better-sqlite3。
+import Database from 'better-sqlite3';
 import { isDevMode } from './security/token-compare.js';
 import { config as dotenvConfig } from 'dotenv';
 // 2026-09-09 v2.0.15: PM2 环境下加载 .env.platform（平台专属配置；不读主引擎 .env，避免误吞 PORT=3456）
@@ -65,7 +67,74 @@ if (!existsSync(DATA_DIR)) mkdirSync(DATA_DIR, { recursive: true });
 const DB_FILE = join(DATA_DIR, 'platform.sqlite');
 const JSON_BACKUP = join(DATA_DIR, 'platform.json'); // 旧数据迁移
 
-let sqlDb: any; // sql.js Database
+/**
+ * sql.js 兼容层（2026-11-11 FIX）
+ * platform-server 全篇用的是 sql.js 的 API：
+ *   db.run(sql, params)                 → better-sqlite3: prepare(sql).run(...params)
+ *   db.exec(sql)                        → [{ columns, values }]
+ *   db.prepare(sql).bind({$a:1}).step() → 命名参数 + 游标
+ * 这里做一个薄壳，让上面几百行 SQL 一行都不用改。
+ */
+function makeSqlJsCompat(raw: Database.Database) {
+  const normalize = (p: any): any[] => {
+    if (p === undefined || p === null) return [];
+    if (Array.isArray(p)) return p;
+    if (typeof p === 'object') {
+      // sql.js 的命名参数形如 { $em: 'x' }，better-sqlite3 要 ['x'] 或 {em:'x'}
+      const keys = Object.keys(p);
+      return keys.map(k => p[k]);
+    }
+    return [p];
+  };
+  const api: any = {
+    run(sql: string, params?: any) {
+      const stmt = raw.prepare(sql);
+      const p = normalize(params);
+      const r = p.length ? stmt.run(...p) : stmt.run();
+      return { changes: r.changes, lastInsertRowid: Number(r.lastInsertRowid) };
+    },
+    exec(sql: string) {
+      const rows = raw.prepare(sql).all() as any[];
+      if (!rows.length) return [];
+      const columns = Object.keys(rows[0]);
+      return [{ columns, values: rows.map(r => columns.map(c => r[c])) }];
+    },
+    prepare(sql: string) {
+      const stmt = raw.prepare(sql);
+      let rows: any[] | null = null;
+      let idx = 0;
+      return {
+        bind(params?: any) {
+          const p = normalize(params);
+          rows = p.length ? (stmt.all(...p) as any[]) : (stmt.all() as any[]);
+          idx = 0;
+          return this;
+        },
+        step() {
+          if (!rows) { rows = stmt.all() as any[]; idx = 0; }
+          const list: any[] = rows || [];
+          return idx < list.length ? (idx++, true) : false;
+        },
+        getAsObject() {
+          const list: any[] = rows || [];
+          return idx > 0 && idx <= list.length ? list[idx - 1] : {};
+        },
+        free() { rows = null; idx = 0; },
+      };
+    },
+    /** sql.js 的 export() → Buffer，用于落盘 */
+    export() {
+      // better-sqlite3 直接写文件，这里返回空 Buffer，saveDB 走 native 分支
+      return Buffer.alloc(0);
+    },
+    close() { try { raw.close(); } catch { /* ignore */ } },
+    /** 原生句柄，saveDB 用它做 checkpoint */
+    __raw: raw,
+  };
+  return api;
+}
+
+let sqlDb: any; // sql.js 兼容层实例
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -142,13 +211,10 @@ CREATE INDEX IF NOT EXISTS idx_iu_numeric ON instance_users(numeric_id);
 `;
 
 async function initDB() {
-  const SQL = await initSqlJs();
-  if (existsSync(DB_FILE)) {
-    const buf = readFileSync(DB_FILE);
-    sqlDb = new SQL.Database(buf);
-  } else {
-    sqlDb = new SQL.Database();
-  }
+  const raw = new Database(DB_FILE);
+  try { raw.pragma('journal_mode = WAL'); } catch { /* ignore */ }
+  try { raw.pragma('foreign_keys = OFF'); } catch { /* ignore */ }
+  sqlDb = makeSqlJsCompat(raw);
   sqlDb.run(SCHEMA);
   migrateUsersTable();
   saveDB();
@@ -157,8 +223,9 @@ async function initDB() {
 
 function saveDB() {
   try {
-    const data = sqlDb.export();
-    writeFileSync(DB_FILE, Buffer.from(data));
+    // better-sqlite3 是直写磁盘，只需要 checkpoint 把 WAL 落盘
+    const raw = sqlDb.__raw as Database.Database;
+    raw.pragma('wal_checkpoint(TRUNCATE)');
   } catch (e) {
     console.error('[DB] 保存失败', e);
   }

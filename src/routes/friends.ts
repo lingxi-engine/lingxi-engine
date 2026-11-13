@@ -2,7 +2,7 @@
  * 好友路由 — 好友请求、好友列表
  */
 import { Router } from 'express';
-import { getDB } from '../storage/db.js';
+import { getDB, getUserByNumericId } from '../storage/db.js';
 import type { ServerContext } from '../server/context.js';
 
 export function createFriendsRoutes(ctx: ServerContext): Router {
@@ -48,7 +48,8 @@ export function createFriendsRoutes(ctx: ServerContext): Router {
     try {
       const numericId = parseInt(req.query.numericId as string, 10);
       if (isNaN(numericId)) return res.status(400).json({ error: '无效的 numericId' });
-      const user = db.getUserByNumericId(numericId);
+      // 2026-11-11 FIX：getUserByNumericId 是模块级导出，DB 类上没有这个方法（TS2339）
+      const user = getUserByNumericId(numericId);
       if (!user) return res.status(404).json({ error: '用户不存在' });
       res.json({
         ok: true,
@@ -83,9 +84,9 @@ export function createFriendsRoutes(ctx: ServerContext): Router {
       const { requestId, action } = req.body;
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
       if (!['accept', 'reject'].includes(action)) return res.status(400).json({ error: 'action 只能是 accept 或 reject' });
-      const result = db.respondFriendRequest(requestId, action);
+      const result = db.respondFriendRequest(requestId, action) as { ok: boolean; status: string; error?: string };
       if (result.error) return res.status(400).json(result);
-      res.json({ ok: true, ...result });
+      res.json({ ...result, ok: true });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }

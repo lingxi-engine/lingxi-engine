@@ -20,7 +20,7 @@ import {
   sendFriendRequest, respondFriendRequest, getFriendRequests, listFriends,
   getFriendshipById, getFriendshipByPair,
   createLanGroup, getLanGroup, listLanGroups, setLanGroupMode,
-  addLanGroupMember, getLanGroupMembers, removeLanGroup,
+  addLanGroupMember, getLanGroupMembers,
   upsertLanRemoteIdentity, getLanRemoteIdentity, getLanRemoteIdentityByNumericId, listLanRemoteIdentities,
   getAgentByUserId, getUser, getUserByNumericId,
   saveLanGroupInvite, getLanGroupInvite, listLanGroupInvites,
@@ -184,7 +184,7 @@ export class LanSocialHub {
     };
 
     // 本地先记一条 pending（ outgoing ）；若已存在 pending/accepted 则短路，避免重复通知对方
-    const localPending = sendFriendRequest(fromUser.id, `remote-${toNumericId}`, message);
+    const localPending = sendFriendRequest(fromUser.id, `remote-${toNumericId}`, message) as { id?: string; error?: string };
     if (localPending && localPending.error) {
       return { ok: false, error: localPending.error };
     }
@@ -232,7 +232,7 @@ export class LanSocialHub {
 
   /** 本机用户处理好友请求（accept/reject） */
   async respondFriendRequest(requestId: string, action: 'accept' | 'reject'): Promise<any> {
-    const result = respondFriendRequest(requestId, action);
+    const result = respondFriendRequest(requestId, action) as { ok: boolean; status: string; error?: string };
     if (result.error) throw new Error(result.error);
     if (action !== 'accept') return { ok: true, status: 'denied' };
 
@@ -591,7 +591,9 @@ export class LanSocialHub {
     if (!getChatById(aChat)) createChat(aChat, 'group');
     setChatMode(aChat, chatMode);
     for (const m of members) {
-      addLanGroupMember({ groupId, instanceId: m.instanceId, userId: m.userId, numericId: m.numericId, displayName: m.displayName, agentId: m.agentId });
+      // 2026-11-11 FIX：db.addLanGroupMember 是位置参数签名（groupId,userId,numericId,displayName,instanceId,role,agentId），
+      // 老代码按对象传参 → 第一个参数变成对象、其余全 undefined，成员永远加不进去。
+      addLanGroupMember(groupId, m.userId, m.numericId, m.displayName, m.instanceId, 'member', m.agentId);
       // 人类聊天：加用户
       this.safeAddParticipant(`p-${hChat}-${m.userId}`, hChat, m.userId, undefined, 'member');
       // 智能体聊天：加该成员的 agent
@@ -616,7 +618,9 @@ export class LanSocialHub {
   getGroup(groupId: string) {
     const g = getLanGroup(groupId);
     if (!g) return null;
-    const members = getLanGroupMembers(groupId).map((m) => ({
+    // 2026-11-11 FIX：这个 return 语句被误插到 map(...) 后面，
+    // 导致下面的 return 永远执行不到（TS18004: members 未定义），getGroup 直接返回数组而不是对象。
+    const members = (getLanGroupMembers(groupId) as any[]).map((m) => ({
       userId: m.user_id, numericId: m.numeric_id, displayName: m.display_name, agentId: m.agent_id,
       instanceId: m.instance_id, online: !!getLanPeer(m.instance_id), local: m.instance_id === getLanInstanceId(),
     }));
@@ -1259,7 +1263,7 @@ export class LanSocialHub {
 
   /** 群成员编排视图 */
   private buildRoster(groupId: string): AgentRosterEntry[] {
-    return getLanGroupMembers(groupId).map((m) => ({
+    return (getLanGroupMembers(groupId) as any[]).map((m) => ({
       userId: m.user_id, numericId: m.numeric_id, displayName: m.display_name, agentId: m.agent_id,
       instanceId: m.instance_id, isLocal: m.instance_id === getLanInstanceId(),
     }));

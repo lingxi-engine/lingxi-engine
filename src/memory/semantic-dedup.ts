@@ -7,22 +7,50 @@
 
 // 轻量级 MinHash 实现（无外部依赖）
 export class MinHash {
+  private static sharedPermutations: number[][] | null = null;
+  private static readonly DEFAULT_SEED = 0xdeadbeef;
+  private static readonly DEFAULT_NUM_HASHES = 128;
+  
   private permutations: number[][];
   private seed: number;
 
   constructor(
-    public readonly numHashes: number = 128,
-    seed: number = 0xdeadbeef
+    public readonly numHashes: number = MinHash.DEFAULT_NUM_HASHES,
+    seed: number = MinHash.DEFAULT_SEED
   ) {
     this.seed = seed;
-    this.permutations = this.generatePermutations(numHashes);
+    // 使用共享排列表（单例模式），避免每个实例重复生成 128×65536 数组
+    if (numHashes === MinHash.DEFAULT_NUM_HASHES && seed === MinHash.DEFAULT_SEED) {
+      if (!MinHash.sharedPermutations) {
+        MinHash.sharedPermutations = MinHash.generateStaticPermutations();
+      }
+      this.permutations = MinHash.sharedPermutations;
+    } else {
+      this.permutations = this.generatePermutations(numHashes);
+    }
+  }
+
+  /** 静态生成共享排列表（单例） */
+  private static generateStaticPermutations(): number[][] {
+    const n = MinHash.DEFAULT_NUM_HASHES;
+    const perms: number[][] = [];
+    for (let i = 0; i < n; i++) {
+      const perm = Array.from({ length: 65536 }, (_, idx) => idx);
+      let hash = MinHash.DEFAULT_SEED + i * 0x9e3779b9;
+      for (let j = perm.length - 1; j > 0; j--) {
+        hash = (hash * 1664525 + 1013904223) >>> 0;
+        const k = hash % (j + 1);
+        [perm[j], perm[k]] = [perm[k], perm[j]];
+      }
+      perms.push(perm);
+    }
+    return perms;
   }
 
   private generatePermutations(n: number): number[][] {
     const perms: number[][] = [];
     for (let i = 0; i < n; i++) {
       const perm = Array.from({ length: 65536 }, (_, idx) => idx);
-      // Fisher-Yates shuffle with deterministic seed per permutation
       let hash = this.seed + i * 0x9e3779b9;
       for (let j = perm.length - 1; j > 0; j--) {
         hash = (hash * 1664525 + 1013904223) >>> 0;

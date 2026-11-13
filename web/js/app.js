@@ -1640,7 +1640,7 @@ function checkTimeDivider(container, timestamp) {
 // 消息操作
 function copyMsg(btn) {
   const content = btn.closest('.msg-bubble').querySelector('.msg-content');
-  if (content) { navigator.clipboard.writeText(content.textContent); toast(t('toast.copied')); }
+  if (content) { try { if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(content.textContent); toast(t('toast.copied')); } else { throw new Error('no clipboard'); } } catch(e) { try { var ta = document.createElement('textarea'); ta.value = content.textContent; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast(t('toast.copied')); } catch(e2) { toast('复制失败'); } } }
 }
 function replyMsg(btn) {
   const content = btn.closest('.msg-bubble').querySelector('.msg-content');
@@ -3044,8 +3044,18 @@ async function loadModels() {
       hSel.innerHTML = opts || '<option value="">'+t('settings.noModel')+'</option>';
       // 修复模型名显示写死：优先恢复用户上次手动选择的模型（localStorage），
       // 其次才用服务。defaultModel，避免每。loadModels 都被重置
+      // FIX: 以服务端 agent.model 为准（真实生效值），localStorage 仅作候选。
+      // 原实现 localStorage 优先，导致下拉框显示旧值而 agent 实际跑别的模型。
+      let serverModel = '';
+      try {
+        const ad = await api('/api/agents');
+        const list = ad.agents || [];
+        if (list.length && list[0].model) serverModel = list[0].model;
+      } catch(e) {}
       const savedModel = localStorage.getItem('lingxi-selected-model');
-      if (savedModel && hSel.querySelector('option[value="'+savedModel+'"]')) {
+      if (serverModel && hSel.querySelector('option[value="'+serverModel+'"]')) {
+        hSel.value = serverModel;
+      } else if (savedModel && hSel.querySelector('option[value="'+savedModel+'"]')) {
         hSel.value = savedModel;
       } else if (d.defaultModel && hSel.querySelector('option[value="'+d.defaultModel+'"]')) {
         hSel.value = d.defaultModel;

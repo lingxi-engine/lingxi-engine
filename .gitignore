@@ -411,3 +411,6 @@ ARCHIVE-NOTES.md
 MEMORY-OFFICIAL-SITE.md
 MOBILE-RELAY-SELFHOST.md
 deploy/PASTE-HOTFIX-*.txt
+
+# stray curl cookie jar at repo root (debug artifact, never tracked)
+/600

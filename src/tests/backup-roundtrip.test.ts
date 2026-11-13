@@ -3,9 +3,8 @@
  * 覆盖：格式校验、全量替换、敏感列脱敏、事务回滚
  */
 import { describe, it, expect, beforeEach } from 'vitest';
-import initSqlJs from 'sql.js';
 
-// 直接操作一个独立 sql.js 实例，再通过模块内部 getDB 指向它
+// 直接操作一个独立数据库实例，再通过模块内部 getDB 指向它
 // 由于 db.ts 用模块级 _db，这里用 initDB 指到临时文件
 import { initDB, closeDB, getDB, createFullUser, createChat, addMessage, markDirty } from '../storage/db.js';
 import { exportBackup, importBackup } from '../storage/backup.js';
@@ -16,6 +15,8 @@ import * as path from 'path';
 const tmpFile = path.join(os.tmpdir(), `lingxi-test-backup-${Date.now()}.db`);
 
 beforeEach(async () => {
+  // better-sqlite3 是持久连接：必须先关掉上一个句柄，否则删文件失败、旧数据残留
+  try { await closeDB(); } catch { /* 首次无连接 */ }
   try { fs.unlinkSync(tmpFile); } catch {}
   await initDB(tmpFile);
 });

@@ -241,7 +241,7 @@ export function registerA2ARoutes(app: Express, ctx: A2AContext): void {
     const primary = agents[0];
     res.json(buildAgentCard({
       agentId: primary?.id || 'lingxi',
-      name: '灵犀引擎' + (primary?.display_name ? ` · ${primary.display_name}` : ''),
+      name: '灵犀引擎' + (primary?.displayName ? ` · ${primary.displayName}` : ''),
       description: '本地优先的 AI 助手引擎：9 渠道接入、56 工具、记忆系统、多智能体协作。支持 A2A 协议互操作。',
       url: `${baseUrl(req)}/a2a`,
       version: readVersion(),

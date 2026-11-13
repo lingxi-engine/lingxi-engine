@@ -12,6 +12,7 @@
  */
 
 import { getChatMode as dbGetChatMode, setChatMode as dbSetChatMode } from '../storage/db.js';
+import { renderPrompt, type TemplateVariables } from './chat-mode-templates.js';
 
 export type ChatMode = 'free' | 'route' | 'debate' | 'chain' | 'roundtable' | 'vote' | 'brainstorm';
 
@@ -141,19 +142,16 @@ async function dispatchRoute(
   // P0-2 修复：真正调用 AI 做路由分析，而非假装路由
   if (aiHub && otherAgents.length > 0) {
     try {
-      const agentList = otherAgents.map((a: any) => 
-        `- @${a.displayName}: ${a.personality ? a.personality.slice(0,80) : '通用助手'}`
-      ).join('\n');
+      const agentNames = otherAgents.map(a => a.displayName).join(', ');
       
-      const routePrompt = `你是一个路由助手。用户发的消息需要被分派给最合适的 AI 处理。
-
-【用户消息】${content}
-
-【可用的 AI】
-${agentList}
-
-请直接回复你要 @ 的 AI 名字（可以多个，用逗号分隔），不要任何解释。如果都不合适，回复"none"。`;
-
+      // 使用模板系统渲染路由分析 prompt
+      const { prompt: routePrompt, forceJson, jsonSchema } = renderPrompt('route', 'analyze', {
+        chatId,
+        content,
+        senderId,
+        agentNames,
+      });
+      
       const clientResult = aiHub.getClient(aiHub.getDefaultModel?.() || '');
       if (clientResult) {
         const resp = await clientResult.client.chat.completions.create({
@@ -161,15 +159,29 @@ ${agentList}
           messages: [{ role: 'user', content: routePrompt }],
           temperature: 0.1,
           max_tokens: 200,
+          ...(forceJson ? { response_format: { type: 'json_object' } } : {}),
         });
         const routeResult = (resp.choices[0]?.message?.content || '').trim();
         console.log(`[ChatModes] 路由分析结果: ${routeResult}`);
         
-        // 解析 AI 回复，提取被 @ 的 Agent 名字
-        const selectedNames = routeResult
-          .split(/[,，、\s]+/)
-          .map((s: any) => s.replace(/^@/, '').trim())
-          .filter(Boolean);
+        let selectedNames: string[] = [];
+        if (forceJson) {
+          try {
+            const parsed = JSON.parse(routeResult);
+            selectedNames = parsed.selectedAgents || [];
+          } catch {
+            // JSON 解析失败，回退到文本解析
+            selectedNames = routeResult
+              .split(/[,，、\s]+/)
+              .map((s: any) => s.replace(/^@/, '').trim())
+              .filter(Boolean);
+          }
+        } else {
+          selectedNames = routeResult
+            .split(/[,，、\s]+/)
+            .map((s: any) => s.replace(/^@/, '').trim())
+            .filter(Boolean);
+        }
         
         // 匹配被选中的 Agent
         const selectedAgents = otherAgents.filter(a => 
@@ -198,13 +210,20 @@ ${agentList}
 
   // Fallback：路由 Agent 先回复 + 所有 full 模式 Agent 延迟触发
   const responses: ModeDispatchResult['responses'] = [];
+  
+  // 使用模板渲染 fallback prompt
+  const { prompt: fallbackPrompt } = renderPrompt('route', 'fallback', {
+    chatId,
+    content,
+    senderId,
+    agentNames: otherAgents.map(a => a.displayName).join('、'),
+  });
+  
   responses.push({
     chatId,
     agentId: routerAgent.id,
     triggerMessage: { id: 'route-' + Date.now(), content, senderId },
-    customPrompt: `你是路由助手。分析用户消息：'${content}'，决定应该通知哪个 AI 处理。
-可选的 AI：${otherAgents.map(a => a.displayName).join('、')}
-请用 '@AI名字' 的格式告知需要呼叫的 AI，并简要说明原因。`,
+    customPrompt: fallbackPrompt,
   });
 
   for (const agent of otherAgents) {
@@ -239,26 +258,29 @@ function dispatchDebate(
   for (let i = 0; i < Math.min(participants.length, debateTopics.length); i++) {
     const agent = participants[i];
     const stance = debateTopics[i];
+    
+    // 使用模板系统渲染辩论立场 prompt
+    const { prompt: stancePrompt, forceJson, jsonSchema } = renderPrompt('debate', 'stance', {
+      chatId,
+      content,
+      senderId,
+      stance,
+    });
+    
     responses.push({
       chatId,
       agentId: agent.id,
       triggerMessage: { id: 'debate-' + Date.now(), content, senderId },
-      customPrompt: `【辩论模式 - 你是${stance}】
-
-议题：${content}
-
-请从「${stance}」的立场出发，进行论述。要求：
-1. 清晰表明立场
-2. 给出 2-3 个论据
-3. 引用事实或逻辑支撑
-4. 避免人身攻击，针对议题不针对人
-
-请直接开始你的发言。`,
+      customPrompt: stancePrompt,
       stage: stance,
     });
   }
 
-  return { responses, needsFollowUp: true, followUpContext: { type: 'debate', topic: content } };
+  return { 
+    responses, 
+    needsFollowUp: true, 
+    followUpContext: { type: 'debate', topic: content } 
+  };
 }
 
 // ─── 链式 ───────────────────────────────────────────
@@ -362,24 +384,25 @@ function dispatchVote(
     : ['方案A', '方案B'];
 
   const responses: ModeDispatchResult['responses'] = [];
-  for (const agent of activeAgents) {
-    responses.push({
-      chatId,
-      agentId: agent.id,
-      triggerMessage: { id: 'vote-' + Date.now(), content, senderId },
-      customPrompt: `【投票模式】
+    for (const agent of activeAgents) {
+      // 使用模板系统渲染投票 prompt
+      const { prompt: votePrompt, forceJson, jsonSchema } = renderPrompt('vote', 'vote', {
+        chatId,
+        content,
+        senderId,
+        options,
+      });
+    
+      responses.push({
+        chatId,
+        agentId: agent.id,
+        triggerMessage: { id: 'vote-' + Date.now(), content, senderId },
+        customPrompt: votePrompt,
+      });
+    }
 
-议题：${content}
-选项：${options.map((o, i) => `${i + 1}. ${o}`).join(' | ')}
-
-请投出你的一票。回复格式：
-✅ 我选择：选项X（X是数字）
-理由：（一句话说明为什么）`,
-    });
+    return { responses, needsFollowUp: true, followUpContext: { type: 'vote', options } };
   }
-
-  return { responses, needsFollowUp: true, followUpContext: { type: 'vote', options } };
-}
 
 /**
  * 处理辩论的后续轮次（收集各方观点后汇总）
@@ -393,17 +416,20 @@ export function dispatchDebateSummary(
   const firstAgent = agents[0];
   if (!firstAgent) return null;
 
+  // 使用模板系统渲染辩论总结 prompt
+  const { prompt: summaryPrompt, forceJson, jsonSchema } = renderPrompt('debate', 'summary', {
+    chatId,
+    content: allReplies,
+    senderId: 'system',
+    allReplies,
+  });
+
   return {
     responses: [{
       chatId,
       agentId: firstAgent.id,
       triggerMessage: { id: 'debate-summary', content: allReplies, senderId: 'system' },
-      customPrompt: `【辩论总结】
-
-以下是各方观点：
-${allReplies}
-
-请作为中立的总结者，归纳各方主要观点，指出共识和分歧，给出综合评价。`,
+      customPrompt: summaryPrompt,
       stage: '总结',
     }],
   };
@@ -419,12 +445,20 @@ export function dispatchRoundtableNext(
     // 最后一轮结束 → 总结
     const firstAgent = agents[0];
     if (!firstAgent) return null;
+
+    // 使用模板系统渲染圆桌总结 prompt
+    const { prompt: summaryPrompt, forceJson, jsonSchema } = renderPrompt('roundtable', 'summary', {
+      chatId,
+      content: `圆桌讨论第 ${round} 轮结束`,
+      senderId: 'system',
+    });
+
     return {
       responses: [{
         chatId,
         agentId: firstAgent.id,
         triggerMessage: { id: 'round-summary', content: `圆桌讨论第 ${round} 轮结束`, senderId: 'system' },
-        customPrompt: '圆桌讨论已结束。请作为主持人对本次讨论做一个简洁的总结，归纳各方达成的共识和主要分歧。',
+        customPrompt: summaryPrompt,
         stage: '总结发言',
       }],
     };
@@ -432,13 +466,20 @@ export function dispatchRoundtableNext(
 
   const responses: ModeDispatchResult['responses'] = [];
   for (let i = 0; i < agents.length; i++) {
+    // 使用模板系统渲染圆桌轮次 prompt
+    const { prompt: roundPrompt } = renderPrompt('roundtable', 'round', {
+      chatId,
+      content: '',
+      senderId: 'system',
+      round: round + 1,
+      maxRounds,
+    });
+
     responses.push({
       chatId,
       agentId: agents[i].id,
       triggerMessage: { id: 'round-next-' + round, content: '', senderId: 'system' },
-      customPrompt: `【圆桌讨论 - 第 ${round + 1} 轮 / 共 ${maxRounds} 轮】
-
-请基于之前的讨论内容（上方消息），回应其他成员的观点，补充或修正你的看法。`,
+      customPrompt: roundPrompt,
       delayMs: i * 3000,
       stage: `第${round + 1}轮`,
     });
@@ -462,22 +503,21 @@ export function dispatchVoteSummary(
   const firstAgent = agents[0];
   if (!firstAgent) return null;
 
+  // 使用模板系统渲染投票开票 prompt
+  const { prompt: summaryPrompt, forceJson, jsonSchema } = renderPrompt('vote', 'summary', {
+    chatId,
+    content: allVotes,
+    senderId: 'system',
+    allVotes,
+    options,
+  });
+
   return {
     responses: [{
       chatId,
       agentId: firstAgent.id,
       triggerMessage: { id: 'vote-summary', content: allVotes, senderId: 'system' },
-      customPrompt: `【投票开票】
-
-以下是各位 AI 的投票结果：
-${allVotes}
-
-可选选项：${options.map((o, i) => `${i + 1}. ${o}`).join(' | ')}
-
-请作为计票员：
-1. 统计每个选项的得票数
-2. 用表格或清单列出开票结果
-3. 宣布得票最高的方案，并简述各方理由`,
+      customPrompt: summaryPrompt,
       stage: '开票',
     }],
   };
@@ -501,11 +541,19 @@ function dispatchBrainstorm(
   const responses: ModeDispatchResult['responses'] = [];
   for (let i = 0; i < activeAgents.length; i++) {
     const agent = activeAgents[i];
+    
+    // 使用模板系统渲染头脑风暴发散 prompt
+    const { prompt: divergePrompt } = renderPrompt('brainstorm', 'diverge', {
+      chatId,
+      content,
+      senderId,
+    });
+    
     responses.push({
       chatId,
       agentId: agent.id,
       triggerMessage: { id: 'brainstorm-' + Date.now(), content, senderId },
-      customPrompt: `【头脑风暴 - 第 1 阶段：发散】\n\n议题：${content}\n\n规则（必须遵守）：\n1. 只输出点子，不要解释过程\n2. 禁止批评、禁止否定（包括自我否定）\n3. 质大于量：给出 3-5 个具体、可执行的点子\n4. 欢迎大胆、非常规的想法\n5. 每个点子以「- 」开头，一句话说清\n\n直接开始。`,
+      customPrompt: divergePrompt,
       delayMs: i * 2500,
       stage: '发散',
     });
@@ -538,12 +586,22 @@ export function dispatchBrainstormNext(
     const allIdeas = collected
       .map((r: any) => `【${r.agentName || '某AI'}】\n${r.content}`)
       .join('\n\n');
+
+    // 使用模板系统渲染头脑风暴汇总 prompt
+    const { prompt: summaryPrompt, forceJson, jsonSchema } = renderPrompt('brainstorm', 'summary', {
+      chatId,
+      content: allIdeas,
+      senderId: 'system',
+      topic,
+      allIdeas,
+    });
+
     return {
       responses: [{
         chatId,
         agentId: host.id,
         triggerMessage: { id: 'brainstorm-summary', content: allIdeas, senderId: 'system' },
-        customPrompt: `【头脑风暴 - 第 3 阶段：汇总】\n\n议题：${topic}\n\n以下是各位成员的发散与收敛意见：\n${allIdeas}\n\n请作为主持人输出一份头脑风暴成果：\n1. 去重合并所有点子（明显重复的合并，保留表述更好的）\n2. 按「可行性 × 创新性」挑出 Top 3\n3. 每个入选点子给出一句落地建议（第一步做什么）\n4. 最后输出「行动项」清单：编号 + 一句话\n\n格式清晰，直接输出。`,
+        customPrompt: summaryPrompt,
         stage: '汇总',
       }],
     };
@@ -553,11 +611,20 @@ export function dispatchBrainstormNext(
   const responses: ModeDispatchResult['responses'] = [];
   for (let i = 0; i < activeAgents.length; i++) {
     const agent = activeAgents[i];
+    
+    // 使用模板系统渲染头脑风暴收敛 prompt
+    const { prompt: convergePrompt, forceJson, jsonSchema } = renderPrompt('brainstorm', 'converge', {
+      chatId,
+      content: topic,
+      senderId: 'system',
+      topic,
+    });
+
     responses.push({
       chatId,
       agentId: agent.id,
       triggerMessage: { id: 'brainstorm-converge-' + Date.now(), content: topic, senderId: 'system' },
-      customPrompt: `【头脑风暴 - 第 2 阶段：收敛】\n\n议题：${topic}\n\n上方消息是各成员的第一轮点子。请：\n1. 从【别人的点子】中挑 1-2 个你认为最有潜力、最值得做的\n2. 各用一句话说明：为什么值得做 + 怎么补全它（补什么关键细节）\n3. 也可以合并两个点子成一个更强的方案\n4. 不要重复罗列自己的点子，不要客套\n\n直接输出。`,
+      customPrompt: convergePrompt,
       delayMs: i * 2500,
       stage: '收敛',
     });

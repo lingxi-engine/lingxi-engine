@@ -386,8 +386,19 @@ export class MessageRouter {
     const { client, resolvedModel } = clientResult;
 
     // ── 多模型协作：工具用轻量模型，回复用强模型 ──
-    let toolClient = this.aiHub.getRoleClient('tool') || clientResult;
-    let replyClient = this.aiHub.getRoleClient('reply') || clientResult;
+    // 2026-11-11 FIX-MODEL-OWNERSHIP（P1-2）：
+    //   老实现无条件用 .env 的 TOOL_MODEL/REPLY_MODEL 覆盖 Agent 自己配的模型，
+    //   导致「界面显示 qwen3.8:27b-32k、实际跑 deepseek-flash」——
+    //   用户选的模型和实际用的模型不一致（用户 2026-11-10 反馈的问题）。
+    //   现在改为：只有 ROUTE_ENABLED 显式为 true（用户主动开了路由）才做角色分离；
+    //   默认情况下 Agent 的 model 就是它实际用的模型，绝不被 env 静默改写。
+    const routingOn = String(process.env.ROUTE_ENABLED || '').toLowerCase() === 'true';
+    let toolClient = clientResult;
+    let replyClient = clientResult;
+    if (routingOn) {
+      toolClient = this.aiHub.getRoleClient('tool') || clientResult;
+      replyClient = this.aiHub.getRoleClient('reply') || clientResult;
+    }
     // ★ patch-v20:applied 模型归属可见化：`请求 A 实际跑 B`（尤其静默落到本地）必须一眼可见
     {
       const _tagOf = (c: any) => `${c?.resolvedModel || '?'}${c?.isLocal ? '[LOCAL!]' : c?.degraded ? '[DEGRADED]' : ''}`;

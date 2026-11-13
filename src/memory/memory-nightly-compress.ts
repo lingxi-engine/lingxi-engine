@@ -119,37 +119,46 @@ export class NightlyCompressor {
   }
 
   /**
-   * 批量压缩所有 agent
+   * 批量压缩所有 agent（并行处理，批量查询优化）
    */
   async compressAll(): Promise<CompressionResult[]> {
     const db = getDB();
+    // 合并查询：一次性获取所有 agent 和 chat 级记忆
     const agents = db.exec(`SELECT id FROM agents WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
+    const chatMems = db.exec(`SELECT DISTINCT chat_id, agent_id FROM chat_memories WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
+    
     const results: CompressionResult[] = [];
+    // catch 分支返回 null（单组失败不应让整批失败），所以元素类型是 CompressionResult | null
+    const tasks: Promise<CompressionResult | null>[] = [];
 
     if (agents[0]?.values) {
       for (const row of agents[0].values) {
         const agentId = String(row[0]);
-        try {
-          const result = await this.compress(agentId);
-          results.push(result);
-        } catch (e) {
+        tasks.push(this.compress(agentId).catch(e => {
           console.error(`[NightlyCompress] agent ${agentId} failed:`, e);
-        }
+          return null;
+        }));
       }
     }
 
-    // 处理 chat 级记忆
-    const chatMems = db.exec(`SELECT DISTINCT chat_id, agent_id FROM chat_memories WHERE memory_facts IS NOT NULL AND memory_facts != '{}'`);
     if (chatMems[0]?.values) {
       for (const row of chatMems[0].values) {
         const chatId = String(row[0]);
         const agentId = String(row[1]);
-        try {
-          const result = await this.compress(agentId, chatId);
-          results.push(result);
-        } catch (e) {
+        tasks.push(this.compress(agentId, chatId).catch(e => {
           console.error(`[NightlyCompress] chat ${chatId} agent ${agentId} failed:`, e);
-        }
+          return null;
+        }));
+      }
+    }
+
+    // 并行执行，限制并发数避免过载
+    const CONCURRENCY = 4;
+    for (let i = 0; i < tasks.length; i += CONCURRENCY) {
+      const batch = tasks.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch);
+      for (const r of batchResults) {
+        if (r) results.push(r);
       }
     }
 

@@ -21,6 +21,7 @@ let instanceId: string = '';
 let heartbeatTimer: NodeJS.Timeout | null = null;
 let onPeerMessage: ((msg: PeerMessage) => void) | null = null;
 let onPeerTask: ((msg: PeerMessage) => void) | null = null;
+let onPeerKey: ((instanceId: string, publicKey: string) => void) | null = null;
 let meshVersion: string = '0.0.0';
 let meshPlatformUrl: string = '';
 let meshToken: string = '';
@@ -117,6 +118,7 @@ async function sendHeartbeat(
  */
 export async function initP2P(opts: {
   getPublicKey?: () => string;
+  getPrivateKey?: () => Buffer | null;
   enabled?: boolean;
   stunServers?: string[];
 }): Promise<boolean> {
@@ -135,6 +137,18 @@ export async function initP2P(opts: {
   });
   // selfId 在 startInstanceMesh 里生成，这里可能已存在；保险再设一次
   if (instanceId) (p2p as any).selfId = instanceId;
+  
+  // 注入签名提供器（用于 P2P 消息签名）
+  if (opts.getPrivateKey) {
+    p2p.getSignData = (payload: any) => {
+      const privateKey = opts.getPrivateKey!();
+      if (!privateKey) return null;
+      const { signMeshMessage } = require('../core/mesh-security.js');
+      const signature = signMeshMessage(payload, privateKey);
+      return { signature, publicKey: p2pKeyProvider ? p2pKeyProvider() : '' };
+    };
+  }
+  
   const ok = await p2p.init();
   if (ok && instanceId) console.log('[Mesh] P2P 层已就绪（WebRTC DataChannel 直连）');
   return ok;
@@ -219,6 +233,14 @@ function connectMesh(platformWsUrl: string, token: string, port: number, agents:
         p2p.handleSignal(String(msg.fromInstance), msg.signal as P2PSignal);
       }
     }
+    else if (msg.type === 'peer.key') {
+      // 对端广播公钥（E2EE X25519 public key exchange）
+      if (msg.fromInstance && msg.publicKey) {
+        console.log(`[Mesh] 收到 peer.key: ${msg.fromInstance}`);
+        // 存储对端公钥，用于 P2P 消息签名验证
+        if (onPeerKey) onPeerKey(msg.fromInstance, msg.publicKey);
+      }
+    }
     else if (msg.type === 'peer.message') {
       console.log(`[Mesh] 收到 peer 消息: ${msg.fromInstance} -> ${msg.toInstance}`, msg.content?.slice(0, 50));
       if (onPeerMessage) onPeerMessage(msg as PeerMessage);
@@ -290,6 +312,10 @@ export function setPeerMessageHandler(handler: (msg: PeerMessage) => void) {
 
 export function setPeerTaskHandler(handler: (msg: PeerMessage) => void) {
   onPeerTask = handler;
+}
+
+export function setPeerKeyHandler(handler: (instanceId: string, publicKey: string) => void) {
+  onPeerKey = handler;
 }
 
 /**
