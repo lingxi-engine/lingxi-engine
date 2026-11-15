@@ -2,6 +2,38 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.39] - 2026-11-14
+
+合并 v2.0.38 开源版（2a3e84f）后的首个公开发布版，包含 v2.0.37 之后 6 个提交的全部改动。
+
+### 安全（B1–B12 全修，1d56298）
+- B1: addAuditLog 导入源修正（index.ts ×2）
+- B2: RBAC 角色解析去 async，修复同步 check 错配导致的全拒绝
+- B3: 移除联邦硬编码默认密钥；未设 FEDERATION_SECRET → 503 fail-secure；恒定时间比较
+- B4: 联邦 Ed25519 签名全链路（根因 createSign('ed25519') 在 Node 抛 Invalid digest，改一次性 crypto.sign(null) + DER KeyObject）；密钥对持久化 data/federation-ed25519.json；register 钉住对端公钥
+- B5: 模板墓碑机制，删除的模板重启不复活；克隆后删除防内置模板污染
+- B6: /federation/peers 挂鉴权
+- B7: 防重放（±5min 时间窗 + fromInstance 一致性 + 已用签名缓存）
+- B8: 圆桌轮次配置化 ROUNDTABLE_MAX_ROUNDS（默认 3，上限 12）
+- B9/B10: 限流响应头与桶清理修正
+- B11/B12: 模板变量缺失置空 + MODE_PHASES 白名单防原型污染
+
+### 其他改动（相对 v2.0.37）
+- Dreamer 记忆整理四道闸门：24h 调用量 32144 → 40（-99.88%）（e8f7cff）
+- 手机 App 登录 JS 错误 + redeem 401 修复 + 依赖清理 + isSafeSkillName（a8218bb）
+- 技能签名 Ed25519 Node 24 兼容（一次性 sign/verify API）（50859e8）
+- v2.0.38 开源版：DB 字段加密、E2EE、A2A 协议、Mesh P2P、技能签名、编码修复（2a3e84f）
+- 对话模式模板 + 角色权限 + Mesh 安全加固（b2ba327）
+
+### 验证
+- tsc --noEmit 0 错误；vitest 31 文件 / 457 用例全过（基线 27/388，新增 69 用例零回归）
+- 运行时探针 mesh 14/14 + 模板 18/18
+- 发布一致性实测见 DEPLOY_RECORD_20261114-public-v2.0.39.md
+
+### 部署注意
+- 联邦互联双方需均升级本版并配置相同 FEDERATION_SECRET；未配置时联邦端点 503（故意）
+- 联邦签名密钥自动生成于 data/federation-ed25519.json，备份 dataDir 时请包含
+
 ## [2.0.28] - 2026-09-25
 
 本轮修的是**「装了但打不开」**这个用户体验断点，并补上一道发布一致性硬门禁。

@@ -1,17 +1,16 @@
 {
-    "version":  "2.0.37",
-    "commit":  "6674633",
-    "buildTime":  "2026-10-30T14:21:25.7462905Z",
+    "version":  "2.0.39",
+    "commit":  "1d56298",
+    "buildTime":  "2026-11-13T16:48:43.4272958Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
-                       "手机 App 通过云端中继接管 NAT 后的电脑：握手补上真鉴权与通道挂载",
-                       "修 server.on(upgrade) 被嵌在连接回调里导致 /ws 404 的错位",
-                       "修 ws 库 { server, path } 把非 /ws 升级请求直接 400 掐断的问题",
-                       "中继客户端改用 ws 包（Node 内置 WebSocket 带不了握手头 → close 1006）",
-                       "新增 /api/app/relay/x/\u003cid\u003e/... 前缀反向代理 + WebSocket 桥接（聊天流式回复可用）",
-                       "接管会话键 12 小时可复用；一次性票据仍只管开界面",
-                       "修 ensureLocalUser 的 NOT NULL numeric_id 报错（接管时 500）",
-                       "中英繁三语中继引导页 /app/relay.html（含 10 秒超时与失败提示）"
+                       "安全加固 12 项全修（B1–B12）：联邦 Ed25519 签名全链路 + 防重放，移除硬编码默认密钥",
+                       "数据库字段加密 + 端到端加密（E2EE）+ 技能签名（含 v2.0.38 开源版内容）",
+                       "Dreamer 记忆整理四道闸门：24h 调用量 32144→40，省 99.88%",
+                       "手机 App 登录 JS 错误 + redeem 401 修复",
+                       "对话模式模板（圆桌/头脑风暴）+ 轮次可配置 ROUNDTABLE_MAX_ROUNDS",
+                       "A2A 协议 + Mesh P2P 组网",
+                       "测试 388→457 用例全过，零回归"
                    ],
-    "notes":  "v2.0.35 = 聊天附件先预览后发送 + 右下角任务按钮修复 + 状态栏/任务监控自愈"
+    "notes":  "v2.0.39 = v2.0.38 开源版 + B1–B12 安全全修 + Dreamer 省钱 + 手机登录修复。联邦互联需双方升级并配置相同 FEDERATION_SECRET；未配置时联邦端点 503（fail-secure）。"
 }
