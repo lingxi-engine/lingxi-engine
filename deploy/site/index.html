@@ -7,7 +7,7 @@
 <link rel="shortcut icon" href="/favicon.ico">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>灵犀引擎 - 本地优先的多模型 AI 协作工作台</title>
-<meta name="description" content="灵犀引擎是一个跑在本机的多模型 AI 工作台。本地优先，数据不出本机，开源免费。">
+<meta name="description" content="灵犀引擎是一个跑在本机的多模型 AI 工作台。本地优先，数据不出本机，开源免费。也可以一条命令部署到你自己的云服务器，随时随地访问。">
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 :root { --dark: #0d1117; --gray: #161b22; --card: #21262d; --text: #c9d1d9; --muted: #8b949e; --accent: #58a6ff; --green: #3fb950; --border: #30363d; }
@@ -18,7 +18,7 @@ a { text-decoration: none; color: inherit; }
 .header .container { display: flex; justify-content: space-between; align-items: center; }
 .logo { font-size: 20px; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
 .logo span { color: var(--text); }
-.nav { display: flex; gap: 24px; }
+.nav { display: flex; gap: 24px; align-items: center; }
 .nav a { color: var(--text); font-size: 14px; transition: color .2s; }
 .nav a:hover { color: var(--accent); }
 .nav .btn-primary { background: var(--accent); color: white !important; padding: 8px 16px; border-radius: 6px; }
@@ -28,11 +28,11 @@ a { text-decoration: none; color: inherit; }
 .hero h1 { font-size: 44px; font-weight: 800; line-height: 1.15; margin-bottom: 18px; background: linear-gradient(135deg, #fff 0%, #c9d1d9 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
 .hero .subtitle { font-size: 19px; color: var(--muted); max-width: 700px; margin: 0 auto 32px; line-height: 1.55; }
 .hero .actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
-.hero .btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 26px; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all .2s; }
-.hero .btn-primary { background: var(--green); color: white; border: 1px solid var(--green); }
-.hero .btn-primary:hover { background: #2f9e44; transform: translateY(-1px); }
-.hero .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
-.hero .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 13px 26px; border-radius: 8px; font-size: 15px; font-weight: 600; transition: all .2s; }
+.btn-primary { background: var(--green); color: white; border: 1px solid var(--green); }
+.btn-primary:hover { background: #2f9e44; transform: translateY(-1px); }
+.btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
 .features { padding: 60px 0; }
 .features .section-title { font-size: 26px; font-weight: 700; margin-bottom: 40px; text-align: center; }
 .features .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
@@ -41,41 +41,63 @@ a { text-decoration: none; color: inherit; }
 .features .card .icon { font-size: 28px; margin-bottom: 14px; }
 .features .card h3 { font-size: 17px; font-weight: 600; margin-bottom: 10px; }
 .features .card p { color: var(--muted); font-size: 14px; }
+/* ══ 云端自主部署区块 ══ */
+.deploy { padding: 60px 0; background: var(--gray); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+.deploy .section-title { font-size: 26px; font-weight: 700; margin-bottom: 16px; text-align: center; }
+.deploy .lead { color: var(--muted); max-width: 780px; margin: 0 auto 36px; text-align: center; font-size: 15px; }
+.deploy .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.deploy .step { background: var(--dark); border: 1px solid var(--border); border-radius: 12px; padding: 24px; }
+.deploy .step .num { display: inline-flex; width: 28px; height: 28px; border-radius: 50%; background: #1f6feb33; color: var(--accent); font-weight: 700; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid #1f6feb55; font-size: 14px; }
+.deploy .step h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+.deploy .step p { color: var(--muted); font-size: 13.5px; }
+.deploy .cmd { display: block; background: #0a0e14; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-family: 'SF Mono', Consolas, monospace; font-size: 12px; color: #7ee787; word-break: break-all; margin: 10px 0; line-height: 1.5; }
+.deploy .more { text-align: center; margin-top: 32px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.deploy .note { text-align: center; color: var(--muted); font-size: 13px; margin-top: 20px; }
+.deploy .note a { color: var(--accent); }
 .cta { padding: 80px 0; text-align: center; }
 .cta h2 { font-size: 32px; font-weight: 700; margin-bottom: 14px; }
 .cta p { color: var(--muted); font-size: 16px; margin-bottom: 28px; }
+.cta .actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 .footer { border-top: 1px solid var(--border); padding: 40px 0; }
 .footer .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 24px; }
 .footer .col h4 { font-size: 14px; font-weight: 600; margin-bottom: 14px; color: var(--text); }
 .footer .col a { display: block; color: var(--muted); font-size: 13px; margin-bottom: 8px; transition: color .2s; }
 .footer .col a:hover { color: var(--accent); }
-.footer .bottom { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; }
+.footer .bottom { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; width: 100%; }
+@media (max-width: 900px) {
+  .header .container { flex-wrap: wrap; gap: 10px; }
+  .nav { gap: 14px; flex-wrap: wrap; }
+  .hero { padding: 52px 0 44px; }
+  .hero h1 { font-size: 32px; }
+  .hero .subtitle { font-size: 16px; }
+  .features .grid, .deploy .steps { grid-template-columns: 1fr; }
+  .cta h2 { font-size: 26px; }
+}
 </style>
 </head>
 <body>
 <div class="header">
   <div class="container">
-    <a href="/" class="logo">灵犀引擎<span>v2.0.34</span></a>
+    <a href="/" class="logo">灵犀引擎<span>v2.0.39</span></a>
     <nav class="nav">
       <a href="/#features">核心能力</a>
       <a href="/download.html">下载</a>
       <a href="/docs/overview.html">文档</a>
+      <a href="/#deploy">云端部署</a>
       <a href="/#faq">常见问题</a>
-      <a href="/register.html">注册</a>
-      <a href="/login.html">登录</a>
-      <a href="/chat/" class="btn-primary">打开聊天</a>
+      <a href="/download.html" class="btn-primary">立即下载</a>
     </nav>
   </div>
 </div>
 <section class="hero">
   <div class="container">
-    <span class="version">当前版本 v2.0.34 · 2026-10-19</span>
+    <span class="version">当前版本 v2.0.39 · 2026-11-15</span>
     <h1>把多家大模型<br>装进你自己的机器</h1>
-    <p class="subtitle">灵犀引擎是一个本地优先的多模型 AI 工作台。接上你自己的模型 API Key，让多个 AI 在同一个会话里讨论、辩论、分工干活。</p>
-<p class="subtitle" style="font-size:13px;color:var(--muted);margin-top:10px">数据归属说明：<strong>本地版</strong>（下载安装到自己机器）对话、文件、索引全部留在你自己的设备上，不上传。官网注册的<strong>云端版</strong>（在线聊天）账号与聊天记录存储于我们的服务器，用于提供在线服务。</p>
+    <p class="subtitle">灵犀引擎是一个本地优先的多模型 AI 工作台。接上你自己的模型 API Key，让多个 AI 在同一个会话里讨论、辩论、分工干活。装在自己电脑，或部署到你自己的云服务器，都可以。</p>
+    <p class="subtitle" style="font-size:13px;color:var(--muted);margin-top:10px">数据归属说明：无论是<strong>本地版</strong>（装在自己电脑）还是<strong>自部署版</strong>（装在你自己的云服务器），对话、文件、索引全部留在你自己的设备上，不上传。官网只提供下载与介绍，不托管你的数据。</p>
     <div class="actions">
       <a href="/download.html" class="btn btn-primary">立即下载</a>
-      <a href="/chat/" class="btn btn-secondary">打开聊天</a>
+      <a href="/#deploy" class="btn btn-secondary">☁️ 云端自主部署</a>
       <a href="https://github.com/lingxi-engine/lingxi-engine" class="btn btn-secondary">⭐ 查看源码</a>
     </div>
   </div>
@@ -117,12 +139,44 @@ a { text-decoration: none; color: inherit; }
     </div>
   </div>
 </section>
+<section class="deploy" id="deploy">
+  <div class="container">
+    <h2 class="section-title">☁️ 部署到你自己的云服务器</h2>
+    <p class="lead">想手机、电脑随时随地访问？把灵犀引擎部署到你自己的云服务器（VPS）即可——引擎跑在你的服务器上，数据完全归你。官网不提供托管聊天服务，你的引擎只跑在你的机器上。</p>
+    <div class="steps">
+      <div class="step">
+        <span class="num">1</span>
+        <h3>准备一台云服务器</h3>
+        <p>任意厂商的 Linux 服务器均可（Ubuntu 20.04+ / Debian 11+ / CentOS Stream 8/9），建议 1 核 2GB 起步，无需 GPU。</p>
+      </div>
+      <div class="step">
+        <span class="num">2</span>
+        <h3>一条命令安装</h3>
+        <p>SSH 登录服务器后执行：</p>
+        <code class="cmd">curl -fsSL https://www.lingxi-engine.com/install.sh | bash</code>
+        <p>自动安装 Node.js 与全部依赖，部署到 /opt 目录并由 PM2 托管、开机自启。</p>
+      </div>
+      <div class="step">
+        <span class="num">3</span>
+        <h3>浏览器访问</h3>
+        <p>打开 <b>http://你的服务器IP:3456</b> 即可使用，手机电脑访问的是同一个引擎。记得在安全组/防火墙放行 3456 端口；生产环境建议绑定域名并配置 HTTPS 反向代理。</p>
+      </div>
+    </div>
+    <div class="more">
+      <a href="/download.html#deploy-linux" class="btn btn-primary">查看部署详情</a>
+      <a href="/docs/quickstart.html" class="btn btn-secondary">快速开始文档</a>
+    </div>
+    <p class="note">安装脚本开源可审计：<a href="/install.sh">install.sh</a> · 完整手动步骤见<a href="/download.html#deploy-linux">下载页</a></p>
+  </div>
+</section>
 <section class="cta">
   <div class="container">
     <h2>把 AI 装进自己手里</h2>
     <p>一条命令安装，五分钟跑通第一个会话。数据留在你自己的设备上。</p>
-    <a href="/download.html" class="btn btn-primary">立即下载</a>
-    <a href="/chat/" class="btn btn-secondary">打开聊天</a>
+    <div class="actions">
+      <a href="/download.html" class="btn btn-primary">立即下载</a>
+      <a href="/#deploy" class="btn btn-secondary">云端部署指南</a>
+    </div>
   </div>
 </section>
 <footer class="footer">
@@ -136,17 +190,19 @@ a { text-decoration: none; color: inherit; }
       <a href="/#features">核心能力</a>
       <a href="/download.html">下载</a>
       <a href="/docs/overview.html">文档</a>
+      <a href="/#deploy">云端自主部署</a>
     </div>
     <div class="col">
       <h4>更多</h4>
       <a href="/changelog.html">更新日志</a>
-        <a href="/mobile.html">手机端</a>
+      <a href="/feedback.html">意见反馈</a>
+      <a href="/mobile.html">手机端</a>
       <a href="/docs/roadmap.html">路线图</a>
       <a href="https://github.com/lingxi-engine/lingxi-engine">GitHub</a>
     </div>
     <div class="bottom">
-      <span>© v2.0.34 灵犀引擎 · 免费开源</span>
-      <span>构建于 2026-10-19</span>
+      <span>© v2.0.39 灵犀引擎 · 免费开源</span>
+      <span>构建于 2026-11-15</span>
     </div>
   </div>
 </footer>

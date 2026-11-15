@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.37</title>
+<title>下载部署 · 灵犀引擎 v2.0.39</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.37</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.39</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -123,7 +123,8 @@
     <div class="card">
       <h2>🖥️ Windows 桌面便携版</h2>
       <p>支持 Windows 10 1809+ / Windows 11，便携版开箱即用，集成 15 种 AI 模型，无需命令行。</p>
-      <a class="btn btn-primary" href="/public/灵犀引擎-desktop-1.1.0-portable.exe" download>⬇ 下载 灵犀引擎.exe</a>
+      <span class="btn btn-primary disabled" style="opacity:.5;cursor:not-allowed" title="Windows 桌面版正在打包中，预计近期上架，可先用源码包 + install.ps1 安装">⏳ Windows 版暂未上架</span>
+      <a class="btn btn-ghost" href="/public/install.ps1" download>⬇ PowerShell 一键安装（推荐 Windows 用户）</a>
       <a class="btn btn-ghost" href="/public/install.ps1" download>⬇ PowerShell 安装脚本</a>
       <div class="cmdbox" style="margin-top:18px">
         <div class="label">或用 PowerShell 一行命令（管理员）：</div>
@@ -141,7 +142,7 @@
       <p>Android 7.0+。它<b>不在手机上跑模型</b>，本身不产生任何算力——它是<b>你这个账号的遥控器</b>。</p>
       <p>登录一次账号，<b>「我的灵犀」</b>里就会列出云端和你电脑上的所有引擎，并实时显示在线／离线。只有<b>在线且登录了同一账号</b>的引擎才能一键接管。</p>
       <div class="keyline">🔑 <b>一个账号，处处操控。</b>用和电脑端／本地部署／云端服务器<b>完全相同的账号</b>登录，手机里出现的就是<b>同一个灵犀引擎</b>：同一套记忆、同一批智能体、同一个工作区和文件、同一批工具能力，一个都不少。</div>
-      <a class="btn btn-primary" href="/lingxi-app.apk" download>⬇️ 下载 APK（v1.2.0 · 简体 / 繁體 / English）</a>
+      <a class="btn btn-primary" href="/lingxi-app.apk" download>⬇️ 下载 APK（Android · 系统签名测试包）</a>
       <a class="btn btn-ghost" href="/app/">🌐 不装 App，直接在浏览器打开</a>
       <table>
         <tr><th>能力</th><th>在哪里执行</th><th>说明</th></tr>
@@ -176,7 +177,7 @@
       <p>iPhone / iPad 版，同样<b>不在手机上跑模型</b>，同样是你这个账号的遥控器。功能与 Android 版<b>完全一致</b>，不是阉割版。</p>
       <div class="keyline">🔑 <b>一个账号，处处操控。</b>用和电脑端／本地部署／云端服务器<b>完全相同的账号</b>登录，iOS 里出现的就是<b>同一个灵犀引擎</b>：同一套记忆、同一批智能体、同一个工作区和文件、同一批工具能力，一个都不少。</div>
       <a class="btn btn-primary" href="https://lingxi-engine.com/app/" rel="noopener" target="_blank">🌐 立即用 Safari 打开（云端）</a>
-      <a class="btn btn-ghost" href="/public/lingxi-app-ios.ipa" download>⬇️ 下载 iOS 签名包（TestFlight）</a>
+      <span class="btn btn-ghost disabled" style="opacity:.5;cursor:not-allowed" title="iOS 版尚未上架 TestFlight">⏳ iOS 版暂未上架</span>
       <div class="card" style="margin-top:16px;background:#11161f;border:1px solid #243040">
         <h3 style="margin-top:0">⭐ 推荐：加到主屏幕（免签名，永久可用）</h3>
         <p>1. 点上方「立即用 Safari 打开」<br>
@@ -203,7 +204,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.37.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.37</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.39.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.39</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -246,7 +247,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.37","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.39","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -291,6 +292,31 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
+
+  <!-- v2.0.39：安全加固 12 项 + 端到端加密 + Dreamer 省钱 99.88% -->
+  <section class="card" id="v239">
+    <h2>🔒 v2.0.39 变更：安全加固 12 项、端到端加密、Dreamer 省钱 99.88%</h2>
+    <p>
+      本版合并 v2.0.38 开源版全部内容，并完成 12 项安全与功能缺陷全修（B1–B12）：
+      联邦通信全链路 Ed25519 签名 + 防重放，移除硬编码默认密钥，权限校验修复，模板注入防护。
+      测试从 388 增至 457 用例，全部通过，零回归。
+    </p>
+    <table>
+      <thead><tr><th>能力</th><th>说明</th><th>v2.0.39</th></tr></thead>
+      <tbody>
+        <tr><td>联邦安全</td><td>Ed25519 签名全链路 + ±5 分钟防重放 + 密钥 fail-secure（未配置即禁用）</td><td>✅</td></tr>
+        <tr><td>数据加密</td><td>数据库字段加密 + 端到端加密（E2EE）+ 技能签名校验</td><td>✅</td></tr>
+        <tr><td>Dreamer 省钱</td><td>记忆整理四道闸门，24h 调用量 32144 → 40（-99.88%）</td><td>✅</td></tr>
+        <tr><td>手机 App</td><td>修复登录 JS 错误与 redeem 401</td><td>✅</td></tr>
+        <tr><td>对话模式</td><td>圆桌/头脑风暴模板 + 轮次可配置（ROUNDTABLE_MAX_ROUNDS，默认 3）</td><td>✅</td></tr>
+        <tr><td>互联协议</td><td>A2A 协议 + Mesh P2P 组网</td><td>✅</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px;color:#8b949e;font-size:13px">
+      验证：tsc 0 错误；vitest 31 文件 / 457 用例全过；运行时探针 mesh 14/14 + 模板 18/18。
+      联邦互联双方需均升级至本版并配置相同的 FEDERATION_SECRET。
+    </p>
+  </section>
 
   <!-- v2.0.37：天气插件 + 服务指纹 + 时钟自检 + 多项修复 -->
   <section class="card" id="v237">
@@ -499,7 +525,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.37</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.39</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
@@ -538,6 +564,9 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
   // 默认展示检测到的系统；识别失败默认 macOS（脚本双端通用）
   showPanel(os !== 'unknown' ? os : 'mac');
+
+  // v2.0.39: URL hash 直达（首页「云端部署」→ #deploy-linux / #cmd-deploy 自动切到 Linux 面板）
+  if (location.hash === '#deploy-linux' || location.hash === '#cmd-deploy') showPanel('linux');
 
   // 手动切换
   document.getElementById('tabs').addEventListener('click', function(e) {

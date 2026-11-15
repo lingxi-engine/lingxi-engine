@@ -565,6 +565,9 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
   // 默认展示检测到的系统；识别失败默认 macOS（脚本双端通用）
   showPanel(os !== 'unknown' ? os : 'mac');
 
+  // v2.0.39: URL hash 直达（首页「云端部署」→ #deploy-linux / #cmd-deploy 自动切到 Linux 面板）
+  if (location.hash === '#deploy-linux' || location.hash === '#cmd-deploy') showPanel('linux');
+
   // 手动切换
   document.getElementById('tabs').addEventListener('click', function(e) {
     var t = e.target.closest('.tab');
