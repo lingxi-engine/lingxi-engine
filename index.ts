@@ -123,7 +123,8 @@ import { SignalAdapter, type SignalConfig } from './src/channels/signal.js';
 import { IMessageAdapter, type IMessageConfig } from './src/channels/imessage.js';
 import { ApprovalManager } from './src/core/approval.js';
 import { HookManager, type HookEvent } from './src/core/hooks.js';
-import { InboxManager, type InboxItem, type InboxType } from './src/core/inbox.js';
+import { InboxManager, addAuditLog, type InboxItem, type InboxType } from './src/core/inbox.js';
+import { getAllTemplates, getTemplate, setTemplate, deleteTemplate, isValidTemplateMode, isValidTemplatePhase } from './src/core/chat-mode-templates.js';
 import { ChannelManager } from './src/channels/manager.js';
 import { SkillManager } from './src/skills/skill-manager.js';
 import { SecureSkillMarket } from './src/skills/skill-market-secure.js';
@@ -1200,7 +1201,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 管理后台：聊天模式模板 CRUD ──
     app.get('/api/admin/chat-mode-templates', (req, res) => {
       try {
-        const { getAllTemplates } = require('./src/core/chat-mode-templates.js');
         const templates = getAllTemplates();
         res.json({ ok: true, templates });
       } catch (err: any) {
@@ -1210,8 +1210,9 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     app.get('/api/admin/chat-mode-templates/:mode/:phase', (req, res) => {
       try {
-        const { getTemplate } = require('./src/core/chat-mode-templates.js');
         const { mode, phase } = req.params;
+        // B12: GET 同样走白名单（与 POST/DELETE 一致），并让 TS 收窄 mode 类型
+        if (!isValidTemplateMode(mode) || !isValidTemplatePhase(mode, phase)) return res.status(400).json({ error: '非法的 mode/phase（白名单校验失败）' });
         const template = getTemplate(mode, phase);
         if (!template) return res.status(404).json({ error: '模板不存在' });
         res.json({ ok: true, template });
@@ -1222,8 +1223,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     app.post('/api/admin/chat-mode-templates', (req, res) => {
       try {
-        const { setTemplate, isValidTemplateMode, isValidTemplatePhase } = require('./src/core/chat-mode-templates.js');
-        const { addAuditLog } = require('./src/core/inbox.js');
         const { mode, phase, template, forceJson, jsonSchema } = req.body;
         if (!mode || !phase || !template) return res.status(400).json({ error: 'mode/phase/template 必填' });
         // B12: 白名单校验，阻断 '__proto__' 等原型污染与非法阶段；template 必须为字符串
@@ -1240,8 +1239,6 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
     app.delete('/api/admin/chat-mode-templates/:mode/:phase', (req, res) => {
       try {
-        const { deleteTemplate, isValidTemplateMode, isValidTemplatePhase } = require('./src/core/chat-mode-templates.js');
-        const { addAuditLog } = require('./src/core/inbox.js');
         const { mode, phase } = req.params;
         // B12: 删除同样走白名单，防 '__proto__.x' 之类路径注入
         if (!isValidTemplateMode(mode) || !isValidTemplatePhase(mode, phase)) return res.status(400).json({ error: '非法的 mode/phase（白名单校验失败）' });

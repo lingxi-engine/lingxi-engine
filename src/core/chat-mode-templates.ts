@@ -372,7 +372,7 @@ const MODE_PHASES: Record<string, readonly string[]> = {
 };
 
 /** B12: 校验模式合法性（自有属性检查，拒绝 __proto__/constructor 等） */
-export function isValidTemplateMode(mode: string): boolean {
+export function isValidTemplateMode(mode: string): mode is keyof ChatModeTemplates {
   return typeof mode === 'string' && Object.prototype.hasOwnProperty.call(MODE_PHASES, mode);
 }
 
