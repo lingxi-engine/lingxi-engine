@@ -5612,7 +5612,7 @@ function handleTaskProgress(msg) {
     case 'step_done':
       for (var di = 0; di < state.steps.length; di++) {
         if (state.steps[di].id === msg.stepId) {
-          state.steps[di].status = (msg.success === false) ? 'failed' : 'done';
+          state.steps[di].status = msg.skipped ? 'skipped' : ((msg.success === false) ? 'failed' : 'done');
           if (/^子代理/.test(msg.message || '')) state.steps[di].executor = 'subagent';
           if (msg.output) state.steps[di].detail = msg.output;
           break;
@@ -5658,8 +5658,8 @@ function renderTaskDecompSteps(msgId) {
   var el = document.getElementById('taskDecompSteps');
   if (!el) return;
   
-  var icons = { pending: '\u23F3', running: '\u{1F504}', done: '\u2705', failed: '\u274C' };
-  var colors = { pending: 'var(--text3)', running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)' };
+  var icons = { pending: '\u23F3', running: '\u{1F504}', done: '\u2705', failed: '\u274C', skipped: '\u23ED\uFE0F' };
+  var colors = { pending: 'var(--text3)', running: 'var(--accent)', done: 'var(--green)', failed: 'var(--red)', skipped: 'var(--text3)' };
   
   if (state.status === 'planning' || state.steps.length === 0) {
     el.innerHTML = '<div style="color:var(--text3)">\u23F3 正在分析任务...</div>';

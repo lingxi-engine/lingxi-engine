@@ -1001,6 +1001,15 @@ export class MessageRouter {
   }
 
   /**
+   * FIX-SUBAGENT-MODEL: 取 Agent 自己配置的模型（与 generateReply 同一取值逻辑），
+   * 供 WS 任务拆分派生子代理时继承，避免子代理钉死服务器 DEFAULT_MODEL。
+   */
+  getAgentRequestedModel(agentId: string): string {
+    const agent = this.agentManager.get(agentId);
+    return agent?.model || this.aiHub.getDefaultModel?.() || '';
+  }
+
+  /**
    * 无工具一次性调用 —— 不落库、不更新记忆、不进工具循环
    * 用于任务规划等纯文本生成场景（规划只需 JSON/文本，不应触发工具执行）
    */

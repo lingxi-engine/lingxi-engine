@@ -585,7 +585,10 @@ async function main() {
   });
   // v1.5.0: 将 SubAgentManager 注入到 builtin 工具系统，使 delegate_task 可用
   setSubAgentManager(subAgentManager);
-  setSubAgentManagerForWS(subAgentManager);
+  setSubAgentManagerForWS(subAgentManager, toolRegistry);
+  // FIX-SUBAGENT-MODEL: 子代理客户端按任务模型经 AIHub 解析（与主回复路径一致），
+  // 不再钉死启动时 DEFAULT_MODEL 客户端——该通道欠费/故障时子代理（及拆分第一步）必挂。
+  subAgentManager.setClientResolver((m?: string) => aiHub.getClient(m || ''));
   console.log('[SubAgent] 已注入工具系统，delegate_task 可用');
   // v2.0.22: 把子代理工具调用广播出去，修复多 Agent(agent.task) 场景 bench steps=0 的度量缺陷
   subAgentManager.setProgressHandler((task: any, step: string, _status: string, output?: string) => {

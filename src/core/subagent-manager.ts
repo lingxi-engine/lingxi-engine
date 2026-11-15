@@ -111,6 +111,9 @@ export class SubAgentManager {
   private running = new Map<string, AbortController>();
   private aiClient: any;
   private aiModel: string;
+  // FIX-SUBAGENT-MODEL(2026-11-14): 按任务模型动态解析客户端（与主回复路径同走 AIHub），
+  // 避免钉死启动时 DEFAULT_MODEL 客户端——该通道欠费/故障时子代理必挂。
+  private clientResolver: ((model?: string) => { client: any; resolvedModel: string } | null) | null = null;
   private onResult: ((task: SubAgentTask) => void) | null = null;
   // v2.0.22: 全局进度回调（用于把子代理内部工具调用回传父级，修 G6 steps=0）
   private onGlobalProgress: ((task: SubAgentTask, step: string, status: string, output?: string) => void) | null = null;
@@ -138,6 +141,24 @@ export class SubAgentManager {
   /** 设置结果回调 */
   setResultHandler(handler: (task: SubAgentTask) => void): void {
     this.onResult = handler;
+  }
+
+  /** FIX-SUBAGENT-MODEL: 注入按模型解析客户端的回调（index.ts 用 AIHub.getClient 实现，与主回复路径一致）。 */
+  setClientResolver(fn: (model?: string) => { client: any; resolvedModel: string } | null): void {
+    this.clientResolver = fn;
+  }
+
+  /** 解析本次执行用的客户端+模型：优先 resolver（AIHub 路由），异常/空结果回退构造时默认客户端。 */
+  private resolveExecutionClient(task: SubAgentTask): { client: any; model: string } {
+    if (this.clientResolver) {
+      try {
+        const r = this.clientResolver(task.model);
+        if (r && r.client) return { client: r.client, model: r.resolvedModel || task.model || this.aiModel };
+      } catch (e: any) {
+        console.warn('[SubAgent] clientResolver 异常，回退默认客户端:', e?.message || e);
+      }
+    }
+    return { client: this.aiClient, model: task.model || this.aiModel };
   }
 
   /** v2.0.22: 全局进度回调 —— 子代理每次工具调用/结果都会触发，供上层（WebSocket）广播。 */
@@ -398,6 +419,8 @@ export class SubAgentManager {
 
     try {
       if (task.onProgress) task.onProgress('execute', 'running');
+      const exec = this.resolveExecutionClient(task);
+      console.log('[SubAgent] ' + task.id + ' 执行模型: ' + exec.model);
 
       if (task.toolRegistry && task.agentIdForTools) {
         // v2.0.24: 子代理有独立技能集时优先使用，否则回落到父 Agent 技能
@@ -415,8 +438,8 @@ export class SubAgentManager {
             : '你是灵犀引擎的子任务执行器，拥有工具调用能力。你可以通过 request_agent_help 工具请求其他 Agent 协助。';
 
           const result = await runToolsLoop({
-            client: this.aiClient,
-            model: task.model || this.aiModel,
+            client: exec.client,
+            model: exec.model,
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: toolPrompt },
@@ -448,8 +471,8 @@ export class SubAgentManager {
 
 完成结果：`;
 
-      const response = await this.aiClient.chat.completions.create({
-        model: task.model || this.aiModel,
+      const response = await exec.client.chat.completions.create({
+        model: exec.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.5,
         max_tokens: 8192,

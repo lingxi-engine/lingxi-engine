@@ -38,8 +38,11 @@ export const wsSubscriptions = new WeakMap<WebSocket, Set<string>>();
 
 // 子代理管理器（由 index.ts 注入，agent.task 无依赖步骤自动派发给子代理）
 let subAgentManagerInstance: SubAgentManager | null = null;
-export function setSubAgentManagerForWS(sm: SubAgentManager | null): void {
+// FIX-SUBAGENT-MODEL: WS 拆分子代理时继承父 Agent 的工具注册表（此前子代理无工具裸奔）
+let wsToolRegistry: any = null;
+export function setSubAgentManagerForWS(sm: SubAgentManager | null, toolRegistry?: any): void {
   subAgentManagerInstance = sm;
+  if (toolRegistry !== undefined) wsToolRegistry = toolRegistry;
 }
 
 // ── 停止生成：追踪每个聊天正在进行中的回复（可并发多个 Agent）──
@@ -320,6 +323,9 @@ export function handleWSMessage(
                 const spawnedId = await subAgentManagerInstance.spawn({
                   objective: task.prompt,
                   parentId: agentId,
+                  // FIX-SUBAGENT-MODEL: 继承父 Agent 配置的模型 + 工具（此前裸奔到 DEFAULT_MODEL 且无工具）
+                  model: router.getAgentRequestedModel(agentId),
+                  toolRegistry: wsToolRegistry || undefined,
                   agentIdForTools: agentId,
                   chatId,
                   taskName: task.name,
@@ -340,49 +346,56 @@ export function handleWSMessage(
                   },
                 });
                 const subResult = await subAgentManagerInstance.awaitResult(spawnedId);
-                const subOutput = subResult?.result || subResult?.error || "子代理执行完成";
                 const subSuccess = subResult?.status === 'completed';
+                if (subSuccess) {
+                  const subOutput = subResult?.result || "子代理执行完成";
+                  broadcast({
+                    type: "task.progress",
+                    chatId, from: agentSenderId, msgId: taskMsgId,
+                    phase: "step_done",
+                    message: "子代理完成：" + task.name,
+                    step: stepIdx + 1, total: steps.length,
+                    stepId: task.id, stepName: task.name,
+                    success: true,
+                    output: subOutput.slice(0, 500),
+                    timestamp: Date.now(),
+                  });
+                  const p = activeTaskPlans.get(taskMsgId);
+                  if (p) {
+                    const st = p.steps.find((s: any) => s.id === task.id);
+                    if (st) { st.status = 'done'; st.output = subOutput; }
+                    p.currentStep = stepIdx + 1;
+                  }
+                  return subOutput;
+                }
 
+                // FIX-SUBAGENT-FALLBACK: 子代理失败不再直接判死 → 回退主对话模型 inline 重试一次。
+                // 根因场景：DEFAULT_MODEL 通道欠费(402)时，第一步子代理必挂并级联跳过全部后续步骤。
+                const subErrText = subResult?.error || ('状态 ' + (subResult?.status || 'unknown'));
+                console.warn('[WS] subagent failed, fallback to main model:', task.id, subErrText);
                 broadcast({
                   type: "task.progress",
                   chatId, from: agentSenderId, msgId: taskMsgId,
-                  phase: "step_done",
-                  message: (subSuccess ? "子代理完成：" : "子代理失败：") + task.name,
+                  phase: "subagent_progress",
+                  message: "[子代理] 失败（" + subErrText + "），回退主模型重试",
                   step: stepIdx + 1, total: steps.length,
                   stepId: task.id, stepName: task.name,
-                  success: subSuccess,
-                  output: subOutput.slice(0, 500),
                   timestamp: Date.now(),
                 });
-
-                const p = activeTaskPlans.get(taskMsgId);
-                if (p) {
-                  const st = p.steps.find((s: any) => s.id === task.id);
-                  if (st) { st.status = subSuccess ? 'done' : 'failed'; st.output = subOutput; }
-                  p.currentStep = stepIdx + 1;
-                }
-                return subOutput;
+                // 不 return —— 继续走下方主模型 inline 执行路径
               } catch (subErr: any) {
-                console.error('[WS] subagent spawn error:', subErr);
-                const errMsg = "子代理执行异常：" + (subErr.message || '未知错误');
+                // FIX-SUBAGENT-FALLBACK: spawn/await 异常同样回退主模型重试，不让第一步必挂
+                console.error('[WS] subagent spawn error (fallback to main model):', subErr);
                 broadcast({
                   type: "task.progress",
                   chatId, from: agentSenderId, msgId: taskMsgId,
-                  phase: "step_done",
-                  message: errMsg,
+                  phase: "subagent_progress",
+                  message: "[子代理] 异常（" + (subErr.message || '未知错误') + "），回退主模型重试",
                   step: stepIdx + 1, total: steps.length,
                   stepId: task.id, stepName: task.name,
-                  success: false,
-                  output: errMsg.slice(0, 500),
                   timestamp: Date.now(),
                 });
-                const p = activeTaskPlans.get(taskMsgId);
-                if (p) {
-                  const st = p.steps.find((s: any) => s.id === task.id);
-                  if (st) { st.status = 'failed'; st.output = errMsg; }
-                  p.status = 'failed';
-                }
-                return errMsg;
+                // 不 return —— 继续走下方主模型 inline 执行路径
               }
             }
 
@@ -484,6 +497,30 @@ export function handleWSMessage(
           }
 
           const orchResult = await orchestrator.run();
+
+          // FIX-SKIPPED-RENDER: 级联跳过的步骤不经过 executor，前端收不到任何事件会永久 ⏳。
+          // 统一补发 step_done(skipped) 并同步 plan，前端渲染 ⏭️ 已跳过。
+          for (const r of orchestrator.getResults()) {
+            if (r.status !== 'skipped') continue;
+            const sIdx = steps.findIndex((s: any) => s.id === r.id);
+            const sName = (steps[sIdx] as any)?.name || r.id;
+            broadcast({
+              type: "task.progress",
+              chatId, from: agentSenderId, msgId: taskMsgId,
+              phase: "step_done",
+              message: "已跳过（依赖失败）：" + sName,
+              step: sIdx + 1, total: steps.length,
+              stepId: r.id, stepName: sName,
+              success: false, skipped: true,
+              output: r.error || '依赖任务失败',
+              timestamp: Date.now(),
+            });
+            const ps = activeTaskPlans.get(taskMsgId);
+            if (ps) {
+              const st = ps.steps.find((s: any) => s.id === r.id);
+              if (st) { st.status = 'skipped'; st.output = r.error || '依赖任务失败'; }
+            }
+          }
 
           // Phase 4: summarize results
           let finalResult = '';
