@@ -317,10 +317,18 @@ try {
         throw "[FAIL] ESM require() landmine is BACK in index.ts (code line)"
     }
     $dbSrc = tar --force-local -xzf $OutFile -O './lingxi-engine/src/storage/db.ts' 2>$null
-    if ($dbSrc -match 'credit rows backfilled') {
-        Write-Host "  [OK] user_credits startup backfill present" -ForegroundColor Green
+    # v7.2 (2026-11-15): 自适应断言（同 v6.9 credits ||-bug 守卫先例）。
+    #   credits/wallet 已随 marketplace 下线（969b385），user_credits 表与 backfill
+    #   代码整段移除，原断言永久失败阻断发布。按功能存废分流；若 credits 回归，
+    #   守卫自动重新生效。
+    if ($dbSrc -match 'user_credits') {
+        if ($dbSrc -match 'credit rows backfilled') {
+            Write-Host "  [OK] user_credits startup backfill present" -ForegroundColor Green
+        } else {
+            throw "[FAIL] credits feature present but backfill missing from db.ts"
+        }
     } else {
-        throw "[FAIL] credit backfill missing from db.ts"
+        Write-Host "  [SKIP] credits/wallet 已随 marketplace 下线（969b385），backfill 断言不适用" -ForegroundColor DarkGray
     }
     $payClosed = ($indexSrc -match 'settle[\s\S]{0,400}?catch \(err: any\) \{ res\.status\(500\)')
     if ($payClosed) {
