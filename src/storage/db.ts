@@ -953,7 +953,9 @@ export function runMigrations(opts: { autoAddMissingColumns: boolean; failFast: 
     { table: 'messages', columns: ['chat_id', 'sender_id', 'sender_type', 'content', 'type', 'timestamp'] },
     { table: 'participants', columns: ['chat_id', 'user_id', 'agent_id', 'role', 'joined_at'] },
     { table: 'chat_memories', columns: ['chat_id', 'agent_id', 'memory_summary', 'memory_facts'] },
-    { table: 'friendships', columns: ['from_user_id', 'to_user_id', 'status', 'created_at'] },
+    // 2026-11-18 修复：老库 friendships 缺 role 列 → 加好友必 400（has no column named role）。
+    // role 建表为 NOT NULL DEFAULT 'member'，ALTER 补列须带常量默认值；message/updated_at 同被写入，一并纳入防漂移。
+    { table: 'friendships', columns: ['from_user_id', 'to_user_id', 'status', 'created_at', 'message', ['updated_at', 'INTEGER'], ['role', 'TEXT NOT NULL', "'member'"]] },
   ];
 
   let added = 0;
