@@ -48,23 +48,19 @@ import 'dotenv/config';
     console.warn('[ENV-SHADOW] 诊断失败（不影响启动）:', (e as Error).message);
   }
 })();
-// P1-B: LAN_SECRET 安全默认 —— 缺失时自动生成并持久化到 .env（局域网传输层 HMAC 签名）
+// LAN_SECRET 迁移（2026-11-18）：停用 P1-B 自动生成的 per-instance 密钥（跨引擎 HMAC 必失败 → 加好友加不上）。
+// 不再自动生成 LAN_SECRET；默认空 = 仅协议头识别（原始设计），跨引擎好友/群组开箱即用。
+// 如需私有局域网 HMAC 鉴权，请在所有引擎手动设置相同的 LAN_SECRET。
 (() => {
   try {
-    if (!process.env.LAN_SECRET) {
-      const envPath = path.join(process.cwd(), '.env');
-      let envText = '';
-      if (existsSync(envPath)) envText = readFileSync(envPath, 'utf8');
-      if (!/^LAN_SECRET\s*=/m.test(envText)) {
-        const secret = randomBytes(32).toString('hex');
-        process.env.LAN_SECRET = secret;
-        try {
-          appendFileSync(envPath, '\n# Auto-generated on first boot (P1-B: 局域网传输层 HMAC 签名密钥)\nLAN_SECRET=' + secret + '\n', 'utf8');
-          console.log('[LAN] LAN_SECRET 未配置，已自动生成并写入 .env（局域网通信 HMAC 签名已启用）');
-        } catch (e) {
-          console.log('[LAN] LAN_SECRET 未配置，已生成进程内密钥（.env 写入失败，重启后密钥会变化）');
-        }
-      }
+    const envPath = path.join(process.cwd(), '.env');
+    if (!existsSync(envPath)) return;
+    const envText = readFileSync(envPath, 'utf8');
+    const { text, migrated } = neutralizeAutoLanSecret(envText);
+    if (migrated) {
+      writeFileSync(envPath, text, 'utf8');
+      delete process.env.LAN_SECRET;
+      console.log('[LAN] 已停用自动生成的 LAN_SECRET（每实例不同会导致跨引擎加好友 403）。跨引擎好友/群组恢复可用；如需私有局域网鉴权请在所有引擎手动设置相同的 LAN_SECRET。');
     }
   } catch (e) { /* 绝不阻断启动 */ }
 })();
@@ -97,7 +93,7 @@ import { AgentManager } from './src/agents/manager.js';
 import { handleWSMessage, wsSubscriptions, processUserMessage, setSubAgentManagerForWS } from './src/core/ws-handler.js';
 import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerMessage, getMeshInfo, getInstanceId, getP2PStats, p2pConnect, isP2PConnected, initP2P, bootstrapP2P, type PeerMessage } from './src/core/instance-mesh.js';
 import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
-import { verifyLanRequest } from './src/net/lan-transport.js';
+import { verifyLanRequest, neutralizeAutoLanSecret } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
 import { ToolRegistry } from './src/tools/registry.js';
 import { ExecutorTool } from './src/tools/executor-tool.js';

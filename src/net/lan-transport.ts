@@ -25,6 +25,32 @@ function getLanSecret(): string {
   return process.env.LAN_SECRET || '';
 }
 
+/**
+ * 修复（2026-11-18）：停用「自动生成的 per-instance LAN_SECRET」。
+ * 背景：P1-B 曾为每台引擎自动生成随机 LAN_SECRET 写入 .env 用作局域网 HMAC 鉴权。
+ * 但 per-instance 随机密钥彼此不同，跨引擎签名必然不匹配 → 对端 403「局域网签名校验失败」→「加好友加不上」。
+ * HMAC 共享密钥只有在用户于所有引擎手动设置同一个 LAN_SECRET 时才有意义。
+ * 本函数把 .env 中「带 P1-B 自动生成标记」的 LAN_SECRET 改名为 LAN_LOCAL_SECRET（保留值、退出鉴权）；
+ * 用户手动设置（无标记）的 LAN_SECRET 原样保留。幂等：已迁移文本再跑一次不变。
+ */
+export function neutralizeAutoLanSecret(envText: string): { text: string; migrated: boolean } {
+  const eol = envText.includes('\r\n') ? '\r\n' : '\n';
+  const lines = envText.split(/\r?\n/);
+  let migrated = false;
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^LAN_SECRET\s*=\s*(.*)$/);
+    if (!m) continue;
+    let j = i - 1;
+    while (j >= 0 && lines[j].trim() === '') j--;
+    const isAuto = j >= 0 && /Auto-generated on first boot \(P1-B/.test(lines[j]);
+    if (!isAuto) continue; // 用户手动设置的共享密钥，保留
+    lines[j] = '# [migrated 2026-11-18] 原 P1-B 自动生成的 per-instance 密钥已停用（跨引擎 HMAC 必失败）。';
+    lines[i] = '# 如需私有局域网鉴权：在所有引擎手动设置相同的 LAN_SECRET=<共享密钥>。' + eol + 'LAN_LOCAL_SECRET=' + m[1];
+    migrated = true;
+  }
+  return { text: migrated ? lines.join(eol) : envText, migrated };
+}
+
 /** P2-B: nonce 防重放缓存（nonce -> 首次使用时间戳），TTL 与时间戳容忍一致 */
 const seenNonces = new Map<string, number>();
 const NONCE_TTL = 300_000;
