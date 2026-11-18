@@ -2153,8 +2153,8 @@ document.getElementById('input').addEventListener('keydown', function(e) {
 function highlightMention(items) { items.forEach((it,i) => it.classList.toggle('active', i===mentionIndex)); }
 
 // ── Friends ──
-function showFriendPanel() { document.getElementById('chatList').style.display='none'; document.getElementById('friendPanel').style.display='flex'; loadFriends().catch(()=>{}); loadRequests().catch(()=>{}); }
-function hideFriendPanel() { document.getElementById('chatList').style.display=''; document.getElementById('friendPanel').style.display='none'; }
+function showFriendPanel() { if (window.LxFriends) { LxFriends.open(); return; } document.getElementById('chatList').style.display='none'; document.getElementById('friendPanel').style.display='flex'; loadFriends().catch(()=>{}); loadRequests().catch(()=>{}); }
+function hideFriendPanel() { if (window.LxFriends) LxFriends.close(); document.getElementById('chatList').style.display=''; document.getElementById('friendPanel').style.display='none'; }
 function switchFriendTab(tab) {
   currentFriendTab = tab;
   document.getElementById('tabFriends').className = tab==='friends'?'active':'';
@@ -2202,19 +2202,20 @@ function renderSearch() {
     if (isMe) action = '<span style="color:var(--text3);font-size:11px">'+t('friends.me')+'</span>';
     else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">'+t('friends.isFriend')+'</span>';
     else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">'+t('friends.requestedStatus')+'</span>';
-    else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+uid+'\')">'+t('social.addFriend')+'</button>';
+    else action = '<button class="btn-sm btn-accept" onclick="askAddFriend(\''+uid+'\')">'+t('social.addFriend')+'</button>';
     const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc((u.displayName||'?')[0].toUpperCase())+'</div>';
     return '<div class="friend-item" style="display:flex;align-items:center;gap:10px">'+avatar+'<div style="flex:1;min-width:0"><div style="font-size:13px;color:var(--text);font-weight:500">'+esc(u.displayName)+'</div><div style="font-size:11px;color:var(--text3)">ID: '+uid+'</div></div><div>'+action+'</div></div>';
   }).join('');
 }
-async function sendRequest(to) {
+function askAddFriend(to, name) { if (window.LxFriends) { LxFriends.openRequestDialog(String(to), name || ''); } else { sendRequest(to); } }
+async function sendRequest(to, _presetMsg) {
   if (!authToken && !clientId) { toast(t('toast.connectFirst')); return; }
   // 防重复：先检查本地状。
   const uid = String(to);
   if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
   // U1 修复：允许填写验证消息（可选），让对方知道你是谁、为何添加
-  const message = (prompt(t('friends.verifyMessagePrompt'), '') || '').trim().slice(0, 200);
+  const message = (typeof _presetMsg === 'string' ? _presetMsg : '').trim().slice(0, 200);
   try {
     const fromUserId = lanMeId || clientId;
     // v2.0.11: 。authToken 时优先走 platformApi，失败回退本地 api
@@ -2250,6 +2251,7 @@ async function loadFriends() {
     const seen = new Set();
     myFriends = (d.friends||[]).filter(f => { const k = String(f.friendId); if (seen.has(k)) return false; seen.add(k); return true; });
     renderFriends();
+    if (window.LxFriends) LxFriends.syncFromState();
   } catch(e){}
 }
 function renderFriends() {
@@ -2290,6 +2292,7 @@ async function openChatFriend(fid, fname) {
   } catch(e) { console.error('[openChatFriend]', e); toast(t('err.openChatFail')); }
 }
 function confirmDeleteFriend(fid, fname) {
+  if (window.LxFriends) { LxFriends.confirmDelete(fid, fname); return; }
   if (confirm(t('friends.confirmDelete', {name: fname}))) {
     deleteFriend(fid);
   }
@@ -2341,6 +2344,7 @@ async function loadRequests() {
     requestNotifyCount += agentGrantRequests.length;
     updateBadge();
     renderRequests();
+    if (window.LxFriends) LxFriends.syncFromState();
   } catch(e){ console.warn('[loadRequests] failed', e); }
 }
 function renderRequests() {
@@ -2441,7 +2445,7 @@ async function respondReq(rid, action) {
   } catch(e) { toast(t('err.operationFail')); }
 }
 async function withdrawRequest(rid) {
-  if (!confirm(t('friends.confirmWithdraw'))) return;
+  const _wdOk = window.LxFriends ? await LxFriends.confirm({ message: t('friends.confirmWithdraw'), okText: t('friends.withdraw'), danger: true }) : confirm(t('friends.confirmWithdraw')); if (!_wdOk) return;
   try {
     // F2 修复：本地模式也真正调撤回 API；平台无此路由时回退本地 /api/friends/request/:id
     let d;
@@ -2486,7 +2490,7 @@ async function searchUser() {
       if (isMe) action = '<span style="color:var(--text3);font-size:11px">'+t('friends.meShort')+'</span>';
       else if (isFriend) action = '<span style="color:#4ade80;font-size:11px">'+t('friends.isFriend')+'</span>';
       else if (isPending) action = '<span style="color:#f59e0b;font-size:11px">'+t('friends.requestedStatus')+'</span>';
-      else action = '<button class="btn-sm btn-accept" onclick="sendRequest(\''+u.numericId+'\')">'+t('social.addFriend')+'</button>';
+      else action = '<button class="btn-sm btn-accept" onclick="askAddFriend(\''+u.numericId+'\')">'+t('social.addFriend')+'</button>';
       const initial = (u.displayName||'?')[0].toUpperCase();
       const avatar = '<div style="width:36px;height:36px;border-radius:50%;background:var(--bg3);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">'+esc(initial)+'</div>';
       return '<div style="display:flex;align-items:center;gap:10px;padding:8px;border-bottom:1px solid var(--border)">'+avatar+'<div style="flex:1"><div style="font-size:13px;color:var(--text)">'+esc(u.displayName)+'</div><div style="font-size:11px;color:var(--text3)">ID: '+u.numericId+'</div></div>'+action+'</div>';
@@ -5238,7 +5242,7 @@ function lanRenderGroups(groups) {
 
 async function lanAddFriend(numericId) {
   if (!authToken) { toast(t('social.loginToAdd')); return; }
-  const message = prompt(t('social.friendMsgPh', {id: numericId}), '') || '';
+  askAddFriend(numericId); return; // v2.2.0: QQ/微信式验证弹窗替代原生 prompt
   try {
     const r = await platformApi('/api/lan/friend-request', 'POST', { fromUserId: lanMyId(), toNumericId: numericId, message });
     if (r && r.ok !== false && !r.error) toast(t('social.friendReqSent'));
