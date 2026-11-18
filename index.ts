@@ -79,6 +79,9 @@ import { join } from 'path';
 import multer from 'multer';
 import { initDB, getDB, closeDB, DB, startAutoSave, saveToDisk, initNumericIdSeq, cleanupExpiredTokens, createInviteCode, listInviteCodes, updateAgent, getChatMode, setChatMode, CHAT_MODES, nextNumericId, createChat, addParticipant, removeParticipant, getAgent, getAgentByUserId, deleteFriendshipByPair, syncAgentToPrivateChats } from './src/storage/db.js';
 import { initGoalTrackerTable, GoalTracker } from './src/core/goal-tracker.js';
+// 好友系统安全/功能修复(2026-11-15)：撤回请求 + 好友请求限流
+import { getFriendshipById, withdrawFriendRequest } from './src/storage/db.js';
+import { friendRequestRateLimit } from './src/core/mesh-security.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
@@ -1366,13 +1369,14 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       if (s.step()) { user = s.getAsObject(); }
       s.free();
       if (!user) return res.status(404).json({ error: '用户不存在' });
-      res.json({ ok: true, user: { id: user.id, numericId: user.numeric_id, displayName: user.display_name, email: user.email, status: user.status } });
+      // S7 修复：不再向任意登录用户返回 email/status（防邮箱枚举）
+      res.json({ ok: true, user: { id: user.id, numericId: user.numeric_id, displayName: user.display_name } });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.post('/api/friends/request', requireAuth, (req, res) => {
+  app.post('/api/friends/request', requireAuth, friendRequestRateLimit(5), (req, res) => {
     try {
       const { fromUserId, toUserId, message } = req.body;
       if (!fromUserId || !toUserId) return res.status(400).json({ error: 'fromUserId 和 toUserId 必填' });
@@ -1425,6 +1429,27 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // ── F2 修复：撤回好友请求（仅发起者可撤回自己的 pending 请求）──
+  app.delete('/api/friends/request/:id', requireAuth, (req, res) => {
+    try {
+      const requestId = String(req.params.id || '');
+      if (!requestId) return res.status(400).json({ error: 'requestId 必填' });
+      const jwtUserW = (req as any).user;
+      const uidW = String(jwtUserW?.sub || jwtUserW?.id || '');
+      const nidW = String(jwtUserW?.numeric_id || '');
+      const sidW = String(jwtUserW?.sid || '');
+      const isLocalAutoW = sidW === 'admin-auto' || sidW === 'admin-token' || sidW === 'platform-admin' || uidW === 'admin';
+      const rowW = getFriendshipById(requestId) as any;
+      if (!rowW) return res.status(404).json({ error: '好友请求不存在' });
+      if (!isLocalAutoW && String(rowW.from_user_id) !== uidW && String(rowW.from_user_id) !== nidW) {
+        return res.status(403).json({ error: '只能撤回自己发起的好友请求' });
+      }
+      const resultW = withdrawFriendRequest(requestId);
+      if (!resultW.ok) return res.status(400).json(resultW);
+      res.json({ ok: true });
+    } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
   app.get('/api/friends/requests', requireAuth, (req, res) => {
@@ -1585,13 +1610,21 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const jwtUserId4 = String(jwtUser4?.sub || jwtUser4?.id || '');
       const jwtNumericId4 = String(jwtUser4?.numeric_id || '');
       const parts = db.getChatParticipants(chatId);
-      if (jwtUserId4 && parts.length > 0) {
+      // F8 修复：去掉 parts.length>0 的 fail-open；非本地免登录一律要求是会话成员
+      const sidSf = String(jwtUser4?.sid || '');
+      const isLocalAutoSf = sidSf === 'admin-auto' || sidSf === 'admin-token' || sidSf === 'platform-admin' || jwtUserId4 === 'admin';
+      if (jwtUserId4 && !isLocalAutoSf) {
         const isMember = parts.some((p: any) => String(p.user_id) === jwtUserId4 || String(p.user_id) === jwtNumericId4);
         if (!isMember) {
           return res.status(403).json({ error: '无权向此聊天发送消息' });
         }
       }
-      const friendParticipant = parts.find((p: any) => String((p as any).userId ?? (p as any).user_id) !== String(fromUserId));
+      // F5 修复：只在真实用户参与者里找好友，排除 agent 行（user_id 为空）与自己，避免选中 agent → friendUserId='null'
+      const fromIdsSf = [String(fromUserId), String(jwtNumericId4), String(jwtUserId4)].filter(Boolean);
+      const friendParticipant = parts.find((p: any) => {
+        const pid = String((p as any).userId ?? (p as any).user_id ?? '');
+        return pid && pid !== 'null' && pid !== 'undefined' && !fromIdsSf.includes(pid) && !(p as any).agent_id;
+      });
       if (!friendParticipant) return res.status(400).json({ error: '无法确定好友' });
 
       const friendUserId = String((friendParticipant as any).userId ?? (friendParticipant as any).user_id);
@@ -1603,6 +1636,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const localFriend = db.listUsers().find((u: any) =>
         String(u.id) === friendUserId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
       if (localFriend) {
+        // F6 修复：删好友后不允许继续互发——非本地免登录模式下校验双方仍是好友
+        if (!isLocalAutoSf) {
+          const myKeySf = String(jwtNumericId4 || jwtUserId4 || fromUserId);
+          const stillFriends = (db.listFriends(myKeySf) as any[]).some((f: any) => String(f.friendId) === String(localFriend.id) || String(f.friendId) === String(localFriend.numeric_id));
+          if (!stillFriends) return res.status(403).json({ error: '你们已不是好友，无法发送消息' });
+        }
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: String(fromUserId), content, type: 'text', timestamp: Date.now() });
         broadcast({ type: 'message.new', chatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content, timestamp: Date.now() });
@@ -1646,7 +1685,16 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   app.get('/api/chats/:id/participants', requireAuth, (req, res) => {
     try {
+      // S3 修复：仅会话参与者可查看成员名单
+      const jwtUserGp = (req as any).user;
+      const uidGp = String(jwtUserGp?.sub || jwtUserGp?.numeric_id || '');
+      const sidGp = String(jwtUserGp?.sid || '');
+      const isLocalAutoGp = sidGp === 'admin-auto' || sidGp === 'admin-token' || sidGp === 'platform-admin' || uidGp === 'admin';
+      const isAdminGp = (jwtUserGp?.roles || []).includes('admin');
       const participants = db.getChatParticipants(req.params.id as string);
+      if (!isLocalAutoGp && !isAdminGp && !(participants || []).some((p: any) => String(p.user_id) === uidGp || String(p.agent_id) === uidGp)) {
+        return res.status(403).json({ error: '无权查看此会话成员' });
+      }
       res.json({ ok: true, participants });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
@@ -1655,6 +1703,23 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { id, chatId, agentId } = req.body || {};
       if ((!id && !agentId) || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
+      // S2 修复：仅会话成员可移除参与者；移除其他用户需 owner（本地免登录/管理员豁免）
+      const jwtUserRp = (req as any).user;
+      const uidRp = String(jwtUserRp?.sub || jwtUserRp?.id || '');
+      const nidRp = String(jwtUserRp?.numeric_id || '');
+      const sidRp = String(jwtUserRp?.sid || '');
+      const isLocalAutoRp = sidRp === 'admin-auto' || sidRp === 'admin-token' || sidRp === 'platform-admin' || uidRp === 'admin';
+      const isAdminRp = (jwtUserRp?.roles || []).includes('admin');
+      if (!isLocalAutoRp && !isAdminRp) {
+        const partsRp = (db.getChatParticipants(chatId) || []) as any[];
+        const meRp = partsRp.find((p: any) => String(p.user_id) === uidRp || String(p.user_id) === nidRp);
+        if (!meRp) return res.status(403).json({ error: '无权操作此会话成员' });
+        const targetRp = partsRp.find((p: any) => (id && String(p.user_id) === String(id)) || (agentId && String(p.agent_id) === String(agentId)));
+        const targetIsOtherUser = targetRp && targetRp.user_id && String(targetRp.user_id) !== uidRp && String(targetRp.user_id) !== nidRp;
+        if (targetIsOtherUser && String(meRp.role) !== 'owner') {
+          return res.status(403).json({ error: '仅群主可移除其他成员' });
+        }
+      }
       db.removeParticipant(chatId, id || '', agentId);
       // 如果群聊没参与者了，清理协作模式缓存
       const remaining = db.getChatParticipants(chatId);
@@ -1669,7 +1734,19 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 删除整个会话（含消息+参与者） ──
   app.delete('/api/chats/:id', requireAuth, (req, res) => {
     try {
-      const chatId = req.params.id;
+      const chatId = String(req.params.id);
+      // S1 修复：仅会话参与者（或本地免登录/管理员）可删除会话，堵破坏性越权
+      const jwtUserDel = (req as any).user;
+      const uidDel = String(jwtUserDel?.sub || jwtUserDel?.id || '');
+      const nidDel = String(jwtUserDel?.numeric_id || '');
+      const sidDel = String(jwtUserDel?.sid || '');
+      const isLocalAutoDel = sidDel === 'admin-auto' || sidDel === 'admin-token' || sidDel === 'platform-admin' || uidDel === 'admin';
+      const isAdminDel = (jwtUserDel?.roles || []).includes('admin');
+      if (!isLocalAutoDel && !isAdminDel) {
+        const partsDel = db.getChatParticipants(chatId) || [];
+        const isMemberDel = partsDel.some((p: any) => String(p.user_id) === uidDel || String(p.user_id) === nidDel);
+        if (!isMemberDel) return res.status(403).json({ error: '无权删除此会话' });
+      }
       const d = getDB();
       d.run('DELETE FROM messages WHERE chat_id = ?', [chatId]);
       d.run('DELETE FROM participants WHERE chat_id = ?', [chatId]);
@@ -1801,8 +1878,14 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 聊天成员管理 ──
   app.get('/api/chats/:id/available-members', requireAuth, (req, res) => {
     try {
-      const userId = req.query.userId as string;
       const chatId = req.params.id as string;
+      // S5 修复：userId 一律以 JWT 为准（本地免登录允许 query 兜底），防枚举他人好友/AI/授权
+      const jwtUserAm = (req as any).user;
+      const uidAm = String(jwtUserAm?.sub || jwtUserAm?.id || '');
+      const nidAm = String(jwtUserAm?.numeric_id || '');
+      const sidAm = String(jwtUserAm?.sid || '');
+      const isLocalAutoAm = sidAm === 'admin-auto' || sidAm === 'admin-token' || sidAm === 'platform-admin' || uidAm === 'admin';
+      const userId = isLocalAutoAm ? ((req.query.userId as string) || nidAm || uidAm) : (nidAm || uidAm);
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
       const friends = db.listFriends(userId);
       const friendAgents = friends.map((f: any) => {
@@ -1935,33 +2018,32 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   app.get('/api/chats', requireAuth, (req, res) => {
     try {
+      const jwtUserCl = (req as any).user;
+      const uidCl = String(jwtUserCl?.sub || jwtUserCl?.id || '');
+      const nidCl = String(jwtUserCl?.numeric_id || '');
+      const jwtSid = String(jwtUserCl?.sid || '');
+      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token' || jwtSid === 'platform-admin' || uidCl === 'admin');
+      const isAdminCl = (jwtUserCl?.roles || []).includes('admin');
+      const allChats = db.listChats();
+      // S6 修复：非本地免登录/管理员模式下，会话列表一律按 JWT 身份过滤，忽略客户端 userId（堵 IDOR，fail-closed）
+      if (!isLocalAuto && !isAdminCl) {
+        const myIds = [uidCl, nidCl].filter(Boolean);
+        const userChats = allChats.filter((c: any) => {
+          const participants = db.getChatParticipants(c.id);
+          return participants.some((p: any) => myIds.includes(String(p.user_id)));
+        });
+        return res.json({ ok: true, chats: userChats });
+      }
+      // 本地免登录/管理员：保留单机兜底（可带 userId 过滤，无结果返回全部，避免 F5 左侧栏空白）
       const userId = req.query.userId as string;
-      // ⭐ v2.1.2 修复 F5 会话消失：admin-auto 本地免登录模式下，participant 表中
-      //    旧会话可能没有 user_id 记录（P1-4 403 拦截导致的遗留数据），按 userId
-      //    过滤会返回空列表。本地模式兜底返回全部会话，避免 F5 后左侧栏空白。
-      const jwtSid = String((req as any).user?.sid || '');
-      const isLocalAuto = (jwtSid === 'admin-auto' || jwtSid === 'admin-token');
-      if (userId && !isLocalAuto) {
-        const allChats = db.listChats();
+      if (userId) {
         const userChats = allChats.filter((c: any) => {
           const participants = db.getChatParticipants(c.id);
           return participants.some((p: any) => p.user_id === userId);
         });
-        res.json({ ok: true, chats: userChats });
-      } else {
-        // 本地免登录模式或未传 userId：返回全部列表（个人单机使用兜底）
-        const allChats = db.listChats();
-        if (userId && isLocalAuto) {
-          // 本地模式：先尝试按 userId 过滤，有结果就用过滤的，没有就返回全部
-          const userChats = allChats.filter((c: any) => {
-            const participants = db.getChatParticipants(c.id);
-            return participants.some((p: any) => p.user_id === userId);
-          });
-          res.json({ ok: true, chats: userChats.length ? userChats : allChats });
-        } else {
-          res.json({ ok: true, chats: allChats });
-        }
+        return res.json({ ok: true, chats: userChats.length ? userChats : allChats });
       }
+      res.json({ ok: true, chats: allChats });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
   });
 
@@ -4003,16 +4085,13 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           const resp = await fetch(`${platformApiUrl}/api/admin/search?q=${encodeURIComponent(q)}&token=${platformAdminToken}`);
           const d = await resp.json() as any;
           if (d.ok && d.results) {
+            // S8 修复(活路由)：不再向任意登录用户返回 email/status/points/created_at（防邮箱枚举/隐私泄露）
             platformResults = d.results.map((u: any) => ({
               numericId: u.id,
               displayName: u.username,
-              email: u.email || '',
               userId: String(u.id),
-              status: u.status || 'active',
               online: (u.status || 'active') !== 'offline' && (u.status || 'active') !== 'inactive',
               source: 'platform',
-              points: u.points || 0,
-              createdAt: u.created_at ? new Date(u.created_at).toLocaleString('zh-CN') : '-',
             }));
           }
         } catch (e: any) {
@@ -4057,9 +4136,9 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       const localFiltered = localResults
         .filter((r: any) => !platformIds.has(String(r.numeric_id)))
         .map((r: any) => ({
-          numericId: r.numeric_id, displayName: r.display_name, email: r.email,
-          userId: r.id, status: r.status, online: r.status === 'online', source: 'local',
-          createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-',
+          // S8 修复(活路由)：不再返回 email/status/created_at（防邮箱枚举/隐私泄露）
+          numericId: r.numeric_id, displayName: r.display_name,
+          userId: r.id, online: r.status === 'online', source: 'local',
         }));
       const results = [...platformResults, ...localFiltered, ...lanResults];
       res.json({ ok: true, results });
@@ -4530,12 +4609,32 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // ── 群聊协作模式（持久化于 chats.chat_mode，重启不丢）──
   app.get('/api/chats/:id/mode', requireAuth, (req, res) => {
+    // S4 修复：仅会话参与者可读协作模式
+    const jwtUserGm = (req as any).user;
+    const uidGm = String(jwtUserGm?.sub || jwtUserGm?.numeric_id || '');
+    const sidGm = String(jwtUserGm?.sid || '');
+    const isLocalAutoGm = sidGm === 'admin-auto' || sidGm === 'admin-token' || sidGm === 'platform-admin' || uidGm === 'admin';
+    const isAdminGm = (jwtUserGm?.roles || []).includes('admin');
+    const partsGm = db.getChatParticipants(req.params.id as string) || [];
+    if (!isLocalAutoGm && !isAdminGm && !partsGm.some((p: any) => String(p.user_id) === uidGm || String(p.agent_id) === uidGm)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
     const mode = getChatMode(req.params.id as string);
     res.json({ ok: true, mode, modes: [...CHAT_MODES] });
   });
 
   app.post('/api/chats/:id/mode', requireAuth, (req, res) => {
     try {
+      // S4 修复：仅会话参与者可改协作模式
+      const jwtUserSm = (req as any).user;
+      const uidSm = String(jwtUserSm?.sub || jwtUserSm?.numeric_id || '');
+      const sidSm = String(jwtUserSm?.sid || '');
+      const isLocalAutoSm = sidSm === 'admin-auto' || sidSm === 'admin-token' || sidSm === 'platform-admin' || uidSm === 'admin';
+      const isAdminSm = (jwtUserSm?.roles || []).includes('admin');
+      const partsSm = db.getChatParticipants(req.params.id as string) || [];
+      if (!isLocalAutoSm && !isAdminSm && !partsSm.some((p: any) => String(p.user_id) === uidSm || String(p.agent_id) === uidSm)) {
+        return res.status(403).json({ error: '无权修改此会话模式' });
+      }
       const { mode } = req.body || {};
       if (!setChatMode(req.params.id as string, mode)) {
         return res.status(400).json({ error: '无效模式，可选: ' + CHAT_MODES.join(', ') });

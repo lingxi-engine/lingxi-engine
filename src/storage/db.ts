@@ -1376,6 +1376,8 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
   if (!_db) return { error: 'DB not initialized' };
   if (fromUserId === toUserId) return { error: '不能添加自己为好友' };
   
+  // F8 修复：好友请求附言长度上限 200 字符，防滥用
+  message = String(message || '').slice(0, 200);
   // 解析 toUserId：如果是 numeric_id，转换为实际的 user id
   const targetUser = getUser(toUserId);
   let resolvedToUserId = toUserId;
@@ -1422,6 +1424,13 @@ export function sendFriendRequest(fromUserId: string, toUserId: string, message:
     if (status === 'accepted') return { error: '已经是好友' };
     if (status === 'pending') return { error: '好友请求已发送，等待对方确认' };
     if (status === 'blocked') return { error: '无法添加该用户' };
+    // F1 修复(2026-11-15)：rejected/withdrawn 旧行复用为新的 pending，
+    // 避免直接 INSERT 撞 UNIQUE(from_user_id,to_user_id) 导致「被拒一次永远加不上」500。
+    _db.prepare(
+      `UPDATE friendships SET from_user_id = ?, to_user_id = ?, status = 'pending', message = ?, created_at = ?, updated_at = ?, role = 'member' WHERE id = ?`
+    ).run(resolvedFromUserId, resolvedToUserId, message, now, now, (existingRow as any).id);
+    markDirty();
+    return { id: (existingRow as any).id, status: 'pending' };
   }
   
   _db.prepare(
@@ -1464,6 +1473,17 @@ export function removeFriendship(userId1: string, userId2: string) {
 
 export function deleteFriendshipByPair(userId1: string, userId2: string) {
   return removeFriendship(userId1, userId2);
+}
+
+// F2 修复(2026-11-15)：撤回好友请求。仅 pending 可撤回；删除该行以便重新发送。
+export function withdrawFriendRequest(friendshipId: string): { ok: boolean; error?: string } {
+  if (!_db) return { ok: false, error: 'DB not initialized' };
+  const row = _db.prepare(`SELECT id, status FROM friendships WHERE id = ?`).get(friendshipId) as any;
+  if (!row) return { ok: false, error: '好友请求不存在' };
+  if (row.status !== 'pending') return { ok: false, error: '只能撤回待处理的好友请求' };
+  _db.prepare(`DELETE FROM friendships WHERE id = ?`).run(friendshipId);
+  markDirty();
+  return { ok: true };
 }
 
 export function getFriendshipById(friendshipId: string) {
@@ -1553,13 +1573,23 @@ export function listFriends(userId: string) {
     seen.add(key);
     return true;
   });
-  return allRows.map((r: any) => ({
-    friendId: r.from_user_id === userId ? r.to_user_id : r.from_user_id,
-    friendName: '',
-    friendAgentId: undefined,
-    status: r.status,
-    createdAt: r.created_at,
-  }));
+  // F3 修复：用归一化 canonical id 集合比较（而非原始入参），
+  // 避免 numeric_id 查询时 outgoing 行返回自己（拉好友进私聊 isFriend 判否 403）。
+  const selfIds = new Set(variants.map(String));
+  return allRows.map((r: any) => {
+    const friendId = selfIds.has(String(r.from_user_id)) ? r.to_user_id : r.from_user_id;
+    // F4 修复：解析好友真实昵称与 agent，不再恒为空（前端回退「用户<id>」）。
+    const friendUser = getUser(friendId);
+    return {
+      friendId,
+      friendName: friendUser?.display_name || '',
+      friendAgentId: friendUser?.agent_id || undefined,
+      fromUserId: r.from_user_id,
+      toUserId: r.to_user_id,
+      status: r.status,
+      createdAt: r.created_at,
+    };
+  });
 }
 
 export function respondFriendRequest(friendshipId: string, action: 'accept' | 'reject'): { ok: boolean; status: string } {

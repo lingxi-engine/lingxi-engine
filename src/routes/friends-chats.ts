@@ -402,12 +402,32 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
 
   // ── 群聊协作模式（持久化于 chats.chat_mode，重启不丢）──
   app.get('/api/chats/:id/mode', requireAuth, (req, res) => {
+    // S4 修复(活路由)：仅会话参与者可读取协作模式（本地免登录/管理员豁免）
+    const jwtUserM = (req as any).user;
+    const uidM = String(jwtUserM?.sub || jwtUserM?.numeric_id || '');
+    const sidM = String(jwtUserM?.sid || '');
+    const isLocalAutoM = sidM === 'admin-auto' || sidM === 'admin-token' || sidM === 'platform-admin' || uidM === 'admin';
+    const isAdminM = (jwtUserM?.roles || []).includes('admin');
+    const partsM = db.getChatParticipants(req.params.id as string) || [];
+    if (!isLocalAutoM && !isAdminM && !partsM.some((p: any) => String(p.user_id) === uidM || String(p.agent_id) === uidM)) {
+      return res.status(403).json({ error: '无权读取此会话模式' });
+    }
     const mode = getChatMode(req.params.id as string);
     res.json({ ok: true, mode, modes: [...CHAT_MODES] });
   });
 
   app.post('/api/chats/:id/mode', requireAuth, (req, res) => {
     try {
+    // S4 修复(活路由)：仅会话参与者可修改协作模式（本地免登录/管理员豁免）
+    const jwtUserM = (req as any).user;
+    const uidM = String(jwtUserM?.sub || jwtUserM?.numeric_id || '');
+    const sidM = String(jwtUserM?.sid || '');
+    const isLocalAutoM = sidM === 'admin-auto' || sidM === 'admin-token' || sidM === 'platform-admin' || uidM === 'admin';
+    const isAdminM = (jwtUserM?.roles || []).includes('admin');
+    const partsM = db.getChatParticipants(req.params.id as string) || [];
+    if (!isLocalAutoM && !isAdminM && !partsM.some((p: any) => String(p.user_id) === uidM || String(p.agent_id) === uidM)) {
+      return res.status(403).json({ error: '无权修改此会话模式' });
+    }
       const { mode } = req.body || {};
       if (!setChatMode(req.params.id as string, mode)) {
         return res.status(400).json({ error: '无效模式，可选: ' + CHAT_MODES.join(', ') });

@@ -16,7 +16,7 @@
 import type { Express, RequestHandler } from 'express';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getDB } from '../storage/db.js';
+import { getDB, getFriendshipById } from '../storage/db.js';
 import { startLanDiscovery, getLanPeers, getLanSelfInfo, getLanIps, directedBroadcastAddrs, type LanUser } from '../net/lan-discovery.js';
 import { verifyLanRequest } from '../net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from '../net/lan-social.js';
@@ -171,9 +171,9 @@ export function registerLanRoutes(app: Express, deps: {
       const localFiltered = localResults
         .filter((r: any) => !platformIds.has(String(r.numeric_id)))
         .map((r: any) => ({
-          numericId: r.numeric_id, displayName: r.display_name, email: r.email,
-          userId: r.id, status: r.status, online: r.status === 'online', source: 'local',
-          createdAt: r.created_at ? new Date(r.created_at).toLocaleString('zh-CN') : '-',
+          // S8 修复：不再向任意登录用户返回 email/status/created_at（防邮箱枚举/隐私泄露）
+          numericId: r.numeric_id, displayName: r.display_name,
+          userId: r.id, online: r.status === 'online', source: 'local',
         }));
       const results = [...platformResults, ...localFiltered, ...lanResults];
       res.json({ ok: true, results });
@@ -186,11 +186,9 @@ export function registerLanRoutes(app: Express, deps: {
       // v2.0.11: 优先使用 body 中的 fromUserId（前端传的是本地用户ID），
       // 仅在 body 没有时才从 JWT 中取。之前优先取 JWT sub 导致 auto-admin
       // 模式下 fromUserId 恒为 'admin'，好友申请记错发送者，接收方看不到申请。
-      const { fromUserId: bodyFromUserId, toNumericId, message } = req.body || {};
-      const jwtSub = (req as any).user?.sub;
-      // 如果 JWT 是 auto-admin 回退模式（sid=admin-auto/admin-token），不用 admin 作为 fromUserId
-      const isAutoAdmin = (req as any).user?.sid === 'admin-auto' || (req as any).user?.sid === 'admin-token' || jwtSub === 'admin';
-      const fromUserId = bodyFromUserId || (!isAutoAdmin ? jwtSub : '');
+      const { toNumericId, message } = req.body || {};
+      // S10 修复：fromUserId 一律经 lanUserId 绑定 JWT（非 bootstrap 忽略 body，防冒充他人发请求）
+      const fromUserId = lanUserId(req, req.body?.fromUserId) || '';
       if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
       const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '');
       res.json(r);
@@ -198,11 +196,8 @@ export function registerLanRoutes(app: Express, deps: {
   });
 
   app.get('/api/lan/friend-requests', requireAuth, (req, res) => {
-    let userId = (req.query.userId as string) || '';
-    // v2.0.10: userId 为空时从 JWT 中获取（platformApi 不带 query param 的场景）
-    if (!userId && (req as any).user) {
-      userId = String((req as any).user.sub || '');
-    }
+    // S9 修复：userId 经 lanUserId 绑定 JWT（非 bootstrap 忽略 query，防看他人好友请求）
+    const userId = lanUserId(req, String(req.query.userId || '')) || '';
     res.json({ ok: true, ...lanSocial.friendRequests(userId) });
   });
 
@@ -210,17 +205,24 @@ export function registerLanRoutes(app: Express, deps: {
     try {
       const { requestId, action } = req.body || {};
       if (!requestId || !action) return res.status(400).json({ error: 'requestId 和 action 必填' });
+      // S11 修复：校验当前用户是该请求的接收者（bootstrap 本地模式豁免），防替他人同意/拒绝
+      const uRsp = (req as any).user;
+      const sidRsp = String(uRsp?.sid || '');
+      const isBootstrapRsp = sidRsp === 'admin-auto' || sidRsp === 'platform-admin' || sidRsp === 'admin-token' || uRsp?.sub === 'admin';
+      if (!isBootstrapRsp) {
+        const rowRsp = getFriendshipById(String(requestId)) as any;
+        if (!rowRsp) return res.status(404).json({ error: '好友请求不存在' });
+        const myIdsRsp = [String(uRsp?.sub || ''), String(uRsp?.numeric_id || '')].filter(Boolean);
+        if (!myIdsRsp.includes(String(rowRsp.to_user_id))) return res.status(403).json({ error: '无权处理他人的好友请求' });
+      }
       const r = await lanSocial.respondFriendRequest(requestId, action);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
 
   app.get('/api/lan/friends', requireAuth, (req, res) => {
-    let userId = (req.query.userId as string) || '';
-    // v2.0.10: userId 为空时从 JWT 中获取
-    if (!userId && (req as any).user) {
-      userId = String((req as any).user.sub || '');
-    }
+    // S9 修复：userId 经 lanUserId 绑定 JWT（非 bootstrap 忽略 query，防看他人好友列表）
+    const userId = lanUserId(req, String(req.query.userId || '')) || '';
     res.json({ ok: true, friends: lanSocial.friends(userId) });
   });
 
