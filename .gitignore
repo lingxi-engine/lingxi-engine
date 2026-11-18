@@ -414,3 +414,6 @@ deploy/PASTE-HOTFIX-*.txt
 
 # stray curl cookie jar at repo root (debug artifact, never tracked)
 /600
+
+# v7.3: dev-machine runtime state (dream queue etc.) - never commit
+lingxi_engine/data/

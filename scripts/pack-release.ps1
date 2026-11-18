@@ -45,11 +45,26 @@ function Remove-JunkFiles($path) {
             Write-Host "  [EXCLUDE] dir -> $($_.FullName)" -ForegroundColor DarkGray
             Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
         }
+    # v7.3 (2026-11-18): secrets + runtime state must never ship in the public tarball.
+    # .dbkey = per-machine DB encryption key (auto-generated on first start, see field-crypto.ts).
+    # lingxi_engine/data/ = dev-machine runtime outputs (dream queue, parliament records...).
+    Get-ChildItem $path -Recurse -Force -File -Filter '.dbkey' -ErrorAction SilentlyContinue |
+        ForEach-Object {
+            Write-Host "  [EXCLUDE] secret -> $($_.FullName)" -ForegroundColor DarkGray
+            Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
+        }
+    Get-ChildItem $path -Recurse -Force -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.FullName -match 'lingxi_engine[\\/]data$' } |
+        ForEach-Object {
+            Write-Host "  [EXCLUDE] runtime-data -> $($_.FullName)" -ForegroundColor DarkGray
+            Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+        }
     Get-ChildItem $path -Recurse -Force -File -ErrorAction SilentlyContinue |
         Where-Object {
             $_.Name -match '\.(pyc|pyo|bak|orig|rej|log|tmp|pid)$' -or
             $_.Name -match '\.bak-' -or
             $_.Name -match '_result\.txt$' -or
+            $_.Name -in @('600', 'nohup.out', 'cookies.txt') -or
             ($_.FullName -match 'tests[\\/]data[\\/].+\.json$')
         } |
         ForEach-Object {
@@ -180,6 +195,15 @@ try {
         $junk | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
         throw "build junk must not be packaged"
     }
+
+    # v7.3: secrets / runtime-state leak gate
+    $secretLeak = $tarList | Where-Object { $_ -match '\.dbkey$|lingxi_engine/data/|(^|/)600$|nohup\.out$' }
+    if ($secretLeak) {
+        Write-Host "  [FAIL] secrets/runtime state leaked into package:" -ForegroundColor Red
+        $secretLeak | ForEach-Object { Write-Host "       $_" -ForegroundColor Red }
+        throw ".dbkey / lingxi_engine runtime data / cookie junk must not be packaged"
+    }
+    Write-Host "  [OK] no .dbkey / runtime-state / cookie-junk leak" -ForegroundColor Green
 
     # Verify .env is NOT present (templates allowed)
     Write-Host ""
