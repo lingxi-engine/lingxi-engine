@@ -2213,15 +2213,17 @@ async function sendRequest(to) {
   const uid = String(to);
   if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
   if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
+  // U1 修复：允许填写验证消息（可选），让对方知道你是谁、为何添加
+  const message = (prompt(t('friends.verifyMessagePrompt'), '') || '').trim().slice(0, 200);
   try {
     const fromUserId = lanMeId || clientId;
     // v2.0.11: 。authToken 时优先走 platformApi，失败回退本地 api
     let d;
     if (authToken) {
-      d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
-      if (!d || d.ok === false) { d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' }); }
+      d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message });
+      if (!d || d.ok === false) { d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message }); }
     } else {
-      d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message: '' });
+      d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message });
     }
     if (d.error) { toast(_errMsg(d, '发送失败')); return; }
     toast(t('friends.requestSent'));
@@ -2278,7 +2280,7 @@ async function openChatFriend(fid, fname) {
   const myNumericId = lanMeId || clientId;
   const chatId = 'chat-platform-' + [String(myNumericId), String(fid)].sort().join('-');
   try {
-    const d = await api('/api/chats'); const exists = (d.chats||[]).some(c=>c.id===chatId);
+    const d = await api('/api/chats?userId=' + encodeURIComponent(myNumericId)); const exists = (d.chats||[]).some(c=>c.id===chatId);
     if (!exists) {
       await api('/api/chats', 'POST', { id: chatId, type: 'private', name: fname });
       await api('/api/participants', 'POST', { id: 'p-'+chatId+'-1', chatId, userId: String(myNumericId) });
@@ -2441,10 +2443,15 @@ async function respondReq(rid, action) {
 async function withdrawRequest(rid) {
   if (!confirm(t('friends.confirmWithdraw'))) return;
   try {
+    // F2 修复：本地模式也真正调撤回 API；平台无此路由时回退本地 /api/friends/request/:id
+    let d;
     if (authToken) {
-      const d = await platformApi('/api/lan/friend-request/' + rid, 'DELETE');
-      if (d.error) { toast(d.error); return; }
+      d = await platformApi('/api/lan/friend-request/' + rid, 'DELETE');
+      if (!d || d.ok === false) { d = await api('/api/friends/request/' + rid, 'DELETE'); }
+    } else {
+      d = await api('/api/friends/request/' + rid, 'DELETE');
     }
+    if (d && d.error) { toast(d.error); return; }
     toast(t('friends.withdrawn')); loadRequests();
   } catch(e) { toast(t('err.operationFail')); }
 }
