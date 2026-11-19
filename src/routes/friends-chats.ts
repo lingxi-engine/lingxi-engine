@@ -15,6 +15,8 @@ import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, ma
 import { sendPeerMessage, getInstanceId } from '../core/instance-mesh.js';
 import { canUseAgent, grantDeniedMessage } from './agent-grants.js';
 import { friendRequestRateLimit } from '../core/mesh-security.js';
+import { parseXlanAlias, isXlanAlias, makeCrossEnginePrivateChatId } from '../net/lan-identity.js';
+import { getLanInstanceId } from '../net/lan-discovery.js';
 
 export interface FriendsChatsRouteDeps {
   db: DB;
@@ -347,11 +349,20 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
           if (ri && ri.user_id) resolvedFriendId = String(ri.user_id);
         } catch { /* 身份表不可用时保持占位符 */ }
       }
+      // S7: xlan 别名好友从身份表回填 numericId（供 Mesh 回退路由使用）
+      const xlanParsed = parseXlanAlias(resolvedFriendId);
+      if (xlanParsed) {
+        try {
+          const riX = getLanRemoteIdentity(resolvedFriendId) as any;
+          if (riX && Number.isFinite(Number(riX.numeric_id))) friendNumericId = Number(riX.numeric_id);
+        } catch { /* ignore */ }
+      }
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh
       // v2.0.37: 本地用户同样带 numeric_id，原先用「有没有数字 ID」判断会把本机好友
       // 误判成跨实例好友，未配置 Mesh 时直接 500「Mesh 未配置」。改为先查本地用户表。
-      const localFriend = db.listUsers().find((u: any) =>
+      // S7: xlan 别名必为远端用户——跳过本地匹配，防跨引擎同号误投本机
+      const localFriend = isXlanAlias(resolvedFriendId) ? undefined : db.listUsers().find((u: any) =>
         String(u.id) === friendUserId || String(u.id) === resolvedFriendId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
       if (localFriend) {
         // F6(内联同步)：删好友后不允许继续互发——非本地免登录模式下校验双方仍是好友
@@ -370,7 +381,10 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       // 仅当请求会话就是规范私聊 ID 时才尝试，避免消息落到与前端订阅不同的会话。
       const hub = deps.getLanSocial?.();
       if (hub && typeof hub.sendPrivateMessage === 'function') {
-        const canonicalChatId = makePrivateChatId(String(fromUserId), resolvedFriendId);
+        // S7: 跨引擎别名好友用四元组规范 ID（与 lan-social.ensurePrivateChat 一致）；本地/历史保持旧 ID
+        const canonicalChatId = xlanParsed
+          ? makeCrossEnginePrivateChatId(getLanInstanceId(), String(fromUserId), xlanParsed.instanceId, xlanParsed.rawUserId)
+          : makePrivateChatId(String(fromUserId), resolvedFriendId);
         if (canonicalChatId === chatId) {
           try {
             const lr = await hub.sendPrivateMessage(String(fromUserId), resolvedFriendId, content);

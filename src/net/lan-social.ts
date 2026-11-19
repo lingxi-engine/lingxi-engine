@@ -36,6 +36,7 @@ import {
   type LanPeer, type LanUser,
 } from './lan-discovery.js';
 import { sendToPeer } from './lan-transport.js';
+import { xlanAlias, parseXlanAlias, makeCrossEnginePrivateChatId } from './lan-identity.js';
 import { encryptForPeer, decryptFromPeer, getPeerPublicKey, setPeerPublicKey, getIdentityPublicKeyB64, isE2EE } from '../security/e2ee.js';
 
 /** 社交面板订阅的专用频道（WS chatId） */
@@ -188,8 +189,15 @@ export class LanSocialHub {
       instanceId: getLanInstanceId(),
     };
 
+    // S7: 占位行用目标真实别名 xlan:<instance>:<userId>，不再用 remote-{numericId}——
+    // 后者在不同引擎同号时互相碰撞，且接受回执无法精确定位；别名全局唯一。
+    const targetAlias = xlanAlias(found.peer.instanceId, found.user.id);
+    upsertLanRemoteIdentity({
+      userId: targetAlias, instanceId: found.peer.instanceId,
+      numericId: found.user.numericId, displayName: found.user.displayName, agentId: found.user.agentId,
+    });
     // 本地先记一条 pending（ outgoing ）；若已存在 pending/accepted 则短路，避免重复通知对方
-    const localPending = sendFriendRequest(fromUser.id, `remote-${toNumericId}`, message) as { id?: string; error?: string };
+    const localPending = sendFriendRequest(fromUser.id, targetAlias, message) as { id?: string; error?: string };
     if (localPending && localPending.error) {
       return { ok: false, error: localPending.error };
     }
@@ -205,7 +213,7 @@ export class LanSocialHub {
       });
       return { ok: true, ...resp };
     } catch (e) {
-      deleteFriendshipByPair(fromUser.id, `remote-${toNumericId}`);
+      deleteFriendshipByPair(fromUser.id, targetAlias);
       throw e;
     }
   }
@@ -213,23 +221,27 @@ export class LanSocialHub {
   /** 收到好友请求（对方引擎调用） */
   handleIncomingFriendRequest(body: any): any {
     const { from, toNumericId, message } = body || {};
-    if (!from || !from.userId) return { error: '缺少来源用户信息' };
-    // 记录远程身份
+    if (!from || !from.userId || !from.instanceId) return { error: '缺少来源用户信息' };
+    // S7: 同实例回环拒绝（防止经 LAN 中继添加自己）
+    if (from.instanceId === getLanInstanceId()) return { error: '不能添加自己为好友' };
+    // S7: 远端身份按实例命名空间落库，避免与本机同号用户撞主键/互相覆盖
+    // （各引擎 userId 独立分配，两台引擎的首个用户 ID 相同是常态）
+    const fromAlias = xlanAlias(from.instanceId, from.userId);
     upsertLanRemoteIdentity({
-      userId: from.userId, instanceId: from.instanceId,
+      userId: fromAlias, instanceId: from.instanceId,
       numericId: from.numericId, displayName: from.displayName, agentId: from.agentId,
     });
     // 找到本机目标用户
     const target = this.localUsers().find((u) => u.numericId === toNumericId) || this.primaryLocalUser();
     if (!target) return { error: '本机没有可接收好友请求的用户' };
-    const result = sendFriendRequest(from.userId, target.id, message || '');
+    const result = sendFriendRequest(fromAlias, target.id, message || '');
     // 修复：写入失败（重复申请/已是好友等）时必须如实返回错误，
     // 否则发送方看到"已发送"，但本机数据库根本没有记录，接收方永远查不到。
     if (result.error) return { error: result.error };
     // 通知本机社交面板
     this.broadcast({
       type: 'lan.friend.request', chatId: LAN_SOCIAL_CHANNEL,
-      from, toUserId: target.id, message: message || '', requestId: result.id,
+      from: { ...from, userId: fromAlias }, toUserId: target.id, message: message || '', requestId: result.id,
       timestamp: Date.now(),
     });
     return { ok: true, requestId: result.id };
@@ -257,11 +269,19 @@ export class LanSocialHub {
     }
 
     // 远程用户（LAN 邻居）
-    const remote = getLanRemoteIdentity(fromUserId);
+    // S7: getLanRemoteIdentity 返回 snake_case 数据库行，此前按 camelCase 访问
+    // （remote.instanceId / remote.agentId）恒为 undefined → 回执查不到 peer，从未发出。
+    const remote = getLanRemoteIdentity(fromUserId) as any;
     if (!remote) return { ok: true, status: 'accepted', note: '远程身份缺失，仅本地生效' };
+    const remoteInstanceId = String(remote.instance_id || '');
+    const remoteAgentId = remote.agent_id || undefined;
 
-    // 本机建私聊
-    const chatId = this.ensurePrivateChat(fromUserId, toUserId, remote.agentId);
+    // S7: 跨引擎私聊用四元组规范 ID（两侧必然一致）；历史 raw-ID 好友行保持旧 ID 向后兼容
+    const parsedFrom = parseXlanAlias(fromUserId);
+    const chatId = parsedFrom && remoteInstanceId
+      ? this.ensurePrivateChat(toUserId, fromUserId, remoteAgentId,
+          makeCrossEnginePrivateChatId(getLanInstanceId(), toUserId, remoteInstanceId, parsedFrom.rawUserId))
+      : this.ensurePrivateChat(fromUserId, toUserId, remoteAgentId);
 
     // 回调对方引擎，让对方也建关系 + 私聊
     const toUser = this.localUsers().find((u) => u.id === toUserId);
@@ -269,13 +289,23 @@ export class LanSocialHub {
       userId: toUserId, numericId: toUser?.numericId, displayName: toUser?.displayName || '用户',
       agentId: toUser?.agentId, instanceId: getLanInstanceId(),
     };
-    const peer = getLanPeer(remote.instanceId);
+    // S7: to 必须是 camelCase 信息对象（对端解构 to.userId）；
+    // 此前直接传 snake_case 数据库行 → 对端 to.userId 恒 undefined，回执处理必失败。
+    const toOriginal = parsedFrom
+      ? { userId: parsedFrom.rawUserId, instanceId: parsedFrom.instanceId, numericId: remote.numeric_id, displayName: remote.display_name }
+      : { userId: String(remote.user_id || fromUserId), instanceId: remoteInstanceId, numericId: remote.numeric_id, displayName: remote.display_name };
+    const acceptPayload = { from: toInfo, to: toOriginal, chatId };
+    const peer = getLanPeer(remoteInstanceId);
     if (peer) {
       try {
-        await sendToPeer(peer, '/api/lan/peer/friend-accept', { from: toInfo, to: remote, chatId });
+        await sendToPeer(peer, '/api/lan/peer/friend-accept', acceptPayload);
       } catch (e: any) {
         console.error('[LAN] 回调好友接受失败:', e.message);
+        this.enqueueForPeer(remoteInstanceId, '/api/lan/peer/friend-accept', acceptPayload);
       }
+    } else if (remoteInstanceId) {
+      // S7: 对方离线时入离线队列待补发，此前回执直接丢失
+      this.enqueueForPeer(remoteInstanceId, '/api/lan/peer/friend-accept', acceptPayload);
     }
     this.broadcast({ type: 'lan.friend.accepted', chatId: LAN_SOCIAL_CHANNEL, friendUserId: fromUserId, chatId2: chatId, timestamp: Date.now() });
     return { ok: true, status: 'accepted', chatId };
@@ -284,36 +314,56 @@ export class LanSocialHub {
   /** 对方接受后的回调（对方引擎调用）：本机补建关系 + 私聊 */
   handleFriendAccept(body: any): any {
     const { from, to, chatId } = body || {};
-    if (!from || !to) return { error: '缺少信息' };
+    if (!from || !from.userId || !to || !to.userId) return { error: '缺少信息' };
     // from = 对方（接受者），to = 本机发起者
-    upsertLanRemoteIdentity({
-      userId: from.userId, instanceId: from.instanceId,
-      numericId: from.numericId, displayName: from.displayName, agentId: from.agentId,
-    });
+    // S7: 接受者身份按实例命名空间落库，避免与本机同号用户碰撞；同实例回调保持 raw ID
+    const isRemoteAccept = !!from.instanceId && from.instanceId !== getLanInstanceId();
+    const fromAlias = isRemoteAccept ? xlanAlias(from.instanceId, String(from.userId)) : String(from.userId);
+    if (isRemoteAccept) {
+      upsertLanRemoteIdentity({
+        userId: fromAlias, instanceId: from.instanceId,
+        numericId: from.numericId, displayName: from.displayName, agentId: from.agentId,
+      });
+    }
+    // S7: to.userId 是本机发起者 raw ID；兼容别名形态（指向本实例时剥掉命名空间）
+    let localTo = String(to.userId);
+    const toParsed = parseXlanAlias(localTo);
+    if (toParsed && toParsed.instanceId === getLanInstanceId()) localTo = toParsed.rawUserId;
     // 把之前 pending 的申请置为 accepted
-    // 尝试三种方式找到 pending 的好友申请记录
-    let row = this.findFriendshipByPair(to.userId, from.userId);
-    if (!row) row = this.findFriendshipByPair(from.userId, to.userId);
+    // 尝试多种方式找到 pending 的好友申请记录（S7 别名行 / 历史 raw ID 行 / remote-% 占位行）
+    let row = this.findFriendshipByPair(localTo, fromAlias);
+    if (!row && fromAlias !== String(from.userId)) row = this.findFriendshipByPair(localTo, String(from.userId));
     if (!row) {
-      // B发请求时用了 remote-{numericId} 假ID，直接搜 from_user_id + to_user_id LIKE 'remote-%'
+      // 旧版发请求时用 remote-{numericId} 占位，直接搜 from_user_id + to_user_id LIKE 'remote-%'
       try {
         const raw = getDB();
         const stmt = raw.prepare("SELECT * FROM friendships WHERE from_user_id = ? AND to_user_id LIKE 'remote-%' AND status = 'pending' LIMIT 1");
-        stmt.bind([to.userId]);
+        stmt.bind([localTo]);
         if (stmt.step()) {
           row = stmt.getAsObject();
-          // 把 remote-{nid} 更新为真实 userId
-          raw.run("UPDATE friendships SET to_user_id = ? WHERE id = ?", [from.userId, row.id]);
         }
         stmt.free();
       } catch (_e) { /* 忽略查询错误 */ }
     }
-    if (row) respondFriendRequest(row.id, 'accept');
-    else sendFriendRequest(to.userId, from.userId, '');
-    // 建私聊（用对方给的 chatId 保证一致）
-    this.ensurePrivateChat(to.userId, from.userId, from.agentId, chatId);
-    this.broadcast({ type: 'lan.friend.accepted', chatId: LAN_SOCIAL_CHANNEL, friendUserId: from.userId, chatId2: chatId, timestamp: Date.now() });
-    return { ok: true };
+    if (row) {
+      // S7: 占位/历史行转正为命名空间别名，保证后续 friends()/私聊路由命中
+      if (row.to_user_id !== fromAlias && row.from_user_id === localTo) {
+        try { getDB().run('UPDATE friendships SET to_user_id = ? WHERE id = ?', [fromAlias, row.id]); } catch (_e) {}
+      }
+      respondFriendRequest(row.id, 'accept');
+    } else {
+      // S7: 无 pending 行时补建并立即接受（此前只建 pending 不接受，关系卡在半途）
+      const created = sendFriendRequest(localTo, fromAlias, '') as { id?: string; error?: string };
+      if (created && created.id) respondFriendRequest(created.id, 'accept');
+    }
+    // 建私聊：优先用回执携带的规范 ID（双方同一四元组计算）；缺失时本地计算；历史回执保持旧 chatId
+    const canonical = isRemoteAccept
+      ? makeCrossEnginePrivateChatId(getLanInstanceId(), localTo, from.instanceId, String(from.userId))
+      : undefined;
+    const finalChatId = chatId || canonical || makePrivateChatId(localTo, fromAlias);
+    this.ensurePrivateChat(localTo, fromAlias, from.agentId, finalChatId);
+    this.broadcast({ type: 'lan.friend.accepted', chatId: LAN_SOCIAL_CHANNEL, friendUserId: fromAlias, chatId2: finalChatId, timestamp: Date.now() });
+    return { ok: true, chatId: finalChatId };
   }
 
   /** 好友列表（合并本地 friendships 与远程身份解析） */
@@ -334,15 +384,21 @@ export class LanSocialHub {
           isLocal: true,
         };
       }
-      const remote = getLanRemoteIdentity(f.friendId);
+      // S7: snake_case 数据库行 + 跨引擎规范私聊 ID（双侧对称）
+      const remote = getLanRemoteIdentity(f.friendId) as any;
+      const parsed = parseXlanAlias(f.friendId);
+      const localSide = String(f.fromUserId) === String(f.friendId) ? String(f.toUserId) : String(f.fromUserId);
+      const chatId = parsed && remote?.instance_id
+        ? makeCrossEnginePrivateChatId(getLanInstanceId(), localSide, String(remote.instance_id), parsed.rawUserId)
+        : makePrivateChatId(f.fromUserId, f.toUserId);
       return {
         friendId: f.friendId,
-        displayName: remote?.displayName || f.friendName || f.friendId,
-        numericId: remote?.numericId,
-        agentId: remote?.agentId || f.friendAgentId,
-        instanceId: remote?.instanceId,
-        online: remote ? !!getLanPeer(remote.instanceId) : false,
-        chatId: makePrivateChatId(f.fromUserId, f.toUserId),
+        displayName: remote?.display_name || f.friendName || f.friendId,
+        numericId: remote?.numeric_id,
+        agentId: remote?.agent_id || f.friendAgentId,
+        instanceId: remote?.instance_id,
+        online: remote ? !!getLanPeer(String(remote.instance_id)) : false,
+        chatId,
         isLocal: false,
       };
     });
@@ -354,9 +410,9 @@ export class LanSocialHub {
     const resolve = (uid: string) => {
       const local = this.localUsers().find((u) => u.id === uid || String(u.numericId) === String(uid));
       if (local) return { displayName: local.displayName, numericId: local.numericId };
-      const r = getLanRemoteIdentity(uid)
-        || (uid.startsWith('remote-') ? getLanRemoteIdentityByNumericId(parseInt(uid.slice(7), 10)) : undefined);
-      if (r) return { displayName: r.displayName, numericId: r.numericId };
+      const r = (getLanRemoteIdentity(uid)
+        || (uid.startsWith('remote-') ? getLanRemoteIdentityByNumericId(parseInt(uid.slice(7), 10)) : undefined)) as any;
+      if (r) return { displayName: r.display_name, numericId: r.numeric_id };
       const n = parseInt(String(uid), 10);
       if (!isNaN(n)) {
         const byNid = getUserByNumericId(n);
@@ -793,18 +849,24 @@ export class LanSocialHub {
   // 好友/群组管理（删除/退出）
   // ════════════════════════════════════════════
 
-  /** 删除好友 */
-  async removeFriend(userId: string, friendId: string): Promise<any> {
+  /** 删除好友。notifyPeer=false 供 peer 回调入口使用——切断 A→B→A 无限乒乓通知（S7） */
+  async removeFriend(userId: string, friendId: string, notifyPeer = true): Promise<any> {
     try {
       // 如果对方是远程用户，通知对方引擎删除好友关系
-      const remote = getLanRemoteIdentity(friendId);
-      if (remote && remote.instanceId !== getLanInstanceId()) {
-        const peer = getLanPeer(remote.instanceId);
+      // S7: snake_case 数据库行；此前 remote.instanceId 恒 undefined → 通知从未发出
+      const remote = getLanRemoteIdentity(friendId) as any;
+      const remoteInstanceId = remote ? String(remote.instance_id || '') : '';
+      if (notifyPeer && remote && remoteInstanceId && remoteInstanceId !== getLanInstanceId()) {
+        const peer = getLanPeer(remoteInstanceId);
         if (peer) {
+          // S7: wire 传 raw ID + fromInstance，由接收方自行命名空间化。
+          // userId = 对方本机 raw ID（从别名解析），friendId = 我的 raw ID
+          const parsed = parseXlanAlias(friendId);
           try {
             await sendToPeer(peer, '/api/lan/peer/friend-remove', {
-              userId: friendId,
+              userId: parsed ? parsed.rawUserId : friendId,
               friendId: userId,
+              fromInstance: getLanInstanceId(),
             });
           } catch (e: any) {
             console.error('[LAN] 通知对方删除好友失败:', e.message);
@@ -821,7 +883,7 @@ export class LanSocialHub {
   }
 
   /** 删除群组 */
-  async deleteGroup(userId: string, groupId: string): Promise<any> {
+  async deleteGroup(userId: string, groupId: string, notifyPeer = true): Promise<any> {
     try {
       const group = getLanGroup(groupId);
       if (!group) return { error: '群组不存在' };
@@ -830,10 +892,11 @@ export class LanSocialHub {
       const members = getLanGroupMembers(groupId);
       const notified = new Set<string>();
       for (const m of members) {
-        const remote = getLanRemoteIdentity(m.user_id);
-        if (remote && remote.instanceId !== getLanInstanceId() && !notified.has(remote.instanceId)) {
-          notified.add(remote.instanceId);
-          const peer = getLanPeer(remote.instanceId);
+        const remote = getLanRemoteIdentity(m.user_id) as any;
+        const rInst = remote ? String(remote.instance_id || '') : '';
+        if (notifyPeer && remote && rInst && rInst !== getLanInstanceId() && !notified.has(rInst)) {
+          notified.add(rInst);
+          const peer = getLanPeer(rInst);
           if (peer) {
             try {
               await sendToPeer(peer, '/api/lan/peer/group-deleted', { groupId, name: group.name });
@@ -853,7 +916,7 @@ export class LanSocialHub {
   }
 
   /** 退出群组 */
-  async leaveGroup(userId: string, groupId: string): Promise<any> {
+  async leaveGroup(userId: string, groupId: string, notifyPeer = true): Promise<any> {
     try {
       const group = getLanGroup(groupId);
       if (!group) return { error: '群组不存在' };
@@ -863,9 +926,10 @@ export class LanSocialHub {
       const localUser = this.localUsers().find(u => u.id === userId);
       for (const m of members) {
         if (m.user_id === userId) continue;
-        const remote = getLanRemoteIdentity(m.user_id);
-        if (remote && remote.instanceId !== getLanInstanceId()) {
-          const peer = getLanPeer(remote.instanceId);
+        const remote = getLanRemoteIdentity(m.user_id) as any;
+        const rInst = remote ? String(remote.instance_id || '') : '';
+        if (notifyPeer && remote && rInst && rInst !== getLanInstanceId()) {
+          const peer = getLanPeer(rInst);
           if (peer) {
             try {
               await sendToPeer(peer, '/api/lan/peer/group-member-left', {
@@ -1280,9 +1344,16 @@ export class LanSocialHub {
 
   /** 本机用户给远程好友发私聊：落库 + 广播 + E2EE 加密后发给对方引擎 */
   async sendPrivateMessage(senderUserId: string, friendUserId: string, content: string): Promise<any> {
-    const remote = getLanRemoteIdentity(friendUserId);
+    // S7: snake_case 身份行 + 实例命名空间；四元组规范私聊 ID（双侧对称）
+    const remote = getLanRemoteIdentity(friendUserId) as any;
     if (!remote) throw new Error('对方不是远程好友');
-    const chatId = this.ensurePrivateChat(senderUserId, friendUserId, remote.agentId);
+    const remoteInstanceId = String(remote.instance_id || '');
+    const parsed = parseXlanAlias(friendUserId);
+    const remoteRawId = parsed ? parsed.rawUserId : friendUserId;
+    const chatId = parsed && remoteInstanceId
+      ? this.ensurePrivateChat(senderUserId, friendUserId, remote.agent_id || undefined,
+          makeCrossEnginePrivateChatId(getLanInstanceId(), senderUserId, remoteInstanceId, remoteRawId))
+      : this.ensurePrivateChat(senderUserId, friendUserId, remote.agent_id || undefined);
     const sender = this.localUsers().find((u) => u.id === senderUserId);
     const msgId = 'lmsg-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const ts = Date.now();
@@ -1290,23 +1361,25 @@ export class LanSocialHub {
     addMessage({ id: msgId, chatId, senderType: 'user', senderId: senderUserId, content, type: 'text', timestamp: ts });
     this.broadcast({ type: 'message.new', chatId, from: senderUserId, senderId: senderUserId, senderType: 'user', senderName: sender?.displayName, content, msgId, timestamp: ts });
 
-    const peer = getLanPeer(remote.instanceId);
+    // S7: wire 的 toUserId 传对方本机 raw ID（而非本机给对方的别名），附 toInstance 供接收方归一
+    const wireBase = { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: remoteRawId, toInstance: remoteInstanceId };
+    const peer = getLanPeer(remoteInstanceId);
     if (!peer) {
-      this.enqueueForPeer(remote.instanceId, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content, ts } });
+      this.enqueueForPeer(remoteInstanceId, '/api/lan/peer/private-message', { ...wireBase, msg: { id: msgId, content, ts } });
       return { ok: true, msgId, queued: true };
     }
     const db = getDB();
     let wireContent = content;
     try {
-      if (db && getPeerPublicKey(db, remote.instanceId)) {
-        const enc = encryptForPeer(db, remote.instanceId, content);
+      if (db && getPeerPublicKey(db, remoteInstanceId)) {
+        const enc = encryptForPeer(db, remoteInstanceId, content);
         if (enc) wireContent = enc;
       }
     } catch (_e) {}
     try {
-      await sendToPeer(peer, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content: wireContent, ts } });
+      await sendToPeer(peer, '/api/lan/peer/private-message', { ...wireBase, msg: { id: msgId, content: wireContent, ts } });
     } catch (e: any) {
-      this.enqueueForPeer(remote.instanceId, '/api/lan/peer/private-message', { chatId, fromInstance: getLanInstanceId(), fromUserId: senderUserId, toUserId: friendUserId, msg: { id: msgId, content: wireContent, ts } });
+      this.enqueueForPeer(remoteInstanceId, '/api/lan/peer/private-message', { ...wireBase, msg: { id: msgId, content: wireContent, ts } });
       return { ok: true, msgId, queued: true };
     }
     return { ok: true, msgId };
@@ -1315,7 +1388,14 @@ export class LanSocialHub {
   /** 收到对方引擎的私聊消息：E2EE 解密 + 落库 + 广播 */
   handlePrivateMessage(body: any): any {
     const { chatId, fromInstance, fromUserId, toUserId, msg } = body || {};
-    if (!chatId || !msg || !fromInstance) return { error: '缺少私聊消息字段' };
+    if (!msg || !fromInstance || !fromUserId) return { error: '缺少私聊消息字段' };
+    // S7: 发送方按来源实例命名空间化（与本机好友列表的 friendId 别名一致）；
+    // 接收方归一：指向本实例的别名剥回 raw 本地 ID。
+    const senderAlias = fromInstance !== getLanInstanceId()
+      ? xlanAlias(String(fromInstance), String(fromUserId)) : String(fromUserId);
+    let localTo = String(toUserId || '');
+    const toParsed = parseXlanAlias(localTo);
+    if (toParsed && toParsed.instanceId === getLanInstanceId()) localTo = toParsed.rawUserId;
     try {
       if (msg.content && isE2EE(msg.content)) {
         const db = getDB();
@@ -1323,14 +1403,17 @@ export class LanSocialHub {
       }
     } catch (_e) {}
     if (msg.id && messageExists(msg.id)) return { ok: true, dedup: true };
-    const localChatId = chatId || makePrivateChatId(String(fromUserId), String(toUserId));
+    // S7: 优先用 wire 携带的规范 ID（双方同一四元组计算）；缺失时本地计算
+    const localChatId = chatId || makeCrossEnginePrivateChatId(
+      getLanInstanceId(), localTo, String(fromInstance), String(fromUserId));
     if (!getChatById(localChatId)) {
       createChat(localChatId, 'private');
-      this.safeAddParticipant(`p-${localChatId}-1`, localChatId, String(toUserId), undefined, 'member');
-      this.safeAddParticipant(`p-${localChatId}-2`, localChatId, String(fromUserId), undefined, 'member');
+      if (localTo) this.safeAddParticipant(`p-${localChatId}-1`, localChatId, localTo, undefined, 'member');
+      this.safeAddParticipant(`p-${localChatId}-2`, localChatId, senderAlias, undefined, 'member');
     }
-    addMessage({ id: String(msg.id || ('rmt-' + Date.now().toString(36))), chatId: localChatId, senderType: 'user', senderId: String(fromUserId), content: String(msg.content || ''), type: 'text', timestamp: Number(msg.ts) || Date.now() });
-    this.broadcast({ type: 'message.new', chatId: localChatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content: String(msg.content || ''), msgId: String(msg.id), timestamp: Number(msg.ts) || Date.now() });
+    const senderIdentity = getLanRemoteIdentity(senderAlias) as any;
+    addMessage({ id: String(msg.id || ('rmt-' + Date.now().toString(36))), chatId: localChatId, senderType: 'user', senderId: senderAlias, content: String(msg.content || ''), type: 'text', timestamp: Number(msg.ts) || Date.now() });
+    this.broadcast({ type: 'message.new', chatId: localChatId, from: senderAlias, senderId: senderAlias, senderType: 'user', senderName: senderIdentity?.display_name || undefined, content: String(msg.content || ''), msgId: String(msg.id), timestamp: Number(msg.ts) || Date.now() });
     return { ok: true };
   }
 

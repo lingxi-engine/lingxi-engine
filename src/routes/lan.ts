@@ -20,6 +20,7 @@ import { getDB, getFriendshipById } from '../storage/db.js';
 import { startLanDiscovery, getLanPeers, getLanSelfInfo, getLanIps, directedBroadcastAddrs, type LanUser } from '../net/lan-discovery.js';
 import { verifyLanRequest } from '../net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from '../net/lan-social.js';
+import { xlanAlias } from '../net/lan-identity.js';
 import { ensureIdentityKey } from '../security/e2ee.js';
 
 export function registerLanRoutes(app: Express, deps: {
@@ -357,10 +358,12 @@ export function registerLanRoutes(app: Express, deps: {
   // ── 新增 peer 路由：跨实例通知 ──
   app.post('/api/lan/peer/friend-remove', async (req, res) => {
     if (verifyLanRequest(req, res) === null) return;
-    const { userId, friendId } = req.body || {};
+    const { userId, friendId, fromInstance } = req.body || {};
     if (!userId || !friendId) return res.status(400).json({ error: 'userId/friendId 必填' });
     try {
-      const r = await lanSocial.removeFriend!(userId, friendId);
+      // S7: 发起方按来源实例命名空间化；notifyPeer=false 切断 A→B→A 乒乓循环
+      const localFriendId = fromInstance ? xlanAlias(String(fromInstance), String(friendId)) : String(friendId);
+      const r = await lanSocial.removeFriend!(String(userId), localFriendId, false);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -370,7 +373,7 @@ export function registerLanRoutes(app: Express, deps: {
     const { groupId } = req.body || {};
     if (!groupId) return res.status(400).json({ error: 'groupId 必填' });
     try {
-      const r = await lanSocial.deleteGroup!('', groupId);
+      const r = await lanSocial.deleteGroup!('', groupId, false); // S7: peer 回调不再回声通知
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -380,7 +383,7 @@ export function registerLanRoutes(app: Express, deps: {
     const { groupId, userId } = req.body || {};
     if (!groupId || !userId) return res.status(400).json({ error: 'groupId/userId 必填' });
     try {
-      const r = await lanSocial.leaveGroup!(userId, groupId);
+      const r = await lanSocial.leaveGroup!(userId, groupId, false); // S7: peer 回调不再回声通知
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });

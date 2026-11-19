@@ -95,6 +95,7 @@ import { startInstanceMesh, setPeerMessageHandler, setPeerTaskHandler, sendPeerM
 import { startLanDiscovery, stopLanDiscovery, getLanPeers, getLanSelfInfo, getLanInstanceId, getLanIp, type LanUser } from './src/net/lan-discovery.js';
 import { verifyLanRequest, neutralizeAutoLanSecret } from './src/net/lan-transport.js';
 import { LanSocialHub, LAN_SOCIAL_CHANNEL } from './src/net/lan-social.js';
+import { xlanAlias } from './src/net/lan-identity.js';
 import { ToolRegistry } from './src/tools/registry.js';
 import { ExecutorTool } from './src/tools/executor-tool.js';
 import { BUILTIN_TOOLS, BUILTIN_SKILLS, setSearchManager, setSubAgentManager } from './src/tools/builtin.js';
@@ -127,7 +128,7 @@ import { getAllTemplates, getTemplate, setTemplate, deleteTemplate, isValidTempl
 import { ChannelManager } from './src/channels/manager.js';
 import { SkillManager } from './src/skills/skill-manager.js';
 import { SecureSkillMarket } from './src/skills/skill-market-secure.js';
-import { getIdentityPublicKeyB64 } from './src/security/e2ee.js';
+import { getIdentityPublicKeyB64, ensureIdentityKey } from './src/security/e2ee.js';
 import { TTSManager } from './src/voice/tts.js';
 import { STTManager } from './src/voice/stt.js';
 import { CustomProviderManager, INFERENCE_BACKENDS } from './src/ai/custom-providers.js';
@@ -3620,6 +3621,14 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       dataDir,
       getUsers: getLocalLanUsers,
       discoveryPort: process.env.LAN_DISCOVERY_PORT ? Number(process.env.LAN_DISCOVERY_PORT) : undefined,
+      // S7(活路由同步): 发现新邻居时自动交换公钥（内联段此前缺失 → E2EE 从未建立）
+      onPeerSeen: (peer) => {
+        try {
+          const _db = getDB();
+          if (_db) ensureIdentityKey(_db);
+        } catch (_e) {}
+        lanSocial.exchangeKeyWithPeer(peer).catch(() => {});
+      },
     });
   }
 
@@ -3731,7 +3740,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       // v2.0.11: 优先使用 body 中的 fromUserId（前端传的是本地用户ID），
       // 仅在 body 没有时才从 JWT 中取。之前优先取 JWT sub 导致 auto-admin
       // 模式下 fromUserId 恒为 'admin'，好友申请记错发送者，接收方看不到申请。
-      const { fromUserId: bodyFromUserId, toNumericId, message } = req.body || {};
+      const { fromUserId: bodyFromUserId, toNumericId, message, instanceId } = req.body || {};
       const jwtSub = (req as any).user?.sub;
       // 如果 JWT 是 auto-admin 回退模式（sid=admin-auto/admin-token），不用 admin 作为 fromUserId
       const isAutoAdmin = (req as any).user?.sid === 'admin-auto' || (req as any).user?.sid === 'admin-token' || jwtSub === 'admin';
@@ -3742,7 +3751,8 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
       }
       const fromUserId = selfId;
       if (!fromUserId || !toNumericId) return res.status(400).json({ error: 'fromUserId 和 toNumericId 必填' });
-      const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '');
+      // S7(活路由同步): 透传 instanceId 定向，否则跨引擎同号申请被本机捷径吞掉（S6 修复此前只在死代码 lan.ts 里）
+      const r = await lanSocial.sendFriendRequest(fromUserId, Number(toNumericId), message || '', instanceId ? String(instanceId) : undefined);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -3843,6 +3853,15 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     if (verifyLanRequest(req, res) === null) return;
     sendPeerResult(res, lanSocial.handleFriendAccept(req.body));
   });
+  // S7(活路由同步): 内联段此前缺这两条 peer 路由 → 跨引擎私聊/E2EE 密钥交换恒 404
+  app.post('/api/lan/peer/key-exchange', (req, res) => {
+    if (verifyLanRequest(req, res) === null) return;
+    sendPeerResult(res, lanSocial.handleKeyExchange(req.body));
+  });
+  app.post('/api/lan/peer/private-message', (req, res) => {
+    if (verifyLanRequest(req, res) === null) return;
+    sendPeerResult(res, lanSocial.handlePrivateMessage(req.body));
+  });
   app.post('/api/lan/peer/group-invite', (req, res) => {
     if (verifyLanRequest(req, res) === null) return;
     sendPeerResult(res, lanSocial.handleGroupInvite(req.body));
@@ -3908,10 +3927,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ── 新增 peer 路由：跨实例通知 ──
   app.post('/api/lan/peer/friend-remove', async (req, res) => {
     if (verifyLanRequest(req, res) === null) return;
-    const { userId, friendId } = req.body || {};
+    const { userId, friendId, fromInstance } = req.body || {};
     if (!userId || !friendId) return res.status(400).json({ error: 'userId/friendId 必填' });
     try {
-      const r = await lanSocial.removeFriend!(userId, friendId);
+      // S7: 发起方按来源实例命名空间化；notifyPeer=false 切断 A→B→A 乒乓循环
+      const localFriendId = fromInstance ? xlanAlias(String(fromInstance), String(friendId)) : String(friendId);
+      const r = await lanSocial.removeFriend!(String(userId), localFriendId, false);
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -3921,7 +3942,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     const { groupId } = req.body || {};
     if (!groupId) return res.status(400).json({ error: 'groupId 必填' });
     try {
-      const r = await lanSocial.deleteGroup!('', groupId);
+      const r = await lanSocial.deleteGroup!('', groupId, false); // S7: peer 回调不再回声通知
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
@@ -3931,7 +3952,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     const { groupId, userId } = req.body || {};
     if (!groupId || !userId) return res.status(400).json({ error: 'groupId/userId 必填' });
     try {
-      const r = await lanSocial.leaveGroup!(userId, groupId);
+      const r = await lanSocial.leaveGroup!(userId, groupId, false); // S7: peer 回调不再回声通知
       res.json(r);
     } catch (err: any) { res.status(400).json({ error: err.message }); }
   });
