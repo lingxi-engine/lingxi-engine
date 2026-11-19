@@ -30,6 +30,16 @@
     try { console.error('[Unhandled]', e && e.reason); } catch (err) {}
   });
 })();
+// ── 401 自动续期拦截器（web/js/auth-refresh.js 提供，2026-11-19）──
+// access token 7 天过期后由 fetch 层单飞续期并重放原请求；续期失败清 token 弹登录框。
+if (window.LxAuthRefresh) { try { window.LxAuthRefresh.install(); } catch (e) {} }
+window.addEventListener('lx-auth-refreshed', function (e) {
+  try { authToken = (e && e.detail && e.detail.accessToken) || localStorage.getItem('authToken') || null; } catch (err) {}
+});
+window.addEventListener('lx-auth-expired', function () {
+  try { authToken = null; } catch (err) {}
+  try { showLoginModal(); } catch (err) {}
+});
 
 
 // ── Hardened uncaught-error capture (2026-11-06): surface real JS errors in App WebView ──
@@ -3754,6 +3764,9 @@ async function submitAuth() {
     if (tk) {
       authToken = tk;
       localStorage.setItem('authToken', authToken);
+      // 401 自动续期：保存滚动 refresh token（后端 30 天会话，access 7 天）
+      var _rt = r.refreshToken || r.refresh_token || '';
+      if (_rt) localStorage.setItem('authRefreshToken', _rt); else localStorage.removeItem('authRefreshToken');
       const user = r.user || {};
       // v2.3.1: 保存用户ID/昵称，供市场发布/我的发布/独立市场页使用
       const _uid = String(user.id || user.sub || user.userId || '');
@@ -3782,6 +3795,7 @@ async function logout() {
   try { await platformApi('/api/auth/logout', 'POST'); } catch {}
   authToken = null;
   localStorage.removeItem('authToken');
+  localStorage.removeItem('authRefreshToken');
   localStorage.removeItem('userId');
   localStorage.removeItem('displayName');
   document.getElementById('loginArea').style.display = 'none';
@@ -3818,7 +3832,7 @@ function checkAuthStatus() {
             .then(r2 => r2.json())
             .then(d2 => {
               if (d2.ok && d2.user) _applyAuthedUser(d2.user);
-              else { authToken = null; localStorage.removeItem('authToken'); connect(); }
+              else { authToken = null; localStorage.removeItem('authToken'); localStorage.removeItem('authRefreshToken'); connect(); }
             })
             .catch(() => connect());
         }
@@ -3826,7 +3840,7 @@ function checkAuthStatus() {
       .catch(() => {
         fetch('/api/auth/me', { headers: { 'Authorization': 'Bearer ' + saved } })
           .then(r2 => r2.json())
-          .then(d2 => { if (d2.ok && d2.user) _applyAuthedUser(d2.user); else connect(); })
+          .then(d2 => { if (d2.ok && d2.user) _applyAuthedUser(d2.user); else { authToken = null; localStorage.removeItem('authToken'); localStorage.removeItem('authRefreshToken'); connect(); } })
           .catch(() => connect());
       });
   } else {
