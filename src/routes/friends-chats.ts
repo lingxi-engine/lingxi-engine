@@ -11,7 +11,7 @@
  * 安全网: tests/baseline/routes-baseline.json 路由快照 + tsc 全量类型检查
  */
 import type { Express, RequestHandler } from 'express';
-import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, type DB } from '../storage/db.js';
+import { getDB, deleteFriendshipByPair, getChatMode, setChatMode, CHAT_MODES, makePrivateChatId, getLanRemoteIdentity, getLanRemoteIdentityByNumericId, type DB } from '../storage/db.js';
 import { sendPeerMessage, getInstanceId } from '../core/instance-mesh.js';
 import { canUseAgent, grantDeniedMessage } from './agent-grants.js';
 import { friendRequestRateLimit } from '../core/mesh-security.js';
@@ -20,10 +20,29 @@ export interface FriendsChatsRouteDeps {
   db: DB;
   requireAuth: RequestHandler;
   broadcast: (event: any) => void;
+  // S5：可选注入 LAN 社交枢纽（延迟求值，宿主在路由注册后才实例化），用于跨实例私聊直发
+  getLanSocial?: () => any;
 }
 
 export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRouteDeps): void {
   const { db, requireAuth, broadcast } = deps;
+
+  // ── S5 修复(2026-11-18)：会话成员校验统一口径（对齐 mode/name 路由的 S4 模式）──
+  // 背景：DELETE /api/chats/:id、DELETE /api/participants、GET participants 此前仅 requireAuth，
+  // 任意登录用户可删他人会话（连带消息/记忆/实体）、踢任意群成员、窥探任意群成员列表。
+  function chatAccess(req: any, chatId: string): { uid: string; exempt: boolean; isMember: boolean } {
+    const u = req.user || {};
+    const uid = String(u.sub || u.id || '');
+    const nid = String(u.numeric_id || '');
+    const sid = String(u.sid || '');
+    const exempt = sid === 'admin-auto' || sid === 'admin-token' || sid === 'platform-admin' || uid === 'admin' || (u.roles || []).includes('admin');
+    let isMember = false;
+    try {
+      const parts = db.getChatParticipants(chatId) || [];
+      isMember = parts.some((p: any) => String(p.user_id) === uid || String(p.user_id) === nid || String(p.agent_id) === uid);
+    } catch { isMember = false; }
+    return { uid, exempt, isMember };
+  }
 
   // ── 好友系统 ──
   app.get('/api/users', requireAuth, (req, res) => {
@@ -52,7 +71,8 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       if (s.step()) { user = s.getAsObject(); }
       s.free();
       if (!user) return res.status(404).json({ error: '用户不存在' });
-      res.json({ ok: true, user: { id: user.id, numericId: user.numeric_id, displayName: user.display_name, email: user.email, status: user.status } });
+      // S6(=内联S7)：不再向任意登录用户返回 email/status（防邮箱枚举）
+      res.json({ ok: true, user: { id: user.id, numericId: user.numeric_id, displayName: user.display_name } });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -180,7 +200,10 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
     try {
       const { id, type, name } = req.body;
       if (!id) return res.status(400).json({ error: 'id 必填' });
-      const chat = db.createChat(id, type || 'private', undefined, name);
+      // S5：记录创建者为 owner（此前 owner_id 恒为 null，会话归属不可考）
+      const jwtUserC = (req as any).user;
+      const ownerIdC = String(jwtUserC?.sub || jwtUserC?.id || '') || undefined;
+      const chat = db.createChat(id, type || 'private', undefined, name, ownerIdC);
       res.json({ ok: true, chat });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) return res.json({ ok: true, exists: true });
@@ -204,6 +227,19 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       if (userId && !isLocalAuto) {
         const reqUid = String(userId);
         const isSelf = !jwtSub || reqUid === jwtSub || reqUid === jwtNumericId;
+        // S5 修复：堵「自助加入任意会话」越权入口 —— 此前 isSelf 分支无任何会话校验，
+        // 任意登录用户可把自己加进任意 chatId（甚至自封 owner），随后绕过所有「仅参与者」校验。
+        // 规则：会话必须存在，且仅限首次建聊（尚无任何成员）或请求者已在会话中。
+        if (isSelf) {
+          const chatG = db.getChatById(String(chatId));
+          if (!chatG) return res.status(404).json({ error: '会话不存在' });
+          const partsG = (db as any).getChatParticipants(String(chatId)) || [];
+          const meIdsG = [jwtSub, jwtNumericId].filter(Boolean).map(String);
+          const alreadyIn = partsG.some((p: any) => meIdsG.includes(String(p.user_id)));
+          if (partsG.length > 0 && !alreadyIn) {
+            return res.status(403).json({ error: '无权加入此会话' });
+          }
+        }
         if (!isSelf) {
           // v2.0.37: 好友私聊建聊需要「我把好友拉进同一聊天」。之前一律 403，
           // 导致登录态下点好友💬时第二步加人必失败，私聊根本建不起来。
@@ -223,7 +259,18 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       }
       // 角色白名单: 只允许 member/owner
       const allowedRoles = ['member', 'owner'];
-      const finalRole = allowedRoles.includes(role) ? role : 'member';
+      let finalRole = allowedRoles.includes(role) ? role : 'member';
+      // S6 收紧：拉他人入会一律 member；空会话自助封 owner 仅限建聊者（owner_id 匹配，历史无主会话放行首个加入者）
+      if (finalRole === 'owner' && !isLocalAuto) {
+        const jwtSubR = String(jwtUser?.sub || '');
+        const jwtNidR = String(jwtUser?.numeric_id || '');
+        const isSelfR = !userId || String(userId) === jwtSubR || String(userId) === jwtNidR;
+        const chatR = db.getChatById(String(chatId)) as any;
+        const partsR = (db as any).getChatParticipants(String(chatId)) || [];
+        if (!isSelfR || partsR.length > 0 || (!!chatR?.owner_id && String(chatR.owner_id) !== jwtSubR && String(chatR.owner_id) !== jwtNidR)) {
+          finalRole = 'member';
+        }
+      }
       // AI usage grant check (friend != permission to use their AI; default deny)
       if (agentId) {
         const actorId = String(userId || jwtUser?.sub || jwtUser?.id || jwtUser?.numeric_id || '');
@@ -265,33 +312,78 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       // Fix 3: 去掉 chat-platform- 前缀限制，支持所有好友私聊
       if (!content) return res.status(400).json({ error: 'content 必填' });
 
-      // P1-3: verify current user is chat participant
+      // P1-3 + F8(内联同步)：fail-closed —— 空成员会话也拒绝；本地免登录/管理员豁免
       const jwtUser4 = (req as any).user;
       const jwtUserId4 = String(jwtUser4?.sub || jwtUser4?.id || '');
       const jwtNumericId4 = String(jwtUser4?.numeric_id || '');
       const parts = db.getChatParticipants(chatId);
-      if (jwtUserId4 && parts.length > 0) {
+      const sidSf = String(jwtUser4?.sid || '');
+      const isLocalAutoSf = sidSf === 'admin-auto' || sidSf === 'admin-token' || sidSf === 'platform-admin' || jwtUserId4 === 'admin';
+      if (jwtUserId4 && !isLocalAutoSf) {
         const isMember = parts.some((p: any) => String(p.user_id) === jwtUserId4 || String(p.user_id) === jwtNumericId4);
         if (!isMember) {
           return res.status(403).json({ error: '无权向此聊天发送消息' });
         }
       }
-      const friendParticipant = parts.find((p: any) => String((p as any).userId ?? (p as any).user_id) !== String(fromUserId));
+      // F5(内联同步)：只在真实用户参与者里找好友，排除 agent 行与自己，避免选中 agent 或自身
+      const fromIdsSf = [String(fromUserId), jwtNumericId4, jwtUserId4].filter(Boolean);
+      const friendParticipant = parts.find((p: any) => {
+        const pid = String((p as any).userId ?? (p as any).user_id ?? '');
+        return pid && pid !== 'null' && pid !== 'undefined' && !fromIdsSf.includes(pid) && !(p as any).agent_id;
+      });
       if (!friendParticipant) return res.status(400).json({ error: '无法确定好友' });
 
       const friendUserId = String((friendParticipant as any).userId ?? (friendParticipant as any).user_id);
-      const friendNumericId = Number(friendUserId);
+      // S5 修复：LAN 加好友先写 remote-{numericId} 占位行（lan-social.sendFriendRequest），
+      // 此前 Number('remote-10000')=NaN → 本地匹配恒假 → 拿 numericId=NaN 查 Mesh 恒 404。
+      // 现在解析占位符得到真实 numericId，并尽量解析出远端真实 userId。
+      const remoteNidMatch = /^remote-(\d+)$/.exec(friendUserId);
+      let friendNumericId = Number(friendUserId);
+      let resolvedFriendId = friendUserId;
+      if (remoteNidMatch) {
+        friendNumericId = parseInt(remoteNidMatch[1], 10);
+        try {
+          const ri = getLanRemoteIdentityByNumericId(friendNumericId) as any;
+          if (ri && ri.user_id) resolvedFriendId = String(ri.user_id);
+        } catch { /* 身份表不可用时保持占位符 */ }
+      }
 
       // 本地用户（同一实例内好友）：直接落库 + 广播，无需走 Mesh
       // v2.0.37: 本地用户同样带 numeric_id，原先用「有没有数字 ID」判断会把本机好友
       // 误判成跨实例好友，未配置 Mesh 时直接 500「Mesh 未配置」。改为先查本地用户表。
       const localFriend = db.listUsers().find((u: any) =>
-        String(u.id) === friendUserId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
+        String(u.id) === friendUserId || String(u.id) === resolvedFriendId || String(u.numeric_id) === friendUserId || String(u.numeric_id) === String(friendNumericId));
       if (localFriend) {
+        // F6(内联同步)：删好友后不允许继续互发——非本地免登录模式下校验双方仍是好友
+        if (!isLocalAutoSf) {
+          const myKeySf = String(jwtNumericId4 || jwtUserId4 || fromUserId);
+          const stillFriends = (db.listFriends(myKeySf) as any[]).some((f: any) => String(f.friendId) === String(localFriend.id) || String(f.friendId) === String(localFriend.numeric_id));
+          if (!stillFriends) return res.status(403).json({ error: '你们已不是好友，无法发送消息' });
+        }
         const msgId = 'msg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         db.addMessage({ id: msgId, chatId, senderType: 'user', senderId: String(fromUserId), content, type: 'text', timestamp: Date.now() });
         broadcast({ type: 'message.new', chatId, from: String(fromUserId), senderId: String(fromUserId), senderType: 'user', content, timestamp: Date.now() });
         return res.json({ ok: true, local: true });
+      }
+
+      // S5：跨实例好友优先走 LAN 私聊通道（E2EE + 离线补发 + 规范会话 ID），失败再回退 Mesh。
+      // 仅当请求会话就是规范私聊 ID 时才尝试，避免消息落到与前端订阅不同的会话。
+      const hub = deps.getLanSocial?.();
+      if (hub && typeof hub.sendPrivateMessage === 'function') {
+        const canonicalChatId = makePrivateChatId(String(fromUserId), resolvedFriendId);
+        if (canonicalChatId === chatId) {
+          try {
+            const lr = await hub.sendPrivateMessage(String(fromUserId), resolvedFriendId, content);
+            if (lr && lr.ok) return res.json({ ok: true, lan: true, queued: !!lr.queued });
+          } catch (_e) { /* 非 LAN 远程好友或发送失败，回退 Mesh */ }
+        }
+      }
+      // S5：UUID 好友无数字 ID 时尝试从 LAN 身份表回填，避免拿 NaN 查 Mesh
+      if (!Number.isFinite(friendNumericId)) {
+        try {
+          const ri2 = getLanRemoteIdentity(resolvedFriendId) as any;
+          if (ri2 && Number.isFinite(Number(ri2.numeric_id))) friendNumericId = Number(ri2.numeric_id);
+        } catch { /* ignore */ }
       }
 
       // 跨实例好友：走 Mesh 中继
@@ -299,9 +391,15 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       const _meshTok = process.env.MESH_TOKEN || process.env.PLATFORM_TOKEN || '';
       if (!_meshUrl || !_meshTok) return res.status(500).json({ error: 'Mesh 未配置' });
 
+      if (!Number.isFinite(friendNumericId)) return res.status(400).json({ error: '无法解析好友的数字 ID，跨实例消息无法路由' });
       const r = await fetch(_meshUrl.replace(/\/$/, '') + '/api/users/find?numericId=' + friendNumericId, {
         headers: { 'Authorization': 'Bearer ' + _meshTok },
       });
+      // S6：防御非 JSON 响应（旧版 Mesh 无 /api/users/find 时返回 404 HTML，r.json() 抛异常→500）
+      const ct = String(r.headers.get('content-type') || '');
+      if (!r.ok || !ct.includes('application/json')) {
+        return res.status(502).json({ error: 'Mesh 用户查询失败（HTTP ' + r.status + '），请确认平台已支持 /api/users/find' });
+      }
       const d = await r.json() as any;
       if (!d.found) return res.status(404).json({ error: '好友不在线或未注册到 Mesh' });
 
@@ -312,7 +410,8 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
         chatId,
         content,
         fromUserId: String(fromUserId),
-        toUserId: friendNumericId,
+        // S6：传真实字符串 userId（接收端 String() 后直接落参与者；数字会落成 '10000' 与接收端真实 ID 不匹配）
+        toUserId: resolvedFriendId,
         timestamp: Date.now(),
       } as any);
 
@@ -331,6 +430,9 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
 
   app.get('/api/chats/:id/participants', requireAuth, (req, res) => {
     try {
+      // S5：仅会话参与者可读成员列表（本地免登录/管理员豁免）
+      const accR = chatAccess(req, req.params.id as string);
+      if (!accR.exempt && !accR.isMember) return res.status(403).json({ error: '无权读取此会话的成员列表' });
       const participants = db.getChatParticipants(req.params.id as string);
       res.json({ ok: true, participants });
     } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -339,8 +441,37 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
   app.delete('/api/participants', requireAuth, (req, res) => {
     try {
       const { id, chatId, agentId } = req.body || {};
-      if ((!id && !agentId) || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
-      db.removeParticipant(chatId, id || '', agentId);
+      // S6：前端 removeMember 传的是 userId（不是 id），兼容别名——此前 UI 移除人类成员必 400
+      const targetId = id || (req.body || {}).userId || '';
+      if ((!targetId && !agentId) || !chatId) return res.status(400).json({ error: 'id/userId 和 chatId 必填' });
+      // S5+S2(内联同步)：成员才可操作；移除其他用户/他人AI 需 owner（退群/移自己AI 除外）
+      const accP = chatAccess(req, String(chatId));
+      if (!accP.exempt && !accP.isMember) return res.status(403).json({ error: '无权移除此会话的成员' });
+      const partsP = (db.getChatParticipants(String(chatId)) || []) as any[];
+      const targetP = partsP.find((p: any) => (targetId && (String(p.id) === String(targetId) || String(p.user_id) === String(targetId))) || (agentId && String(p.agent_id) === String(agentId)));
+      if (!accP.exempt) {
+        const uP = (req as any).user || {};
+        const uidP = String(uP.sub || uP.id || '');
+        const nidP = String(uP.numeric_id || '');
+        const meP = partsP.find((p: any) => String(p.user_id) === uidP || String(p.user_id) === nidP);
+        const chatP = db.getChatById(String(chatId)) as any;
+        const isOwnerP = String(meP?.role) === 'owner' || String(meP?.role) === 'admin' || (!!chatP?.owner_id && (String(chatP.owner_id) === uidP || String(chatP.owner_id) === nidP));
+        const removingSelf = !!targetP && !!targetP.user_id && (String(targetP.user_id) === uidP || String(targetP.user_id) === nidP);
+        let removingOwnAgent = false;
+        if (agentId) {
+          try {
+            const myAgent = (db as any).getAgentByUserId(uidP) || (nidP ? (db as any).getAgentByUserId(nidP) : null);
+            removingOwnAgent = !!myAgent && String(myAgent.id) === String(agentId);
+          } catch { removingOwnAgent = false; }
+        }
+        if (!isOwnerP && !removingSelf && !removingOwnAgent) {
+          return res.status(403).json({ error: '仅群主可移除其他成员，普通成员只能退群或移除自己的AI' });
+        }
+      }
+      // S6：按行 id 传入时解析出真实 user_id/agent_id（removeParticipant 只按 user_id/agent_id 删）
+      const rmUserId = targetP && targetP.user_id ? String(targetP.user_id) : String(targetId || '');
+      const rmAgentId = agentId || (targetP ? targetP.agent_id : undefined);
+      db.removeParticipant(chatId, rmUserId, rmAgentId);
       // 如果群聊没参与者了，清理协作模式缓存
       const remaining = db.getChatParticipants(chatId);
       if (!remaining || remaining.length === 0) {
@@ -354,7 +485,12 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
   // ── 删除整个会话（含消息+参与者） ──
   app.delete('/api/chats/:id', requireAuth, (req, res) => {
     try {
-      const chatId = req.params.id;
+      const chatId = req.params.id as string;
+      // S5：仅会话参与者或 owner 可删除会话（本地免登录/管理员豁免）
+      const accD = chatAccess(req, chatId);
+      let isOwnerD = false;
+      try { const cD = db.getChatById(chatId) as any; isOwnerD = !!cD && !!accD.uid && String(cD.owner_id) === accD.uid; } catch { isOwnerD = false; }
+      if (!accD.exempt && !accD.isMember && !isOwnerD) return res.status(403).json({ error: '无权删除此会话' });
       const d = getDB();
       d.run('DELETE FROM messages WHERE chat_id = ?', [chatId]);
       d.run('DELETE FROM participants WHERE chat_id = ?', [chatId]);
@@ -373,6 +509,15 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
       const userId = req.query.userId as string;
       const chatId = req.params.id as string;
       if (!userId) return res.status(400).json({ error: 'userId 必填' });
+      // S5：userId 必须为 JWT 持有者本人，防止枚举他人好友/AI/授权状态
+      const jwtUserA = (req as any).user;
+      const jwtUidA = String(jwtUserA?.sub || jwtUserA?.id || '');
+      const jwtNidA = String(jwtUserA?.numeric_id || '');
+      const sidA = String(jwtUserA?.sid || '');
+      const isLocalAutoA = sidA === 'admin-auto' || sidA === 'admin-token';
+      if (jwtUidA && !isLocalAutoA && jwtUidA !== String(userId) && jwtNidA !== String(userId)) {
+        return res.status(403).json({ error: '无权查看他人的可用成员' });
+      }
       const friends = db.listFriends(userId);
       const friendAgents = friends.map((f: any) => {
         const agent = db.getAgentByUserId(f.friendId);

@@ -141,7 +141,7 @@ export class LanSocialHub {
    * @param fromUserId 本机发起用户 id
    * @param toNumericId 目标数字 ID
    */
-  async sendFriendRequest(fromUserId: string, toNumericId: number, message: string): Promise<any> {
+  async sendFriendRequest(fromUserId: string, toNumericId: number, message: string, toInstanceId?: string): Promise<any> {
     const fromUser = this.localUsers().find((u) => u.id === fromUserId) || this.primaryLocalUser();
     if (!fromUser) throw new Error('本机没有可用用户');
     // 修复（审查）：不能在此处用 fromUser.numericId === toNumericId 直接拒绝——
@@ -151,9 +151,12 @@ export class LanSocialHub {
 
     // 先检查目标用户是否在本机数据库中（同实例用户互相添加好友）
     const localTarget = getUserByNumericId(toNumericId);
+    // S6：显式指定远端实例时（搜索结果带 instanceId），跳过本机同号捷径，直连目标实例，
+    // 避免跨引擎 numeric_id 同号把好友请求误发给本机或错误邻居。
+    const targetRemoteInstance = !!toInstanceId && toInstanceId !== getLanInstanceId();
     // 本机命中自己时绝不能走本地路径（否则请求被本机吞掉，对方引擎永远收不到），
     // 必须继续走 LAN 把请求转发给邻居引擎。
-    if (localTarget && localTarget.id !== fromUser.id) {
+    if (localTarget && localTarget.id !== fromUser.id && !targetRemoteInstance) {
       // 目标用户在本机，直接创建好友关系，无需 LAN 传输
       const result = sendFriendRequest(fromUser.id, localTarget.id, message);
       if (result.error) return { ok: false, error: result.error };
@@ -168,7 +171,9 @@ export class LanSocialHub {
     }
 
     // 目标用户不在本机（或本机命中是自己——数字 ID 与邻居冲突），尝试通过 LAN 发现找到对方
-    const found = findPeerByNumericId(toNumericId);
+    const found = targetRemoteInstance
+      ? (() => { const p = getLanPeer(toInstanceId!); return p ? { peer: p, user: p.users.find((u) => u.numericId === toNumericId) || p.users[0] } : undefined; })()
+      : findPeerByNumericId(toNumericId);
     if (!found) {
       if (localTarget) {
         // 无同号在线邻居且本机持有该数字 ID → 实际是在添加自己

@@ -496,7 +496,7 @@ export class DB {
   }
   
   // Chats
-  createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string, name?: string) { return createChat(id, type, sharedWorkspace, name); }
+  createChat(id: string, type: "private" | "group" = "private", sharedWorkspace?: string, name?: string, ownerId?: string) { return createChat(id, type, sharedWorkspace, name, ownerId); }
   addParticipant(id: string, chatId: string, userId?: string, agentId?: string, role: string = "member") { return addParticipant(id, chatId, userId, agentId, role); }
   getChatParticipants(chatId: string) { return getChatParticipants(chatId); }
   listChats() { return listChats(); }

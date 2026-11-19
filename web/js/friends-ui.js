@@ -82,7 +82,7 @@
     if (window.esc) return esc(s);
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
   }
-  function toast(m) { if (window.toast) toast(m); }
+  function toast(m) { if (window.toast) window.toast(m); } // S5: 调 window.toast；此前递归调用自身导致栈溢出
 
   /* ── 渐变头像（按 ID 哈希取色） ── */
   var PAL = [['#6366f1', '#8b5cf6'], ['#0ea5e9', '#22d3ee'], ['#f59e0b', '#f97316'], ['#10b981', '#34d399'], ['#ec4899', '#f472b6'], ['#8b5cf6', '#d946ef'], ['#14b8a6', '#06b6d4'], ['#f43f5e', '#fb7185']];
@@ -219,7 +219,8 @@
     p.then(function (d) {
       var seen = {};
       lastResults = ((d && d.results) || []).filter(function (u) {
-        var k = String(u.numericId); if (seen[k]) return false; seen[k] = true; return true;
+        // S6：去重键 instanceId+userId（跨引擎 numericId 同号是常态，仅按数字去重会误合并不同人）
+        var k = String(u.instanceId || '') + ':' + String(u.userId || u.numericId); if (seen[k]) return false; seen[k] = true; return true;
       });
       if (!lastResults.length) { paintSearch(ft('noResult'), 'empty'); return; }
       var s = state();
@@ -227,13 +228,14 @@
         var uid = String(u.numericId);
         var name = u.displayName || (ft('me') + uid);
         var isMe = uid === myId();
-        var isFriend = s.friends.some(function (f) { return String(f.friendId) === uid; });
-        var isPending = s.outgoing.some(function (r) { return String(r.toUserId) === uid && r.status === 'pending'; });
+        var realId = String(u.userId || '');
+        var isFriend = s.friends.some(function (f) { var fid = String(f.friendId); return fid === uid || (realId && fid === realId); });
+        var isPending = s.outgoing.some(function (r) { var tid = String(r.toUserId); return (tid === uid || tid === 'remote-' + uid || (realId && tid === realId)) && r.status === 'pending'; });
         var act;
         if (isMe) act = '<span class="lx-status accepted">' + ft('me') + '</span>';
         else if (isFriend) act = '<span class="lx-status accepted">' + ft('isFriend') + '</span>';
         else if (isPending) act = '<span class="lx-status pending">' + ft('pending') + '</span>';
-        else act = '<button class="lx-btn pri" data-add="' + E(uid) + '" data-name="' + E(name) + '">' + ft('add') + '</button>';
+        else act = '<button class="lx-btn pri" data-add="' + E(uid) + '" data-inst="' + E(u.instanceId || '') + '" data-name="' + E(name) + '">' + ft('add') + '</button>';
         return '<div class="lx-row" style="cursor:default">' + av(uid, name, 42) +
           '<div class="lx-row-info"><div class="lx-row-name">' + E(name) + '</div><div class="lx-row-sub">' + ft('idLabel') + ': ' + E(uid) + '</div></div>' + act + '</div>';
       }).join('');
@@ -286,7 +288,7 @@
     var rt = t.closest('[data-rt]');
     if (rt) { reqTab = rt.getAttribute('data-rt'); render(); return; }
     var add = t.closest('[data-add]');
-    if (add) { openRequestDialog(add.getAttribute('data-add'), add.getAttribute('data-name')); return; }
+    if (add) { openRequestDialog(add.getAttribute('data-add'), add.getAttribute('data-name'), add.getAttribute('data-inst') || ''); return; }
     var acc = t.closest('[data-acc]');
     if (acc) { if (g('respondReq')) respondReq(acc.getAttribute('data-acc'), 'accept'); return; }
     var rej = t.closest('[data-rej]');
@@ -325,7 +327,7 @@
   }
 
   /* ── 模态：好友申请 dialog ── */
-  function openRequestDialog(uid, name) {
+  function openRequestDialog(uid, name, inst) {
     build();
     uid = String(uid);
     name = name || lookupName(uid);
@@ -354,10 +356,11 @@
       var msg = ta.value.trim().slice(0, 200);
       closeModal();
       if (g('sendRequest')) {
-        Promise.resolve(sendRequest(uid, msg)).then(function () {
+        Promise.resolve(sendRequest(uid, msg, inst || '')).then(function (ok) {
+          if (ok === false) return; // S5: 失败不再误报「已发送」（sendRequest 现返回成功标志）
           toast('✅ ' + ft('sentToast'));
           refresh();
-        });
+        }).catch(function () { /* S5: 兜底异常，错误提示已由 sendRequest 内部给出 */ });
       }
     });
     setTimeout(function () { ta.focus(); }, 120);

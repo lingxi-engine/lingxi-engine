@@ -93,6 +93,20 @@ app.get('/api/users/search', (req, res) => {
   });
 });
 
+// ── S6: 按 numericId 精确查找用户（引擎跨实例私聊路由用，MESH_TOKEN 鉴权）──
+app.get('/api/users/find', (req, res) => {
+  const auth = req.headers.authorization?.replace('Bearer ', '');
+  if (auth !== MESH_TOKEN) return res.status(403).json({ error: '鉴权失败' });
+  const numericId = parseInt(String(req.query.numericId || ''), 10);
+  if (!Number.isFinite(numericId)) return res.status(400).json({ found: false, error: 'numericId 必填且为数字' });
+  const matches = Array.from(userRegistry.values()).filter(u => u.numericId === numericId);
+  if (!matches.length) return res.json({ found: false });
+  // 同号多实例时优先在线实例
+  const online = matches.find(u => instances.get(u.instanceId)?.online);
+  const pick = online || matches[0];
+  res.json({ found: true, instanceId: pick.instanceId, userId: pick.userId, numericId: pick.numericId, displayName: pick.displayName });
+});
+
 // ── 注册本机用户到平台 ──
 app.post('/api/users/register', (req, res) => {
   const auth = req.headers.authorization?.replace('Bearer ', '');

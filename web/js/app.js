@@ -2208,12 +2208,12 @@ function renderSearch() {
   }).join('');
 }
 function askAddFriend(to, name) { if (window.LxFriends) { LxFriends.openRequestDialog(String(to), name || ''); } else { sendRequest(to); } }
-async function sendRequest(to, _presetMsg) {
-  if (!authToken && !clientId) { toast(t('toast.connectFirst')); return; }
+async function sendRequest(to, _presetMsg, _instanceId) {
+  if (!authToken && !clientId) { toast(t('toast.connectFirst')); return false; }
   // 防重复：先检查本地状。
   const uid = String(to);
-  if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return; }
-  if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return; }
+  if (myFriends.some(f => String(f.friendId) === uid)) { toast(t('friends.alreadyFriends')); return false; }
+  if (outgoingRequests.some(r => String(r.toUserId) === uid && r.status === 'pending')) { toast(t('friends.requestPending')); return false; }
   // U1 修复：允许填写验证消息（可选），让对方知道你是谁、为何添加
   const message = (typeof _presetMsg === 'string' ? _presetMsg : '').trim().slice(0, 200);
   try {
@@ -2221,17 +2221,18 @@ async function sendRequest(to, _presetMsg) {
     // v2.0.11: 。authToken 时优先走 platformApi，失败回退本地 api
     let d;
     if (authToken) {
-      d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message });
-      if (!d || d.ok === false) { d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message }); }
+      d = await platformApi('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message, instanceId: _instanceId || undefined });
+      if (!d || d.ok === false) { d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message, instanceId: _instanceId || undefined }); }
     } else {
-      d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message });
+      d = await api('/api/lan/friend-request', 'POST', { fromUserId, toNumericId: Number(to), message, instanceId: _instanceId || undefined });
     }
-    if (d.error) { toast(_errMsg(d, '发送失败')); return; }
+    if (d.error) { toast(_errMsg(d, '发送失败')); return false; }
     toast(t('friends.requestSent'));
     // 立即更新本地状态，防止重复点击
     outgoingRequests.push({ toUserId: uid, status: 'pending', toName: searchResults.find(u => String(u.numericId || u.id) === uid)?.displayName || (t('profile.defaultUser') + uid), createdAt: Date.now() });
     searchUsers(); loadRequests().catch(() => {});
-  } catch(e) { toast(t('err.sendFail')); }
+    return true; // S5: 显式成功标志，供 friends-ui 判断是否提示「已发送」
+  } catch(e) { toast(t('err.sendFail')); return false; }
 }
 async function loadFriends() {
   if (!authToken && !clientId) return;
