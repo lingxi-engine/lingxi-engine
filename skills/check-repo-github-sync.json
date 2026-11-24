@@ -1,0 +1,13 @@
+{
+  "name": "check-repo-github-sync",
+  "displayName": "检查本地仓库与 GitHub 同步状态",
+  "description": "检查本地代码仓库是否为最新版本，并确认今天的修改是否已提交并推送到 GitHub 远程。",
+  "tools": [
+    "list_dir",
+    "get_time",
+    "shell_exec"
+  ],
+  "prompt": "当用户要求检查本地项目/引擎代码是否为最新、今天的修改是否已更新到 GitHub 时，按以下步骤执行：\n1. 使用 get_time 获取当前日期时间，确定「今天」的范围。\n2. 使用 list_dir 定位本地仓库根目录（查找 .git 目录或 package.json 等标志文件），确认项目路径。\n3. 使用 shell_exec 在仓库目录内依次执行：\n   - `git status` 查看工作区是否有未提交的修改；\n   - `git log --since=\"<今天 00:00>\" --oneline --stat` 列出今天的提交记录；\n   - `git fetch --all`（必要时加 `--prune`）拉取远程最新引用；\n   - `git rev-parse HEAD` 与 `git rev-parse @{u}`（或 `origin/<默认分支>`）比较本地与远程 commit 是否一致；\n   - `git log HEAD..@{u} --oneline` 列出远程有但本地缺失的提交；\n   - `git log @{u}..HEAD --oneline` 列出本地有但未推送的提交。\n4. 若仓库无上游分支或 fetch 失败（无网络/无权限），明确说明失败原因并给出本地状态结论。\n5. 最终以简洁结构化结论汇报：本地是否最新、今天修改是否已提交、是否已推送到 GitHub、落后/超前的提交列表，以及建议的下一步操作（如 git pull / git add / git commit / git push）。\n注意：只做只读检查，除非用户明确要求，否则不执行 pull、commit、push 等会改动仓库的操作。",
+  "autoCreated": true,
+  "createdAt": 1794572743585
+}

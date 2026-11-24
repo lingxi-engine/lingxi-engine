@@ -1,0 +1,14 @@
+{
+  "name": "debug-frontend-ui-issue",
+  "displayName": "前端 UI 问题调试",
+  "description": "当 UI 组件（如按钮）失效时，通过多轮工具调用排查根因，处理工具故障、工作目录错位、编码乱码等干扰，最终定位并修复 CSS/JS 缺陷。",
+  "tools": [
+    "list_dir",
+    "read_file",
+    "write_file",
+    "shell_exec"
+  ],
+  "prompt": "遇到前端 UI 组件（按钮、面板等）失效的问题时：\n1. 先用 list_dir 确认工作目录结构，别假设代码在当前 workspace。\n2. 用 shell_exec 执行 find/grep/ls 定位相关前端文件（.css, .js, .tsx, .vue 等），注意编码乱码时尝试重定向到文件再 cat。\n3. 若工具频繁报错（乱码、空输出、API 限流），先用简单命令（echo）验证工具链健康度，必要时等待或换模型。\n4. 发现代码不在预期目录时，扩大搜索范围（如用户主目录、其他盘符）。\n5. 定位到文件后，读取并分析 CSS/JS 交互逻辑，重点检查：定位冲突、z-index、事件绑定、样式覆盖、移动端适配。\n6. 修复后需在真实环境验证（部署/刷新），并记录根因层级（如本例 4 层 CSS/JS 缺陷叠加）。\n7. 整理交付报告：根因表格、修复文件、验证结果。",
+  "autoCreated": true,
+  "createdAt": 1793014815380
+}
