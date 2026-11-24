@@ -50,7 +50,7 @@ describe('isTrustedLocalSource — default mode (all)', () => {
 
   it('rejects public addresses', () => {
     expect(isTrustedLocalSource(mkReq('8.8.8.8'))).toBe(false);
-    expect(isTrustedLocalSource(mkReq('47.93.157.83'))).toBe(false);
+    expect(isTrustedLocalSource(mkReq('203.0.113.7'))).toBe(false);
   });
 
   it('fails closed when source is unknown', () => {
@@ -91,7 +91,7 @@ describe('isTrustedLocalSource — escape hatch and XFF guard', () => {
     process.env.DEV_MODE = 'true'; // stale dev flag must not win
     process.env.NODE_ENV = 'production';
     expect(isTrustedLocalSource(mkReq('8.8.8.8'))).toBe(false);
-    expect(isTrustedLocalSource(mkReq('47.93.157.83'))).toBe(false);
+    expect(isTrustedLocalSource(mkReq('203.0.113.7'))).toBe(false);
   });
 
   it('ALLOW_PUBLIC_ADMIN_AUTO is ignored when DEV_MODE=false', () => {
@@ -118,7 +118,7 @@ describe('isTrustedLocalSource — XFF 链伪造防护（P0 未授权访问回�
   });
 
   it('链首伪造内网 10.x、链尾是公网真实 IP → 拒绝', () => {
-    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '10.0.0.1, 47.93.157.83', trustProxy: true }))).toBe(false);
+    expect(isTrustedLocalSource(mkReq('127.0.0.1', { xff: '10.0.0.1, 203.0.113.7', trustProxy: true }))).toBe(false);
   });
 
   it('链首伪造 ::ffff: 形式 loopback → 仍拒绝', () => {

@@ -27,6 +27,18 @@ h1{font-size:32px;margin:40px 0 20px}
 <h1>更新日志</h1>
 
 <div class="version">
+<h2>v2.0.41</h2>
+<div class="date">2026-11-24</div>
+<ul>
+<li>技能库去重：自动技能从 558 个收敛到 50 个规范技能，清理 508 个同质变体（删除前三重备份）</li>
+<li>根因修复 auto-skill：创建前相似度查重（名称归一化 + token Jaccard），命中相似则更新已有而非新建变体，设上限 150 杜绝再膨胀</li>
+<li>修复 4 个带 BOM 的技能文件；新增 7 条去重回归测试</li>
+<li>开源合规加固：移除含真实服务器 IP/部署账号的运维脚本与退役云页面快照；脱敏 6 文件 IP 为文档地址；.gitignore 防护 workspace 防密钥误提交</li>
+<li>全库密钥扫描无私钥/真实 API Key 泄露；LICENSE=MIT；tsc 0 错误，42 文件 / 588 用例全过</li>
+</ul>
+</div>
+
+<div class="version">
 <h2>v2.0.40</h2>
 <div class="date">2026-11-24</div>
 <ul>

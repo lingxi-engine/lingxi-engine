@@ -3,7 +3,7 @@
  * scripts/verify-deploy.cjs —— 部署后自动验证线上实例与代码版本一致
  *
  * 用法:
- *   node scripts/verify-deploy.cjs --url http://47.93.157.83:3456
+ *   node scripts/verify-deploy.cjs --url http://203.0.113.7:3456
  *   node scripts/verify-deploy.cjs --host 127.0.0.1 --port 3456
  *   node scripts/verify-deploy.cjs --url ... --expect-commit abc1234 --expect-version 2.0.22
  *

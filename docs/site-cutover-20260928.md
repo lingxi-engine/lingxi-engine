@@ -101,12 +101,12 @@ lingxi.ai     -> 8.219.40.208   (阿里云，反代 301 到 https://www.xi-ai.co
 www.lingxi.ai -> 8.219.40.208
 ```
 
-而灵犀生产服务器是 `47.93.157.83`。
+而灵犀生产服务器是 `203.0.113.7`。
 
 已验证的事实：
 
 - `8.219.40.208` 用 `lingxi_deploy` 密钥登录 → **Permission denied**（我没有这台机器的权限）
-- `47.93.157.83` 上 `curl -H 'Host: lingxi.ai' http://47.93.157.83/` → **200**，说明服务器端 Host 路由完全正常
+- `203.0.113.7` 上 `curl -H 'Host: lingxi.ai' http://203.0.113.7/` → **200**，说明服务器端 Host 路由完全正常
 - `lingxi.ai` 的 NS 是 `ns1/2/5.101domain.com`（一零一域名），我没有该账号凭据
 - 桌面上的 `Tencent` 目录是微信数据，不是腾讯云凭据
 
@@ -128,12 +128,12 @@ mirrors.aliyun.com           -> 301  (通)
 
 ### 你只需要做一件事
 
-在**一零一域名**后台把这两条 A 记录改成 `47.93.157.83`：
+在**一零一域名**后台把这两条 A 记录改成 `203.0.113.7`：
 
 ```
 类型  主机记录  记录值         TTL
-A     @        47.93.157.83   600
-A     www      47.93.157.83   600
+A     @        203.0.113.7   600
+A     www      203.0.113.7   600
 ```
 
 同时删掉所有指向 `8.219.40.208` 的 A 记录。
@@ -144,7 +144,7 @@ A     www      47.93.157.83   600
 
 ```bash
 python3 -c "import socket;print(socket.gethostbyname('lingxi.ai'))"
-# 应输出 47.93.157.83
+# 应输出 203.0.113.7
 ```
 
 ### 备选方案（如果 `8.219.40.208` 也是你的机器）
@@ -153,7 +153,7 @@ python3 -c "import socket;print(socket.gethostbyname('lingxi.ai'))"
 
 ```nginx
 location / {
-    proxy_pass http://47.93.157.83;
+    proxy_pass http://203.0.113.7;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
 }

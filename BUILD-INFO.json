@@ -1,7 +1,7 @@
 {
-    "version":  "2.0.40",
-    "commit":  "12898c0",
-    "buildTime":  "2026-11-24T12:34:56.4079268Z",
+    "version":  "2.0.41",
+    "commit":  "4d5458e",
+    "buildTime":  "2026-11-24T14:11:23.5752968Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
                        "安全加固 12 项全修（B1–B12）：联邦 Ed25519 签名全链路 + 防重放，移除硬编码默认密钥",

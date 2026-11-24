@@ -25,7 +25,7 @@
 #   powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-site-consistency.ps1
 #   powershell ... -File scripts/verify-site-consistency.ps1 -ExpectedVersion 2.0.28
 param(
-    [string]$SiteUrl = 'http://47.93.157.83:8080',
+    [string]$SiteUrl = 'http://203.0.113.7:8080',
     [string]$ExpectedVersion = ''
 )
 

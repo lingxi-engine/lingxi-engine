@@ -2,6 +2,25 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.41] - 2026-11-24
+
+技能库去重 + 开源合规加固（面向全体开源用户）。
+
+### 技能去重（skills/）
+- 自动技能从 558 个收敛到 50 个规范技能：清理 508 个同质 auto-created 变体（code-audit/bug-fix 等几十个近义重复），按真实能力人工精选保留集（删除前三重备份）
+- 根因修复 src/tools/auto-skill.ts：创建前先做相似度查重（名称归一化 + 描述/提示词 token Jaccard），命中相似技能则更新已有而非新建变体；设自动技能上限 150，杜绝再次膨胀
+- 修复 4 个带 UTF-8 BOM 导致 JSON.parse 失败的技能文件；listAutoSkills/loadAutoSkills 统一去 BOM
+- 新增 src/tests/auto-skill-dedup.test.ts（7 用例：相似更新/同名更新/不同新建/非法名拒绝/skip/BOM）
+
+### 开源合规加固
+- 移除服务器专属运维脚本/文档（含真实服务器 IP、部署账号、免密 sudo 配置、云厂商信息）与退役云页面快照、index.ts.bak 备份文件（删除前备份至 F 盘）
+- 脱敏 6 个文件中的真实服务器 IP → RFC5737 文档地址 203.0.113.7（auth-trust 测试逻辑不变，26 用例仍全过）
+- .gitignore 增加 /workspace/* 防护（保留 bench），防止密钥/cookies/备份误提交
+- 全库密钥扫描：无私钥/真实 API Key 泄露；.env/.dbkey 从未进入 Git 历史；LICENSE=MIT
+
+### 验证
+- tsc --noEmit 0 错误；vitest 42 文件 / 588 用例全过（较 2.0.40 新增 1 文件 7 用例）
+
 ## [2.0.40] - 2026-11-24
 
 v2.0.39 之后 15 个提交的累积发布：好友聊天全面修复 + 多 AI 交流修复 + 401 自动续期。

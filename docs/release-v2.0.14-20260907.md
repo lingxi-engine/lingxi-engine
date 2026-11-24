@@ -19,7 +19,7 @@
 
 ## 官网最终状态（外网实测）
 
-- 下载页: http://47.93.157.83:8080/download.html → v2.0.14
+- 下载页: http://203.0.113.7:8080/download.html → v2.0.14
 - 直链: /public/lingxi-engine-v2.0.14.tar.gz（200，1,153,476 B）
 - 通用名: /public/lingxi-engine.tar.gz → 同一文件（install.ps1 引用的就是这个）
 - sw.js: CACHE_NAME 'lingxi-v15' 强制 PWA 刷新

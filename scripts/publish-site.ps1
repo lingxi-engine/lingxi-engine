@@ -1,8 +1,8 @@
 ﻿# publish-site.ps1 - package and publish LingXi Engine to the official site server
 #
 # WHY THIS SCRIPT EXISTS:
-#   http://47.93.157.83:8080/install.ps1 is the only distribution entry point.
-#   It hardcodes the download URL http://47.93.157.83:8080/public/lingxi-engine.tar.gz
+#   http://203.0.113.7:8080/install.ps1 is the only distribution entry point.
+#   It hardcodes the download URL http://203.0.113.7:8080/public/lingxi-engine.tar.gz
 #   Before this script, pack-release.ps1 only produced a LOCAL tarball and the
 #   public/ copy was uploaded by hand, which caused version drift
 #   (local 2.0.25 vs server 2.0.23): users running irm install.ps1 | iex always
@@ -20,7 +20,7 @@
 #   -Method manual  : package only, prints a manual upload checklist (no creds needed)
 #
 # Credentials are read from environment variables only - never hardcoded:
-#   LINGXI_DEPLOY_HOST   server host (default 47.93.157.83)
+#   LINGXI_DEPLOY_HOST   server host (default 203.0.113.7)
 #   LINGXI_DEPLOY_USER   SSH/FTP username
 #   LINGXI_DEPLOY_PORT   SSH port (default 22)
 #   LINGXI_DEPLOY_PATH   absolute path of public/ on the server
@@ -46,7 +46,7 @@ if (-not (Test-Path (Join-Path $RepoRoot 'index.ts'))) {
     $RepoRoot = (Get-Location).Path
 }
 
-$SiteUrl      = 'http://47.93.157.83:8080'
+$SiteUrl      = 'http://203.0.113.7:8080'
 $InstallUrl   = "$SiteUrl/install.ps1"
 $RemoteVerUrl = "$SiteUrl/public/version.txt"
 

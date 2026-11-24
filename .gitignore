@@ -417,3 +417,7 @@ deploy/PASTE-HOTFIX-*.txt
 
 # v7.3: dev-machine runtime state (dream queue etc.) - never commit
 lingxi_engine/data/
+
+# Workspace artifacts: ignore all except tracked benchmark results (prevent accidental secret commits)
+/workspace/*
+!/workspace/bench

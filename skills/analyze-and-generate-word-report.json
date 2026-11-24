@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "analyze-and-generate-word-report",
   "displayName": "分析并生成Word报告",
   "description": "当用户要求诊断问题、分析方向或总结材料，并输出Word文档到桌面时使用",
