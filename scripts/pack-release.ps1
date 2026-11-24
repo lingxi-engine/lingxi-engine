@@ -6,6 +6,25 @@
 #     - 锟斤拷锟斤拷: 锟斤拷锟斤拷锟侥硷拷锟斤拷锟斤拷锟叫ｏ拷锟?+ .env.example 锟斤拷锟斤拷锟斤拷校锟斤拷
 # Usage: powershell -ExecutionPolicy Bypass -File .\scripts\pack-release.ps1
 $ErrorActionPreference = "Stop"
+# v7.4 (2026-11-24): Windows tar compatibility shim.
+# System32 tar.exe is bsdtar (built-in gzip, rejects --force-local).
+# Git's GNU tar needs --force-local for drive-colon paths, but its -z spawns
+# gzip via /bin/sh which can fail with "gzip: command not found" under an
+# incomplete MSYS child PATH. This function shadows `tar` for every call site
+# below: strip --force-local for bsdtar, keep it (with PATH fix) for GNU tar.
+function tar {
+    $tarArgs = @($args | Where-Object { $_ -ne '--force-local' })
+    $bsdtar = Join-Path $env:SystemRoot 'System32\tar.exe'
+    $gnuTar = 'C:\Program Files\Git\usr\bin\tar.exe'
+    if (Test-Path $bsdtar) {
+        & $bsdtar @tarArgs
+    } elseif (Test-Path $gnuTar) {
+        $env:PATH = 'C:\Program Files\Git\usr\bin;' + $env:PATH
+        & $gnuTar --force-local @tarArgs
+    } else {
+        & tar.exe @tarArgs
+    }
+}
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 # v2.0.22: 鐗堟湰浠?package.json 鍔ㄦ€佽鍙栵紝绂佹纭紪鐮侊紙姝ゅ墠纭紪鐮?2.0.20锛屽崌鐗堝悗蹇?FAIL锛?
@@ -20,7 +39,7 @@ $StageDir = Join-Path $StageRoot "lingxi-engine"
 if (Test-Path $StageRoot) { Remove-Item $StageRoot -Recurse -Force }
 New-Item -ItemType Directory -Path $StageDir -Force | Out-Null
 
-$excludeDirs = @('node_modules','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2','stage')
+$excludeDirs = @('node_modules','coverage','.git','workspace','data','data-platform','docs','mobile-dist','app','diffrhythm-local','song_maker','_verify_tmp','_release_check','_pkgx','backup_20260825_reasoning','data-smoke-b13b','_smoke_v5_data','_archive','release','release-v2','stage')
 $excludeDirsRegex = '^backup[_-]|^data-bench|^data-|^_|^archive[_-]'  # v2.0.35: exclude archive_scratch_* junk (3.9MB screenshots)
 $excludeFilesRegex = '\.tar\.gz$|\.bak|\.orig$|\.zip$|_cleanup-bak-|\.patch-ctor|fix-task-interrupt.*\.cjs|fix-install\.cjs$|patch-admin\.|\.log$|\.err$|^e2e-|\.tmp$|patch-db\.cjs|startup\.err|usage\.json$|\.func$|_\.(py|cjs|mjs|ps1|sh)$|_verify_.*\.js$|tsc_.*\.txt$|\.pre-|\.pid$|tmp_server_clean\.sh$|^_|^fo_main\.txt$'
 
@@ -137,7 +156,23 @@ try {
     # Pack from staging root so tarball top-level is ./lingxi-engine/
     Push-Location $StageRoot
     try {
-        tar --force-local -czf $OutFile .
+        # v7.4 (2026-11-24): tar compatibility on Windows.
+        # - System32 tar.exe is bsdtar: built-in gzip, rejects --force-local.
+        # - Git's GNU tar needs --force-local (drive colon) AND spawns gzip via
+        #   /bin/sh, which fails with "gzip: command not found" when the MSYS
+        #   child PATH is incomplete.
+        # Prefer native bsdtar; GNU tar is the fallback with PATH prepended.
+        $bsdtar = Join-Path $env:SystemRoot 'System32\tar.exe'
+        $gnuTar = 'C:\Program Files\Git\usr\bin\tar.exe'
+        if (Test-Path $bsdtar) {
+            & $bsdtar -czf $OutFile .
+        } elseif (Test-Path $gnuTar) {
+            $env:PATH = 'C:\Program Files\Git\usr\bin;' + $env:PATH
+            & $gnuTar --force-local -czf $OutFile .
+        } else {
+            tar -czf $OutFile .
+        }
+        if ($LASTEXITCODE -ne 0) { throw "[FAIL] tar exited with code $LASTEXITCODE" }
     } finally {
         Pop-Location
     }

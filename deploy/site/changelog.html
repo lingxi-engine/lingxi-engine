@@ -27,6 +27,20 @@ h1{font-size:32px;margin:40px 0 20px}
 <h1>更新日志</h1>
 
 <div class="version">
+<h2>v2.0.42</h2>
+<div class="date">2026-11-24</div>
+<ul>
+<li>可观测性接线：修复 metrics.ts 死代码——挂载 HTTP 请求指标中间件，新增 GET /metrics（Prometheus 格式，本机来源/管理员令牌保护），路由标签归一化防基数爆炸；新增 14 条测试</li>
+<li>Docker 一键部署：多阶段 Dockerfile（非 root 运行 + 健康检查）+ docker-compose（命名卷持久化）+ .dockerignore（密钥不进镜像）+ 双语部署指南 docs/docker.md</li>
+<li>英文文档：README.en.md + 双语快速入门 docs/quickstart.md；README 增加 Docker 自部署与可观测性章节</li>
+<li>CI 质量门禁：覆盖率棘轮（v8，实测基线 17.32%，只准涨不准跌）；CI 徽章 + tests-602 徽章；修正陈旧版本徽章（2.0.35→2.0.42）</li>
+<li>社区治理：CODE_OF_CONDUCT、SECURITY 增补（/metrics 与 Docker socket 边界）、issue/PR 模板、CONTRIBUTING 扩充</li>
+<li>技能库清理续篇：移除 src/skills/ 下 56 个死副本（所有加载器均读根 skills/）；修复 pack-release 的 Windows tar 兼容（bsdtar/GNU tar 自适应）</li>
+<li>tsc 0 错误；43 文件 / 602 用例全过；check-docs 15/15</li>
+</ul>
+</div>
+
+<div class="version">
 <h2>v2.0.41</h2>
 <div class="date">2026-11-24</div>
 <ul>

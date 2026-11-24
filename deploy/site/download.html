@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.41</title>
+<title>下载部署 · 灵犀引擎 v2.0.42</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.41</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.42</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -204,7 +204,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.41.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.41</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.42.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.42</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -247,7 +247,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.41","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.42","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -292,6 +292,12 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
+
+  <!-- v2.0.42：开源短板补齐 —— 可观测性 + Docker + 英文文档 + CI 门禁 -->
+  <section class="card" id="v242">
+    <h2>📦 v2.0.42 变更：Docker 一键部署、可观测性、英文文档、CI 覆盖率门禁</h2>
+    <p>修复 metrics.ts 死代码：新增 GET /metrics（Prometheus 格式，本机来源/管理员令牌保护，METRICS_ENABLED 可关）。Docker 一键部署：多阶段 Dockerfile + compose 命名卷持久化 + 双语指南（docs/docker.md）。新增 README.en.md 与双语快速入门。CI 覆盖率棘轮（只准涨不准跌）+ CI 徽章。社区治理文件齐备（CoC / SECURITY / issue+PR 模板）。清理 src/skills 56 个死副本。测试 43 文件 / 602 用例全过。</p>
+  </section>
 
   <!-- v2.0.41：技能库去重 + 开源合规加固 -->
   <section class="card" id="v241">
@@ -556,7 +562,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.41</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.42</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
