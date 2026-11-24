@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.39</title>
+<title>下载部署 · 灵犀引擎 v2.0.40</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.39</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.40</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -204,7 +204,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.39.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.39</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.40.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.40</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -247,7 +247,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.39","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.40","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -292,6 +292,31 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
+
+  <!-- v2.0.40：好友聊天全面修复 + 多AI交流修复 + 401 自动续期 -->
+  <section class="card" id="v240">
+    <h2>🛠️ v2.0.40 变更：好友聊天全面修复、多AI交流修复、401 自动续期</h2>
+    <p>
+      本版合并 v2.0.39 之后 15 个提交：好友系统越权封堵与跨引擎全链路根因修复（S1–S12 / F1–F8 / S5–S7）、
+      QQ/微信式通讯录 UI、登录 401 自动续期、多AI交流全量修复、安装器 PS5.1 可靠性重写。
+      测试从 457 增至 581 用例，全部通过，零回归。
+    </p>
+    <table>
+      <thead><tr><th>能力</th><th>说明</th><th>v2.0.40</th></tr></thead>
+      <tbody>
+        <tr><td>好友聊天安全</td><td>会话越权封堵（S1–S12/F1–F8）+ 成员校验兼容 numeric_id 别名 + 私聊建会话竞态修复</td><td>✅</td></tr>
+        <tr><td>跨引擎互联</td><td>S7 身份命名空间 + E2EE 对称派生，跨引擎加好友/私聊全链路修复；停用 per-instance 自动 LAN_SECRET</td><td>✅</td></tr>
+        <tr><td>通讯录 UI</td><td>QQ/微信式抽屉面板、好友名片、申请弹窗、红点提醒</td><td>✅</td></tr>
+        <tr><td>多AI交流</td><td>模型名归一化（:free/:cloud 后缀）+ 历史按上下文窗口截断 + 单模型错误隔离，一个模型失败不再拖垮全场</td><td>✅</td></tr>
+        <tr><td>模型路由</td><td>严格模式拒绝静默降级本地模型（需显式 LINGXI_ALLOW_LOCAL_FALLBACK=true）</td><td>✅</td></tr>
+        <tr><td>登录稳定性</td><td>401 自动续期（fetch 层单飞续期重放）+ 坏 token 清理，不再频繁掉登录</td><td>✅</td></tr>
+        <tr><td>安装器</td><td>install.ps1 重写适配 PowerShell 5.1 irm|iex；打包排除密钥与运行时数据</td><td>✅</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:12px;color:#8b949e;font-size:13px">
+      验证：tsc 0 错误；vitest 41 文件 / 581 用例全过。跨引擎好友聊天双方均需升级至本版以获得完整体验。
+    </p>
+  </section>
 
   <!-- v2.0.39：安全加固 12 项 + 端到端加密 + Dreamer 省钱 99.88% -->
   <section class="card" id="v239">
@@ -525,7 +550,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.39</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.40</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>
