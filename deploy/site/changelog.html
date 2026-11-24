@@ -27,6 +27,58 @@ h1{font-size:32px;margin:40px 0 20px}
 <h1>更新日志</h1>
 
 <div class="version">
+<h2>v2.0.40</h2>
+<div class="date">2026-11-24</div>
+<ul>
+<li>好友聊天全面修复：好友系统越权封堵（S1–S12 / F1–F8）、会话越权封堵 + 跨引擎私聊路由（S5/S6）、跨引擎身份命名空间 + E2EE 对称派生（S7），加好友/聊天全链路根因修复</li>
+<li>修复升级库「加好友必 400」（friendships 迁移补 role/message/updated_at）；修复跨引擎「加好友加不上」（停用 per-instance 自动 LAN_SECRET）</li>
+<li>新增 QQ/微信式通讯录 UI：抽屉面板 / 名片 / 申请弹窗 / 红点 / 确认弹窗</li>
+<li>多 AI 交流修复：模型解析去后缀 + 模糊匹配、历史按上下文窗口截断、单模型错误隔离不再拖垮全场、严格模式拒绝静默降级本地模型</li>
+<li>401 自动续期：fetch 层单飞续期重放、滚动 refresh token、坏 token 清理并弹登录</li>
+<li>验证：tsc 0 错误；41 文件 / 581 用例全过；官网安装包 SHA256 一致性实测通过</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.39</h2>
+<div class="date">2026-11-15</div>
+<ul>
+<li>安全加固 B1–B12 全修：RBAC 角色解析、联邦硬编码默认密钥移除（未配置 fail-secure）、Ed25519 签名全链路、模板墓碑机制、防重放、限流修正等</li>
+<li>Dreamer 记忆整理四道闸门：24h 调用量 32144 → 40（-99.88%）</li>
+<li>技能签名 Ed25519 Node 24 兼容；手机 App 登录 JS 错误 + redeem 401 修复</li>
+<li>install.ps1 重写（PS5.1 irm|iex 可靠性）；发布包排除密钥与运行时数据</li>
+<li>官网定位为「下载站 + 介绍 + 自主部署说明」；子代理继承父 Agent 模型与工具</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.38</h2>
+<div class="date">2026-11-04</div>
+<ul>
+<li>开源版：DB 字段加密、端到端加密（E2EE）、A2A 协议、Mesh P2P、技能签名、编码修复</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.37</h2>
+<div class="date">2026-10-31</div>
+<ul>
+<li>同步手机接管与社交安全修复到官网发布包</li>
+<li>修复移动端右下角「任务」按钮点不动；app.js token-restore 修复</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.36</h2>
+<div class="date">2026-10-29</div>
+<ul>
+<li>手机 App 接管全链路修通：WebSocket 升级分发（noServer）、中继握手头/鉴权/通道挂载修复</li>
+<li>新增前缀反向代理 + WebSocket 桥接、一次性票据 + 12 小时会话键、中英繁三语引导页</li>
+<li>修复 ensureLocalUser NOT NULL 崩溃导致接管 500；/app/ 返回时还原云端 token</li>
+</ul>
+</div>
+
+<div class="version">
 <h2>v2.0.35</h2>
 <div class="date">2026-10-19</div>
 <ul>

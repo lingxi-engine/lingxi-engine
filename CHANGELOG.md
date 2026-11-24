@@ -2,6 +2,30 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.40] - 2026-11-24
+
+v2.0.39 之后 15 个提交的累积发布：好友聊天全面修复 + 多 AI 交流修复 + 401 自动续期。
+
+### 好友 / 聊天（全链路根因修复）
+- S1–S12 / F1–F8 / A2：好友系统越权封堵与功能修复（f84282b）；前端验证消息 / 真实撤回 / userId 传参 + 8 条回归（4065d90）
+- S5+S6：会话越权封堵 + 跨引擎私聊路由 + 路由去重统一，27 条新回归（92905ea）
+- S7：跨引擎身份命名空间 + E2EE 对称派生，加好友/聊天全链路根因修复，41 条新回归（a9353ee）
+- friendships 迁移清单补 role/message/updated_at，修复升级库「加好友必 400」（c33f8ed）
+- 停用 per-instance 自动 LAN_SECRET，修复跨引擎「加好友加不上」（f769ff9）
+- QQ/微信式通讯录 UI：抽屉面板 / 名片 / 申请 dialog / 红点 / 确认弹窗（f1fccb5）
+
+### 多 AI 交流（/api/multi-ai）
+- 模型解析去 :free/:cloud 后缀 + 前缀/模糊匹配；严格模式拒绝静默降级本地（LINGXI_STRICT_MODEL / LINGXI_ALLOW_LOCAL_FALLBACK）
+- 历史消息按模型上下文窗口截断；单模型流式错误隔离，不再拖垮整场；工具调用类型安全（12898c0）
+
+### 认证
+- 401 自动续期 + 坏 token 清理：fetch 层单飞续期重放 / 登录存滚动 refresh token / 失效清 token 弹登录，19 条新回归（d9aae40）
+
+### 验证
+- tsc --noEmit 0 错误；vitest 41 文件 / 581 用例全过（发布日复核）
+- GitHub 远端 == 本地 d50c170（git ls-remote 实测）；F 盘备份 lingxi-engine-code-d50c170.tar.gz
+- 官网首页 / 下载页 / version.txt / 安装包 SHA256 全一致（9c66dacda58439dd95ca4aa272773b4e018d9e416099792966b34ea0f6f3d597）
+
 ## [2.0.39] - 2026-11-14
 
 合并 v2.0.38 开源版（2a3e84f）后的首个公开发布版，包含 v2.0.37 之后 6 个提交的全部改动。
@@ -170,7 +194,7 @@
 
 - `scripts/publish-site.ps1` 的 scp 分支上传目标是 `${Path_}/../install.sh`，
   即 `/var/www/lingxi/install.sh`。但 `server.js:185-193` 明确**只从 `public/` 读取**
-  `GET /install.sh` 与 `/install.ps1` —— 父目录是不被服务的死路径。
+  `GET /install.sh` 与 `GET /install.ps1` —— 父目录是不被服务的死路径。
 - 后果：**scp 模式从来没有真正更新过线上安装脚本**，线上 `public/install.sh` 一直是旧版
   （实测其 SHA256 = `136168a5a8…`，正是打补丁前的原始文件）。用户 `curl … | bash` 拿到的仍是旧逻辑。
   FTP 分支（把文件 put 到 `$Path_`）与 `-manual` 模式提示（复制到服务器 public/ 目录）都是对的，
@@ -200,7 +224,7 @@ PROBE: loginctl executed with args: enable-linger root  <- 错误：真的执行
 此前对 CRLF 危害的描述停留在推断。本次在真实 Linux（kernel 6.6.102 / bash 5.2.15）上逐场景实测：
 
 | 场景 | 结果 |
-|---|---|
+|------|------|
 | `./install.sh` 直接执行（内核读 shebang） | ❌ `cannot execute: required file not found` |
 | `bash install.sh` | ⚠️ 能跑，但输出带 `\r`（数据被污染） |
 | `curl ... \| bash`（用户真实用法） | ❌ 多行 `if/then/fi` 结构报 `syntax error: unexpected end of file` |
