@@ -3,9 +3,11 @@
 > **AI-Native 即时通讯平台** — 每个用户绑定一个 AI 智能体，对话时真人与 AI 同在
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![CI](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-2.0.35-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.42-orange)](CHANGELOG.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -229,3 +231,29 @@ npm run typecheck  # 类型检查 (必须通过)
 ## 📄 许可证
 
 MIT License — 详见 [LICENSE](LICENSE)。
+
+---
+
+## 🐳 Docker 自部署
+
+不想装 Node？用容器一条命令跑起来：
+
+```bash
+cp .env.example .env   # 填入至少一个 API Key
+docker compose up -d
+# 打开 http://localhost:3456
+```
+
+数据持久化在命名卷中，升级不丢数据。详见 [docs/docker.md](docs/docker.md)。
+
+## 🌍 English Docs
+
+- English README: [README.en.md](README.en.md)
+- Bilingual quick start: [docs/quickstart.md](docs/quickstart.md)
+- Docker guide: [docs/docker.md](docs/docker.md)
+- Security policy: [SECURITY.md](SECURITY.md) · Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+## 📊 可观测性
+
+引擎内置 Prometheus 风格指标：`GET /metrics`（HTTP 请求数/耗时、AI 调用数、token 用量）。
+访问控制：可信本机来源直接放行，远程需 `X-Admin-Token`；`METRICS_ENABLED=false` 可关闭。

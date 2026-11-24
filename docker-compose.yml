@@ -1,0 +1,37 @@
+# LingXi Engine — self-hosting with Docker Compose
+#
+#   cp .env.example .env   # add at least one AI provider API key
+#   docker compose up -d
+#   open http://localhost:3456
+#
+# Data (SQLite DB, uploads, cron state) persists in the named volume
+# `lingxi-data`, mapped to /app/data via LINGXI_DATA_DIR.
+
+services:
+  lingxi:
+    build: .
+    image: lingxi-engine:local
+    container_name: lingxi-engine
+    restart: unless-stopped
+    ports:
+      - "3456:3456"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      LINGXI_DATA_DIR: /app/data
+    volumes:
+      - lingxi-data:/app/data
+      # OPTIONAL: enable the Docker code sandbox (SANDBOX_ENABLED=true in .env).
+      # WARNING: mounting the Docker socket grants the container root-equivalent
+      # control over the host. Only do this on machines you fully trust.
+      # - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3456/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+
+volumes:
+  lingxi-data:

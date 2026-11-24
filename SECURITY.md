@@ -86,3 +86,16 @@ We will not pursue legal action for good-faith research that:
 - does not access data belonging to others
 - does not exceed what a normal user can already do
 - gives us reasonable time to fix before public disclosure
+
+## Observability endpoints
+
+GET /metrics (Prometheus format) is protected: trusted local sources pass
+(TRUSTED_LOCAL_MODE), remote callers must send X-Admin-Token matching
+ADMIN_TOKEN. Set METRICS_ENABLED=false to disable it entirely. Do not
+expose it publicly without ADMIN_TOKEN set.
+
+## Docker socket warning
+
+Enabling the code sandbox inside Docker requires mounting
+/var/run/docker.sock, which grants root-equivalent control over the host.
+Only do this on machines you fully trust (see docs/docker.md).

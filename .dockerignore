@@ -1,0 +1,39 @@
+# VCS / CI
+.git
+.github
+
+# dependencies & build artifacts (rebuilt inside the image)
+node_modules
+coverage
+dist
+*.tsbuildinfo
+
+# local data & secrets — NEVER bake into the image
+data
+.env
+.env.*
+!.env.example
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+.dbkey
+
+# local working dirs, backups, release packages
+workspace
+_tmp*
+_app*
+*.zip
+*.tar.gz
+*.bak
+*.bak-*
+*.pre-*
+*.~1~
+
+# logs
+*.log
+logs
+
+# OS junk
+Thumbs.db
+.DS_Store

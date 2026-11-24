@@ -85,7 +85,8 @@ import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
 import { registerAppConnectRoutes } from './src/routes/app-connect.js';
 import { AppDirectoryStore } from './src/storage/app-directory.js';
-import { isDevMode } from './src/security/token-compare.js';
+import { isDevMode, timingSafeTokenEqual } from './src/security/token-compare.js';
+import { metricsMiddleware, renderMetrics, setGauge } from './src/middleware/metrics.js';
 import { apiRateLimit, authRateLimit } from './src/middleware/rate-limit.js';
 import { MessageRouter } from './src/core/router.js';
 import { AIHub } from './src/ai/hub.js';
@@ -701,6 +702,8 @@ async function main() {
   const app = express();
   app.set('trust proxy', 1); // v5-P0-C: 反代部署时 req.ip 取 X-Forwarded-For 真实客户端
   app.disable('x-powered-by');
+  // v2.0.42 observability wiring: record HTTP request count/duration (metrics.ts was dead code before)
+  app.use(metricsMiddleware());
   app.use(express.json({ limit: '10mb' }));
 // [FEATURE_MARKET] hard 404 before static serving
 if (!FEATURE_MARKET) {
@@ -866,6 +869,24 @@ app.use(express.static(join(process.cwd(), 'web')));
   }
   const BUILD_TIME = process.env.LINGXI_BUILD_TIME || new Date().toISOString();
 
+  // -- Observability: GET /metrics (Prometheus text format, wired in v2.0.42) --
+  // Access: trusted local source (TRUSTED_LOCAL_MODE) passes; remote callers must
+  // send X-Admin-Token matching ADMIN_TOKEN. METRICS_ENABLED=false disables it (404).
+  app.get('/metrics', (req, res) => {
+    if (String(process.env.METRICS_ENABLED ?? 'true').toLowerCase() === 'false') {
+      return res.status(404).json({ ok: false, error: { code: 'not_found', message: 'metrics disabled' } });
+    }
+    const mToken = req.headers['x-admin-token'];
+    const mExpected = process.env.ADMIN_TOKEN;
+    const mAdminOk = !!mExpected && typeof mToken === 'string' && timingSafeTokenEqual(mToken, mExpected);
+    if (!isTrustedLocalSource(req) && !mAdminOk) {
+      return res.status(403).json({ ok: false, error: { code: 'forbidden', message: '/metrics requires a trusted local source or X-Admin-Token' } });
+    }
+    setGauge('lingxi_agents', manager.list().length);
+    setGauge('lingxi_ws_connections', clients.size);
+    setGauge('lingxi_memory_rss_bytes', process.memoryUsage().rss);
+    res.type('text/plain; version=0.0.4; charset=utf-8').send(renderMetrics());
+  });
   app.get('/api/health', (_req, res) => {
     try {
       let dbOk = false;

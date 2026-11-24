@@ -46,8 +46,10 @@ jobs:
         # 2026-09-17 fix: remove continue-on-error and head pipe (pipe swallows tsc exit code)
         run: npx tsc --noEmit --skipLibCheck
 
-      - name: Vitest suite (100 tests)
-        run: npx vitest run
+      - name: Vitest suite + coverage ratchet (602 tests)
+        # v2.0.42: runs the FULL suite and collects coverage in one pass.
+        # Thresholds in vitest.config.ts act as a ratchet: coverage only goes up.
+        run: npx vitest run --coverage
 
       - name: README consistency gate
         # 2026-10-21: scripts/check-docs.mts existed since 2026-09-28 but was NEVER

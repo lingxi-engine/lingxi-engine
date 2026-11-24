@@ -2,6 +2,50 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.42] - 2026-11-24
+
+开源短板补齐：可观测性接线 + Docker 一键部署 + 英文文档 + CI 覆盖率棘轮 + 社区治理。
+
+### 可观测性（修复死代码）
+- src/middleware/metrics.ts 此前从未被挂载（index.ts 引用数为 0），token 计数器在内存里累加却永远导不出去。本版正式接线：
+  - index.ts 挂载 metricsMiddleware()，记录 HTTP 请求数/耗时/状态码
+  - 新增 GET /metrics（Prometheus 文本格式）：可信本机来源放行，远程需 X-Admin-Token；METRICS_ENABLED=false 整体关闭
+  - 暴露 lingxi_agents / lingxi_ws_connections / lingxi_memory_rss_bytes gauge
+- 路由标签归一化（数字/UUID/长十六进制段 → :id），防止 Prometheus 标签基数爆炸
+- 新增 src/tests/metrics.test.ts：14 用例（计数器/直方图/gauge/转义/归一化/开关/中间件）
+
+### 技能库清理（续 2.0.41）
+- 移除 src/skills/ 下 56 个死副本（54 个 auto-created spam JSON + 2 个 SKILL.md 重复目录）：所有加载器均读根 skills/，src/skills 仅保留 skill-manager.ts / skill-market-secure.ts 源码；删除前备份（workspace + F 盘 zip）
+
+### Docker 一键部署
+- 新增 Dockerfile（多阶段：node:20-bookworm 装依赖 → bookworm-slim 非 root 运行；--omit=optional 跳过 puppeteer/node-datachannel/bonjour-service，三者均已验证懒加载+优雅降级；保留 tsx 运行时；/api/health 健康检查）
+- 新增 docker-compose.yml（lingxi-data 命名卷持久化 /app/data；沙箱 socket 挂载默认注释+安全警告）
+- 新增 .dockerignore（排除 .git/node_modules/data/.env/备份包，杜绝密钥进镜像）
+- 新增 docs/docker.md 双语部署指南（备份/升级/排障）
+- 注：本机无 Docker，镜像未做实际构建验证；结构按依赖与降级路径逐项核对
+
+### 英文文档
+- 新增 README.en.md（差异化定位/特性/双路径快速开始/架构/安全/开发）
+- 新增 docs/quickstart.md 双语快速入门（含排障表）
+- README.md 追加 Docker 自部署、English Docs、可观测性三节
+
+### CI / 质量门禁
+- vitest.config.ts 增加 coverage 配置：provider v8，include 收窄 src/**/*.ts（避免解析 .py/.java 报 PARSE_ERROR），阈值棘轮 statements 15 / branches 13 / functions 15 / lines 15（实测基线 17.32/15.51/18.27/18.51，只准涨不准跌）
+- ci.yml：Vitest 步骤升级为 `vitest run --coverage`（全量测试+覆盖率一次跑完）
+- package.json 新增 test:coverage 脚本；README 增加 CI 徽章 + tests-602 徽章；版本徽章 2.0.35 → 2.0.42（修正陈旧徽章）
+
+### 社区治理
+- 新增 CODE_OF_CONDUCT.md（Contributor Covenant 2.0）
+- 新增 SECURITY.md（私密漏洞报告流程 + 沙箱/socket/密钥边界说明）
+- 新增 .github/ISSUE_TEMPLATE/（bug_report + feature_request 表单 + config.yml 引导 Discussions/私密安全报告）
+- 新增 .github/PULL_REQUEST_TEMPLATE.md（门禁自查清单）
+- CONTRIBUTING.md 扩充（测试/覆盖率棘轮/文档门禁/安全红线）
+
+### 验证
+- tsc --noEmit --skipLibCheck 0 错误
+- vitest 43 文件 / 602 用例全过（较 2.0.41 新增 1 文件 14 用例）
+- 覆盖率棘轮通过：statements 17.32% / branches 15.51% / functions 18.27% / lines 18.51%
+
 ## [2.0.41] - 2026-11-24
 
 技能库去重 + 开源合规加固（面向全体开源用户）。

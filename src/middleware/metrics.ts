@@ -7,6 +7,10 @@
  *  - 中间件 metricsMiddleware 自动记录 http 请求
  *
  * 环境变量：METRICS_ENABLED=false 可关闭（默认开启，但 /metrics 路由需 admin 或本机来源）
+ *
+ * v2.0.42 接线修复：本模块此前是死代码（index.ts 从未挂载中间件、从未暴露 /metrics）。
+ * 现已在 index.ts 挂载 metricsMiddleware() 并注册受保护的 GET /metrics。
+ * 同时新增路由标签归一化（数字/UUID/长十六进制段 → :id），防止 Prometheus 标签基数爆炸。
  */
 
 interface Counter { value: number }
@@ -32,14 +36,29 @@ export function setGauge(name: string, value: number): void {
   gauges[name] = value;
 }
 
+/** 仅供测试：清空全部指标，保证用例间隔离 */
+export function resetMetrics(): void {
+  for (const k of Object.keys(counters)) delete counters[k];
+  for (const k of Object.keys(histograms)) delete histograms[k];
+  for (const k of Object.keys(gauges)) delete gauges[k];
+}
+
 function withLabels(name: string, labels?: Record<string, string>): string {
   if (!labels) return name;
   const parts = Object.entries(labels).map(([k, v]) => `${k}="${String(v).replace(/"/g, '\\"')}"`).join(',');
   return `${name}{${parts}}`;
 }
 
-function esc(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
+/**
+ * 路由归一化：把路径中的动态段替换为 :id，避免每个会话/用户 ID 都产生一条新时间序列。
+ * 覆盖：纯数字段、UUID、>=16 位十六进制串（numericId/token/实例 ID 等）。
+ */
+export function normalizeRoute(p: string): string {
+  const s = String(p || 'unknown').split('?')[0].slice(0, 200);
+  return s
+    .replace(/\/\d+(?=\/|$)/g, '/:id')
+    .replace(/\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi, '/:id')
+    .replace(/\/[0-9a-f]{16,}(?=\/|$)/gi, '/:id');
 }
 
 export function renderMetrics(): string {
@@ -82,13 +101,16 @@ export function renderMetrics(): string {
   return lines.join('\n') + '\n';
 }
 
-/** Express 中间件：记录 http 请求耗时与状态码 */
+/** Express 中间件：记录 http 请求耗时与状态码（METRICS_ENABLED=false 时零开销跳过） */
 export function metricsMiddleware() {
   return (req: any, res: any, next: any) => {
+    if (String(process.env.METRICS_ENABLED ?? 'true').toLowerCase() === 'false') return next();
     const start = process.hrtime.bigint();
     res.on('finish', () => {
       const ms = Number(process.hrtime.bigint() - start) / 1e6;
-      const route = (req.route && req.route.path) ? `${req.baseUrl || ''}${req.route.path}` : (req.path || 'unknown');
+      const route = (req.route && req.route.path)
+        ? `${req.baseUrl || ''}${req.route.path}`
+        : normalizeRoute(req.path);
       inc('lingxi_http_requests_total', { method: req.method, route, status: String(res.statusCode) });
       observe('lingxi_http_request_duration_ms', ms, { method: req.method, route });
     });
