@@ -1,6 +1,6 @@
 ﻿/**
  * 灵犀引擎 - 云平台服务器 (platform-server) v2
- * 闭源。负责：用户账号 / 积分 / 社交 / 雇佣 / (未来商城)
+ * 开源（MIT）。可选自部署的 Mesh 平台服务器：跨引擎用户账号 / 社交 rendezvous（雇佣市场已下线）
  *
  * v2 改进:
  *  - SQLite (sql.js) 替代 JSON 文件 → 并发安全 + 崩溃不丢数据
@@ -12,7 +12,7 @@
  *  - bcrypt 密码哈希 → 安全
  *  - 参数化 SQL 查询 → 防注入
  *
- * 部署: your-platform-server:3001 (测试服) → 未来独立正式服
+ * 部署: 自部署可选组件，单独启动，默认端口 3001；主引擎不依赖它（FEATURE_PLATFORM 默认关闭）
  */
 
 import express from 'express';

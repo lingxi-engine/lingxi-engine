@@ -23,6 +23,12 @@ v2.0.39 之后 15 个提交的累积发布：好友聊天全面修复 + 多 AI �
 
 ### 验证
 - tsc --noEmit 0 错误；vitest 41 文件 / 581 用例全过（发布日复核）
+
+### 运维 / 官网（2026-11-24 晚）
+- 云端托管引擎下线并删除（港服 /opt/lingxi-engine；数据三重备份：本地 + F 盘 + 服务器 tar）；官网转为纯静态下载站（/opt/lingxi-site），托管路径统一 410 + 下线引导页
+- 官网去托管化：下载页清除 /app/、/m/ 云端入口与「官方云引擎」文案；mobile.html 重写为自部署引导；意见反馈转 GitHub Issues；移除死页面 login/register/official
+- platform-server.ts 标注修正：开源（MIT）可选自部署 Mesh 平台组件（原「闭源」注释过时）
+- web/download.html 同步 v2.0.40（此前仓库落后于线上）
 - GitHub 远端 == 本地 d50c170（git ls-remote 实测）；F 盘备份 lingxi-engine-code-d50c170.tar.gz
 - 官网首页 / 下载页 / version.txt / 安装包 SHA256 全一致（9c66dacda58439dd95ca4aa272773b4e018d9e416099792966b34ea0f6f3d597）
 
