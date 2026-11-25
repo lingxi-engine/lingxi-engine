@@ -1,12 +1,17 @@
 name: Deploy Official Site
+# v2.0.45: rewritten to match the real infrastructure. The old version assumed
+# root@ access and a /opt/lingxi-deploy.sh that no longer exists (it failed on
+# every push since 2026-10). Reality: static site lives in /opt/lingxi-site,
+# served by nginx, writable by the deploy user. Secrets required:
+#   SSH_PRIVATE_KEY  (deploy user's private key)
+#   SERVER_IP        (site host)
+#   DEPLOY_USER      (ssh user, e.g. openclaw-deploy)
 on:
   push:
     branches: [main]
     paths:
-      - 'web/**'
-      - 'deploy/**'
-      - 'package.json'
-      - 'version.txt'
+      - 'deploy/site/**'
+      - '.github/workflows/deploy.yml'
   workflow_dispatch: {}
 
 permissions:
@@ -14,6 +19,8 @@ permissions:
 
 jobs:
   deploy:
+    # Only the canonical repo deploys; forks skip instead of failing red.
+    if: ${{ github.repository == 'lingxi-engine/lingxi-engine' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,22 +28,34 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Pack site
-        run: |
-          tar -czf site.tar.gz -C deploy/site .
+        run: tar -czf site.tar.gz -C deploy/site .
 
       - name: Deploy via SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SERVER_IP: ${{ secrets.SERVER_IP }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
-          echo "$SSH_PRIVATE_KEY" > key.pem && chmod 600 key.pem
-          scp -o StrictHostKeyChecking=no -i key.pem site.tar.gz root@$SERVER_IP:/tmp/
-          ssh -o StrictHostKeyChecking=no -i key.pem root@$SERVER_IP 'bash /opt/lingxi-deploy.sh'
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          scp -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key site.tar.gz "$DEPLOY_USER@$SERVER_IP:/tmp/lingxi-site.tar.gz"
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/deploy_key "$DEPLOY_USER@$SERVER_IP" '
+            set -e
+            TS=$(date +%Y%m%d-%H%M%S)
+            BK="/opt/lingxi-site/_backup-auto-$TS"
+            mkdir -p "$BK"
+            cp /opt/lingxi-site/*.html /opt/lingxi-site/version.txt "$BK/" 2>/dev/null || true
+            tar -xzf /tmp/lingxi-site.tar.gz -C /opt/lingxi-site
+            rm -f /tmp/lingxi-site.tar.gz
+            echo "deployed version: $(cat /opt/lingxi-site/version.txt)"
+          '
 
       - name: Verify deployment
-        env:
-          SERVER_IP: ${{ secrets.SERVER_IP }}
         run: |
-          sleep 5
-          curl -sf -o /dev/null -w "HTTP %{http_code}\n" --max-time 10 "http://$SERVER_IP/" || true
-          curl -skf -o /dev/null -w "HTTPS %{http_code}\n" --max-time 10 "https://$SERVER_IP/" || true
+          sleep 3
+          echo "live version.txt:"
+          curl -sf --max-time 15 https://lingxi-engine.com/version.txt
+          echo ""
+          curl -sf -o /dev/null -w "homepage HTTP %{http_code}\n" --max-time 15 https://lingxi-engine.com/
