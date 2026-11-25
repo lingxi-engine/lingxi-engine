@@ -2,6 +2,26 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [2.0.45] - 2026-11-25
+
+开源就绪收尾：技能策展目录 + Docker CI 实测验证 + 可观测性文档 + 发布包防泄漏。
+
+### 新增
+- skills/CATALOG.md 精选技能目录（52 技能 / 8 大类）+ scripts/gen-skill-catalog.mjs 生成脚本；强制 git 跟踪，随源码包发布
+- .github/workflows/docker.yml：GitHub Actions 真实构建镜像 → 启动容器 → 轮询 /api/health 直到 200（Docker 一键部署的权威验证，不再依赖本地有无 Docker）
+- docs/observability.md：指标表 / PromQL 示例 / Prometheus 抓取配置（双语）
+- deploy/grafana/lingxi-dashboard.json：现成 Grafana 面板（6 面板，导入即用）
+- src/tests/rag-engine.test.ts：RAG 引擎测试 10 条（分块 / 生命周期 / 导入导出 / 检索 / topK）
+
+### 修复
+- pack-release.ps1 发布包泄漏隐患：skills/ 被 gitignore 但打包按工作目录拷贝，本地自动学习的技能变体会混进公开 tar 包 → 现按 git ls-files skills/ 精选清单剪枝，只发精选集（CATALOG.md 一并强制跟踪以免被误剪）
+- README 过时声明修正：SQLite 驱动 sql.js → better-sqlite3（v2.0.44 已换原生驱动）、App 版本 v1.2.0 → v1.5.0、测试徽章 602 → 634、版本徽章 → 2.0.45
+- 清理本地自动学习 spam 变体 5 个（删除前已备份 F 盘）；mobile-app/ 补齐 v1.5.0 APK（此前仓库只到 v1.4.0）
+
+### 验证
+- tsc 0 错误；47 文件 / 634 用例全过；check-docs 门禁通过
+- 对比报告纠错：RAG 知识库 UX / OpenAI 兼容适配层 / 模型供应商广度三项经源码实测确认早已实现（上轮误判为缺失），已在报告中更正
+
 ## [App 1.5.0] - 2026-11-25
 
 自部署模型：移除官方共享云入口，改为「我的云端」。

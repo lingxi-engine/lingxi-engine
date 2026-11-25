@@ -4,10 +4,10 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![CI](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-634%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-2.0.44-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.45-orange)](CHANGELOG.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -22,11 +22,11 @@
 - 🔌 **9 个消息渠道** — Telegram / Signal / iMessage / Discord / Slack / WhatsApp / 飞书 / 企业微信 / QQ Bot
 - 🌐 **多 AI Provider** — OpenAI / DeepSeek / NVIDIA NIM / Ollama 即插即用
 - ⏰ **Cron 定时任务** — 带时区支持 + 磁盘持久化
-- 💾 **SQLite 存储** — 零配置本地数据库（sql.js，WASM 实现）
+- 💾 **SQLite 存储** — 零配置本地数据库（better-sqlite3 原生驱动）
 - 🔒 **JWT 认证** — access token + 刷新令牌滚动刷新
 - 📡 **WebSocket 实时推送** — 流式输出 + 工具调用进度广播
 - 🧩 **MCP 支持** — 通过 `src/mcp/adapter.ts` 接入外部 Model Context Protocol 服务
-- 📱 **移动端 App** — `mobile-app/` 提供 Android / iOS 客户端（v1.2.0）
+- 📱 **移动端 App** — `mobile-app/` 提供 Android / iOS 客户端（Android v1.5.0）
 - 🐍 **Python 自主引擎** — `lingxi_engine/` 独立 Python 子系统（记忆 / 元认知 / 议会 / 沙箱 / 群体智能）
 
 ## 🚀 快速开始
@@ -110,7 +110,7 @@ index.ts (4468 行)                    ← HTTP + WebSocket 主入口
 │   ├── jwt-auth.ts                   ← JWT 鉴权 (required/optional)
 │   ├── admin-auth.ts                 ← Admin Token 鉴权 (fail-secure)
 │   └── rate-limit.ts                 ← 内存限流 (X-Forwarded-For)
-├── src/storage/db.ts                 ← SQLite (sql.js) 数据库
+├── src/storage/db.ts                 ← SQLite (better-sqlite3) 数据库
 ├── src/channels/                     ← 9 个渠道适配 (discord/feishu/imessage/qqbot/signal/slack/telegram/wechat/whatsapp)
 ├── src/voice/                        ← TTS + STT
 ├── src/cli/chat.ts                   ← CLI 客户端 (bin: lingxi)
@@ -216,6 +216,11 @@ cd lingxi_engine/tests && python run_all.py
 
 CI 分三个 job：`python-engine`（152 断言）、`ts-engine`（typecheck + vitest）、`hygiene-check`（BOM / 垃圾文件 / 巨石行数棘轮 / shell LF）。
 
+## 🧩 技能库
+
+精选技能目录见 [skills/CATALOG.md](skills/CATALOG.md)（52 个技能 / 8 大类，由 `node scripts/gen-skill-catalog.mjs` 生成）。
+引擎运行时会自动学习新技能，但**发布包只包含 git 跟踪的精选集**——pack-release 按 `git ls-files skills/` 剪枝，本地自动学习的变体不会泄漏进公开 tar 包。
+
 ## 🤝 贡献
 
 欢迎 Pull Request。详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
@@ -245,6 +250,7 @@ docker compose up -d
 ```
 
 数据持久化在命名卷中，升级不丢数据。详见 [docs/docker.md](docs/docker.md)。
+镜像构建与启动由 GitHub Actions 自动验证（`Docker Build` workflow：build → boot → 轮询 `/api/health`）。
 
 ## 🌍 English Docs
 
@@ -258,6 +264,8 @@ docker compose up -d
 
 引擎内置 Prometheus 风格指标：`GET /metrics`（HTTP 请求数/耗时、AI 调用数、token 用量）。
 访问控制：可信本机来源直接放行，远程需 `X-Admin-Token`；`METRICS_ENABLED=false` 可关闭。
+详见 [docs/observability.md](docs/observability.md)（指标表 / PromQL 示例 / 抓取配置），
+现成 Grafana 面板：[deploy/grafana/lingxi-dashboard.json](deploy/grafana/lingxi-dashboard.json)。
 
 
 ## 📱 手机远程控制

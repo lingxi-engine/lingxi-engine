@@ -114,6 +114,28 @@ try {
     Write-Host "Stripping nested build junk..." -ForegroundColor Cyan
     Remove-JunkFiles $StageDir
 
+    # v2.0.45: ship ONLY git-tracked (curated) skills. skills/ is gitignored except
+    # the curated set; auto-skill learning creates local variants that must NOT leak
+    # into the public tarball. Prune any staged skill file not in `git ls-files skills/`.
+    Write-Host ""
+    Write-Host "Pruning untracked auto-skills from staging (curated set only)..." -ForegroundColor Cyan
+    $stageSkills = Join-Path $StageDir 'skills'
+    if (Test-Path $stageSkills) {
+        $tracked = @{}
+        try {
+            git -C $ProjectRoot ls-files 'skills/' | ForEach-Object { $tracked[($_ -replace '/','\')] = $true }
+        } catch {}
+        $pruned = 0
+        Get-ChildItem $stageSkills -Recurse -File | ForEach-Object {
+            $rel = 'skills\' + $_.FullName.Substring($stageSkills.Length + 1)
+            if (-not $tracked.ContainsKey($rel)) { Remove-Item $_.FullName -Force; $pruned++ }
+        }
+        Get-ChildItem $stageSkills -Recurse -Directory | Sort-Object { $_.FullName.Length } -Descending | ForEach-Object {
+            if (-not (Get-ChildItem $_.FullName -Force)) { Remove-Item $_.FullName -Force }
+        }
+        Write-Host "  [OK] pruned $pruned untracked skill file(s); curated set preserved" -ForegroundColor Green
+    }
+
     # v2.0.22: 鍐欏叆鏋勫缓淇℃伅锛堢増鏈?+ commit锛夛紝渚涚嚎涓?/api/health 姣斿
     # v6.9 (2026-10-01): 保留人工字段。
     #   原实现用四字段整体覆写，把 highlights / quality / commitMeaning 冲掉，

@@ -1,0 +1,72 @@
+name: Docker Build
+
+# v2.0.45: verifies the production image actually BUILDS and BOOTS on every
+# push / PR. This is the authoritative Docker verification (no local Docker
+# required): GitHub-hosted runners provide Docker, build the multi-stage
+# image, run it, and poll /api/health until the engine answers.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'index.ts'
+      - 'src/**'
+      - '.github/workflows/docker.yml'
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'index.ts'
+      - 'src/**'
+      - '.github/workflows/docker.yml'
+  workflow_dispatch:
+
+jobs:
+  build-and-boot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t lingxi-engine:ci .
+
+      - name: Boot container
+        run: |
+          docker run -d --name lingxi-ci -p 3456:3456 \
+            -e REGISTRATION_OPEN=false \
+            lingxi-engine:ci
+
+      - name: Wait for /api/health
+        run: |
+          ok=0
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3456/api/health || true)
+            echo "attempt $i -> HTTP $code"
+            if [ "$code" = "200" ]; then ok=1; break; fi
+            sleep 3
+          done
+          if [ "$ok" != "1" ]; then
+            echo "::error::engine did not become healthy"
+            docker logs lingxi-ci || true
+            exit 1
+          fi
+          echo "ENGINE_HEALTHY"
+          curl -s http://127.0.0.1:3456/api/health
+
+      - name: Container logs (on failure)
+        if: failure()
+        run: docker logs lingxi-ci || true
+
+      - name: Cleanup
+        if: always()
+        run: docker rm -f lingxi-ci || true
