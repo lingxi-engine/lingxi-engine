@@ -2,6 +2,46 @@
 
 本文档记录灵犀引擎各版本变更。日期格式 YYYY-MM-DD。
 
+## [App 1.4.0] - 2026-11-25
+
+自动发现 + 官方纯连接 Hub（修复「要手抄 IP / 人不在电脑前没法用」）。
+
+### 新增
+- 首次启动自动扫描局域网：UDP 3457 灯塔监听（引擎每 3s 广播）+ 本网段 3456 端口快速 TCP 探测（/api/health 校验），发现后一键连接
+- 「官方连接 Hub」入口：登录与电脑相同的账号，「我的灵犀」自动列出名下所有在线引擎，人在外面也能一键接管（反向中继，无需公网 IP/端口映射/frp）
+- 设置对话框新增「官方 Hub」快捷按钮；手动输入地址保留为兜底
+- 新增 ACCESS_WIFI_STATE / CHANGE_WIFI_MULTICAST_STATE 权限（接收 UDP 广播灯塔的组播锁）
+- 简/繁/英三语引导文案全面更新；versionCode 6 / versionName 1.4.0，签名不变支持覆盖安装
+
+## [2.0.43] - 2026-11-25
+
+远程控制闭环：官方纯连接 Hub 上线 + 恢复被误删的 App 控制台 UI。
+
+### 根因修复
+- v2.0.38「repo hygiene」误删 web/app/ 整个目录（app.css/app.js/connect.html/grants.html/index.html/relay.html，1783 行），导致 /app/ 控制台 404——App 填了局域网地址也打不开。本版从 git 历史完整恢复
+
+### 新增
+- HUB_ONLY=1 纯连接 Hub 模式：仅保留 /api/auth/* 与 /api/app/*（其余 API 一律 404），「我的灵犀」不再展示 Hub 自身；官方 lingxi-engine.com 即此模式——云端不跑 AI、不存聊天数据
+- 官方 Hub 部署：账号体系自旧云备份迁移（users + user_sessions + JWT_SECRET），老账号直接登录；电脑端既有链接自动恢复（心跳 401 自愈 → 重登记 → 重建反向中继）
+- docs/remote-access.md（双语）：局域网直连 / 官方 Hub / 自建 Hub 三种方式 + 隐私说明；README 增加手机远程控制章节
+- .env.example：LINGXI_HUB_URL 语义更新 + HUB_ONLY 文档
+
+### 验证
+- 新增 src/tests/hub-only.test.ts（3 用例）；tsc 0 错误；44 文件 / 605 用例全过；check-docs 16/16
+## [App 1.3.0] - 2026-11-25
+
+手机 App 云端下线适配（修复「App 不能用」）。
+
+### 根因
+- v1.2.0 的 DEFAULT_ENDPOINT 指向官方云 https://lingxi-engine.com；云端下线后 /app/ 返回 410，App 打开即报错页。
+
+### 修复
+- 移除默认云端地址与「恢复官方云端」按钮；未设置地址时首次启动进入引导（引导页 + 自动弹出地址输入框）
+- 新增 HTTP 410 专属提示（err_410），引导更换为自己的引擎地址
+- 三语字符串更新（简/繁/英）：setup_needed / endpoint_unset / err_410；choose_engine_msg 去除云端表述
+- versionCode 5 / versionName 1.3.0；签名证书不变，支持覆盖安装
+- 官网 APK 已替换（SHA256 8cccd963354297354c0664ee4810810385418efef31cb66588814a098780cf39），下载页/移动页/更新日志同步
+
 ## [2.0.42] - 2026-11-24
 
 开源短板补齐：可观测性接线 + Docker 一键部署 + 英文文档 + CI 覆盖率棘轮 + 社区治理。

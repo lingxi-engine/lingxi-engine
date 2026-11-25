@@ -131,3 +131,14 @@ CI runs type check, the full test suite, the README gate and workspace-hygiene c
 ## 📄 License
 
 [MIT](LICENSE) © LingXi Engine contributors
+
+
+## 📱 Mobile Remote Control
+
+The phone app is a remote control: all compute stays on your own computer. Three ways to connect (all built into app v1.4.0):
+
+1. **LAN direct** — on the same Wi-Fi the app auto-discovers engines (UDP beacons + subnet scan). One tap, zero config.
+2. **Official connect Hub** — since v2.0.43 `lingxi-engine.com` is a connect-only Hub (`HUB_ONLY=1`): account login + device directory + reverse relay. **No cloud AI, no chat storage.** Sign in with the same account on phone and PC, then take over your home computer from anywhere — no public IP or port forwarding needed.
+3. **Self-hosted Hub / offline** — run any server with `HUB_ONLY=1`, or set `LINGXI_HUB_URL=off` for pure LAN / Tailscale use.
+
+Details: [docs/remote-access.md](docs/remote-access.md).

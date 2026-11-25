@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>AI 授权中心 · 灵犀</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#0f1220;--panel:#171b2e;--panel2:#1e2338;--line:#2a3049;--txt:#e8eaf6;--dim:#8b93b0;
+    --pri:#6c5ce7;--ok:#22c55e;--warn:#f59e0b;--bad:#ef4444;
+  }
+  body{font-family:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    background:radial-gradient(1100px 560px at 10% -10%,#242a4a 0%,var(--bg) 55%);
+    color:var(--txt);min-height:100vh;padding:16px 14px 40px}
+  .wrap{max-width:760px;margin:0 auto}
+  header{display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap}
+  .logo{font-size:19px;font-weight:800}
+  .logo span{background:linear-gradient(90deg,#8b7bff,#38bdf8);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .tag{font-size:10.5px;padding:3px 8px;border-radius:20px;background:#2a3050;color:var(--dim);border:1px solid var(--line)}
+  .sub{color:var(--dim);font-size:12.5px;margin:6px 0 16px;line-height:1.6}
+  .tabs{display:flex;gap:5px;background:var(--panel);padding:5px;border-radius:12px;border:1px solid var(--line);margin-bottom:14px;overflow-x:auto}
+  .tabs button{flex:1 0 auto;border:0;background:transparent;color:var(--dim);padding:9px 8px;border-radius:8px;
+    cursor:pointer;font-size:12.5px;font-weight:700;font-family:inherit;transition:.18s;white-space:nowrap}
+  .tabs button.on{background:linear-gradient(135deg,var(--pri),#4c7ef3);color:#fff;box-shadow:0 4px 14px rgba(108,92,231,.4)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:13px}
+  .phead{display:flex;align-items:center;gap:8px;margin-bottom:11px}
+  .phead h3{font-size:13.5px;font-weight:700}
+  .badge{font-size:10.5px;padding:2px 7px;border-radius:20px;background:#2b3352;color:var(--dim)}
+  .item{display:flex;align-items:flex-start;gap:11px;padding:11px;border-radius:11px;background:var(--panel2);
+    border:1px solid var(--line);margin-bottom:9px;transition:.15s}
+  .item.sel{border-color:#6c5ce7;background:rgba(108,92,231,.10)}
+  .cbx{width:18px;height:18px;flex:0 0 auto;margin-top:9px;accent-color:#6c5ce7;cursor:pointer}
+  .ava{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;font-size:17px;flex:0 0 auto;
+    background:linear-gradient(135deg,#8b5cf6,#ec4899)}
+  .ava.h{background:linear-gradient(135deg,#3b82f6,#22d3ee)}
+  .info{flex:1;min-width:0}
+  .name{font-size:13.5px;font-weight:700;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .meta{font-size:11.5px;color:var(--dim);margin-top:3px;line-height:1.6;word-break:break-word}
+  .chip{font-size:10.5px;padding:2px 7px;border-radius:20px;font-weight:700;white-space:nowrap}
+  .chip.ok{background:rgba(34,197,94,.14);color:#4ade80;border:1px solid rgba(34,197,94,.35)}
+  .chip.pending{background:rgba(245,158,11,.14);color:#fbbf24;border:1px solid rgba(245,158,11,.35)}
+  .chip.locked{background:rgba(139,147,176,.13);color:#a8b0cc;border:1px solid #3a4265}
+  .chip.bad{background:rgba(239,68,68,.13);color:#f87171;border:1px solid rgba(239,68,68,.32)}
+  .chip.skill{background:rgba(56,189,248,.12);color:#7dd3fc;border:1px solid rgba(56,189,248,.3);font-weight:600}
+  .btn{border:0;padding:8px 13px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer;
+    font-family:inherit;transition:.16s;white-space:nowrap}
+  .btn:active{transform:scale(.97)}
+  .btn.pri{background:linear-gradient(135deg,var(--pri),#4c7ef3);color:#fff;box-shadow:0 4px 12px rgba(108,92,231,.32)}
+  .btn.ghost{background:#252b45;color:#c3c9e4;border:1px solid #343c5e}
+  .btn.danger{background:rgba(239,68,68,.13);color:#f87171;border:1px solid rgba(239,68,68,.32)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .btn.sm{padding:6px 11px;font-size:11.5px}
+  .row{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
+  .toolbar{display:flex;gap:7px;align-items:center;padding:9px 2px;flex-wrap:wrap}
+  .toolbar .sp{flex:1}
+  .empty{font-size:12.5px;color:var(--dim);text-align:center;padding:26px 12px;
+    border:1px dashed #333a5a;border-radius:11px;line-height:1.7}
+  .banner{border-radius:11px;padding:11px 13px;font-size:12.5px;line-height:1.7;margin-bottom:13px}
+  .banner.warn{border:1px solid rgba(245,158,11,.35);background:rgba(245,158,11,.08);color:#fbbf24}
+  .banner.err{border:1px solid rgba(239,68,68,.35);background:rgba(239,68,68,.07);color:#f87171}
+  .banner.info{border:1px solid rgba(56,189,248,.3);background:rgba(56,189,248,.07);color:#7dd3fc}
+  .banner b{color:#fff}
+  .exp{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed rgba(245,158,11,.25);margin-top:6px}
+  .exp:first-of-type{border-top:0;margin-top:2px}
+  .exp .t{flex:1;min-width:0;font-size:12px;color:#e8eaf6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .exp .h{font-size:11px;color:#fbbf24;font-weight:700;flex:0 0 auto}
+  .toast{position:fixed;left:50%;bottom:30px;transform:translate(-50%,18px);background:#1e2440;
+    border:1px solid #3b4470;color:#e8eaf6;padding:10px 18px;border-radius:11px;font-size:12.5px;
+    box-shadow:0 16px 40px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:.26s;z-index:80;max-width:86vw;text-align:center}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  .skel{height:56px;border-radius:11px;background:linear-gradient(90deg,#1c2136,#252b45,#1c2136);
+    background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:9px}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  .foot{font-size:11px;color:#6b7495;text-align:center;margin-top:18px;line-height:1.7}
+  /* 底部弹窗 */
+  .sheet-mask{position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:70;display:flex;align-items:flex-end;justify-content:center}
+  .sheet{width:100%;max-width:520px;background:#171b2e;border:1px solid #343c5e;border-radius:18px 18px 0 0;
+    padding:18px 18px 22px;max-height:88vh;overflow-y:auto;animation:up .22s ease-out}
+  @keyframes up{from{transform:translateY(24px);opacity:.4}to{transform:translateY(0);opacity:1}}
+  .sheet h2{font-size:15.5px;font-weight:800;margin-bottom:4px}
+  .sheet .desc{font-size:11.5px;color:var(--dim);line-height:1.6;margin-bottom:14px}
+  .lbl{font-size:11.5px;color:#a9b1cf;margin:12px 0 6px;font-weight:700}
+  .lbl:first-of-type{margin-top:0}
+  .opts{display:flex;gap:6px;flex-wrap:wrap}
+  .opt{padding:9px 10px;border:1px solid #343c5e;background:#1c2136;border-radius:9px;cursor:pointer;
+    font-size:12px;text-align:center;flex:1;min-width:88px;transition:.15s}
+  .opt.on{border-color:#6c5ce7;background:rgba(108,92,231,.16);color:#fff;font-weight:700}
+  .opt.mini{flex:0 0 auto;min-width:0;padding:7px 11px;font-size:11.5px}
+  select,input[type=text]{width:100%;background:#12162a;border:1px solid #343c5e;border-radius:9px;padding:10px;
+    color:inherit;font-family:inherit;font-size:12.5px;outline:none}
+  select:focus,input[type=text]:focus{border-color:#6c5ce7}
+  .skillbox{display:flex;gap:6px;flex-wrap:wrap}
+  .skillbox .opt{flex:0 0 auto;min-width:0;font-size:11.5px;padding:7px 10px}
+  .preview{font-size:11.5px;color:#8b93b0;background:#12162a;border:1px dashed #343c5e;border-radius:9px;
+    padding:10px;margin-top:14px;line-height:1.6}
+  .actions{display:flex;gap:8px;margin-top:16px}
+  .actions .btn{flex:1;padding:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">灵犀 <span>AI 授权中心</span></div>
+    <div class="tag" id="whoami">—</div>
+  </header>
+  <div class="sub">加好友 ≠ 能用对方的 AI。默认<b style="color:#f87171">未授权</b>，必须 AI 主人同意；可限定范围（某群 / 私聊）、有效期和可用能力，随时可撤销。</div>
+
+  <div id="banner"></div>
+  <div id="expiring"></div>
+
+  <div class="tabs">
+    <button id="tabIn" class="on" onclick="switchTab('in')">📥 待我审批 <span id="cntIn"></span></button>
+    <button id="tabOut" onclick="switchTab('out')">📜 我给出的 <span id="cntOut"></span></button>
+    <button id="tabMine" onclick="switchTab('mine')">🤝 好友的 AI</button>
+    <button id="tabBulk" onclick="switchTab('bulk')">⚡ 批量授权</button>
+  </div>
+
+  <div id="content"></div>
+
+  <div class="foot">
+    v1.2 · 到期提醒 / 批量审批 / 按能力细分授权<br>
+    GET /api/agent-grants/inbox · outbox · expiring · available
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var API = location.origin;
+  var tab = 'in';
+  var state = {
+    inbox: [], outbox: [], available: [], expiring: { asOwner: [], asGrantee: [] },
+    feature: true, userId: '', userName: '',
+    agents: [], chats: [], sel: {}
+  };
+
+  // 可选能力（真实工具名，后端 check-tool 就按这些判断；不选 = 全部能力）
+  var SKILLS = [
+    { id: 'web_search', label: '🔍 联网搜索' },
+    { id: 'scrape_url', label: '🌐 抓网页' },
+    { id: 'read_file', label: '📖 读文件' },
+    { id: 'write_file', label: '✍️ 写文件' },
+    { id: 'code_execute', label: '💻 跑代码' },
+    { id: 'shell_exec', label: '⌨️ 执行命令' },
+    { id: 'generate_image', label: '🎨 画图' },
+    { id: 'delegate_task', label: '🧩 派子任务' }
+  ];
+
+  function $(id) { return document.getElementById(id); }
+  function tok() { try { return localStorage.getItem('authToken') || ''; } catch (e) { return ''; } }
+  function uid() { try { return localStorage.getItem('userId') || ''; } catch (e) { return ''; } }
+  function uname() { try { return localStorage.getItem('displayName') || ''; } catch (e) { return ''; } }
+
+  function toast(t) {
+    var el = $('toast'); el.textContent = t; el.classList.add('on');
+    clearTimeout(el._t); el._t = setTimeout(function () { el.classList.remove('on'); }, 2600);
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function api(path, opt) {
+    opt = opt || {};
+    var h = { 'Content-Type': 'application/json' };
+    if (tok()) h.Authorization = 'Bearer ' + tok();
+    return fetch(API + path, {
+      method: opt.method || 'GET',
+      headers: h,
+      body: opt.body ? JSON.stringify(opt.body) : undefined
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) {
+        return { status: r.status, json: j };
+      });
+    });
+  }
+
+  function scopeLabel(g) {
+    if (g.scope === 'group') return '群「' + (g.chat_name || g.chat_id || '未命名') + '」';
+    if (g.scope === 'friend') return '仅私聊';
+    if (g.scope === 'task') return '单次任务';
+    return g.scope;
+  }
+  function untilText(ts) {
+    if (!ts) return '长期（可随时撤销）';
+    var d = new Date(Number(ts));
+    var left = Number(ts) - Date.now();
+    if (left <= 0) return '已过期';
+    var h = Math.floor(left / 3600000);
+    var txt = h >= 24 ? Math.floor(h / 24) + ' 天后到期' : h + ' 小时后到期';
+    return txt + '（' + d.toLocaleString('zh-CN', { hour12: false }) + '）';
+  }
+  function skillChips(list) {
+    if (!list || !list.length) return '<span class="chip skill">全部能力</span>';
+    return list.map(function (s) { return '<span class="chip skill">' + esc(s) + '</span>'; }).join('');
+  }
+
+  /* ── 即将到期横幅 ── */
+  function renderExpiring() {
+    var box = $('expiring');
+    var own = state.expiring.asOwner || [];
+    var gte = state.expiring.asGrantee || [];
+    if (!own.length && !gte.length) { box.innerHTML = ''; return; }
+    var html = '<div class="banner warn"><b>⏳ ' + (own.length + gte.length) + ' 条授权 24 小时内到期</b>';
+    own.slice(0, 5).forEach(function (g) {
+      html += '<div class="exp">' +
+        '<span class="t">你给 <b>' + esc(g.grantee_name || g.grantee_id) + '</b> 的「' + esc(g.agent_name || g.agent_id) + '」</span>' +
+        '<span class="h">' + g.hoursLeft + 'h</span>' +
+        '<button class="btn ghost sm" onclick="renewGrant(\'' + esc(g.id) + '\',168)">续 7 天</button></div>';
+    });
+    gte.slice(0, 5).forEach(function (g) {
+      html += '<div class="exp">' +
+        '<span class="t">你可用「' + esc(g.agent_name || g.agent_id) + '」，主人 <b>' + esc(g.owner_name || g.owner_id) + '</b></span>' +
+        '<span class="h">' + g.hoursLeft + 'h</span>' +
+        '<button class="btn ghost sm" onclick="renewGrant(\'' + esc(g.id) + '\',168)">申请续期</button></div>';
+    });
+    html += '</div>';
+    box.innerHTML = html;
+  }
+
+  /* ── 待我审批（支持多选批量） ── */
+  function renderInbox() {
+    if (!state.inbox.length) {
+      return '<div class="empty">暂无待审批申请 🌿<br>有人想用你的 AI 时，会出现在这里。</div>';
+    }
+    var items = state.inbox.map(function (g) {
+      var on = !!state.sel[g.id];
+      return '' +
+        '<div class="item' + (on ? ' sel' : '') + '">' +
+        '  <input type="checkbox" class="cbx" data-gid="' + esc(g.id) + '"' + (on ? ' checked' : '') + ' onchange="toggleSel(this)">' +
+        '  <div class="ava h">👤</div>' +
+        '  <div class="info">' +
+        '    <div class="name">' + esc(g.grantee_name || g.grantee_id) + ' <span class="chip pending">待审批</span></div>' +
+        '    <div class="meta">想用你的 <b>' + esc(g.agent_name || g.agent_id) + '</b><br>' +
+        '      范围：' + esc(scopeLabel(g)) + '<br>' +
+        '      有效期：' + esc(untilText(g.expires_at)) + '<br>' +
+        '      能力：' + skillChips(g.skills) +
+        (g.note ? '<br>附言：' + esc(g.note) : '') +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="row" style="flex-direction:column">' +
+        '    <button class="btn pri sm" onclick="act(\'accept\',\'' + esc(g.id) + '\')">同意</button>' +
+        '    <button class="btn danger sm" onclick="act(\'reject\',\'' + esc(g.id) + '\')">拒绝</button>' +
+        '  </div>' +
+        '</div>';
+    }).join('');
+    var selCount = Object.keys(state.sel).filter(function (k) { return state.sel[k]; }).length;
+    var bar = '<div class="toolbar">' +
+      '<button class="btn ghost sm" onclick="selAll(true)">全选</button>' +
+      '<button class="btn ghost sm" onclick="selAll(false)">清空</button>' +
+      '<span class="sp" style="font-size:11.5px;color:#8b93b0">已选 ' + selCount + ' 条</span>' +
+      '<button class="btn pri sm" onclick="batchDecide(\'accept\')" ' + (selCount ? '' : 'disabled') + '>批量同意</button>' +
+      '<button class="btn danger sm" onclick="batchDecide(\'reject\')" ' + (selCount ? '' : 'disabled') + '>批量拒绝</button>' +
+      '</div>';
+    return bar + items;
+  }
+
+  /* ── 我给出的 ── */
+  function renderOutbox() {
+    if (!state.outbox.length) {
+      return '<div class="empty">你还没有对外授权。<br>别人申请并你同意后，会列在这里。也可用「⚡ 批量授权」一键开群。</div>';
+    }
+    return state.outbox.map(function (g) {
+      var expired = g.status === 'expired';
+      return '' +
+        '<div class="item">' +
+        '  <div class="ava">🤖</div>' +
+        '  <div class="info">' +
+        '    <div class="name">' + esc(g.agent_name || g.agent_id) + ' → ' + esc(g.grantee_name || g.grantee_id) +
+        '      <span class="chip ' + (expired ? 'locked' : 'ok') + '">' + (expired ? '已过期' : '生效中') + '</span></div>' +
+        '    <div class="meta">范围：' + esc(scopeLabel(g)) + '<br>有效期：' + esc(untilText(g.expires_at)) + '<br>能力：' + skillChips(g.skills) + '</div>' +
+        '  </div>' +
+        '  <div class="row" style="flex-direction:column">' +
+        (expired
+          ? '  <button class="btn pri sm" onclick="renewGrant(\'' + esc(g.id) + '\',168)">续期</button>'
+          : '  <button class="btn ghost sm" onclick="renewGrant(\'' + esc(g.id) + '\',168)">续 7 天</button>' +
+            '  <button class="btn danger sm" onclick="revoke(\'' + esc(g.id) + '\')">撤销</button>') +
+        '  </div>' +
+        '</div>';
+    }).join('');
+  }
+
+  /* ── 好友的 AI ── */
+  function renderMine() {
+    var list = state.available.filter(function (m) { return m.type === 'agent'; });
+    if (!list.length) {
+      return '<div class="empty">还没有好友的 AI 可申请。<br>先加个好友吧～</div>';
+    }
+    return list.map(function (m) {
+      var st = m.grantStatus || 'locked';
+      var chip = { accepted: 'ok|✅ 已授权', pending: 'pending|⏳ 等待对方同意', locked: 'locked|🔒 未授权', rejected: 'bad|❌ 已被拒绝', revoked: 'locked|🚫 已撤销' }[st] || 'locked|🔒 未授权';
+      var cls = chip.split('|')[0], txt = chip.split('|')[1];
+      var btn = '';
+      if (st === 'locked' || st === 'rejected' || st === 'revoked') {
+        btn = '<button class="btn pri sm" onclick="applyFor(\'' + esc(m.id) + '\',\'' + esc(m.displayName || '') + '\')">申请授权</button>';
+      } else if (st === 'pending') {
+        btn = '<button class="btn ghost sm" disabled>等待同意…</button>';
+      }
+      return '' +
+        '<div class="item">' +
+        '  <div class="ava">🤖</div>' +
+        '  <div class="info">' +
+        '    <div class="name">' + esc(m.displayName || m.id) + ' <span class="chip ' + cls + '">' + txt + '</span></div>' +
+        '    <div class="meta">属于 <b>' + esc(m.ownerName || m.ownerId || '') + '</b> 的 AI</div>' +
+        '  </div>' + btn +
+        '</div>';
+    }).join('');
+  }
+
+  /* ── 批量授权（主人侧） ── */
+  var bulkSel = { agentId: '', chatId: '', ttl: '168', scope: 'group', skills: {} };
+  function renderBulk() {
+    var mine = state.agents.filter(function (a) { return String(a.user_id || a.userId || '') === String(state.userId); });
+    if (!mine.length) mine = state.agents.slice(0, 5);
+    var agentOpts = mine.map(function (a) {
+      var on = bulkSel.agentId === String(a.id);
+      return '<div class="opt' + (on ? ' on' : '') + '" onclick="pickBulk(\'agentId\',\'' + esc(a.id) + '\')">🤖 ' + esc(a.display_name || a.displayName || a.id) + '</div>';
+    }).join('');
+    var chatOpts = state.chats.map(function (c) {
+      var on = bulkSel.chatId === String(c.id);
+      return '<div class="opt' + (on ? ' on' : '') + '" onclick="pickBulk(\'chatId\',\'' + esc(c.id) + '\')">👥 ' + esc(c.name || c.id) + '</div>';
+    }).join('');
+    var ttlOpts = [['2', '2 小时'], ['24', '24 小时'], ['168', '7 天'], ['0', '长期']].map(function (p) {
+      return '<div class="opt mini' + (bulkSel.ttl === p[0] ? ' on' : '') + '" onclick="pickBulk(\'ttl\',\'' + p[0] + '\')">' + p[1] + '</div>';
+    }).join('');
+    var skillOpts = SKILLS.map(function (s) {
+      var on = !!bulkSel.skills[s.id];
+      return '<div class="opt' + (on ? ' on' : '') + '" onclick="toggleBulkSkill(\'' + s.id + '\')">' + s.label + '</div>';
+    }).join('');
+
+    return '<div class="panel">' +
+      '<div class="phead"><h3>⚡ 一键授权本群全员</h3><span class="badge">主人操作</span></div>' +
+      '<div class="meta" style="margin-bottom:12px">把你自己的 AI 一次性开放给某个群里的所有成员，不用一个个点同意。已授权的会自动续期。</div>' +
+      '<div class="lbl">选择你的 AI</div><div class="opts">' + (agentOpts || '<span class="meta">没有可授权的 AI</span>') + '</div>' +
+      '<div class="lbl">选择群</div><div class="opts">' + (chatOpts || '<span class="meta">暂无会话</span>') + '</div>' +
+      '<div class="lbl">有效期</div><div class="opts">' + ttlOpts + '</div>' +
+      '<div class="lbl">可用能力（不选 = 全部能力）</div><div class="skillbox">' + skillOpts + '</div>' +
+      '<div class="preview" id="bulkPreview">' + bulkPreviewText() + '</div>' +
+      '<div class="actions"><button class="btn pri" onclick="doBulk()">立即授权全群</button></div>' +
+      '</div>';
+  }
+  function bulkPreviewText() {
+    var a = state.agents.filter(function (x) { return String(x.id) === bulkSel.agentId; })[0];
+    var c = state.chats.filter(function (x) { return String(x.id) === bulkSel.chatId; })[0];
+    var sk = Object.keys(bulkSel.skills).filter(function (k) { return bulkSel.skills[k]; });
+    return '将授权：<b>' + esc(a ? (a.display_name || a.displayName || a.id) : '（未选 AI）') + '</b> · 群「' +
+      esc(c ? (c.name || c.id) : '（未选群）') + '」 · ' +
+      (bulkSel.ttl === '0' ? '长期' : bulkSel.ttl + ' 小时') + ' · 能力：' +
+      (sk.length ? esc(sk.join('、')) : '全部');
+  }
+
+  function counts() {
+    $('cntIn').textContent = state.inbox.length ? '(' + state.inbox.length + ')' : '';
+    $('cntOut').textContent = state.outbox.length ? '(' + state.outbox.length + ')' : '';
+  }
+
+  function render() {
+    var box = $('content');
+    if (!tok()) {
+      box.innerHTML = '<div class="banner err">未登录：请先在灵犀 App / 聊天页登录，再回到本页。</div>';
+      return;
+    }
+    if (!state.feature) {
+      $('banner').innerHTML = '<div class="banner warn">⚠️ 服务端授权功能当前为「关闭」状态（FEATURE_AGENT_GRANTS=off）。界面能看，但默认允许调用，等同于旧行为。</div>';
+    } else { $('banner').innerHTML = ''; }
+
+    renderExpiring();
+    if (tab === 'in') box.innerHTML = renderInbox();
+    else if (tab === 'out') box.innerHTML = renderOutbox();
+    else if (tab === 'bulk') box.innerHTML = renderBulk();
+    else box.innerHTML = renderMine();
+  }
+
+  function load() {
+    state.userId = uid(); state.userName = uname();
+    $('whoami').textContent = state.userName || (state.userId ? 'ID ' + state.userId : '未登录');
+    if (!tok()) { render(); return; }
+
+    $('content').innerHTML = '<div class="skel"></div><div class="skel"></div><div class="skel"></div>';
+
+    Promise.all([
+      api('/api/agent-grants/inbox'),
+      api('/api/agent-grants/outbox'),
+      api('/api/agent-grants/available?userId=' + encodeURIComponent(state.userId) + '&chatId='),
+      api('/api/agent-grants/expiring?withinHours=24'),
+      api('/api/agents'),
+      api('/api/chats?userId=' + encodeURIComponent(state.userId))
+    ]).then(function (rs) {
+      var authFail = rs.slice(0, 3).some(function (r) { return r.status === 401 || r.status === 403; });
+      if (authFail) {
+        $('content').innerHTML = '<div class="banner err">登录已过期，请重新登录灵犀后再打开本页。</div>';
+        return;
+      }
+      state.inbox = (rs[0].json && rs[0].json.items) || [];
+      state.outbox = (rs[1].json && rs[1].json.items) || [];
+      state.available = (rs[2].json && rs[2].json.members) || [];
+      state.expiring = {
+        asOwner: (rs[3].json && rs[3].json.asOwner) || [],
+        asGrantee: (rs[3].json && rs[3].json.asGrantee) || []
+      };
+      state.agents = (rs[4].json && rs[4].json.agents) || [];
+      state.chats = (rs[5].json && (rs[5].json.chats || rs[5].json.items)) || [];
+      if (rs[2].json && typeof rs[2].json.featureEnabled === 'boolean') state.feature = rs[2].json.featureEnabled;
+      if (!bulkSel.agentId && state.agents.length) {
+        var mine = state.agents.filter(function (a) { return String(a.user_id || a.userId || '') === String(state.userId); });
+        if (mine.length) bulkSel.agentId = String(mine[0].id);
+      }
+      if (!bulkSel.chatId && state.chats.length) bulkSel.chatId = String(state.chats[0].id);
+      counts(); render();
+    }).catch(function (e) {
+      $('content').innerHTML = '<div class="banner err">加载失败：' + esc(e.message) + '<br>请确认后端已升级（/api/agent-grants/*）。</div>';
+    });
+  }
+
+  window.switchTab = function (t) {
+    tab = t;
+    ['in', 'out', 'mine', 'bulk'].forEach(function (k) {
+      var el = $('tab' + k.charAt(0).toUpperCase() + k.slice(1));
+      if (el) el.classList.toggle('on', k === t);
+    });
+    render();
+  };
+
+  /* ── 多选── */
+  window.toggleSel = function (cb) {
+    state.sel[cb.getAttribute('data-gid')] = cb.checked;
+    render();
+  };
+  window.selAll = function (on) {
+    state.inbox.forEach(function (g) { state.sel[g.id] = on; });
+    render();
+  };
+  window.batchDecide = function (action) {
+    var ids = Object.keys(state.sel).filter(function (k) { return state.sel[k]; });
+    if (!ids.length) return toast('请先勾选申请');
+    api('/api/agent-grants/batch-decide', { method: 'PATCH', body: { action: action, ids: ids } })
+      .then(function (r) {
+        if (r.status !== 200) return toast('操作失败：' + (r.json.error || r.status));
+        var ok = (r.json.done || []).length, bad = (r.json.failed || []).length;
+        toast((action === 'accept' ? '已同意 ' : '已拒绝 ') + ok + ' 条' + (bad ? '，失败 ' + bad + ' 条' : ''));
+        state.sel = {}; load();
+      })
+      .catch(function (e) { toast('操作失败：' + e.message); });
+  };
+
+  window.act = function (action, id) {
+    api('/api/agent-grants/' + encodeURIComponent(id), { method: 'PATCH', body: { action: action } })
+      .then(function (r) {
+        if (r.status !== 200) return toast('操作失败：' + (r.json.error || r.status));
+        toast(action === 'accept' ? '已同意，对方现在可以用了' : '已拒绝');
+        delete state.sel[id]; load();
+      });
+  };
+
+  window.renewGrant = function (id, ttl) {
+    api('/api/agent-grants/' + encodeURIComponent(id) + '/renew', { method: 'POST', body: { ttlHours: ttl || 168 } })
+      .then(function (r) {
+        if (r.status !== 200) return toast('续期失败：' + (r.json.error || r.status));
+        toast('已续期 ' + (ttl >= 168 ? Math.round(ttl / 24) + ' 天' : ttl + ' 小时'));
+        load();
+      });
+  };
+
+  window.revoke = function (id) {
+    if (!confirm('确定撤销这条授权？对方会立即失去调用权。')) return;
+    api('/api/agent-grants/' + encodeURIComponent(id), { method: 'DELETE', body: {} })
+      .then(function (r) {
+        if (r.status !== 200) return toast('撤销失败：' + (r.json.error || r.status));
+        toast('已撤销');
+        load();
+      });
+  };
+
+  /* ── 申请弹窗（底部弹层，无需手填 ID） ── */
+  var apply = { agentId: '', agentName: '', scope: 'group', chatId: '', ttl: '24', note: '借用一下你的 AI，用完就还～', skills: {} };
+
+  window.applyFor = function (agentId, name) {
+    apply.agentId = agentId; apply.agentName = name;
+    apply.scope = 'group'; apply.ttl = '24'; apply.note = '借用一下你的 AI，用完就还～'; apply.skills = {};
+    if (!apply.chatId && state.chats.length) apply.chatId = String(state.chats[0].id);
+    var old = $('applySheet'); if (old) old.remove();
+    var mask = document.createElement('div');
+    mask.id = 'applySheet'; mask.className = 'sheet-mask';
+    mask.innerHTML = '<div class="sheet" id="applySheetInner"></div>';
+    document.body.appendChild(mask);
+    mask.onclick = function (e) { if (e.target === mask) mask.remove(); };
+    paintApply();
+  };
+
+  function paintApply() {
+    var inner = $('applySheetInner'); if (!inner) return;
+    var scopeOpts = '<div class="opt' + (apply.scope === 'group' ? ' on' : '') + '" onclick="applyPick(\'scope\',\'group\')">👥 某个群</div>' +
+      '<div class="opt' + (apply.scope === 'friend' ? ' on' : '') + '" onclick="applyPick(\'scope\',\'friend\')">💬 仅私聊</div>';
+    var chatSel = '';
+    if (apply.scope === 'group') {
+      var opts = state.chats.map(function (c) {
+        return '<option value="' + esc(c.id) + '"' + (String(c.id) === String(apply.chatId) ? ' selected' : '') + '>' + esc(c.name || c.id) + '</option>';
+      }).join('');
+      chatSel = '<div class="lbl">哪个群</div><select onchange="applyPick(\'chatId\',this.value)">' + (opts || '<option>暂无群聊</option>') + '</select>';
+    }
+    var ttlOpts = [['2', '2 小时'], ['24', '24 小时'], ['168', '7 天'], ['0', '长期']].map(function (p) {
+      return '<div class="opt mini' + (apply.ttl === p[0] ? ' on' : '') + '" onclick="applyPick(\'ttl\',\'' + p[0] + '\')">' + p[1] + '</div>';
+    }).join('');
+    var skillOpts = SKILLS.map(function (s) {
+      return '<div class="opt' + (apply.skills[s.id] ? ' on' : '') + '" onclick="applySkill(\'' + s.id + '\')">' + s.label + '</div>';
+    }).join('');
+    var ttlTxt = apply.ttl === '0' ? '长期' : apply.ttl + ' 小时';
+    var scopeTxt = apply.scope === 'group'
+      ? ('群「' + esc(((state.chats.filter(function (c) { return String(c.id) === String(apply.chatId); })[0] || {}).name || apply.chatId || '未选')) + '」')
+      : '仅私聊';
+    var skTxt = Object.keys(apply.skills).filter(function (k) { return apply.skills[k]; });
+
+    inner.innerHTML =
+      '<h2>申请使用「' + esc(apply.agentName) + '」</h2>' +
+      '<div class="desc">对方会收到通知。同意之前，这个 AI 不会响应你的任何消息。</div>' +
+      '<div class="lbl">授权范围</div><div class="opts">' + scopeOpts + '</div>' + chatSel +
+      '<div class="lbl">有效期</div><div class="opts">' + ttlOpts + '</div>' +
+      '<div class="lbl">需要哪些能力（不选 = 全部）</div><div class="skillbox">' + skillOpts + '</div>' +
+      '<div class="lbl">附言（对方能看到）</div>' +
+      '<input type="text" id="applyNote" value="' + esc(apply.note) + '" oninput="apply.note=this.value">' +
+      '<div class="preview">将申请：<b>' + esc(apply.agentName) + '</b> · ' + scopeTxt + ' · ' + ttlTxt +
+      ' · 能力：' + (skTxt.length ? esc(skTxt.join('、')) : '全部') + '</div>' +
+      '<div class="actions"><button class="btn ghost" onclick="closeApply()">取消</button>' +
+      '<button class="btn pri" onclick="submitApply()">发送申请</button></div>';
+  }
+  window.applyPick = function (k, v) { apply[k] = v; paintApply(); };
+  window.applySkill = function (id) { apply.skills[id] = !apply.skills[id]; paintApply(); };
+  window.closeApply = function () { var m = $('applySheet'); if (m) m.remove(); };
+  window.submitApply = function () {
+    var body = { agentId: apply.agentId, scope: apply.scope, ttlHours: Number(apply.ttl || 0), note: apply.note || '' };
+    if (apply.scope === 'group') {
+      if (!apply.chatId) return toast('请选择要授权的群');
+      body.chatId = apply.chatId;
+    }
+    var sk = Object.keys(apply.skills).filter(function (k) { return apply.skills[k]; });
+    if (sk.length) body.skills = sk;
+    api('/api/agent-grants', { method: 'POST', body: body }).then(function (r) {
+      closeApply();
+      if (r.status === 201 || (r.json && (r.json.grantId || r.json.status === 'pending'))) {
+        toast('申请已发出，等对方主人同意'); load();
+      } else toast('申请失败：' + ((r.json && r.json.error) || r.status));
+    }).catch(function (e) { closeApply(); toast('申请失败：' + e.message); });
+  };
+
+  /* ── 批量授权 ── */
+  window.pickBulk = function (k, v) { bulkSel[k] = v; render(); };
+  window.toggleBulkSkill = function (id) { bulkSel.skills[id] = !bulkSel.skills[id]; render(); };
+  window.doBulk = function () {
+    if (!bulkSel.agentId) return toast('请选择你的 AI');
+    if (!bulkSel.chatId) return toast('请选择群');
+    var body = {
+      agentId: bulkSel.agentId, scope: 'group', chatId: bulkSel.chatId,
+      ttlHours: Number(bulkSel.ttl || 0), note: '主人一键授权'
+    };
+    var sk = Object.keys(bulkSel.skills).filter(function (k) { return bulkSel.skills[k]; });
+    if (sk.length) body.skills = sk;
+    api('/api/agent-grants/bulk', { method: 'POST', body: body }).then(function (r) {
+      if (r.status !== 200) return toast('授权失败：' + ((r.json && r.json.error) || r.status));
+      toast('已授权 ' + (r.json.created || 0) + ' 人' + ((r.json.skipped || []).length ? '，跳过 ' + r.json.skipped.length : ''));
+      load();
+    }).catch(function (e) { toast('授权失败：' + e.message); });
+  };
+
+  load();
+  setInterval(function () { if (tok()) load(); }, 20000);
+})();
+</script>
+</body>
+</html>

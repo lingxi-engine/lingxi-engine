@@ -1,6 +1,9 @@
-# 灵犀手机 App（v1.2.0）
+# 灵犀手机 App（v1.3.0）
 
-**一句话：手机是账号的遥控器，不是分身。** 登录同一个账号，就能操控你**电脑上**或**云端**的灵犀；
+**一句话：手机是账号的遥控器，不是分身。** 登录同一个账号，就能操控你**电脑上**或**你自己服务器上**的灵犀；
+
+> ⚠️ **v1.3.0 起：官方云端已下线（HTTP 410）。** App 不再内置默认云端地址，首次启动会引导你填写自己的引擎地址（如 http://192.168.1.10:3456）。
+> 下文「云端目录 / 票据」描述的是 Hub 架构：官方 Hub 已下线，这些能力现仅适用于**自建 Hub**（platform-server，LINGXI_HUB_URL 指向你自己的平台）。手机直连引擎的单机遥控（/app/、/m/）不受影响。
 前提是那台引擎**在线**并且**登录了同一个账号**。
 
 App 内**不含推理运行时、不含模型权重、不跑工具**。全部算力与数据都在引擎所在机器上。
@@ -39,7 +42,7 @@ mobile-app/ios/         iOS 工程（WKWebView 壳 + 原生三语）
 mobile-app/build-apk-nogradle.sh  无 Gradle 构建脚本（1GB 内存机器可用）
 ```
 
-入口：`https://lingxi-engine.com/app/`（云端）。自建引擎则是 `http://你的地址:3456/app/`。
+入口：`http://你的引擎地址:3456/app/`（首次启动在 App 里填写）。官方云端已下线，不再有默认入口。
 
 ---
 
@@ -94,9 +97,9 @@ ssh lingxi-server "bash /tmp/build-apk.sh"
 产物已放到：
 
 - 线上：`https://lingxi-engine.com/lingxi-app.apk`
-- 仓库：`mobile-app/lingxi-app-v1.2.0.apk`
+- 仓库：`mobile-app/lingxi-app-v1.3.0.apk`
 
-版本：`versionCode 4 / versionName 1.2.0-app`，minSdk 24，targetSdk 34。
+版本：`versionCode 5 / versionName 1.3.0`，minSdk 24，targetSdk 34。
 签名证书 SHA-256：`fc3654fdab59a4bb331bf7bfb492518593934d3f2dab8942a7b43a2546713753`
 （如需上架应用商店，请换成你自己的正式 keystore。）
 
@@ -112,7 +115,7 @@ cd mobile-app/ios && xcodegen generate
 open LingxiEngine.xcodeproj    # 填 DEVELOPMENT_TEAM 后 Archive
 ```
 
-没有 Mac 时：Safari 打开 `https://lingxi-engine.com/app/` → 分享 → **添加到主屏幕**，
+没有 Mac 时：Safari 打开 `http://你的引擎地址:3456/app/` → 分享 → **添加到主屏幕**，
 效果与 App 一致（全屏、独立图标、离线壳）。
 
 ---

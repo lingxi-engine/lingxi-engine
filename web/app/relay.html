@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0d1117">
+<title>连接你的灵犀…</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#0d1117; color:#e6edf3; font:15px/1.7 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+  .box { max-width:340px; padding:28px 22px; text-align:center; }
+  .spin { width:34px; height:34px; margin:0 auto 16px; border:3px solid #21262d; border-top-color:#2f81f7;
+          border-radius:50%; animation:sp 900ms linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  h1 { font-size:17px; margin:0 0 8px; font-weight:600; }
+  p { margin:0; color:#8b949e; font-size:13px; }
+  .err { color:#f85149; }
+  a.btn { display:inline-block; margin-top:18px; padding:10px 18px; border-radius:10px; background:#238636;
+          color:#fff; text-decoration:none; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="spin" id="spin"></div>
+  <h1 id="title">正在连接你的灵犀…</h1>
+  <p id="msg">请保持电脑端灵犀在线。</p>
+  <div id="actions"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  var LANG = (navigator.language || 'zh').toLowerCase();
+  var T = {
+    zh:    { title:'正在连接你的灵犀…', sub:'请保持电脑端灵犀在线。', fail:'连接失败', back:'返回设备列表',
+             r1:'电脑端灵犀不在线，或刚刚断线了。请先在电脑上打开灵犀并登录同一账号。' },
+    tw:    { title:'正在連線你的靈犀…', sub:'請保持電腦端靈犀在線。', fail:'連線失敗', back:'返回裝置列表',
+             r1:'電腦端靈犀不在線，或剛剛斷線了。請先在電腦上開啟靈犀並登入同一帳號。' },
+    en:    { title:'Connecting to your LingXi…', sub:'Keep LingXi running on your computer.', fail:'Connection failed', back:'Back to devices',
+             r1:'Your computer is offline, or the connection just dropped. Open LingXi on it and sign in with the same account.' }
+  };
+  var L = T.zh;
+  if (/^en/.test(LANG)) L = T.en;
+  else if (/hant|tw|hk|mo/.test(LANG)) L = T.tw;
+  document.documentElement.lang = L === T.en ? 'en' : (L === T.tw ? 'zh-Hant' : 'zh-CN');
+  document.getElementById('title').textContent = L.title;
+  document.getElementById('msg').textContent = L.sub;
+
+  var qs = new URLSearchParams(location.search);
+  var instanceId = qs.get('instanceId') || '';
+  var rt = qs.get('rt') || '';
+  var ticket = qs.get('t') || '';
+  var base = '/api/app/relay/x/' + encodeURIComponent(instanceId);
+
+  function fail(text) {
+    document.getElementById('spin').style.display = 'none';
+    var h = document.getElementById('title');
+    h.textContent = L.fail;
+    h.className = 'err';
+    document.getElementById('msg').textContent = text || L.r1;
+    document.getElementById('actions').innerHTML = '<a class="btn" href="/app/">' + L.back + '</a>';
+  }
+
+  if (!instanceId || !rt) { fail(); return; }
+
+  // 用会话键换取「那台电脑本地签发的登录态」，之后所有请求都带着它穿过中继
+  fetch(base + '/api/app/ticket/redeem?rt=' + encodeURIComponent(rt), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ticket: ticket, instanceId: instanceId })
+  })
+    .then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, status: r.status, d: d }; });
+    })
+    .then(function (x) {
+      var d = x.d || {};
+      if (!x.ok || !d.accessToken) {
+        var why = d.error || ('HTTP ' + x.status);
+        throw new Error(why);
+      }
+      // 先保存 Hub 自己的登录态，回到 /app/ 时可以还原
+      try {
+        var hubToken = localStorage.getItem('authToken') || '';
+        if (hubToken) localStorage.setItem('lingxi-hub-authToken', hubToken);
+      } catch (e) {}
+      try {
+        localStorage.setItem('authToken', d.accessToken || '');
+        if (d.user) {
+          if (d.user.id) localStorage.setItem('userId', String(d.user.id));
+          if (d.user.displayName) localStorage.setItem('displayName', String(d.user.displayName));
+          localStorage.setItem('lingxi-app-user', JSON.stringify(d.user));
+        }
+        localStorage.setItem('lingxi-relay-base', base);
+        localStorage.setItem('lingxi-relay-key', rt);
+        localStorage.setItem('lingxi-relay-instance', instanceId);
+      } catch (e) {}
+      location.replace('/m/');
+    })
+    .catch(function (e) {
+      var why = e && e.message ? e.message : '';
+      if (/relay_not_connected|relay_key|4009/.test(why)) fail(L.r1);
+      else fail(L.r1 + (why ? '（' + why + '）' : ''));
+    });
+})();
+</script>
+</body>
+</html>

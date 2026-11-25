@@ -740,7 +740,34 @@ if (!FEATURE_PLATFORM) {
   console.log('[Feature] 云平台社交功能已关闭（FEATURE_PLATFORM=false），好友/LAN/mesh 返回 404；注册登录保留');
 }
 
-  // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
+// [HUB_ONLY] v2.0.43 纯连接 Hub 模式（官方 lingxi-engine.com 即此模式）：
+// 只保留账号认证 + 设备目录/反向中继 + 手机接管 UI，其余 API 一律 404。
+// 云端不跑任何 AI：所有智能与数据仍在用户自己的电脑上。
+const HUB_ONLY = /^(1|true|on)$/i.test(String(process.env.HUB_ONLY || ''));
+if (HUB_ONLY) {
+  app.use((req: any, res: any, next: any) => {
+    const p = String(req.path || "");
+    if (p === '/api' || p.startsWith('/api/')) {
+      const allow = p.startsWith('/api/auth/') || p === '/api/auth'
+        || p.startsWith('/api/app/') || p === '/api/app'
+        || p === '/api/health' || p === '/api/features';
+      if (!allow) return res.status(404).json({ error: 'not_found', mode: 'hub_only' });
+      return next();
+    }
+    // 聊天 UI 只允许通过 /m/（中继接管）进入；/chat/ 直访与后台页一律 404。
+    if (p === '/chat' || p.startsWith('/chat/')) {
+      if (p === '/chat/platform-config.js') return next();
+      return res.status(404).send('Not Found');
+    }
+    if (p === '/admin.html' || p === '/model-management.html' || p === '/platform-admin.html') {
+      return res.status(404).send('Not Found');
+    }
+    next();
+  });
+  console.log('[Hub] HUB_ONLY=1 纯连接 Hub 模式：仅 /api/auth/* 与 /api/app/* 可用，其余 API 404');
+}
+
+  // v2 安全修复：阻止备份/敏感文件被 download  // v2 安全修复：阻止备份/敏感文件被 download（必须放在 express.static 前面）
   app.use((req: any, res: any, next: any) => {
     if (/\.bak\.|\.bak-|^\/\.(env|git)|\.sql$|\.db$|\.log$/i.test(req.path)) {
       return res.status(403).send('Forbidden');

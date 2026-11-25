@@ -3,6 +3,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- v1.4.0 局域网自动发现：读取 Wi-Fi 状态 + 接收 UDP 广播灯塔需要组播锁 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <!-- 桌面端遥控台主要面向聊天，长文本编辑不依赖大屏 -->
     <supports-screens

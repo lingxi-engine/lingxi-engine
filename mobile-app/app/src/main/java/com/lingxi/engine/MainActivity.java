@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.net.Uri;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.view.KeyEvent;
 import android.view.View;
@@ -28,28 +29,59 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.HttpURLConnection;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
+import java.net.Socket;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Enumeration;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 灵犀手机版 —— 账号的遥控器（Remote Controller），不是独立 AI 客户端。
  *
  * 产品定位（重要，勿改）：
  *   手机端本身【不产生任何算力】，App 内不含推理运行时、不含模型权重、不跑工具。
- *   全部智能与算力发生在【引擎所在机器】（你的电脑 / 本地部署 / 云端服务器）上。
+ *   全部智能与算力发生在【引擎所在机器】（你的电脑 / 本地部署 / 自部署服务器）上。
  *   手机只是同一账号的投影与遥控器：同一套记忆、同一批智能体、同一个工作区。
  *
- * v1.2.0 起：
- *   - 入口改为 /app/：先登录账号，再在「我的灵犀」里看到云端 + 电脑上的所有引擎；
- *   - 只有【在线且登录了同一账号】的引擎才能一键接管；
+ * v1.4.0 起（自动发现 + 官方纯连接 Hub）：
+ *   - 首次启动自动扫描局域网：UDP 3457 灯塔监听 + 本网段 3456 端口快速探测，
+ *     找到引擎后一键连接，不再要求用户手抄 IP；
+ *   - 新增「官方连接 Hub」入口（https://lingxi-engine.com）：纯连接服务，
+ *     只做账号登录 + 设备目录 + 反向中继，云端不跑 AI。登录与电脑相同的账号后，
+ *     「我的灵犀」自动列出名下所有在线引擎，人在外面也能一键接管家里电脑；
+ *   - 手动输入地址保留为兜底；
  *   - 内置简体中文 / 繁體中文 / English 三语，可随时切换，跟随系统默认。
  */
 public class MainActivity extends Activity {
 
-    /** 默认官方云引擎。自部署用户可在「更换引擎地址」里改成自己的。 */
-    private static final String DEFAULT_ENDPOINT = "https://lingxi-engine.com";
+    /** 官方纯连接 Hub（v2.0.43 起只做连接/目录/中继，不跑云端 AI）。 */
+    private static final String OFFICIAL_HUB = "https://lingxi-engine.com";
 
     /** 手机端入口：App 控制台（登录 + 我的灵犀 + 一键接管）。 */
     private static final String APP_PATH = "/app/";
+
+    /** 引擎局域网灯塔端口（与 src/net/lan-discovery.ts 保持一致）。 */
+    private static final int DISCOVERY_UDP_PORT = 3457;
+    private static final int ENGINE_HTTP_PORT = 3456;
 
     private static final String PREF_ENDPOINT = "endpoint";
     private static final String PREF_LANG = "lang";
@@ -62,6 +94,7 @@ public class MainActivity extends Activity {
     private TextView endpointLabel;
     private TextView statusBar;
     private boolean loadingFailed = false;
+    private volatile boolean discovering = false;
 
     /** WebView 发起的文件选择回调；非 null 时说明有一次待处理的选择在飞。 */
     private ValueCallback<Uri[]> pendingFileCallback;
@@ -118,9 +151,15 @@ public class MainActivity extends Activity {
             public void onClick(View v) { promptForEndpoint(); }
         });
 
-        endpointLabel.setText(getSavedEndpoint());
-        setStatus(getString(R.string.status_connecting));
-        web.loadUrl(appUrl());
+        String ep = getSavedEndpoint();
+        endpointLabel.setText(ep.isEmpty() ? getString(R.string.endpoint_unset) : ep);
+        if (ep.isEmpty()) {
+            showSetupGuide();
+            startDiscovery();
+        } else {
+            setStatus(getString(R.string.status_connecting));
+            web.loadUrl(appUrl());
+        }
     }
 
     // ---------- 语言 ----------
@@ -172,6 +211,260 @@ public class MainActivity extends Activity {
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
+    }
+
+    // ---------- 局域网自动发现（v1.4.0） ----------
+
+    /** 一条发现结果：endpoint + 展示名。 */
+    private static final class Found {
+        final String endpoint;
+        final String label;
+        Found(String endpoint, String label) { this.endpoint = endpoint; this.label = label; }
+    }
+
+    /**
+     * 首次启动自动搜索：
+     *   ① UDP 3457 被动监听引擎灯塔（引擎每 3s 广播一次，听 4.2s 必能收到）；
+     *   ② 同时对本机所在 /24 网段的 3456 端口做快速 TCP 探测 + /api/health 校验，
+     *      兜底广播被路由器/访客网络隔离的场景。
+     * 两路并行，总耗时约 5s，结束后弹选择框。
+     */
+    private void startDiscovery() {
+        if (discovering) return;
+        discovering = true;
+        setStatus(getString(R.string.status_scanning));
+        final List<Found> found = Collections.synchronizedList(new ArrayList<Found>());
+
+        final Thread udp = new Thread(new Runnable() {
+            @Override public void run() { listenBeacons(found, 4200); }
+        }, "lingxi-udp-discovery");
+        udp.setDaemon(true);
+        udp.start();
+
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    scanSubnet(found);
+                    udp.join(4600);
+                } catch (Throwable ignored) { }
+                final List<Found> merged = dedupe(found);
+                runOnUiThread(new Runnable() {
+                    @Override public void run() {
+                        discovering = false;
+                        // 扫描期间用户可能已手动设置了地址，那就别再弹框
+                        if (!getSavedEndpoint().isEmpty()) return;
+                        showDiscoveredDialog(merged);
+                    }
+                });
+            }
+        }, "lingxi-discovery").start();
+    }
+
+    /** ① UDP 灯塔监听：解析 lingxi-beacon JSON，提取引擎地址与版本。 */
+    private void listenBeacons(List<Found> found, long windowMs) {
+        WifiManager.MulticastLock lock = null;
+        DatagramSocket socket = null;
+        try {
+            try {
+                WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                if (wm != null) {
+                    lock = wm.createMulticastLock("lingxi-discovery");
+                    lock.setReferenceCounted(false);
+                    lock.acquire();
+                }
+            } catch (Throwable ignored) { }
+
+            socket = new DatagramSocket(null);
+            socket.setReuseAddress(true);
+            socket.bind(new InetSocketAddress(DISCOVERY_UDP_PORT));
+            socket.setSoTimeout(400);
+            long deadline = System.currentTimeMillis() + windowMs;
+            byte[] buf = new byte[8192];
+            List<String> myIps = localIpv4s();
+            while (System.currentTimeMillis() < deadline) {
+                DatagramPacket p = new DatagramPacket(buf, buf.length);
+                try { socket.receive(p); } catch (Throwable t) { continue; }
+                try {
+                    String s = new String(p.getData(), p.getOffset(), p.getLength(), "UTF-8");
+                    JSONObject b = new JSONObject(s);
+                    if (!"lingxi-beacon".equals(b.optString("type"))) continue;
+                    if (b.optInt("proto", 0) != 1) continue;
+                    int port = b.optInt("port", ENGINE_HTTP_PORT);
+                    String ip = pickBeaconIp(b, myIps, p.getAddress().getHostAddress());
+                    if (ip == null || ip.isEmpty()) continue;
+                    String version = b.optString("version", "");
+                    String who = "";
+                    JSONArray users = b.optJSONArray("users");
+                    if (users != null && users.length() > 0) {
+                        who = users.optJSONObject(0) != null ? users.optJSONObject(0).optString("displayName", "") : "";
+                    }
+                    String label = (who.isEmpty() ? getString(R.string.engine_generic) : who)
+                            + (version.isEmpty() ? "" : " · v" + version);
+                    found.add(new Found("http://" + ip + ":" + port, label));
+                } catch (Throwable ignored) { }
+            }
+        } catch (Throwable ignored) {
+            // UDP 端口被占用/无权限时静默降级，TCP 扫描兜底
+        } finally {
+            try { if (socket != null) socket.close(); } catch (Throwable ignored) { }
+            try { if (lock != null && lock.isHeld()) lock.release(); } catch (Throwable ignored) { }
+        }
+    }
+
+    /** 灯塔里可能带多个网卡地址：优先选与手机同网段的，其次 beacon.lanIp，最后包来源地址。 */
+    private static String pickBeaconIp(JSONObject b, List<String> myIps, String srcAddr) {
+        JSONArray ips = b.optJSONArray("lanIps");
+        if (ips != null) {
+            for (int i = 0; i < ips.length(); i++) {
+                String ip = ips.optString(i, "");
+                if (ip.isEmpty() || ip.startsWith("127.")) continue;
+                String pre = subnetPrefix(ip);
+                for (String my : myIps) {
+                    if (subnetPrefix(my).equals(pre)) return ip;
+                }
+            }
+        }
+        String lanIp = b.optString("lanIp", "");
+        if (!lanIp.isEmpty() && !lanIp.startsWith("127.") && !lanIp.equals("0.0.0.0")) return lanIp;
+        return srcAddr;
+    }
+
+    private static String subnetPrefix(String ip) {
+        int i = ip.lastIndexOf('.');
+        return i > 0 ? ip.substring(0, i) : ip;
+    }
+
+    /** ② 本网段 /24 快速 TCP 扫描：3456 端口连通后再用 /api/health 确认是灵犀引擎。 */
+    private void scanSubnet(List<Found> found) {
+        List<String> myIps = localIpv4s();
+        if (myIps.isEmpty()) return;
+        ExecutorService pool = Executors.newFixedThreadPool(64);
+        try {
+            for (String my : myIps) {
+                final String pre = subnetPrefix(my);
+                for (int h = 1; h <= 254; h++) {
+                    final String ip = pre + "." + h;
+                    if (ip.equals(my)) continue;
+                    pool.submit(new Runnable() {
+                        @Override public void run() {
+                            Socket sock = null;
+                            try {
+                                sock = new Socket();
+                                sock.connect(new InetSocketAddress(ip, ENGINE_HTTP_PORT), 350);
+                                sock.close();
+                                sock = null;
+                                String version = healthCheck(ip);
+                                if (version != null) {
+                                    found.add(new Found("http://" + ip + ":" + ENGINE_HTTP_PORT,
+                                            getString(R.string.engine_generic) + (version.isEmpty() ? "" : " · v" + version)));
+                                }
+                            } catch (Throwable ignored) {
+                            } finally { try { if (sock != null) sock.close(); } catch (Throwable ignored) { } }
+                        }
+                    });
+                }
+            }
+            pool.shutdown();
+            pool.awaitTermination(6, TimeUnit.SECONDS);
+        } catch (Throwable ignored) {
+        } finally { try { pool.shutdownNow(); } catch (Throwable ignored) { } }
+    }
+
+    /** GET /api/health：200 且 JSON 含 ok 字段才认定是灵犀引擎；返回版本号（可能为空串）。 */
+    private static String healthCheck(String ip) {
+        HttpURLConnection c = null;
+        try {
+            URL u = new URL("http://" + ip + ":" + ENGINE_HTTP_PORT + "/api/health");
+            c = (HttpURLConnection) u.openConnection();
+            c.setConnectTimeout(1500);
+            c.setReadTimeout(1500);
+            c.setRequestMethod("GET");
+            if (c.getResponseCode() != 200) return null;
+            BufferedReader r = new BufferedReader(new InputStreamReader(c.getInputStream(), "UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = r.readLine()) != null) { sb.append(line); if (sb.length() > 4096) break; }
+            r.close();
+            JSONObject j = new JSONObject(sb.toString());
+            if (!j.has("ok")) return null;
+            return j.optString("version", "");
+        } catch (Throwable t) {
+            return null;
+        } finally { try { if (c != null) c.disconnect(); } catch (Throwable ignored) { } }
+    }
+
+    /** 本机全部非回环 IPv4（Wi-Fi / 热点 / 以太网都算）。 */
+    private static List<String> localIpv4s() {
+        List<String> out = new ArrayList<>();
+        try {
+            Enumeration<NetworkInterface> ifs = NetworkInterface.getNetworkInterfaces();
+            while (ifs != null && ifs.hasMoreElements()) {
+                NetworkInterface ni = ifs.nextElement();
+                if (!ni.isUp() || ni.isLoopback()) continue;
+                Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    InetAddress a = addrs.nextElement();
+                    if (a instanceof Inet4Address && !a.isLoopbackAddress() && a.isSiteLocalAddress()) {
+                        String ip = a.getHostAddress();
+                        if (ip != null && !out.contains(ip)) out.add(ip);
+                    }
+                }
+            }
+        } catch (Throwable ignored) { }
+        return out;
+    }
+
+    private static List<Found> dedupe(List<Found> in) {
+        Map<String, Found> map = new LinkedHashMap<>();
+        synchronized (in) {
+            for (Found f : in) if (!map.containsKey(f.endpoint)) map.put(f.endpoint, f);
+        }
+        return new ArrayList<>(map.values());
+    }
+
+    /** 扫描结果选择框：发现的引擎 + 官方连接 Hub + 手动输入。 */
+    private void showDiscoveredDialog(final List<Found> engines) {
+        final List<String> items = new ArrayList<>();
+        for (Found f : engines) items.add("\uD83D\uDCBB " + f.label + "\n" + f.endpoint);
+        items.add(getString(R.string.option_hub));
+        items.add(getString(R.string.option_manual));
+
+        String title = engines.isEmpty() ? getString(R.string.none_found_title) : getString(R.string.found_title);
+        String msg = engines.isEmpty() ? getString(R.string.none_found_msg) : getString(R.string.found_msg);
+
+        new AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(msg)
+                .setItems(items.toArray(new String[0]), new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int which) {
+                        if (which < engines.size()) {
+                            connectTo(engines.get(which).endpoint);
+                        } else if (which == engines.size()) {
+                            connectTo(OFFICIAL_HUB);
+                        } else {
+                            promptForEndpoint();
+                        }
+                    }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /** 保存地址并加载（切换 origin 时清缓存与 Cookie，避免串登录态）。 */
+    private void connectTo(String endpoint) {
+        String before = getSavedEndpoint();
+        saveEndpoint(endpoint);
+        String after = getSavedEndpoint();
+        if (after.isEmpty()) return;
+        if (!after.equals(before)) {
+            try { web.clearCache(true); } catch (Throwable ignored) { }
+            try { CookieManager.getInstance().removeAllCookies(null); } catch (Throwable ignored) { }
+        }
+        loadingFailed = false;
+        errorPage.setVisibility(View.GONE);
+        Toast.makeText(this, R.string.engine_switched, Toast.LENGTH_SHORT).show();
+        reload();
     }
 
     // ---------- WebView 配置 ----------
@@ -270,6 +563,8 @@ public class MainActivity extends Activity {
                 if (code >= 200 && code < 400) return;
                 if (code == 404) {
                     showError(getString(R.string.err_404, appUrl()));
+                } else if (code == 410) {
+                    showError(getString(R.string.err_410, appUrl()));
                 } else {
                     showError(getString(R.string.err_http, appUrl(), code));
                 }
@@ -376,7 +671,7 @@ public class MainActivity extends Activity {
     private String getSavedEndpoint() {
         SharedPreferences p = getSharedPreferences("lingxi", Context.MODE_PRIVATE);
         String v = p.getString(PREF_ENDPOINT, null);
-        if (v == null || v.trim().isEmpty()) return DEFAULT_ENDPOINT;
+        if (v == null || v.trim().isEmpty()) return "";
         return normalize(v);
     }
 
@@ -412,31 +707,12 @@ public class MainActivity extends Activity {
                 .setPositiveButton(R.string.connect, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface d, int w) {
-                        String before = getSavedEndpoint();
-                        saveEndpoint(input.getText().toString());
-                        String after = getSavedEndpoint();
-                        if (!after.equals(before)) {
-                            try { web.clearCache(true); } catch (Throwable ignored) { }
-                            try { CookieManager.getInstance().removeAllCookies(null); } catch (Throwable ignored) { }
-                        }
-                        loadingFailed = false;
-                        errorPage.setVisibility(View.GONE);
-                        Toast.makeText(MainActivity.this, R.string.engine_switched, Toast.LENGTH_SHORT).show();
-                        reload();
+                        connectTo(input.getText().toString());
                     }
                 })
-                .setNeutralButton(R.string.restore_cloud, new DialogInterface.OnClickListener() {
+                .setNeutralButton(R.string.hub_short, new DialogInterface.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface d, int w) {
-                        getSharedPreferences("lingxi", Context.MODE_PRIVATE).edit()
-                                .remove(PREF_ENDPOINT).apply();
-                        endpointLabel.setText(DEFAULT_ENDPOINT);
-                        try { web.clearCache(true); } catch (Throwable ignored) { }
-                        try { CookieManager.getInstance().removeAllCookies(null); } catch (Throwable ignored) { }
-                        loadingFailed = false;
-                        errorPage.setVisibility(View.GONE);
-                        reload();
-                    }
+                    public void onClick(DialogInterface d, int w) { connectTo(OFFICIAL_HUB); }
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();
@@ -444,7 +720,7 @@ public class MainActivity extends Activity {
 
     /**
      * 是否留在 App 内打开。
-     * 关键场景：手机在云端 App 页点「接管」，会跳到另一台引擎的
+     * 关键场景：手机在 Hub App 页点「接管」，会跳到另一台引擎的
      * /app/connect 与 /m/ —— 那是另一个 origin，不能用「同一个引擎」判断，
      * 否则会被当成外链踢到浏览器，接管直接断掉。
      */
@@ -491,9 +767,23 @@ public class MainActivity extends Activity {
     }
 
     private void reload() {
-        setStatus(getString(R.string.status_connecting));
         loadingFailed = false;
+        if (getSavedEndpoint().isEmpty()) {
+            showSetupGuide();
+            startDiscovery();
+            return;
+        }
+        errorPage.setVisibility(View.GONE);
+        setStatus(getString(R.string.status_connecting));
         web.loadUrl(appUrl());
+    }
+
+    /** 首次使用 / 未设置地址时的引导页（自动扫描进行中，顶栏按钮可手动设置）。 */
+    private void showSetupGuide() {
+        loadingFailed = true;
+        errText.setText(R.string.setup_needed);
+        errorPage.setVisibility(View.VISIBLE);
+        setStatus(getString(R.string.status_scanning));
     }
 
     private void setStatus(String s) {

@@ -352,7 +352,10 @@ export class AppConnectService {
     // 云端自己一定在列表里（手机登录的就是它）
     const self = this.selfRecord();
     if (!self.ownerKey) { self.ownerKey = key; this.upsertInstance(self); }
-    out.push(this.serialize(self, true, self.kind || 'cloud'));
+    // [HUB_ONLY] v2.0.43 纯连接 Hub：目录里不展示 Hub 自身（它不提供 AI，接管它没有意义），
+    // 手机「我的灵犀」只看到用户自己的电脑/自部署实例。
+    const hubOnly = /^(1|true|on)$/i.test(String(process.env.HUB_ONLY || ''));
+    if (!hubOnly) out.push(this.serialize(self, true, self.kind || 'cloud'));
     for (const it of this.listByOwner(key, 100)) {
       if (it.instanceId === self.instanceId) continue;
       // 只展示「登录过同一账号」且近 7 天活跃过的设备

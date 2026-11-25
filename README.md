@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-2.0.42-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.43-orange)](CHANGELOG.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -251,9 +251,21 @@ docker compose up -d
 - English README: [README.en.md](README.en.md)
 - Bilingual quick start: [docs/quickstart.md](docs/quickstart.md)
 - Docker guide: [docs/docker.md](docs/docker.md)
+- Remote access (phone / Hub): [docs/remote-access.md](docs/remote-access.md)
 - Security policy: [SECURITY.md](SECURITY.md) · Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## 📊 可观测性
 
 引擎内置 Prometheus 风格指标：`GET /metrics`（HTTP 请求数/耗时、AI 调用数、token 用量）。
 访问控制：可信本机来源直接放行，远程需 `X-Admin-Token`；`METRICS_ENABLED=false` 可关闭。
+
+
+## 📱 手机远程控制
+
+手机 App 是「遥控器」：算力永远在你自己的电脑上。三种连接方式（App v1.4.0 全部内置）：
+
+1. **局域网直连**：同一 Wi-Fi 下 App 自动扫描发现引擎（UDP 灯塔 + 网段探测），点一下即连，零配置。
+2. **官方连接 Hub**：`lingxi-engine.com` 自 v2.0.43 起是纯连接 Hub（`HUB_ONLY=1`）——只做账号登录、设备目录、反向中继，**云端不跑 AI、不存聊天数据**。手机与电脑登录同一账号后，人在外面也能一键接管家里电脑，无需公网 IP / 端口映射。
+3. **自建 Hub / 纯离线**：任何服务器 `HUB_ONLY=1` 即可自建；`LINGXI_HUB_URL=off` 纯局域网或 Tailscale 组网。
+
+详见 [docs/remote-access.md](docs/remote-access.md)。
