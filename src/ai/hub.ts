@@ -940,7 +940,12 @@ export class AIHub {
    */
   async probeModel(model: string, timeoutMs = 8000): Promise<ProbeResult | null> {
     const resolved = this.getClient(model);
-    if (!resolved) return null;
+    // degraded = 未真正命中，走了降级兜底（含「唯一 provider 型号清单为空」的
+    // MODEL-UNVERIFIED 路径）。探针验证的是「指定模型」的健康，拿替身模型探测
+    // 毫无意义且违背契约 → 一律视为无法解析，返回 null。
+    // 修复 CI 红灯：开发机系统级 LINGXI_STRICT_MODEL=true 会把 degraded 拒成 null，
+    // 掩盖了干净环境（CI/新装用户无 Key）下 getClient 兜底返回对象的事实。
+    if (!resolved || resolved.degraded) return null;
     return probeModelHealth(resolved.client, resolved.resolvedModel, {
       timeoutMs,
       cache: this.modelHealth,
