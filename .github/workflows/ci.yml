@@ -53,9 +53,41 @@ jobs:
         run: npx tsc --noEmit --skipLibCheck
 
       - name: Vitest suite + coverage ratchet (649 tests)
+        id: vitest
         # v2.0.42: runs the FULL suite and collects coverage in one pass.
         # Thresholds in vitest.config.ts act as a ratchet: coverage only goes up.
-        run: npx vitest run --coverage
+        # 2026-11-25: tee raw output + JSON results so the diagnostic step below
+        # can surface failure details via annotations (job logs need admin token,
+        # which this repo's automation does not have). JSON reporter also avoids
+        # vitest 5.x DefaultReporter crash on Node 20 (Map.groupBy is Node 21+).
+        shell: bash
+        run: |
+          set -o pipefail
+          npx vitest run --coverage --reporter=json --outputFile=/tmp/vitest-results.json 2>&1 | tee /tmp/vitest-ci-out.txt
+      - name: Surface vitest failure details
+        if: failure() && steps.vitest.outcome == 'failure'
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("fs");
+            const esc = s => String(s).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+            let raw = "";
+            try { raw = fs.readFileSync("/tmp/vitest-ci-out.txt", "utf8"); } catch {}
+            const tail = raw.split("\n").slice(-60).join("\n");
+            console.log("::error title=Vitest raw output tail::" + esc(tail || "(no output captured)"));
+            try {
+              const j = JSON.parse(fs.readFileSync("/tmp/vitest-results.json", "utf8"));
+              console.log("::notice title=Vitest totals::total=" + j.numTotalTests + " passed=" + j.numPassedTests + " failed=" + j.numFailedTests);
+              const failed = (j.testResults || []).flatMap(t => (t.assertionResults || []).filter(a => a.status === "failed").map(a => ({ suite: t.name, test: a.fullName, msg: (a.failureMessages || []).join(" ").slice(0, 600) })));
+              for (const f of failed.slice(0, 10)) console.log("::error title=Failed test::" + esc(f.suite + " > " + f.test + "\n" + f.msg));
+              const suiteFails = (j.testResults || []).filter(t => t.status === "failed" && !(t.assertionResults || []).some(a => a.status === "failed"));
+              for (const s of suiteFails.slice(0, 10)) console.log("::error title=Failed suite load error::" + esc(s.name + "\n" + String(s.message || "").slice(0, 600)));
+            } catch (e) { console.log("::warning title=No JSON results::" + esc(e.message)); }
+            try {
+              const c = JSON.parse(fs.readFileSync("coverage/coverage-summary.json", "utf8")).total;
+              console.log("::notice title=CI coverage total::statements=" + c.statements.pct + " branches=" + c.branches.pct + " functions=" + c.functions.pct + " lines=" + c.lines.pct);
+            } catch (e) { console.log("::warning title=No coverage summary::" + esc(e.message)); }
+          '
 
       - name: README consistency gate
         # 2026-10-21: scripts/check-docs.mts existed since 2026-09-28 but was NEVER
