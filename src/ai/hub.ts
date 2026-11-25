@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { computeDelayMs, DEFAULT_RETRY_BUDGET } from "../core/retry-coordinator.js";
 import { dataPath } from '../core/paths.js';
+import { ModelHealthCache, probeModelHealth, isTimeoutLikeError, type ProbeResult } from "./model-health.js";
 
 // ─────────────────── 配置 ───────────────────
 
@@ -324,6 +325,8 @@ export class AIHub {
   private circuitBreaker = new Map<string, { failures: number; lastFail: number }>();
   private readonly CB_THRESHOLD = 5;
   private readonly CB_COOLDOWN = 60_000;
+  /** v2.0.46: 模型健康缓存 —— 超时/挂死的「幽灵模型」首次超时即标记，TTL 内快速排除（补熔断器需 5 次失败的空窗） */
+  readonly modelHealth = new ModelHealthCache();
   // 不可重试的"配置类"错误：模型 ID 非法 / 已下线 / 无权限 / 区域封锁
   //   400 非法模型 ID（含 embedding 模型误走 chat）  401 Key 无效
   //   403 无权限/区域封锁   404 模型不存在或账号无授权   410 模型已 EOL 下线   422 参数不合法
@@ -864,6 +867,10 @@ export class AIHub {
         console.log(`[AI Hub] 故障转移候选 ${pid} 熔断器开启中，跳过`);
         continue;
       }
+      if (this.modelHealth.isUnhealthy(matched)) {
+        console.log(`[AI Hub] 故障转移候选 ${pid}/${matched} 健康缓存标记不健康，跳过`);
+        continue;
+      }
       candidates.push({ client: entry.client, resolvedModel: matched });
     }
     return candidates;
@@ -927,6 +934,19 @@ export class AIHub {
   /**
    * 列出所有可用模型
    */
+  /**
+   * v2.0.46: 主动探测模型健康（1-token 请求 + 短超时），结果写入 modelHealth 缓存。
+   * 供路由前预检 / 定期巡检 / 管理诊断使用。模型无法解析到 provider 时返回 null。
+   */
+  async probeModel(model: string, timeoutMs = 8000): Promise<ProbeResult | null> {
+    const resolved = this.getClient(model);
+    if (!resolved) return null;
+    return probeModelHealth(resolved.client, resolved.resolvedModel, {
+      timeoutMs,
+      cache: this.modelHealth,
+    });
+  }
+  
   listModels(): { id: string; provider: string; isLocal: boolean }[] {
     const result: { id: string; provider: string; isLocal: boolean }[] = [];
     for (const [providerId, entry] of this.providers) {
@@ -991,6 +1011,13 @@ export class AIHub {
 
     // P1-7: 熔断器检查 — 连续失败过多时快速失败
     const cbKey = resolvedModel;
+    // v2.0.46: 健康缓存快速失败 —— 近期探针/超时标记不健康的模型立即报错，
+    // 避免对「目录在列但推理无响应」的幽灵模型干等客户端超时（调用方可走备胎接管）
+    const healthMark = this.modelHealth.getMark(cbKey);
+    if (healthMark) {
+      const remainS = Math.ceil((healthMark.until - Date.now()) / 1000);
+      throw new Error(`模型不健康: ${cbKey}（${healthMark.reason}），${remainS}s 内自动排除，请改用备用模型或稍后重试`);
+    }
     const cbState = this.circuitBreaker.get(cbKey);
     if (cbState && cbState.failures >= this.CB_THRESHOLD) {
       const elapsed = Date.now() - cbState.lastFail;
@@ -1025,6 +1052,7 @@ export class AIHub {
         const choice = response.choices[0];
         // P1-7: 成功 → 重置熔断器
         this.circuitBreaker.delete(cbKey);
+        this.modelHealth.markHealthy(cbKey); // v2.0.46: 成功即恢复健康标记
         return {
           content: choice.message.content || "",
           usage: response.usage
@@ -1042,6 +1070,11 @@ export class AIHub {
           cb.failures++;
           cb.lastFail = Date.now();
           this.circuitBreaker.set(cbKey, cb);
+          // v2.0.46: 超时/连接类错误（无 HTTP 状态、纯挂死）首次即标记不健康，
+          // TTL 内后续请求与故障转移候选快速排除，不必等熔断器攒满 5 次失败
+          if (isTimeoutLikeError(error)) {
+            this.modelHealth.markUnhealthy(cbKey, String(error?.message || error));
+          }
         }
         // 不可重试的"配置类"错误直接抛（400/401/403/404/410/422）
         // 旧逻辑只拦 401/403/404，导致 400(非法ID)、410(已下线) 被白重试 3 次 + 指数退避
