@@ -1,16 +1,14 @@
 {
-    "version":  "2.0.43",
-    "commit":  "fc1f315",
-    "buildTime":  "2026-11-25T11:34:38.9367119Z",
+    "version":  "2.0.44",
+    "commit":  "a88db8a",
+    "buildTime":  "2026-11-25T12:30:48.4624739Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
-                       "安全加固 12 项全修（B1–B12）：联邦 Ed25519 签名全链路 + 防重放，移除硬编码默认密钥",
-                       "数据库字段加密 + 端到端加密（E2EE）+ 技能签名（含 v2.0.38 开源版内容）",
-                       "Dreamer 记忆整理四道闸门：24h 调用量 32144→40，省 99.88%",
-                       "手机 App 登录 JS 错误 + redeem 401 修复",
-                       "对话模式模板（圆桌/头脑风暴）+ 轮次可配置 ROUNDTABLE_MAX_ROUNDS",
-                       "A2A 协议 + Mesh P2P 组网",
-                       "测试 388→457 用例全过，零回归"
+                       "自部署模型：各自部署各自的灵犀，各自登录各自的实例；引擎默认不连任何官方共享云",
+                       "REGISTRATION_OPEN 公开注册开关：私有实例关闭陌生人注册，已有账号不受影响",
+                       "better-sqlite3 12.11.1：根治 Node 24 崩溃循环",
+                       "participants 垃圾行修复：私聊「无法确定好友」/读回 403 根因",
+                       "App 1.5.0：官方 Hub 入口 → 我的云端（自己的服务器）"
                    ],
-    "notes":  "v2.0.39 = v2.0.38 开源版 + B1–B12 安全全修 + Dreamer 省钱 + 手机登录修复。联邦互联需双方升级并配置相同 FEDERATION_SECRET；未配置时联邦端点 503（fail-secure）。"
+    "notes":  "v2.0.44 起为自部署模型：LINGXI_HUB_URL 指向你自己的云端；REGISTRATION_OPEN=false 可私有化。官网示例站为私有实例，不提供共享算力。"
 }

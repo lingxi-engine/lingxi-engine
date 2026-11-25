@@ -7,7 +7,7 @@
 [![Tests](https://img.shields.io/badge/tests-602%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-2.0.43-orange)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.44-orange)](CHANGELOG.md)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
@@ -262,10 +262,12 @@ docker compose up -d
 
 ## 📱 手机远程控制
 
-手机 App 是「遥控器」：算力永远在你自己的电脑上。三种连接方式（App v1.4.0 全部内置）：
+手机 App 是「遥控器」：算力永远在你自己的电脑/服务器上。三种连接方式（App v1.5.0 全部内置）：
 
 1. **局域网直连**：同一 Wi-Fi 下 App 自动扫描发现引擎（UDP 灯塔 + 网段探测），点一下即连，零配置。
-2. **官方连接 Hub**：`lingxi-engine.com` 自 v2.0.43 起是纯连接 Hub（`HUB_ONLY=1`）——只做账号登录、设备目录、反向中继，**云端不跑 AI、不存聊天数据**。手机与电脑登录同一账号后，人在外面也能一键接管家里电脑，无需公网 IP / 端口映射。
-3. **自建 Hub / 纯离线**：任何服务器 `HUB_ONLY=1` 即可自建；`LINGXI_HUB_URL=off` 纯局域网或 Tailscale 组网。
+2. **我的云端**：在**你自己的服务器**上部署云端灵犀（Docker 一键部署），App 填入你的地址、登录与电脑相同的账号，人在外面也能一键接管家里电脑，无需公网 IP / 端口映射。中继流量只经过你自己的服务器。
+3. **手动地址 / 纯离线**：公网 / Tailscale / ZeroTier 均可；`LINGXI_HUB_URL=off` 或留空即纯局域网。
+
+> **v2.0.44 自部署模型**：各自部署各自的灵犀，各自登录各自的实例。引擎不再默认连接任何官方共享云端；官网只提供下载与部署指南。私有实例设 `REGISTRATION_OPEN=false` 关闭公开注册（已有账号不受影响）。
 
 详见 [docs/remote-access.md](docs/remote-access.md)。

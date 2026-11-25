@@ -557,8 +557,10 @@ export class AppConnectService {
     if (env) return env.replace(/\/+$/, '');
     const linked = this.link?.hubUrl;
     if (linked) return linked.replace(/\/+$/, '');
-    // 零配置：默认连官方云端账号目录。自建/离线部署可用 LINGXI_HUB_URL=off 关闭。
-    return 'https://lingxi-engine.com';
+    // v2.0.44: 不再默认连接任何官方云端 —— 各自部署各自的服务器。
+    // 需要远程中继时，把 LINGXI_HUB_URL 指向【你自己的】云端灵犀地址；
+    // 留空 = 纯本地模式，不向任何外部服务器登记/心跳。
+    return '';
   }
 
   async linkAccount(email: string, password: string, hubUrl?: string): Promise<{ ok: boolean; error?: string }> {

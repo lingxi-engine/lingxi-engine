@@ -22,7 +22,7 @@ echo "== 2/7 link resources + R.java =="
   --manifest "$SRC/AndroidManifest.xml" \
   --java "$OUT/gen" \
   --min-sdk-version 24 --target-sdk-version 34 \
-  --version-code 6 --version-name 1.4.0 \
+  --version-code 7 --version-name 1.5.0 \
   -R "$OUT/res.zip" --auto-add-overlay
 
 echo "== 3/7 javac =="

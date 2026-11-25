@@ -62,19 +62,23 @@ import java.util.concurrent.TimeUnit;
  *   全部智能与算力发生在【引擎所在机器】（你的电脑 / 本地部署 / 自部署服务器）上。
  *   手机只是同一账号的投影与遥控器：同一套记忆、同一批智能体、同一个工作区。
  *
- * v1.4.0 起（自动发现 + 官方纯连接 Hub）：
+ * v1.4.0 起（自动发现）：
  *   - 首次启动自动扫描局域网：UDP 3457 灯塔监听 + 本网段 3456 端口快速探测，
  *     找到引擎后一键连接，不再要求用户手抄 IP；
- *   - 新增「官方连接 Hub」入口（https://lingxi-engine.com）：纯连接服务，
- *     只做账号登录 + 设备目录 + 反向中继，云端不跑 AI。登录与电脑相同的账号后，
- *     「我的灵犀」自动列出名下所有在线引擎，人在外面也能一键接管家里电脑；
  *   - 手动输入地址保留为兜底；
  *   - 内置简体中文 / 繁體中文 / English 三语，可随时切换，跟随系统默认。
+ *
+ * v1.5.0 起（自部署模型）：
+ *   - 移除「官方连接 Hub」入口：不再默认连接任何官方共享云端。
+ *     各自部署各自的灵犀（本地电脑 / 自己的云服务器），各自登录各自的实例；
+ *   - 改为「我的云端」入口：填入你自己的云端灵犀地址，登录与电脑相同的账号后，
+ *     「我的灵犀」自动列出名下所有在线引擎，人在外面也能一键接管家里电脑；
+ *   - 官网只提供下载与部署指南，不提供共享算力。
  */
 public class MainActivity extends Activity {
 
-    /** 官方纯连接 Hub（v2.0.43 起只做连接/目录/中继，不跑云端 AI）。 */
-    private static final String OFFICIAL_HUB = "https://lingxi-engine.com";
+    /** v1.5.0: 「我的云端」地址存储键 —— 用户自己的云端灵犀，无官方共享云。 */
+    private static final String PREF_MY_CLOUD = "myCloud";
 
     /** 手机端入口：App 控制台（登录 + 我的灵犀 + 一键接管）。 */
     private static final String APP_PATH = "/app/";
@@ -422,7 +426,7 @@ public class MainActivity extends Activity {
         return new ArrayList<>(map.values());
     }
 
-    /** 扫描结果选择框：发现的引擎 + 官方连接 Hub + 手动输入。 */
+    /** 扫描结果选择框：发现的引擎 + 我的云端 + 手动输入。 */
     private void showDiscoveredDialog(final List<Found> engines) {
         final List<String> items = new ArrayList<>();
         for (Found f : engines) items.add("\uD83D\uDCBB " + f.label + "\n" + f.endpoint);
@@ -441,7 +445,7 @@ public class MainActivity extends Activity {
                         if (which < engines.size()) {
                             connectTo(engines.get(which).endpoint);
                         } else if (which == engines.size()) {
-                            connectTo(OFFICIAL_HUB);
+                            promptForMyCloud();
                         } else {
                             promptForEndpoint();
                         }
@@ -712,7 +716,36 @@ public class MainActivity extends Activity {
                 })
                 .setNeutralButton(R.string.hub_short, new DialogInterface.OnClickListener() {
                     @Override
-                    public void onClick(DialogInterface d, int w) { connectTo(OFFICIAL_HUB); }
+                    public void onClick(DialogInterface d, int w) { promptForMyCloud(); }
+                })
+                .setNegativeButton(R.string.cancel, null)
+                .show();
+    }
+
+    /** v1.5.0: 「我的云端」—— 填入自己部署的云端灵犀地址，保存后记住。 */
+    private void promptForMyCloud() {
+        final EditText input = new EditText(this);
+        SharedPreferences p = getSharedPreferences("lingxi", Context.MODE_PRIVATE);
+        input.setText(p.getString(PREF_MY_CLOUD, ""));
+        input.setSingleLine(true);
+        input.setHint(R.string.mycloud_hint);
+
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.mycloud_title)
+                .setMessage(R.string.mycloud_msg)
+                .setView(input)
+                .setPositiveButton(R.string.connect, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface d, int w) {
+                        String v = normalize(input.getText().toString());
+                        if (v.isEmpty()) {
+                            Toast.makeText(MainActivity.this, R.string.endpoint_empty, Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        getSharedPreferences("lingxi", Context.MODE_PRIVATE)
+                                .edit().putString(PREF_MY_CLOUD, v).apply();
+                        connectTo(v);
+                    }
                 })
                 .setNegativeButton(R.string.cancel, null)
                 .show();

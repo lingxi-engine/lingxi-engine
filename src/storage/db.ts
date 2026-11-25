@@ -1211,9 +1211,18 @@ export function createChat(id: string, type: "private" | "group" = "private", sh
 
 export function addParticipant(id: string, chatId: string, userId?: string, agentId?: string, role: string = "member") {
   if (!_db) return;
+  // v2.0.44: 拒绝垃圾参与者 —— userId/agentId 至少一个有效；
+  // 字符串 'undefined'/'null' 一律视为空（历史 bug：String(undefined) 落库，
+  // 导致私聊「无法确定好友」、对方读回 403）。
+  const clean = (v?: string): string | null => {
+    const t = String(v ?? '').trim();
+    return (!t || t === 'undefined' || t === 'null') ? null : t;
+  };
+  const uid = clean(userId), aid = clean(agentId);
+  if (!uid && !aid) return;
   _db.prepare(
     `INSERT INTO participants (id, chat_id, user_id, agent_id, role, joined_at) VALUES (?, ?, ?, ?, ?, ?)`
-  ).run(id, chatId, userId ?? null, agentId ?? null, role, Date.now());
+  ).run(id, chatId, uid, aid, role, Date.now());
   markDirty();
 }
 

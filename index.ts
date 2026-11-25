@@ -81,6 +81,7 @@ import { friendRequestRateLimit } from './src/core/mesh-security.js';
 import type { ProjectGoal } from './src/core/goal-tracker.js';
 
 import * as auth from './src/auth/index.js';
+import { registrationOpen, registrationClosedReply } from './src/auth/registration-gate.js';
 import { adminAuth } from './src/middleware/admin-auth.js';
 import { jwtAuth, isTrustedLocalSource } from './src/middleware/jwt-auth.js';
 import { registerAppConnectRoutes } from './src/routes/app-connect.js';
@@ -989,7 +990,10 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
   // ════════════════════════════════════════════════
 
   // ── V7: 注册（邮箱 + 密码 + 数字 ID） ──
+  // v2.0.44: 公开注册开关（src/auth/registration-gate.ts）：自建实例默认开放，
+  // 私有实例设 REGISTRATION_OPEN=false 关闭 —— 各自部署各自的灵犀。
   app.post('/api/auth/register', authRateLimit, async (req, res) => {
+    if (!registrationOpen()) return registrationClosedReply(res);
     try {
       const { email, password, display_name, invite_code, agent_binding } = req.body;
       const result = auth.register({
@@ -1301,6 +1305,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // ── 旧版兼容：验证码发送（保留 demo 模式） ──
   app.post('/api/auth/send-code', (req, res) => {
+    if (!registrationOpen()) return registrationClosedReply(res);
     const { email } = req.body;
     if (!email || !email.includes('@')) {
       return res.status(400).json({ error: '请输入有效的邮箱地址' });
@@ -1315,6 +1320,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
 
   // ── 旧版兼容：验证码注册（保留 demo 模式） ──
   app.post('/api/auth/register-with-email', (req, res) => {
+    if (!registrationOpen()) return registrationClosedReply(res);
     try {
       const { email, code, username } = req.body;
       if (!email || !code) return res.status(400).json({ error: '邮箱和验证码必填' });
@@ -1574,6 +1580,12 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
     try {
       const { id, chatId, userId, agentId, role } = req.body;
       if (!id || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
+      // v2.0.44: 参与者必须指向真实用户或 AI —— 堵住 user_id='undefined' 垃圾行
+      const uidStr = String(userId ?? '').trim();
+      const aidStr = String(agentId ?? '').trim();
+      const uidOk = !!uidStr && uidStr !== 'undefined' && uidStr !== 'null';
+      const aidOk = !!aidStr && aidStr !== 'undefined' && aidStr !== 'null';
+      if (!uidOk && !aidOk) return res.status(400).json({ error: 'userId 或 agentId 必填' });
       // P1-4 修复: 身份伪造防护 — userId 必须为 JWT 持有者
       // ⭐ v2.1.2 修复 F5 会话消失：admin-auto（本地免登录）模式下 sub='admin' 是虚拟身份，
       //    与前端的 clientId（u-xxx）永远不匹配 → participant 写入被 403 拒绝 → 会话列表空白。
@@ -1620,7 +1632,7 @@ const optAuth = jwtAuth({ required: false }) as unknown as import('express').Req
           });
         }
       }
-      db.addParticipant(id, chatId, userId, agentId, finalRole);
+      db.addParticipant(id, chatId, uidOk ? uidStr : undefined, aidOk ? aidStr : undefined, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) return res.json({ ok: true, exists: true });

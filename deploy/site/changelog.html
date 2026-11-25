@@ -27,6 +27,28 @@ h1{font-size:32px;margin:40px 0 20px}
 <h1>更新日志</h1>
 
 <div class="version">
+<h2>手机 App v1.5.0</h2>
+<div class="date">2026-11-25</div>
+<ul>
+<li>自部署模型：移除「官方连接 Hub」入口，改为「我的云端」—— 填入你自己部署的云端灵犀地址，保存后记住</li>
+<li>登录与电脑相同的账号，「我的灵犀」自动列出名下所有在线引擎，人在外面也能一键接管家里电脑；中继流量只经过你自己的服务器</li>
+<li>局域网自动发现保留；简/繁/英三语同步；签名不变，旧版直接覆盖安装</li>
+</ul>
+</div>
+
+<div class="version">
+<h2>v2.0.44</h2>
+<div class="date">2026-11-25</div>
+<ul>
+<li>自部署模型：各自部署各自的灵犀，各自登录各自的实例。引擎不再默认连接任何官方共享云端（hubUrl 默认空 = 纯本地模式）；远程中继设 LINGXI_HUB_URL 指向你自己的云端</li>
+<li>新增公开注册开关 REGISTRATION_OPEN：自建实例默认开放；私有实例设 =false 关闭陌生人注册（403），已有账号登录不受影响。官网示例站即私有实例，不提供共享算力</li>
+<li>根治 Node 24 崩溃循环：better-sqlite3 11.10.0 → 12.11.1（明确支持 Node 20–26）</li>
+<li>修复私聊「无法确定好友」/对方读回 403：participants 垃圾行（user_id='undefined'）根因净化 + 入口校验</li>
+<li>端到端实测 12/12 全过；私有模式 4/4 全过；测试 46 文件 621 用例全绿</li>
+</ul>
+</div>
+
+<div class="version">
 <h2>手机 App v1.4.0</h2>
 <div class="date">2026-11-25</div>
 <ul>

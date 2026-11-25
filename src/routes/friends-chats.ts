@@ -217,6 +217,12 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
     try {
       const { id, chatId, userId, agentId, role } = req.body;
       if (!id || !chatId) return res.status(400).json({ error: 'id 和 chatId 必填' });
+      // v2.0.44: 参与者必须指向真实用户或 AI —— 堵住 user_id='undefined' 垃圾行
+      const uidStr = String(userId ?? '').trim();
+      const aidStr = String(agentId ?? '').trim();
+      const uidOk = !!uidStr && uidStr !== 'undefined' && uidStr !== 'null';
+      const aidOk = !!aidStr && aidStr !== 'undefined' && aidStr !== 'null';
+      if (!uidOk && !aidOk) return res.status(400).json({ error: 'userId 或 agentId 必填' });
       // P1-4 修复: 身份伪造防护 — userId 必须为 JWT 持有者
       // ⭐ v2.1.2 修复 F5 会话消失：admin-auto（本地免登录）模式下 sub='admin' 是虚拟身份，
       //    与前端的 clientId（u-xxx）永远不匹配 → participant 写入被 403 拒绝 → 会话列表空白。
@@ -285,7 +291,7 @@ export function registerFriendsChatsRoutes(app: Express, deps: FriendsChatsRoute
           });
         }
       }
-      db.addParticipant(id, chatId, userId, agentId, finalRole);
+      db.addParticipant(id, chatId, uidOk ? uidStr : undefined, aidOk ? aidStr : undefined, finalRole);
       res.json({ ok: true });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) return res.json({ ok: true, exists: true });

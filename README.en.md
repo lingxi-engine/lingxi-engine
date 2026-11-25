@@ -135,10 +135,12 @@ CI runs type check, the full test suite, the README gate and workspace-hygiene c
 
 ## 📱 Mobile Remote Control
 
-The phone app is a remote control: all compute stays on your own computer. Three ways to connect (all built into app v1.4.0):
+The phone app is a remote control: all compute stays on your own computer/server. Three ways to connect (all built into app v1.5.0):
 
 1. **LAN direct** — on the same Wi-Fi the app auto-discovers engines (UDP beacons + subnet scan). One tap, zero config.
-2. **Official connect Hub** — since v2.0.43 `lingxi-engine.com` is a connect-only Hub (`HUB_ONLY=1`): account login + device directory + reverse relay. **No cloud AI, no chat storage.** Sign in with the same account on phone and PC, then take over your home computer from anywhere — no public IP or port forwarding needed.
-3. **Self-hosted Hub / offline** — run any server with `HUB_ONLY=1`, or set `LINGXI_HUB_URL=off` for pure LAN / Tailscale use.
+2. **My Cloud** — deploy a cloud LingXi on **your own server** (one-click Docker). Enter your address in the app, sign in with the same account as your PC, and take over your home computer from anywhere — no public IP or port forwarding needed. Relay traffic passes through your own server only.
+3. **Manual / offline** — public / Tailscale / ZeroTier addresses all work; `LINGXI_HUB_URL=off` or unset for pure LAN.
+
+> **v2.0.44 self-hosting model**: everyone deploys their own LingXi and signs in to their own instance. The engine no longer connects to any official shared cloud by default; the official site only provides downloads and deployment guides. Set `REGISTRATION_OPEN=false` to make your instance private (existing accounts keep working).
 
 Details: [docs/remote-access.md](docs/remote-access.md).
