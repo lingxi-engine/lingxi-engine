@@ -36,13 +36,15 @@ docs(readme): 补充 API Key 配置指南
 
 ```bash
 npm run typecheck                  # tsc --noEmit，必须 0 错误
-npm test                           # vitest 全量（当前 43 文件 / 602 用例）
+npm test                           # vitest 全量（当前 48 文件 / 649 用例）
 npm run test:coverage              # 覆盖率棘轮：只准涨不准跌
+npm run test:clean-env             # 剥离本机 Key/LINGXI_* 模拟 CI 干净环境跑全量（防本地假绿）
 npx tsx scripts/check-docs.mts     # README 数字/链接与源码一致性门禁
 ```
 
 - **覆盖率棘轮**：`vitest.config.ts` 中的 thresholds 是下限（当前 statements 15%），
   实测基线之上只允许上调、不允许下调。新增代码请配套测试。
+- **干净环境验证**：开发机的 `LINGXI_STRICT_MODEL` / 各家 API Key 会掩盖代码路径，导致本地假绿、CI 红灯（本项目曾三次踩此坑）。`npm run test:clean-env` 剥离这些变量后跑全量套件，忠实复现 CI 干净环境，push 前建议跑一次。
 - **文档门禁**：README 里的「N 个内置工具 / N 个消息渠道 / 50 轮工具循环」等数字
   必须与源码一致，改了工具/渠道数量要同步改 README，否则 CI 红灯。
 - **BOM 门禁**：package.json / tsconfig.json / ci.yml 等关键配置禁止 UTF-8 BOM。

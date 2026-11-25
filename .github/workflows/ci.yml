@@ -12,7 +12,7 @@ jobs:
     name: Python engine regression (152 assertions)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -29,8 +29,8 @@ jobs:
     name: TS engine (type check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
       - name: Install dependencies
@@ -102,7 +102,7 @@ jobs:
     name: Workspace hygiene check
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: BOM gate on critical configs
         # 2026-09-18 fix: main 分支 package.json 曾带 UTF-8 BOM(EF BB BF)，tsx 启动即报
         # "Error parsing package.json"（run 35250772658）。门禁只扫关键构建配置，

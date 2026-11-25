@@ -25,6 +25,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:clean-env": "node scripts/test-clean-env.mjs",
     "verify:deploy": "node scripts/verify-deploy.cjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
