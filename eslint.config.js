@@ -5,6 +5,7 @@
 import js from '@eslint/js';
 import typescriptEslint from 'typescript-eslint';
 import prettierConfig from 'eslint-config-prettier';
+import importPlugin from 'eslint-plugin-import';
 
 export default [
   // Ignore patterns
@@ -19,6 +20,8 @@ export default [
       'src/index.ts',
       'src/tests/**',
       '_*.ts',
+      '_*.js',
+      'mobile-dist/**',
       'stage/**',
       'mobile-app/**',
       'app/**',
@@ -109,6 +112,7 @@ export default [
   // Custom rules for TypeScript files
   {
     files: ['**/*.ts', '**/*.tsx'],
+    plugins: { import: importPlugin },
     languageOptions: {
       parserOptions: {
         project: ['./tsconfig.json'],
@@ -141,7 +145,6 @@ export default [
 
       // Async/await
       'require-await': 'warn',
-      'await-promise': 'warn',
 
       // Imports
       'import/order': ['error', {
