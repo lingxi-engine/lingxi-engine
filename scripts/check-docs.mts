@@ -17,6 +17,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 
 const ROOT = path.resolve(process.cwd());
 const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
@@ -78,10 +79,27 @@ if (taskTimeout) {
 }
 
 // ── no dangling relative links ──
+// Hardening (post-6fc27e0 CI failure): disk existence alone is NOT enough.
+// .gitignore can hide a file from CI's clean checkout while it exists locally.
+// This bit us twice (skills/CATALOG.md, deploy/grafana/lingxi-dashboard.json —
+// the `deploy/` and `/skills/` ignore rules). So additionally assert every
+// README link target is TRACKED BY GIT, making the gate fail locally pre-push.
+// Skipped when there is no .git (e.g. release source tarball) — disk check only.
+const inGitRepo = fs.existsSync(path.join(ROOT, '.git'));
 const links = [...readme.matchAll(/\]\((?!https?:|#)([^)]+)\)/g)].map(m => m[1]);
 for (const l of new Set(links)) {
-  const p = path.join(ROOT, l.replace(/#.*$/, ''));
+  const rel = l.replace(/#.*$/, '');
+  const p = path.join(ROOT, rel);
   check('link target exists: ' + l, fs.existsSync(p));
+  if (inGitRepo) {
+    let tracked = false;
+    try {
+      execSync('git ls-files --error-unmatch -- "' + rel + '"', { cwd: ROOT, stdio: 'pipe' });
+      tracked = true;
+    } catch { /* not tracked */ }
+    check('link target tracked by git: ' + l, tracked,
+      tracked ? '' : 'on disk but NOT in git — gitignored? fix: git add -f <path>');
+  }
 }
 
 // ── env template ──

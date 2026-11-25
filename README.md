@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![CI](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-634%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-649%20passing-brightgreen)](https://github.com/lingxi-engine/lingxi-engine/actions/workflows/ci.yml)
 [![Node](https://img.shields.io/badge/node-18%2B-brightgreen)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-blue)](https://www.typescriptlang.org/)
 [![Version](https://img.shields.io/badge/version-2.0.45-orange)](CHANGELOG.md)

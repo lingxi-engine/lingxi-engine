@@ -19,13 +19,13 @@ export default defineConfig({
         'src/**/*.d.ts',
         'src/types/**',
       ],
-      // Ratchet thresholds: set just below the measured baseline (v2.0.42).
+      // Ratchet thresholds: set just below the measured baseline.\n      // 2026-11-25 re-raised: measured 19.35/17.48/19.95/20.52 (stmt/br/fn/ln)\n      // after model-health tests (+15) landed; ~2pt margin for cross-platform v8.
       // Coverage may only go UP — lower these never, raise them as tests grow.
       thresholds: {
-        statements: 15,
-        branches: 13,
-        functions: 15,
-        lines: 15,
+        statements: 17,
+        branches: 15,
+        functions: 17,
+        lines: 17,
       },
     },
   },
