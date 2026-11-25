@@ -27,6 +27,18 @@ h1{font-size:32px;margin:40px 0 20px}
 <h1>更新日志</h1>
 
 <div class="version">
+<h2>v2.0.45</h2>
+<div class="date">2026-11-25</div>
+<ul>
+<li>开源就绪收尾：精选技能目录 skills/CATALOG.md（52 技能 / 8 大类）随源码包发布；发布包只含 git 跟踪的精选集，本地自动学习的技能变体不再泄漏进公开 tar 包</li>
+<li>Docker 一键部署由 GitHub Actions 实测验证：每次推送自动构建镜像 → 启动容器 → 轮询 /api/health 直到就绪（Docker Build workflow）</li>
+<li>可观测性文档 docs/observability.md（指标表 / PromQL / 抓取配置）+ 现成 Grafana 面板 deploy/grafana/lingxi-dashboard.json（6 面板导入即用）</li>
+<li>新增 RAG 引擎测试 10 条；全量门禁 tsc 0 错误、47 文件 / 634 用例全过、check-docs 19/19</li>
+<li>README 过时声明修正（better-sqlite3 / App v1.5.0 / 徽章数字）；仓库补齐 v1.5.0 APK</li>
+</ul>
+</div>
+
+<div class="version">
 <h2>手机 App v1.5.0</h2>
 <div class="date">2026-11-25</div>
 <ul>

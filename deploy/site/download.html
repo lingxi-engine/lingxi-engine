@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.44</title>
+<title>下载部署 · 灵犀引擎 v2.0.45</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.44</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.45</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -205,7 +205,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.44.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.44</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.45.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.45</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -248,7 +248,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.44","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.45","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -293,6 +293,12 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
       A：能。按 Linux 方式安装，Windows 浏览器直接访问 localhost:3456 即可。</p>
     </div>
   </details>
+
+  <!-- v2.0.45：开源就绪收尾 —— 技能目录 + Docker CI + 可观测性文档 + 发布包防泄漏 -->
+  <section class="card" id="v245">
+    <h2>🧩 v2.0.45 变更：开源就绪收尾 —— 技能目录、Docker CI 实测、可观测性文档</h2>
+    <p>精选技能目录 <code>skills/CATALOG.md</code>（52 技能 / 8 大类）随源码包发布；发布包按 git 精选清单剪枝，本地自动学习的技能变体不再泄漏进公开 tar 包。Docker 一键部署由 GitHub Actions 实测验证（build → boot → <code>/api/health</code>）。新增 <code>docs/observability.md</code> 与现成 Grafana 面板（6 面板导入即用）。新增 RAG 引擎测试 10 条；README 过时声明修正（better-sqlite3 / App v1.5.0）。全量门禁：tsc 0 错误、47 文件 / 634 用例全过、check-docs 19/19。</p>
+  </section>
 
   <!-- v2.0.44：自部署模型 —— 各自部署各自的灵犀 + 崩溃根治 -->
   <section class="card" id="v244">
@@ -573,7 +579,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.44</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.45</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>

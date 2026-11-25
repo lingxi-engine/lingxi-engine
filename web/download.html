@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>下载部署 · 灵犀引擎 v2.0.43</title>
+<title>下载部署 · 灵犀引擎 v2.0.45</title>
 <style>
   :root{--bg:#0b0f1a;--card:#151d2e;--card2:#1a2338;--line:#24304a;--text:#e6eaf2;--muted:#8b96ad;--brand:#7c5cfc;--brand2:#4a9eff;--green:#4ade80;--amber:#fbbf24}
   *{margin:0;padding:0;box-sizing:border-box}
@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <a class="back" href="/">← 返回首页</a>
-  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.43</span></h1>
+  <h1>📦 下载部署灵犀引擎 <span class="ver">v2.0.45</span></h1>
   <p class="sub">本地优先的 AI 助手平台 · Windows / Linux / macOS 三端一行命令部署 · 手机遥控同一账号</p>
 
   <div class="detect" id="detectBar"><span class="dot"></span><span id="detectText">正在识别你的操作系统…</span></div>
@@ -138,12 +138,12 @@
   <!-- ============ Android ============ -->
   <div class="panel" id="panel-android">
     <div class="card">
-      <h2>🤖 灵犀手机 App <span class="ver">v1.4.0</span></h2>
+      <h2>🤖 灵犀手机 App <span class="ver">v1.5.0</span></h2>
       <p>Android 7.0+。它<b>不在手机上跑模型</b>，本身不产生任何算力——它是<b>你这个账号的遥控器</b>。</p>
       <p>在 App 顶栏填写<b>你自己引擎的地址</b>（家里电脑、公司电脑、你自己的云服务器），用该引擎的账号登录即可一键接管；随时切换地址就是切换引擎。官方云端托管已下线，灵犀现为<b>本地优先、自主部署</b>。</p>
       <div class="keyline">🔑 <b>一个账号，处处操控。</b>用和电脑端／本地部署／你自己的云服务器<b>完全相同的账号</b>登录，手机里出现的就是<b>同一个灵犀引擎</b>：同一套记忆、同一批智能体、同一个工作区和文件、同一批工具能力，一个都不少。</div>
       <a class="btn btn-primary" href="/lingxi-app.apk" download>⬇️ 下载 APK（Android · 系统签名测试包）</a>
-      <div class="tips" style="margin-top:10px">🆕 <b>v1.4.0（2026-11-25）：</b>首次启动<b>自动扫描局域网</b>发现引擎（UDP 灯塔 + 网段探测），点一下即连，不用手抄 IP；新增<b>官方连接 Hub</b>入口——登录与电脑相同的账号，人在外面也能一键接管家里电脑（云端只做连接，不跑 AI）。<b>签名与旧版一致，直接覆盖安装即可升级</b>，已保存的引擎地址不受影响。</div>
+      <div class="tips" style="margin-top:10px">🆕 <b>v1.5.0（2026-11-25）：</b>自部署模型——「官方连接 Hub」入口改为<b>「我的云端」</b>：填入<b>你自己部署的</b>云端灵犀地址，登录与电脑相同的账号，人在外面也能一键接管家里电脑，中继流量只经过你自己的服务器。局域网自动扫描保留。<b>签名与旧版一致，直接覆盖安装即可升级</b>。</div>
       <a class="btn btn-ghost" href="/docs/">🌐 不装 App：部署引擎后用浏览器打开（部署指南）</a>
       <table>
         <tr><th>能力</th><th>在哪里执行</th><th>说明</th></tr>
@@ -205,7 +205,7 @@
   <div class="card">
     <h2>🐍 源码包（全平台通用）</h2>
     <p>完整源码，解压后 npm install 即可运行，适用于所有平台、二次开发与离线部署。</p>
-    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.43.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.43</span></a>
+    <a class="btn btn-primary" id="dl-src" href="/public/lingxi-engine-v2.0.45.tar.gz" download>⬇ 下载 引擎源码包 <span class="ver">v2.0.45</span></a>
     <a class="btn btn-ghost" href="/public/lingxi-engine.tar.gz" download>⬇ 最新版（通用名）</a>
   </div>
 
@@ -248,7 +248,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
 
       <h3>安装后验证</h3>
       <pre id="health-pre">curl http://localhost:3456/api/health
-# 期望返回 {"ok":true,"version":"2.0.43","agents":11,...}</pre>
+# 期望返回 {"ok":true,"version":"2.0.45","agents":11,...}</pre>
 
       <h3>手动部署（不用脚本）</h3>
       <p>完整手动步骤（Node 安装 → tarball 解压 → .env 配置 → npm install → PM2/systemd 托管）参考 <span class="ic">install.sh</span> 内的安装逻辑；Linux 桌面还可选 deb / AppImage 安装包（构建脚本在仓库 <span class="ic">linux_packaging/</span> 目录）。</p>
@@ -294,6 +294,17 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </div>
   </details>
 
+  <!-- v2.0.45：开源就绪收尾 —— 技能目录 + Docker CI + 可观测性文档 + 发布包防泄漏 -->
+  <section class="card" id="v245">
+    <h2>🧩 v2.0.45 变更：开源就绪收尾 —— 技能目录、Docker CI 实测、可观测性文档</h2>
+    <p>精选技能目录 <code>skills/CATALOG.md</code>（52 技能 / 8 大类）随源码包发布；发布包按 git 精选清单剪枝，本地自动学习的技能变体不再泄漏进公开 tar 包。Docker 一键部署由 GitHub Actions 实测验证（build → boot → <code>/api/health</code>）。新增 <code>docs/observability.md</code> 与现成 Grafana 面板（6 面板导入即用）。新增 RAG 引擎测试 10 条；README 过时声明修正（better-sqlite3 / App v1.5.0）。全量门禁：tsc 0 错误、47 文件 / 634 用例全过、check-docs 19/19。</p>
+  </section>
+
+  <!-- v2.0.44：自部署模型 —— 各自部署各自的灵犀 + 崩溃根治 -->
+  <section class="card" id="v244">
+    <h2>🏠 v2.0.44 变更：自部署模型 —— 各自部署各自的灵犀，各自登录各自的实例</h2>
+    <p><b>引擎不再默认连接任何官方共享云端</b>：hubUrl 默认空 = 纯本地模式；需要远程中继时设 <code>LINGXI_HUB_URL</code> 指向<b>你自己的</b>云端灵犀。新增公开注册开关 <code>REGISTRATION_OPEN</code>：自建实例默认开放，私有实例设 <code>=false</code> 关闭陌生人注册（已有账号不受影响）——官网示例站即私有实例，<b>不提供共享算力</b>。App v1.5.0 同步改为「我的云端」入口。根治 Node 24 崩溃循环（better-sqlite3 → 12.11.1）；修复私聊「无法确定好友」/读回 403（participants 垃圾行根因）。端到端实测 12/12、私有模式 4/4 全过；测试 46 文件 / 621 用例全绿。</p>
+  </section>
   <!-- v2.0.43：远程控制闭环 —— 纯连接 Hub + App 自动发现 -->
   <section class="card" id="v243">
     <h2>📱 v2.0.43 变更：官方纯连接 Hub 上线、App 自动发现、人在外面也能接管</h2>
@@ -568,7 +579,7 @@ pm2 restart lingxi-engine || sudo systemctl restart lingxi-engine</pre>
     </p>
   </section>
 
-<div class="foot">灵犀引擎 <span class="ver">v2.0.43</span> · <a href="/">返回首页</a></div>
+<div class="foot">灵犀引擎 <span class="ver">v2.0.45</span> · <a href="/">返回首页</a></div>
 </div>
 
 <script>

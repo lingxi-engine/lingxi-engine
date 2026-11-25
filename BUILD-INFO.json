@@ -1,7 +1,7 @@
 {
-    "version":  "2.0.44",
-    "commit":  "a88db8a",
-    "buildTime":  "2026-11-25T12:30:48.4624739Z",
+    "version":  "2.0.45",
+    "commit":  "a711af6",
+    "buildTime":  "2026-11-25T13:13:07.9797377Z",
     "builder":  "pack-release.ps1",
     "highlights":  [
                        "自部署模型：各自部署各自的灵犀，各自登录各自的实例；引擎默认不连任何官方共享云",
