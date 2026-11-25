@@ -11,6 +11,12 @@
  * v2.0.42 接线修复：本模块此前是死代码（index.ts 从未挂载中间件、从未暴露 /metrics）。
  * 现已在 index.ts 挂载 metricsMiddleware() 并注册受保护的 GET /metrics。
  * 同时新增路由标签归一化（数字/UUID/长十六进制段 → :id），防止 Prometheus 标签基数爆炸。
+ *
+ * v2.0.44 审计加固：序列数上限（MAX_SERIES_PER_METRIC）。
+ * 归一化只覆盖数字/UUID/长十六进制段；攻击者用随机字母路径扫 404 时，
+ * 每个路径仍会产生一条新时间序列 → 内存无限增长。现在每个指标名下的
+ * 不同标签组合数达到上限后，新序列一律折叠进 route="(overflow)"，
+ * 既有正常序列不受影响、继续累计。
  */
 
 interface Counter { value: number }
@@ -20,13 +26,34 @@ const counters: Record<string, Counter> = {};
 const histograms: Record<string, Histogram> = {};
 const gauges: Record<string, number> = {};
 
-export function inc(name: string, labels?: Record<string, string>, by = 1): void {
+/** 每个指标名允许的最大标签组合（时间序列）数；超出折叠进 overflow。 */
+const MAX_SERIES_PER_METRIC = 512;
+const seriesCount: Record<string, number> = {};
+
+/**
+ * 基数护栏：已存在的序列直接复用；新序列在上限内正常创建；
+ * 超限后把 route 标签改写为 '(overflow)' 折叠（保留 method/status 等其它标签）。
+ */
+function boundedKey(name: string, labels: Record<string, string> | undefined, store: Record<string, unknown>): string {
   const key = withLabels(name, labels);
+  if (store[key]) return key;
+  const n = seriesCount[name] || 0;
+  if (n < MAX_SERIES_PER_METRIC) {
+    seriesCount[name] = n + 1;
+    return key;
+  }
+  const folded = withLabels(name, { ...(labels || {}), route: '(overflow)' });
+  if (!store[folded]) seriesCount[name] = n + 1;
+  return folded;
+}
+
+export function inc(name: string, labels?: Record<string, string>, by = 1): void {
+  const key = boundedKey(name, labels, counters);
   (counters[key] = counters[key] || { value: 0 }).value += by;
 }
 
 export function observe(name: string, value: number, labels?: Record<string, string>): void {
-  const key = withLabels(name, labels);
+  const key = boundedKey(name, labels, histograms);
   const h = (histograms[key] = histograms[key] || { count: 0, sum: 0 });
   h.count += 1;
   h.sum += value;
@@ -41,6 +68,7 @@ export function resetMetrics(): void {
   for (const k of Object.keys(counters)) delete counters[k];
   for (const k of Object.keys(histograms)) delete histograms[k];
   for (const k of Object.keys(gauges)) delete gauges[k];
+  for (const k of Object.keys(seriesCount)) delete seriesCount[k];
 }
 
 function withLabels(name: string, labels?: Record<string, string>): string {

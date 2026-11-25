@@ -3,6 +3,7 @@
  *
  * 覆盖：计数器/直方图/gauge、Prometheus 文本格式、标签转义、
  *       路由归一化（防标签基数爆炸）、METRICS_ENABLED 开关、中间件行为。
+ * v2.0.44 审计加固：序列数上限（随机路径扫 404 不得撑爆内存）。
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
@@ -131,5 +132,37 @@ describe('metricsMiddleware', () => {
       expect(nextCalled).toBe(true);
       expect(renderMetrics()).not.toContain('lingxi_http_requests_total');
     });
+  });
+});
+
+describe('series cardinality cap (v2.0.44 审计加固)', () => {
+  it('随机路径扫 404：计数器新序列超限后折叠进 route="(overflow)"，总数有界', () => {
+    for (let i = 0; i < 600; i++) {
+      inc('lingxi_http_requests_total', { method: 'GET', route: '/scan/abc' + i, status: '404' });
+    }
+    const out = renderMetrics();
+    expect(out).toContain('route="(overflow)"');
+    const series = out.split('\n').filter(l => l.startsWith('lingxi_http_requests_total{'));
+    // 上限 512 + 少量 overflow 变体，绝不允许 600 条
+    expect(series.length).toBeLessThanOrEqual(514);
+  });
+
+  it('超限后既有正常序列仍继续累计（不影响真实路由指标）', () => {
+    inc('lingxi_http_requests_total', { method: 'GET', route: '/api/health', status: '200' });
+    for (let i = 0; i < 600; i++) {
+      inc('lingxi_http_requests_total', { method: 'GET', route: '/scan/abc' + i, status: '404' });
+    }
+    inc('lingxi_http_requests_total', { method: 'GET', route: '/api/health', status: '200' });
+    expect(renderMetrics()).toContain('lingxi_http_requests_total{method="GET",route="/api/health",status="200"} 2');
+  });
+
+  it('直方图序列同样有界（耗时指标不得被扫描撑爆）', () => {
+    for (let i = 0; i < 600; i++) {
+      observe('lingxi_http_request_duration_ms', 5, { method: 'GET', route: '/scan/abc' + i });
+    }
+    const out = renderMetrics();
+    const series = out.split('\n').filter(l => l.startsWith('lingxi_http_request_duration_ms_count{'));
+    expect(series.length).toBeLessThanOrEqual(514);
+    expect(out).toContain('route="(overflow)"');
   });
 });
